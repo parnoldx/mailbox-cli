@@ -105,3 +105,39 @@ func TestMarkdownToHTMLListAndFence(t *testing.T) {
 		}
 	}
 }
+
+func TestCleanMarkdownStripsInvisibleChars(t *testing.T) {
+	got := HTMLToMarkdown("<p>Hi\u200b there\u00ad</p>")
+	if got != "Hi there" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestCleanMarkdownDropsEmptyImagesAndLinks(t *testing.T) {
+	got := cleanMarkdown("a ![](https://t.example/p) b [](https://x.example) c")
+	if got != "a b c" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestCleanMarkdownDropsBareURLLines(t *testing.T) {
+	got := cleanMarkdown("text\nhttps://button.example/go\n<https://autolink.example>\nmore")
+	if got != "text\nmore" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestCleanMarkdownKeepsRealContent(t *testing.T) {
+	got := cleanMarkdown("[label](https://x.example)\nsee https://y.example now")
+	want := "[label](https://x.example)\nsee https://y.example now"
+	if got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
+func TestCleanMarkdownCollapsesBlankRuns(t *testing.T) {
+	got := cleanMarkdown("a\n\n\n\nb")
+	if got != "a\n\nb" {
+		t.Fatalf("got %q", got)
+	}
+}

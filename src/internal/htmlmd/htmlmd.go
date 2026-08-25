@@ -155,11 +155,43 @@ func parseHTML(value string) *node {
 
 // --- public API ---
 
+var (
+	// Invisible chars used as email preheader spacers: U+034F combining
+	// grapheme joiner, U+00AD soft hyphen, U+200B-D zero-width spaces,
+	// U+FEFF BOM.
+	reInvisible = regexp.MustCompile(`[\x{034F}\x{00AD}\x{200B}\x{200C}\x{200D}\x{FEFF}]+`)
+	// Empty images/links left behind after tracking pixels are dropped
+	// (plus one following space to avoid doubled gaps).
+	reEmptyImage = regexp.MustCompile(`!\[\s*\]\([^)]*\) ?`)
+	reEmptyLink  = regexp.MustCompile(`\[\s*\]\([^)]*\) ?`)
+	// Lines that are only a bare URL or autolink: remnants of image-only
+	// buttons whose text was a stripped pixel.
+	reBareURLLine = regexp.MustCompile(`(?m)^[^\S\n]*(?:https?://\S+|<https?://\S+>)[^\S\n]*(?:\n|$)`)
+	// Lines made only of exotic spaces (&nbsp; and friends); plain
+	// space/tab lines are left alone to protect code fences.
+	reNbspLine = regexp.MustCompile(`(?m)^[\x{00A0}\x{202F}\x{2003}\x{2009}]+(?:\n|$)`)
+)
+
+// cleanMarkdown removes newsletter noise from converted markdown:
+// invisible spacer characters, empty images/links, bare-URL lines,
+// &nbsp;-only lines, and excess blank lines.
+func cleanMarkdown(s string) string {
+	s = reInvisible.ReplaceAllString(s, "")
+	s = reEmptyImage.ReplaceAllString(s, "")
+	s = reEmptyLink.ReplaceAllString(s, "")
+	s = reBareURLLine.ReplaceAllString(s, "")
+	s = reNbspLine.ReplaceAllString(s, "")
+	for strings.Contains(s, "\n\n\n") {
+		s = strings.ReplaceAll(s, "\n\n\n", "\n\n")
+	}
+	return strings.TrimSpace(s)
+}
+
 func HTMLToMarkdown(value string) string {
 	root := parseHTML(value)
 	md := newMarkdownizer()
 	md.walk(root)
-	return md.text()
+	return cleanMarkdown(md.text())
 }
 
 var mdHeadingRe = regexp.MustCompile(`^(#{1,6}) (.+)$`)
