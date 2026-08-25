@@ -68,6 +68,7 @@ Meta
   mailbox doctor
   mailbox commands
   mailbox skill install
+  mailbox serve [--web] [--web-port N] [--interval S] [--print]
   mailbox help [output|exit-codes|environment]
 
 Boxes: inbox, feed, trail, screener, archive, drafts, sent, or Archive/…
@@ -82,6 +83,9 @@ Search is IMAP keyword (not semantic). --from/--to/--subject are IMAP FROM/TO/SU
 Default search covers Inbox/Feed/Paper Trail/Screener plus Archive.
 Approve, deny, and move only IMAP-move; Sieve updates happen on the VPS.
 compose sends via SMTP unless --draft. -m is Markdown; --message-html is raw HTML.
+serve runs the mail routing service: watches Inbox/Feed/Paper Trail/Screener/Block
+and updates the "logic" Sieve script (sieve host: MAILBOX_SIEVE_HOST/_PORT, default IMAP host:4190).
+--web serves the list-management UI on :8080. Needs the same env as the mail verbs.
 `
 
 var helpTopics = map[string]string{
@@ -144,7 +148,7 @@ var (
 	contactCols   = []col{{"id", "ID"}, {"name", "Name"}, {"email", "Email"}, {"updated", "Updated"}}
 )
 
-const screenNote = "Routing update is emailMoveHelper's job; next mail from this sender may still land in Screener."
+const screenNote = "Routing updates are mailbox serve's job; next mail from this sender may still land in Screener."
 
 // UsageError maps to python ValueError -> exit 2.
 type UsageError struct{ Msg string }
@@ -297,6 +301,12 @@ func dispatch(argv []string, out *format.Output) (int, error) {
 			return 0, err
 		}
 		return cmdSkill(sub, out)
+	case "serve":
+		flags, err := parseFlags(flagSpec("serve", ""), rest)
+		if err != nil {
+			return 0, err
+		}
+		return cmdServe(flags, out)
 	default:
 		fmt.Print(usage)
 		return 2, nil
@@ -382,6 +392,7 @@ var cmdFlagSpecs = map[string]flagspec{
 	"events":           {newSet("all-day"), newSet("start", "end", "title")},
 	"tasks":            {nil, newSet("title", "due")},
 	"contacts":         {nil, newSet("name", "email", "note")},
+	"serve":            {newSet("web", "print"), newSet("web-port", "interval")},
 }
 
 func flagSpec(group, sub string) flagspec {
@@ -1345,6 +1356,7 @@ var cmdSpecs = []cmdspec{
 	{[]string{"contacts", "add"}, "mailbox contacts add --name TEXT --email ADDR [--note TEXT]", []string{"--name", "--email", "--note"}},
 	{[]string{"contacts", "update"}, "mailbox contacts update ID [--name TEXT] [--email ADDR] [--note TEXT]", []string{"--name", "--email", "--note"}},
 	{[]string{"doctor"}, "mailbox doctor", nil},
+	{[]string{"serve"}, "mailbox serve [--web] [--web-port N] [--interval S] [--print]", []string{"--web", "--web-port", "--interval", "--print"}},
 	{[]string{"commands"}, "mailbox commands", nil},
 	{[]string{"skill", "install"}, "mailbox skill install", nil},
 	{[]string{"help"}, "mailbox help [output|exit-codes|environment]", nil},

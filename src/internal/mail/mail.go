@@ -883,4 +883,80 @@ func ScopedSearchFolders(names []string, folder string) ([]string, error) {
 	return []string{resolved}, nil
 }
 
+// --- sieve service ops (mailbox serve) ---
+
+func (m *Mail) CreateFolder(name string) error {
+	c, err := m.client()
+	if err != nil {
+		return err
+	}
+	resp, err := c.Command("CREATE", imapclient.QuoteString(name))
+	if err != nil || resp.Status != "OK" {
+		return fmt.Errorf("cannot create %s", name)
+	}
+	return nil
+}
+
+// UIDSenders maps uid -> From address for every message in the folder.
+func (m *Mail) UIDSenders(folder string) (map[string]string, error) {
+	if err := m.Select(folder, true); err != nil {
+		return nil, err
+	}
+	uids, err := m.uidSearch("ALL")
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(uids))
+	if len(uids) == 0 {
+		return out, nil
+	}
+	c, _ := m.client()
+	resp, err := c.Command("UID", "FETCH", strings.Join(uids, ","), "(UID BODY.PEEK[HEADER.FIELDS (FROM)])")
+	if err != nil || resp.Status != "OK" {
+		return nil, fmt.Errorf("cannot fetch senders in %s", folder)
+	}
+	for _, rec := range splitFetchChunks(resp.Chunks) {
+		mm := uidMetaRe.FindStringSubmatch(rec.meta)
+		if mm == nil || rec.body == nil {
+			continue
+		}
+		from := DecodeHeader(ParseMessage(rec.body).HeaderGet("From"))
+		if addr := firstAddress(from); addr != "" {
+			out[mm[1]] = addr
+		}
+	}
+	return out, nil
+}
+
+// SeenAndDelete marks the message \Seen + \Deleted and expunges it.
+func (m *Mail) SeenAndDelete(folder, uid string) error {
+	if err := m.Select(folder, false); err != nil {
+		return err
+	}
+	c, _ := m.client()
+	st, err := c.Command("UID", "STORE", uid, "+FLAGS", `(\Seen \Deleted)`)
+	if err != nil || st.Status != "OK" {
+		return fmt.Errorf("cannot flag %s:%s deleted", folder, uid)
+	}
+	st, err = c.Command("UID", "EXPUNGE", uid)
+	if err != nil || st.Status != "OK" {
+		return fmt.Errorf("cannot expunge %s:%s", folder, uid)
+	}
+	return nil
+}
+
+// firstAddress extracts the addr-spec from a From header value.
+func firstAddress(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if i := strings.LastIndex(value, "<"); i >= 0 {
+		if j := strings.Index(value[i:], ">"); j > 1 {
+			return value[i+1 : i+j]
+		}
+	}
+	return value
+}
+
 var _ = htmlmd.HTMLToMarkdown

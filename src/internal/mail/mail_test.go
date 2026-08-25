@@ -72,14 +72,18 @@ func TestUnscopedKeepsListedOrder(t *testing.T) {
 
 func TestListFolderName(t *testing.T) {
 	cases := map[string]string{
-		`(\HasChildren \UnMarked) "/" INBOX`:                        "INBOX",
-		`(\HasChildren \UnMarked) "/" INBOX/Screener`:               "INBOX/Screener",
-		`(\HasNoChildren \UnMarked) "/" "INBOX/Paper Trail"`:        "INBOX/Paper Trail",
-		`(\HasNoChildren \UnMarked \Trash) "/" Trash`:               "Trash",
+		`(\HasChildren \UnMarked) "/" INBOX`:                                    "INBOX",
+		`(\HasChildren \UnMarked) "/" INBOX/Screener`:                           "INBOX/Screener",
+		`(\HasNoChildren \UnMarked) "/" "INBOX/Paper Trail"`:                    "INBOX/Paper Trail",
+		`(\HasNoChildren \UnMarked \Trash) "/" Trash`:                           "Trash",
+		`LIST (\HasNoChildren \UnMarked) "/" INBOX/Feed`:                        "INBOX/Feed",
+		`LIST (\HasNoChildren \UnMarked) "/" "INBOX/Paper Trail"`:               "INBOX/Paper Trail",
+		`LIST (\HasNoChildren \UnMarked) "/" "Archive/Travel/Japan 26"`:          "Archive/Travel/Japan 26",
+		`LIST (\HasChildren \Archive) "/" Archive`:                              "Archive",
 	}
 	for line, want := range cases {
 		if got := ListFolderName(line); got != want {
-			t.Fatalf("%q -> %q, want %q", line, got, want)
+			t.Errorf("ListFolderName(%q) = %q, want %q", line, got, want)
 		}
 	}
 }
@@ -99,9 +103,9 @@ func TestRelatedMessageIDs(t *testing.T) {
 
 func TestShortFrom(t *testing.T) {
 	cases := map[string]string{
-		"Test User <test@example.com>":       "Test User",
-		"<no-name@example.com>":              "no-name@example.com",
-		"bare@example.com":                   "bare@example.com",
+		"Test User <test@example.com>": "Test User",
+		"<no-name@example.com>":        "no-name@example.com",
+		"bare@example.com":             "bare@example.com",
 	}
 	for in, want := range cases {
 		if got := ShortFrom(in); got != want {

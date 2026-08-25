@@ -16,6 +16,31 @@ mailbox contacts search QUERY --json
 
 `mailbox` prints the full command list. `mailbox help output` is formats. `mailbox commands --json` is the machine index.
 
+## Serve (mail routing service)
+
+`mailbox serve` runs the mail routing service: it watches Inbox, Feed,
+Paper Trail, Screener, and Block for new mail and keeps the "logic" Sieve
+script's sender lists in sync (whitelist / feed / paper trail / blacklist).
+Run it on the VPS:
+
+```bash
+MAILBOX_EMAIL=... MAILBOX_PASSWORD=... mailbox serve            # poll every 30s
+mailbox serve --web --web-port 8080                             # + list-management UI
+```
+
+Sieve endpoint defaults to the IMAP host on port 4190; override with
+`MAILBOX_SIEVE_HOST` / `MAILBOX_SIEVE_PORT`.
+
+The service owns the "logic" script and rewrites it whenever you move mail
+between the routing folders. It never touches your other Sieve scripts. To
+activate it, add one include line at the end of your default (active) Sieve
+script on the server:
+
+```
+require "include";
+include "logic";
+```
+
 ## Install
 
 Go 1.25+.

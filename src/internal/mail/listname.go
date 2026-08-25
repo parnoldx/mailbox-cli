@@ -5,7 +5,8 @@ import (
 	"strings"
 )
 
-var listNameRe = regexp.MustCompile(`^\(.*\) "(?:[^"]*)" (?:"(.*)"|(\S+))\s*$`)
+// Matches the trailing mailbox name, quoted or not.
+var listNameRe = regexp.MustCompile(`(?:^|\s)(?:"([^"]*)"|(\S+))\s*$`)
 
 // ListFolderName extracts the folder name from an IMAP LIST line.
 func ListFolderName(line string) string {
