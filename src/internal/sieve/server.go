@@ -39,18 +39,57 @@ func (s Server) dial() (*managesieve.Client, error) {
 	return client, nil
 }
 
-// GetScript fetches the logic script body.
-func (s Server) GetScript() (string, error) {
+// ListScripts returns the stored script names and the active one.
+func (s Server) ListScripts() ([]string, string, error) {
+	client, err := s.dial()
+	if err != nil {
+		return nil, "", err
+	}
+	defer client.Close()
+	names, active, err := client.ListScripts()
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to list Sieve scripts: %w", err)
+	}
+	return names, active, nil
+}
+
+// GetScriptNamed fetches one script by name.
+func (s Server) GetScriptNamed(name string) (string, error) {
 	client, err := s.dial()
 	if err != nil {
 		return "", err
 	}
 	defer client.Close()
-	content, err := client.GetScript(ScriptName)
+	content, err := client.GetScript(name)
 	if err != nil {
-		return "", fmt.Errorf("failed to get %s script: %w", ScriptName, err)
+		return "", fmt.Errorf("failed to get %s script: %w", name, err)
 	}
 	return content, nil
+}
+
+// PutScriptNamed uploads one script by name and activates it.
+func (s Server) PutScriptNamed(name, content string) error {
+	client, err := s.dial()
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	warnings, err := client.PutScript(name, content)
+	if err != nil {
+		return fmt.Errorf("failed to upload %s script: %w", name, err)
+	}
+	if warnings != "" {
+		log.Printf("sieve: script warnings: %s", warnings)
+	}
+	if err := client.ActivateScript(name); err != nil {
+		return fmt.Errorf("failed to activate %s script: %w", name, err)
+	}
+	return nil
+}
+
+// GetScript fetches the logic script body.
+func (s Server) GetScript() (string, error) {
+	return s.GetScriptNamed(ScriptName)
 }
 
 // PutScript uploads the logic script body.

@@ -46,6 +46,11 @@ Mail
   mailbox attachment list ID
   mailbox attachment save ID [--output PATH] [--force]
 
+Sieve  (ManageSieve scripts)
+  mailbox sieve list
+  mailbox sieve get [NAME] [--output PATH]
+  mailbox sieve put NAME FILE|-
+
 Events  (Kalender)
   mailbox events [--start WHEN] [--end WHEN]
   mailbox events show ID
@@ -70,7 +75,6 @@ Meta
   mailbox skill install
   mailbox serve [--web] [--web-port N] [--interval S] [--print]
   mailbox help [output|exit-codes|environment]
-
 Boxes: inbox, feed, trail, screener, archive, drafts, sent, or Archive/…
 mailbox box list is routing boxes; --archive is the Archive tree. box view matches name or id (feed, Inbox/Feed).
 Mail IDs look like INBOX/Screener:342. Event/task/contact IDs come from the list.
@@ -83,6 +87,8 @@ Search is IMAP keyword (not semantic). --from/--to/--subject are IMAP FROM/TO/SU
 Default search covers Inbox/Feed/Paper Trail/Screener plus Archive.
 Approve, deny, and move only IMAP-move; Sieve updates happen on the VPS.
 compose sends via SMTP unless --draft. -m is Markdown; --message-html is raw HTML.
+sieve talks ManageSieve (MAILBOX_SIEVE_HOST/_PORT, default IMAP host:4190);
+sieve get prints the raw script; sieve put uploads and activates.
 serve runs the mail routing service: watches Inbox/Feed/Paper Trail/Screener/Block
 and updates the "logic" Sieve script (sieve host: MAILBOX_SIEVE_HOST/_PORT, default IMAP host:4190).
 --web serves the list-management UI on :8080. Needs the same env as the mail verbs.
@@ -281,6 +287,12 @@ func dispatch(argv []string, out *format.Output) (int, error) {
 			return 0, err
 		}
 		return cmdAttachment(sub, flags, out)
+	case "sieve":
+		sub, flags, err := subcommand(rest, "sieve")
+		if err != nil {
+			return 0, err
+		}
+		return cmdSieve(sub, flags, out)
 	case "events":
 		return cmdEvents(rest, out)
 	case "tasks":
@@ -389,6 +401,7 @@ var cmdFlagSpecs = map[string]flagspec{
 	"draft list":       {newSet("all", "unread", "detail"), newSet("limit")},
 	"draft edit":       {nil, newSet("to", "cc", "bcc", "subject", "m", "message-html")},
 	"attachment save":  {newSet("force"), newSet("output")},
+	"sieve get":        {nil, newSet("output")},
 	"events":           {newSet("all-day"), newSet("start", "end", "title")},
 	"tasks":            {nil, newSet("title", "due")},
 	"contacts":         {nil, newSet("name", "email", "note")},
@@ -487,6 +500,7 @@ func subcommand(tokens []string, group string) (string, *parsed, error) {
 		"screener":   {"list", "approve", "deny"},
 		"draft":      {"list", "show", "edit", "send", "delete"},
 		"attachment": {"list", "save"},
+		"sieve":      {"list", "get", "put"},
 		"contacts":   {"list", "show", "add", "update", "search"},
 		"skill":      {"install"},
 	}[group]
@@ -1355,6 +1369,9 @@ var cmdSpecs = []cmdspec{
 	{[]string{"draft", "delete"}, "mailbox draft delete ID", nil},
 	{[]string{"attachment", "list"}, "mailbox attachment list ID", nil},
 	{[]string{"attachment", "save"}, "mailbox attachment save ID [--output PATH] [--force]", []string{"--output", "--force"}},
+	{[]string{"sieve", "list"}, "mailbox sieve list", nil},
+	{[]string{"sieve", "get"}, "mailbox sieve get [NAME] [--output PATH]", []string{"--output"}},
+	{[]string{"sieve", "put"}, "mailbox sieve put NAME FILE|-", nil},
 	{[]string{"events"}, "mailbox events [--start WHEN] [--end WHEN]", []string{"--start", "--end"}},
 	{[]string{"events", "show"}, "mailbox events show ID", nil},
 	{[]string{"events", "create"}, "mailbox events create --title TEXT --start WHEN [--end WHEN] [--all-day]", []string{"--title", "--start", "--end", "--all-day"}},

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strconv"
@@ -13,6 +14,20 @@ import (
 	"mailbox/src/internal/sieve"
 )
 
+func newSieveServer(acct *config.Account) sieve.Server {
+	sievePort := 4190
+	if raw := os.Getenv("MAILBOX_SIEVE_PORT"); raw != "" {
+		sievePort, _ = strconv.Atoi(raw)
+	}
+	return sieve.Server{
+		Host:     pickEnv("MAILBOX_SIEVE_HOST", acct.IMAPHost),
+		Port:     sievePort,
+		UseTLS:   true,
+		Email:    acct.Email,
+		Password: acct.Password,
+	}
+}
+
 // cmdServe runs the mail routing service: watch routing folders,
 // keep the "logic" Sieve script in sync, optional web UI.
 func cmdServe(flags *parsed, out *format.Output) (int, error) {
@@ -21,10 +36,6 @@ func cmdServe(flags *parsed, out *format.Output) (int, error) {
 		return 0, err
 	}
 
-	sievePort := 4190
-	if raw := os.Getenv("MAILBOX_SIEVE_PORT"); raw != "" {
-		sievePort, _ = strconv.Atoi(raw)
-	}
 	interval := 30 * time.Second
 	if raw := flags.one("interval"); raw != "" {
 		n, err := strconv.Atoi(raw)
@@ -34,13 +45,7 @@ func cmdServe(flags *parsed, out *format.Output) (int, error) {
 		interval = time.Duration(n) * time.Second
 	}
 
-	server := sieve.Server{
-		Host:     pickEnv("MAILBOX_SIEVE_HOST", acct.IMAPHost),
-		Port:     sievePort,
-		UseTLS:   true,
-		Email:    acct.Email,
-		Password: acct.Password,
-	}
+	server := newSieveServer(acct)
 
 	if flags.has("print") {
 		content, err := server.GetScript()
@@ -114,4 +119,71 @@ func pickEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// --- sieve script management ---
+
+func cmdSieve(cmd string, flags *parsed, out *format.Output) (int, error) {
+	acct, err := config.LoadAccount(false, false)
+	if err != nil {
+		return 0, err
+	}
+	server := newSieveServer(acct)
+	switch cmd {
+	case "list":
+		names, active, err := server.ListScripts()
+		if err != nil {
+			return 0, err
+		}
+		rows := make([]*format.OM, 0, len(names))
+		for _, name := range names {
+			rows = append(rows, format.NewOM("name", name, "active", name == active))
+		}
+		return format.WriteList(rows, []col{{"name", "Name"}, {"active", "Active"}}, out), nil
+	case "get":
+		name := sieve.ScriptName
+		if len(flags.positional) > 0 {
+			name = flags.positional[0]
+		}
+		content, err := server.GetScriptNamed(name)
+		if err != nil {
+			return 0, err
+		}
+		if path := flags.one("output"); path != "" {
+			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+				return 0, err
+			}
+			return format.WriteOK(format.NewOM("name", name, "path", path), out, ""), nil
+		}
+		if out.JSON || out.Quiet {
+			return format.WriteOK(format.NewOM("name", name, "content", content), out, ""), nil
+		}
+		fmt.Println(content)
+		return 0, nil
+	case "put":
+		if len(flags.positional) != 2 {
+			return printUsage("sieve", "put"), nil
+		}
+		name, file := flags.positional[0], flags.positional[1]
+		var content []byte
+		if file == "-" {
+			data, err := io.ReadAll(os.Stdin)
+			if err != nil {
+				return 0, err
+			}
+			content = data
+		} else {
+			var err error
+			content, err = os.ReadFile(file)
+			if err != nil {
+				return 0, err
+			}
+		}
+		if err := server.PutScriptNamed(name, string(content)); err != nil {
+			return 0, err
+		}
+		return format.WriteOK(format.NewOM("name", name, "bytes", len(content), "active", true), out, ""), nil
+	default:
+		return printUsage("sieve", cmd), nil
+	}
 }
