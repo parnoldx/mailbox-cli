@@ -64,7 +64,7 @@ Mail?
 ├── Spam → mailbox spam [box:]UID
 ├── Compose → mailbox compose --to someone@example.com --subject "Hi" -m "..."
 │   ├── draft → add --draft
-│   ├── files → add --attach ./file.pdf (repeatable)
+│   ├── files → add --attach ./file.pdf (repeatable; >10 MiB auto-uploads to transfer.adminforge.de, link goes in body)
 │   ├── HTML → --message-html instead of -m
 │   └── reply → --reply-to [box:]UID -m "..."
 ├── Drafts → mailbox draft list --json

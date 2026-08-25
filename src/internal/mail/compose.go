@@ -5,9 +5,12 @@ import (
 	"encoding/base64"
 	"fmt"
 	"strconv"
+	"io"
 	"mime"
 	"mime/quotedprintable"
 	"net"
+	"net/http"
+	"net/url"
 	nativeNetMail "net/mail"
 	"net/smtp"
 	"crypto/tls"
@@ -26,6 +29,36 @@ type OutAttachment struct {
 	Name        string
 	Data        []byte
 	ContentType string
+}
+
+// MaxInlineAttachment is the largest attachment sent inline; bigger ones are
+// uploaded to transfer.adminforge.de and linked in the body instead.
+const MaxInlineAttachment = 10 << 20 // 10 MiB
+
+var transferURL = "https://transfer.adminforge.de/"
+
+// UploadToTransfer PUTs data to a transfer.sh host and returns the download URL.
+func UploadToTransfer(name string, data []byte) (string, error) {
+	url := transferURL + url.PathEscape(name)
+	// ponytail: 10min timeout; raise if multi-GB uploads ever matter
+	client := &http.Client{Timeout: 10 * time.Minute}
+	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(data))
+	if err != nil {
+		return "", err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("transfer upload failed: %s", resp.Status)
+	}
+	return strings.TrimSpace(string(body)), nil
 }
 
 // ReadAttachmentFile loads an --attach path.

@@ -1,6 +1,9 @@
 package mail
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -129,5 +132,46 @@ func TestReplySubjectGetsRePrefix(t *testing.T) {
 	}
 	if headerValueOf(raw, "References") != "<m@x>" {
 		t.Fatal("references")
+	}
+}
+
+func TestUploadToTransfer(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("method = %s, want PUT", r.Method)
+		}
+		if r.URL.Path != "/report.pdf" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		io.Copy(io.Discard, r.Body)
+		w.Write([]byte("https://transfer.example/abc/report.pdf\n"))
+	}))
+	defer srv.Close()
+
+	old := transferURL
+	transferURL = srv.URL + "/"
+	defer func() { transferURL = old }()
+
+	url, err := UploadToTransfer("report.pdf", []byte("data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "https://transfer.example/abc/report.pdf"
+	if url != want {
+		t.Fatalf("url = %q, want %q", url, want)
+	}
+}
+
+func TestUploadToTransferError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "too big", http.StatusRequestEntityTooLarge)
+	}))
+	defer srv.Close()
+	old := transferURL
+	transferURL = srv.URL + "/"
+	defer func() { transferURL = old }()
+
+	if _, err := UploadToTransfer("x.bin", []byte("d")); err == nil {
+		t.Fatal("want error on non-200")
 	}
 }

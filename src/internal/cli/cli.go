@@ -909,12 +909,24 @@ func cmdCompose(flags *parsed, out *format.Output) (int, error) {
 		return 0, err
 	}
 	var attachments []mail.OutAttachment
+	var links []string
 	for _, path := range flags.list("attach") {
 		att, err := mail.ReadAttachmentFile(path)
 		if err != nil {
 			return 0, err
 		}
+		if len(att.Data) > mail.MaxInlineAttachment {
+			url, err := mail.UploadToTransfer(att.Name, att.Data)
+			if err != nil {
+				return 0, fmt.Errorf("%s over %d MiB and upload failed: %w", att.Name, mail.MaxInlineAttachment>>20, err)
+			}
+			links = append(links, fmt.Sprintf("- [%s](%s)", att.Name, url))
+			continue
+		}
 		attachments = append(attachments, att)
+	}
+	if len(links) > 0 {
+		body += "\n\nLarge attachments available for download:\n" + strings.Join(links, "\n")
 	}
 	outgoing := &mail.Outgoing{
 		To:          splitAddrs(flags.list("to")),
