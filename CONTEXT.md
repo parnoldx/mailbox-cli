@@ -24,6 +24,10 @@ _Avoid_: junk, reject, spam (as a dest)
 IMAP-move a message into Inbox, Feed, Paper Trail, or Block. Same primitive as Approve and Deny; source can be any folder.
 _Avoid_: file, screen, archive (as a verb)
 
+**Aside**:
+IMAP folder `INBOX/Aside`, the read-later pile (HEY-style Set Aside). Set Aside moves a Message there; `aside done` moves it back to Inbox. The `asidedue-…` keyword schedules the return; serve sweeps due messages every 30 min.
+_Avoid_: snooze, star, pin, set-aside (as verb)
+
 **Seen**:
 IMAP `\Seen` flag on a Message. `mailbox seen` sets it; `mailbox unseen` clears it.
 _Avoid_: read, unread (those name the `--unread` list filter)
@@ -49,7 +53,7 @@ IMAP keyword query over routing folders and Archive. Headers and body as Dovecot
 _Avoid_: semantic search, hybrid search
 
 **Box**:
-A mailbox: Inbox, Feed, Paper Trail, Screener, Block, Archive, Drafts, or Sent. Agents name it by alias (`feed`) or a matching folder name (`Inbox/Feed`).
+A mailbox: Inbox, Feed, Paper Trail, Screener, Aside, Block, Archive, Drafts, or Sent. Agents name it by alias (`feed`) or a matching folder name (`Inbox/Feed`).
 _Avoid_: folder (as the CLI noun), Imbox
 
 **Inbox**:

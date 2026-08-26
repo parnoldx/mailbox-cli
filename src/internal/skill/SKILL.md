@@ -3,7 +3,7 @@ name: mailbox
 description: >
   Use the mailbox CLI for user@mailbox.org — list, search, read, screen,
   move, compose, and send mail; drafts; Kontakte contacts; Kalender events; Aufgaben tasks.
-  Trigger on email, inbox, screener, contact, calendar, tasks.
+  Trigger on email, inbox, screener, aside, set aside, read later, contact, calendar, tasks.
 ---
 
 # mailbox
@@ -11,7 +11,9 @@ description: >
 `mailbox` talks IMAP + CalDAV + CardDAV to mailbox.org. Not himalaya. Not Spark.
 
 ```bash
-mailbox [--json|--jq EXPR|--ids-only|--count|--markdown] box|search|thread|screener|move|seen|unseen|trash|spam|compose|draft|attachment ...
+mailbox [--json|--jq EXPR|--ids-only|--count|--markdown] box|search|thread|screener|move|aside|seen|unseen|trash|spam|compose|draft|attachment ...
+mailbox aside [ID...] [--remind 30m|2h|3d]
+mailbox aside done ID...
 mailbox thread [box:]UID [--json|--html|--markdown|--allow-partial]
 mailbox compose --to ADDR --subject TEXT [-m TEXT | --message-html HTML] [--draft]
 mailbox draft list|show|edit|send|delete
@@ -36,11 +38,12 @@ mailbox contacts update ID [--name TEXT] [--email ADDR] [--note TEXT]
 ## Invariants
 
 1. `--json` returns `{ok, data}` plus `truncated`/`notice` when a list or thread was cut. `--jq EXPR` filters that envelope (needs `jq`; `--quiet --jq` filters `data`). `--ids-only` is one ID per line; `--count` is a bare number. Truncation notices for those two go to stderr. `--markdown` is a table (lists) or one document (threads).
-2. Message IDs are `[box:]uid` — bare uid means INBOX (`36722`), else `box:uid` with box one of `feed`, `trail`, `screener`, `drafts`, `sent`, or a full box path for Archive sub-boxes (`Archive/Immo:4`). Copy them from box view/search/screener list. Attachment IDs are `[box:]uid:index` from `attachment list`.
+2. Message IDs are `[box:]uid` — bare uid means INBOX (`36722`), else `box:uid` with box one of `feed`, `trail`, `screener`, `aside`, `drafts`, `sent`, or a full box path for Archive sub-boxes (`Archive/Immo:4`). Copy them from box view/search/screener list. Attachment IDs are `[box:]uid:index` from `attachment list`.
 3. Approve, deny, and move IMAP-move. emailMoveHelper updates Routing. The next mail from that sender may still land in Screener. Deny `--spam` still goes to Block; mailbox.org has no spam trainer.
 4. `compose` SMTP-sends and copies to Sent. `--draft` saves to IMAP Drafts instead. `draft send` delivers a saved draft; `draft delete` trashes it.
 5. An incomplete thread without `--allow-partial` is a failed read, not a whole thread. `--html` goes to a file, not a terminal. `attachment list` is the same.
 6. `mailbox spam` IMAP-moves to Junk (this copy). `mailbox trash` IMAP-moves to Trash. Neither blacklists. Seen/unseen set the IMAP `\Seen` flag.
+7. `aside` moves a Message to the Aside pile (read-later); `--remind 2h` stores an `asidedue-…` keyword and serve moves it back to Inbox when due (30-min sweep). `aside done ID...` returns it early. `mailbox aside` alone lists the pile.
 
 ## Decision
 
@@ -58,6 +61,8 @@ Mail?
 ├── Approve → mailbox screener approve [box:]UID [--box feed]
 ├── Deny → mailbox screener deny [box:]UID [--spam]
 ├── Move → mailbox move [box:]UID --to feed
+├── Set aside → mailbox aside [box:]UID [--remind 2h]
+├── Done reading → mailbox aside done Aside:12
 ├── Seen → mailbox seen [box:]UID
 ├── Unseen → mailbox unseen [box:]UID
 ├── Trash → mailbox trash [box:]UID

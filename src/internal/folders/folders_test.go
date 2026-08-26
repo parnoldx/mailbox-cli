@@ -76,7 +76,7 @@ func sameStrings(a, b []string) bool {
 func TestFolderCatalogOmitsArchiveTree(t *testing.T) {
 	rows := FolderCatalog([]string{"INBOX", "INBOX/Feed", "Junk", "Archive", "Archive/Immo", "Archive/Immo/2024"}, false)
 	ids := rowsToIDs(rows)
-	want := []string{"inbox", "feed", "trail", "screener", "block", "drafts", "sent"}
+	want := []string{"inbox", "feed", "trail", "screener", "block", "aside", "drafts", "sent"}
 	if !sameStrings(ids, want) {
 		t.Fatalf("got %v", ids)
 	}

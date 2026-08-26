@@ -11,6 +11,7 @@ const (
 	PAPER_TRAIL = "INBOX/Paper Trail"
 	SCREENER    = "INBOX/Screener"
 	BLOCK       = "INBOX/Screener/Block"
+	ASIDE       = "INBOX/Aside"
 	ARCHIVE     = "Archive"
 	DRAFTS      = "Drafts"
 	SENT        = "Sent"
@@ -33,6 +34,7 @@ var FolderAliases = []struct{ Alias, IMAP string }{
 	{"screener", SCREENER},
 	{"block", BLOCK},
 	{"archive", ARCHIVE},
+	{"aside", ASIDE},
 	{"drafts", DRAFTS},
 	{"sent", SENT},
 }
@@ -51,6 +53,7 @@ var FolderRoles = map[string]string{
 	"trail": "receipts",
 	"screener":   "sender unknown",
 	"block":      "blacklist",
+	"aside":      "read-later pile",
 	"archive":    "topic filing",
 	"drafts":     "unsent",
 	"sent":       "sent copies",

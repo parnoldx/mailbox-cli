@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"mailbox/src/internal/calendar"
 	"mailbox/src/internal/config"
@@ -33,6 +34,9 @@ Mail
   mailbox screener approve ID... [--box inbox|feed|trail]
   mailbox screener deny ID... [--spam]
   mailbox move ID... --to inbox|feed|trail|block
+  mailbox aside [ID...] [--remind DURATION] [--limit N] [--detail]
+  mailbox aside done ID...
+  mailbox aside --sweep
   mailbox seen ID...
   mailbox unseen ID...
   mailbox trash ID...
@@ -75,10 +79,11 @@ Meta
   mailbox skill install
   mailbox serve [--web] [--web-port N] [--interval S] [--print]
   mailbox help [output|exit-codes|environment]
-Boxes: inbox, feed, trail, screener, archive, drafts, sent, or Archive/…
+Boxes: inbox, feed, trail, screener, aside, archive, drafts, sent, or Archive/…
 mailbox box list is routing boxes; --archive is the Archive tree. box view matches name or id (feed, Inbox/Feed).
 Mail IDs look like INBOX/Screener:342. Event/task/contact IDs come from the list.
-WHEN is YYYY-MM-DD or YYYY-MM-DDTHH:MM (Europe/Berlin).
+WHEN is YYYY-MM-DD or YYYY-MM-DDTHH:MM (Europe/Berlin). DURATION is e.g. 30m, 2h, 3d.
+serve sweeps due Aside messages back to the Inbox every 30 minutes; 'aside --sweep' runs one pass.
 --json envelope {ok, data}. --jq EXPR filters it (needs jq). --quiet --jq filters data.
 --ids-only / --count skip the envelope. --markdown is a table or a thread document.
 --html thread HTML (redirect to a file). --allow-partial for an incomplete thread.
@@ -251,6 +256,12 @@ func dispatch(argv []string, out *format.Output) (int, error) {
 			return 0, err
 		}
 		return cmdMove(flags, out)
+	case "aside":
+		sub, flags, err := subcommand(rest, "aside")
+		if err != nil {
+			return 0, err
+		}
+		return cmdAside(sub, flags, out)
 	case "seen", "unseen":
 		flags, err := parseFlags(noFlags, rest)
 		if err != nil {
@@ -392,6 +403,7 @@ var noFlags = flagspec{newSet(), newSet()}
 // these tables cover the remaining domain flags per command (or per group union).
 var cmdFlagSpecs = map[string]flagspec{
 	"box":              {newSet("archive", "unread", "detail"), newSet("limit")},
+	"aside":            {newSet("sweep", "detail"), newSet("remind", "limit")},
 	"screener list":    {newSet("unread", "detail"), newSet("limit")},
 	"screener approve": {nil, newSet("box")},
 	"screener deny":    {newSet("spam"), nil},
@@ -496,6 +508,7 @@ func parseFlags(spec flagspec, tokens []string) (*parsed, error) {
 
 func subcommand(tokens []string, group string) (string, *parsed, error) {
 	subs := map[string][]string{
+		"aside":      {"done", "list"},
 		"box":        {"list", "view"},
 		"screener":   {"list", "approve", "deny"},
 		"draft":      {"list", "show", "edit", "send", "delete"},
@@ -772,6 +785,130 @@ func withMailCount(folder string, unread bool) (int, error) {
 	return withMail(func(m *mail.Mail) (int, error) {
 		return m.CountMessages(folder, unread)
 	})
+}
+
+func cmdAside(sub string, flags *parsed, out *format.Output) (int, error) {
+	if sub == "" && flags.has("sweep") {
+		return withMail(func(m *mail.Mail) (int, error) {
+			returned, err := m.SweepAside(time.Now())
+			if err != nil {
+				return 0, err
+			}
+			rows := make([]*format.OM, 0, len(returned))
+			for _, r := range returned {
+				rows = append(rows, format.NewOM("id", r.ID, "due", r.Due.Format(time.RFC3339)))
+			}
+			if len(rows) == 1 {
+				return format.WriteOK(rows[0], out, ""), nil
+			}
+			return format.WriteOK(rows, out, ""), nil
+		})
+	}
+	if sub == "done" {
+		pairs, err := idPairs(flags.positional)
+		if err != nil {
+			return 0, err
+		}
+		return withMail(func(m *mail.Mail) (int, error) {
+			var rows []*format.OM
+			for _, p := range pairs {
+				newID, err := m.Unaside(p.folder, p.uid)
+				if err != nil {
+					return 0, err
+				}
+				rows = append(rows, format.NewOM("id", newID, "to", folders.INBOX))
+			}
+			if len(rows) == 1 {
+				return format.WriteOK(rows[0], out, ""), nil
+			}
+			return format.WriteOK(rows, out, ""), nil
+		})
+	}
+	if sub == "list" || (len(flags.positional) == 0 && flags.one("remind") == "") {
+		limit, err := limitOf(flags, 50)
+		if err != nil {
+			return 0, err
+		}
+		return withMail(func(m *mail.Mail) (int, error) {
+			listing, err := m.ListMessages(folders.ASIDE, false, limitPtr(limit))
+			if err != nil {
+				return 0, err
+			}
+			rows := make([]*format.OM, 0, len(listing.Items))
+			for _, e := range listing.Items {
+				row := envRow(e)
+				if due, ok := mail.ParseAsideDue(e.Flags); ok {
+					row.Set("due", due.Format(time.RFC3339))
+				}
+				rows = append(rows, row)
+			}
+			return format.WriteList(rows, mailColumnsFor(flags.has("detail")), out, listing.Truncated, limitPtr(limit), mailWidths), nil
+		})
+	}
+	if len(flags.positional) == 0 {
+		return printUsage("aside"), nil
+	}
+	var remind *time.Time
+	if spec := flags.one("remind"); spec != "" {
+		t, err := mail.ParseRemind(spec)
+		if err != nil {
+			return 0, usageErr("%v", err)
+		}
+		remind = &t
+	}
+	pairs, err := idPairs(flags.positional)
+	if err != nil {
+		return 0, err
+	}
+	return withMail(func(m *mail.Mail) (int, error) {
+		if err := ensureAside(m); err != nil {
+			return 0, err
+		}
+		var rows []*format.OM
+		for _, p := range pairs {
+			newID, err := m.Aside(p.folder, p.uid, remind)
+			if err != nil {
+				return 0, err
+			}
+			row := format.NewOM("id", newID, "from", ids.FormatMessageID(p.folder, p.uid), "to", folders.ASIDE)
+			if remind != nil {
+				row.Set("due", remind.Format(time.RFC3339))
+			}
+			rows = append(rows, row)
+		}
+		if len(rows) == 1 {
+			return format.WriteOK(rows[0], out, ""), nil
+		}
+		return format.WriteOK(rows, out, ""), nil
+	})
+}
+
+type idPair struct{ folder, uid string }
+
+func idPairs(idList []string) ([]idPair, error) {
+	pairs := make([]idPair, 0, len(idList))
+	for _, mid := range idList {
+		folder, uid, err := ids.ParseMessageID(mid)
+		if err != nil {
+			return nil, err
+		}
+		pairs = append(pairs, idPair{folder, uid})
+	}
+	return pairs, nil
+}
+
+// ensureAside creates the Aside pile folder on first use.
+func ensureAside(m *mail.Mail) error {
+	names, err := m.ListFolders()
+	if err != nil {
+		return err
+	}
+	for _, n := range names {
+		if n == folders.ASIDE {
+			return nil
+		}
+	}
+	return m.CreateFolder(folders.ASIDE)
 }
 
 func cmdMove(flags *parsed, out *format.Output) (int, error) {
@@ -1357,6 +1494,8 @@ var cmdSpecs = []cmdspec{
 	{[]string{"screener", "approve"}, "mailbox screener approve ID... [--box inbox|feed|trail]", []string{"--box"}},
 	{[]string{"screener", "deny"}, "mailbox screener deny ID... [--spam]", []string{"--spam"}},
 	{[]string{"move"}, "mailbox move ID... --to inbox|feed|trail|block", []string{"--to"}},
+	{[]string{"aside"}, "mailbox aside [ID...] [--remind DURATION] [--limit N] [--detail]", []string{"--remind", "--limit", "--detail", "--sweep"}},
+	{[]string{"aside", "done"}, "mailbox aside done ID...", nil},
 	{[]string{"seen"}, "mailbox seen ID...", nil},
 	{[]string{"unseen"}, "mailbox unseen ID...", nil},
 	{[]string{"trash"}, "mailbox trash ID...", nil},

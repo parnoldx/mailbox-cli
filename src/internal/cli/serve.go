@@ -14,6 +14,23 @@ import (
 	"mailbox/src/internal/sieve"
 )
 
+// sweepAsideLoop returns due Aside messages to the Inbox every 30 minutes.
+func sweepAsideLoop(acct *config.Account) {
+	for {
+		m := mail.New(acct)
+		returned, err := m.SweepAside(time.Now())
+		m.Close()
+		if err != nil {
+			log.Printf("serve: aside sweep: %v", err)
+		} else {
+			for _, r := range returned {
+				log.Printf("serve: aside: %s returned to Inbox (was due %s)", r.ID, r.Due.Format(time.RFC3339))
+			}
+		}
+		time.Sleep(30 * time.Minute)
+	}
+}
+
 func newSieveServer(acct *config.Account) sieve.Server {
 	sievePort := 4190
 	if raw := os.Getenv("MAILBOX_SIEVE_PORT"); raw != "" {
@@ -60,6 +77,8 @@ func cmdServe(flags *parsed, out *format.Output) (int, error) {
 	if err := server.EnsureScript(); err != nil {
 		log.Printf("serve: warning: %v", err)
 	}
+
+	go sweepAsideLoop(acct)
 
 	if flags.has("web") {
 		port := flags.one("web-port")
