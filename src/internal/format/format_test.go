@@ -1,6 +1,7 @@
 package format
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -45,5 +46,54 @@ func TestTakeOutputFlags(t *testing.T) {
 	}
 	if _, _, err := TakeOutputFlags([]string{"--quiet", "--count"}); err == nil {
 		t.Fatal("quiet+count should fail")
+	}
+	if _, out, err := TakeOutputFlags([]string{"--styled", "box"}); err != nil || !out.Styled {
+		t.Fatalf("styled: %+v %v", out, err)
+	}
+}
+
+func TestApplyDefaultFormatPipesJSON(t *testing.T) {
+	_, out, err := TakeOutputFlags([]string{"box", "list"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ApplyDefaultFormat(out, false)
+	if !out.JSON {
+		t.Fatal("piped default should be JSON")
+	}
+	_, out, _ = TakeOutputFlags([]string{"--styled", "box"})
+	ApplyDefaultFormat(out, false)
+	if out.JSON {
+		t.Fatal("--styled keeps human output")
+	}
+	_, out, _ = TakeOutputFlags([]string{"box"})
+	ApplyDefaultFormat(out, true)
+	if out.JSON {
+		t.Fatal("TTY default should stay human")
+	}
+}
+
+func TestPageSlice(t *testing.T) {
+	items := []int{1, 2, 3, 4, 5}
+	got, next, trunc := PageSlice(items, 1, 2, false)
+	if len(got) != 2 || got[0] != 1 || next != "2" || !trunc {
+		t.Fatalf("page1 %v next=%s trunc=%v", got, next, trunc)
+	}
+	got, next, trunc = PageSlice(items, 3, 2, false)
+	if len(got) != 1 || got[0] != 5 || next != "" || trunc {
+		t.Fatalf("page3 %v next=%s trunc=%v", got, next, trunc)
+	}
+	got, next, trunc = PageSlice(items, 1, 2, true)
+	if len(got) != 5 || next != "" || trunc {
+		t.Fatalf("all %v", got)
+	}
+}
+
+func TestExitStatus(t *testing.T) {
+	if ExitStatus("usage") != 1 || ExitStatus("not_found") != 2 || ExitStatus("auth") != 3 || ExitStatus("api") != 7 {
+		t.Fatal(ExitStatus("usage"), ExitStatus("not_found"), ExitStatus("auth"), ExitStatus("api"))
+	}
+	if Classify(fmt.Errorf("event not found: x")) != "not_found" {
+		t.Fatal(Classify(fmt.Errorf("event not found: x")))
 	}
 }

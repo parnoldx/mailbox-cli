@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"mailbox/src/internal/config"
 	"mailbox/src/internal/folders"
+	"mailbox/src/internal/format"
 	"mailbox/src/internal/htmlmd"
 	"mailbox/src/internal/ids"
 	"mailbox/src/internal/imapclient"
@@ -65,16 +68,24 @@ func (e *Envelope) Summary() string {
 }
 
 type SearchQuery struct {
-	Text    string
-	From    string
-	To      string
-	Subject string
+	Text       string
+	From       string
+	To         string
+	Subject    string
+	Required   string
+	Any        string
+	None       string
+	Exact      string
+	Date       string
+	Attachment string
 }
 
 func NewSearchQuery(text string) SearchQuery { return SearchQuery{Text: text} }
 
 func (q SearchQuery) Empty() bool {
-	return q.Text == "" && q.From == "" && q.To == "" && q.Subject == ""
+	return q.Text == "" && q.From == "" && q.To == "" && q.Subject == "" &&
+		q.Required == "" && q.Any == "" && q.None == "" && q.Exact == "" &&
+		q.Date == "" && q.Attachment == ""
 }
 
 type Outgoing struct {
@@ -93,25 +104,26 @@ type Outgoing struct {
 type Listing struct {
 	Items     []*Envelope
 	Truncated bool
+	NextPage  string
 }
 
 type ThreadMessage struct {
-	Folder     string
-	UID        string
-	From       string
-	To         string
-	Date       string
-	Subject    string
-	MessageID  string
-	InReplyTo  string
-	References string
-	ReplyTo    string
-	Body       string
-	BodyHTML   string
-	BodyState  string
+	Folder      string
+	UID         string
+	From        string
+	To          string
+	Date        string
+	Subject     string
+	MessageID   string
+	InReplyTo   string
+	References  string
+	ReplyTo     string
+	Body        string
+	BodyHTML    string
+	BodyState   string
 	Attachments []Attachment
-	Cc         string
-	Bcc        string
+	Cc          string
+	Bcc         string
 }
 
 func (m *ThreadMessage) ID() string { return ids.FormatMessageID(m.Folder, m.UID) }
@@ -239,7 +251,7 @@ func (m *Mail) SearchFolders() ([]string, error) {
 	return out, nil
 }
 
-func (m *Mail) ListMessages(folder string, unread bool, limit *int) (*Listing, error) {
+func (m *Mail) ListMessages(folder string, unread bool, limit *int, page int) (*Listing, error) {
 	resolved, err := folders.ResolveFolder(folder, nil)
 	if err != nil {
 		return nil, err
@@ -255,23 +267,21 @@ func (m *Mail) ListMessages(folder string, unread bool, limit *int) (*Listing, e
 	if err != nil {
 		return nil, err
 	}
-	truncated := false
-	if limit != nil {
-		truncated = len(uids) > *limit
-		if *limit <= 0 {
-			t := len(uids) > 0
-			return &Listing{Truncated: t}, nil
-		}
-		if len(uids) > *limit {
-			uids = uids[len(uids)-*limit:]
+	reverse(uids)
+	all := limit == nil
+	lim := 0
+	if !all {
+		lim = *limit
+		if lim <= 0 {
+			return &Listing{Truncated: len(uids) > 0}, nil
 		}
 	}
-	reverse(uids)
+	uids, next, truncated := format.PageSlice(uids, page, lim, all)
 	envs, err := m.envelopes(resolved, uids)
 	if err != nil {
 		return nil, err
 	}
-	return &Listing{Items: envs, Truncated: truncated}, nil
+	return &Listing{Items: envs, Truncated: truncated, NextPage: next}, nil
 }
 
 func (m *Mail) CountMessages(folder string, unread bool) (int, error) {
@@ -316,28 +326,29 @@ func (m *Mail) uidSearch(args ...any) ([]string, error) {
 	return fields, nil
 }
 
-func (m *Mail) Search(query SearchQuery, limit int, folder string) (*Listing, error) {
+func (m *Mail) Search(query SearchQuery, limit, page int, folder string) (*Listing, error) {
 	scope, err := m.searchScope(folder)
 	if err != nil {
 		return nil, err
 	}
 	required := folder != ""
-	truncated := false
+	fetch := limit
+	if limit < 0 || page > 1 {
+		fetch = -1
+	}
 	var found []*Envelope
 	if len(scope) <= 2 {
 		for _, name := range scope {
-			listing, err := m.searchFolder(name, query, limit, required)
+			listing, err := m.searchFolder(name, query, fetch, required)
 			if err != nil {
 				return nil, err
 			}
 			found = append(found, listing.Items...)
-			truncated = truncated || listing.Truncated
 		}
 	} else {
 		type result struct {
-			items     []*Envelope
-			truncated bool
-			err       error
+			items []*Envelope
+			err   error
 		}
 		results := make([]result, len(scope))
 		sem := make(chan struct{}, 4)
@@ -349,9 +360,9 @@ func (m *Mail) Search(query SearchQuery, limit int, folder string) (*Listing, er
 				sem <- struct{}{}
 				defer func() { <-sem }()
 				chunkMail := New(m.Acct)
-				items, trunc, err := chunkMail.searchFolderQuiet(name, query, limit, required)
+				items, _, err := chunkMail.searchFolderQuiet(name, query, fetch, required)
 				chunkMail.Close()
-				results[i] = result{items, trunc, err}
+				results[i] = result{items, err}
 			}(i, name)
 		}
 		wg.Wait()
@@ -360,18 +371,15 @@ func (m *Mail) Search(query SearchQuery, limit int, folder string) (*Listing, er
 				return nil, r.err
 			}
 			found = append(found, r.items...)
-			truncated = truncated || r.truncated
 		}
 	}
 	sort.SliceStable(found, func(i, j int) bool { return found[i].Date > found[j].Date })
-	if limit <= 0 {
-		return &Listing{Truncated: truncated || len(found) > 0}, nil
+	if limit == 0 {
+		return &Listing{Truncated: len(found) > 0}, nil
 	}
-	truncated = truncated || len(found) > limit
-	if len(found) > limit {
-		found = found[:limit]
-	}
-	return &Listing{Items: found, Truncated: truncated}, nil
+	all := limit < 0
+	found, next, trunc := format.PageSlice(found, page, limit, all)
+	return &Listing{Items: found, Truncated: trunc, NextPage: next}, nil
 }
 
 func (m *Mail) searchScope(folder string) ([]string, error) {
@@ -396,7 +404,14 @@ func (m *Mail) searchFolder(folder string, query SearchQuery, limit int, require
 		return nil, err
 	}
 	reverse(uids)
-	if limit <= 0 {
+	if limit < 0 {
+		envs, err := m.envelopes(folder, uids)
+		if err != nil {
+			return nil, err
+		}
+		return &Listing{Items: envs}, nil
+	}
+	if limit == 0 {
 		return &Listing{Truncated: len(uids) > 0}, nil
 	}
 	truncated := len(uids) > limit
@@ -433,44 +448,135 @@ func hasNonASCII(s string) bool {
 	return false
 }
 
-func (m *Mail) searchUIDs(query SearchQuery) ([]string, error) {
+func searchCriteria(q SearchQuery) ([]string, error) {
 	var extra []string
-	if query.From != "" {
-		extra = append(extra, "FROM", imapQuoteAtom(query.From))
+	if q.From != "" {
+		extra = append(extra, "FROM", imapQuoteAtom(q.From))
 	}
-	if query.To != "" {
-		extra = append(extra, "TO", imapQuoteAtom(query.To))
+	if q.To != "" {
+		extra = append(extra, "TO", imapQuoteAtom(q.To))
 	}
-	if query.Subject != "" {
-		extra = append(extra, "SUBJECT", imapQuoteAtom(query.Subject))
+	if q.Subject != "" {
+		extra = append(extra, "SUBJECT", imapQuoteAtom(q.Subject))
 	}
-	if query.Text == "" {
-		if len(extra) == 0 {
-			return nil, nil
+	if q.Exact != "" {
+		extra = append(extra, "TEXT", imapQuoteAtom(q.Exact))
+	}
+	for _, w := range strings.Fields(q.Required) {
+		extra = append(extra, "TEXT", imapQuoteAtom(w))
+	}
+	if words := strings.Fields(q.Any); len(words) > 0 {
+		extra = append(extra, imapORText(words)...)
+	}
+	for _, w := range strings.Fields(q.None) {
+		extra = append(extra, "NOT", "TEXT", imapQuoteAtom(w))
+	}
+	if q.Text != "" {
+		extra = append(extra, "TEXT", imapQuoteAtom(q.Text))
+	}
+	dateTerms, err := dateCriteria(q.Date)
+	if err != nil {
+		return nil, err
+	}
+	extra = append(extra, dateTerms...)
+	attach, err := attachCriteria(q.Attachment)
+	if err != nil {
+		return nil, err
+	}
+	extra = append(extra, attach...)
+	return extra, nil
+}
+
+func imapORText(words []string) []string {
+	var out []string
+	for i := 0; i < len(words)-1; i++ {
+		out = append(out, "OR")
+	}
+	for _, w := range words {
+		out = append(out, "TEXT", imapQuoteAtom(w))
+	}
+	return out
+}
+
+func dateCriteria(v string) ([]string, error) {
+	if v == "" {
+		return nil, nil
+	}
+	now := time.Now()
+	switch v {
+	case "last_7_days":
+		return []string{"SINCE", imapDate(now.AddDate(0, 0, -7))}, nil
+	case "last_30_days":
+		return []string{"SINCE", imapDate(now.AddDate(0, 0, -30))}, nil
+	case "last_90_days":
+		return []string{"SINCE", imapDate(now.AddDate(0, 0, -90))}, nil
+	}
+	if len(v) == 4 {
+		y, err := strconv.Atoi(v)
+		if err == nil && y >= 1990 && y <= 2100 {
+			start := time.Date(y, 1, 1, 0, 0, 0, 0, now.Location())
+			end := time.Date(y+1, 1, 1, 0, 0, 0, 0, now.Location())
+			return []string{"SINCE", imapDate(start), "BEFORE", imapDate(end)}, nil
 		}
-		args := append([]any{"CHARSET", "UTF-8"}, toAny(extra)...)
-		uids, err := m.uidSearch(args...)
-		if err != nil {
-			uids, err = m.uidSearch(toAny(extra)...)
-			if err != nil {
-				return nil, nil
-			}
-		}
-		return uids, nil
 	}
-	quoted := imapQuoteAtom(query.Text)
-	if hasNonASCII(query.Text) && len(extra) == 0 {
+	return nil, fmt.Errorf("invalid --date %q; use last_7_days, last_30_days, last_90_days, or a year", v)
+}
+
+func imapDate(t time.Time) string { return t.Format("02-Jan-2006") }
+
+var attachKinds = map[string][]string{
+	"any":              {"HEADER", "Content-Disposition", `"attachment"`},
+	"images":           {"HEADER", "Content-Type", `"image/"`},
+	"pdfs":             {"HEADER", "Content-Type", `"application/pdf"`},
+	"calendar_invites": {"HEADER", "Content-Type", `"text/calendar"`},
+	"documents":        {"HEADER", "Content-Type", `"application/msword"`},
+	"spreadsheets":     {"HEADER", "Content-Type", `"spreadsheet"`},
+	"presentations":    {"HEADER", "Content-Type", `"presentation"`},
+	"media":            {"HEADER", "Content-Type", `"video/"`},
+	"zip_files":        {"HEADER", "Content-Type", `"application/zip"`},
+}
+
+func attachCriteria(kind string) ([]string, error) {
+	if kind == "" {
+		return nil, nil
+	}
+	terms, ok := attachKinds[kind]
+	if !ok {
+		return nil, fmt.Errorf("invalid --attachment %q; use any, images, pdfs, calendar_invites, documents, spreadsheets, presentations, media, or zip_files", kind)
+	}
+	return terms, nil
+}
+
+func SearchFilterValues() map[string][]string {
+	inBoxes := []string{"inbox", "feed", "trail", "papertrail", "screener", "aside", "archive", "drafts", "sent", "trash"}
+	dates := []string{"last_7_days", "last_30_days", "last_90_days"}
+	att := make([]string, 0, len(attachKinds))
+	for k := range attachKinds {
+		att = append(att, k)
+	}
+	sort.Strings(att)
+	return map[string][]string{"in": inBoxes, "date": dates, "attachment": att}
+}
+
+func (m *Mail) searchUIDs(query SearchQuery) ([]string, error) {
+	extra, err := searchCriteria(query)
+	if err != nil {
+		return nil, err
+	}
+	if len(extra) == 0 {
+		return nil, nil
+	}
+	if hasNonASCII(query.Text) && query.From == "" && query.To == "" && query.Subject == "" &&
+		query.Required == "" && query.Any == "" && query.None == "" && query.Exact == "" &&
+		query.Date == "" && query.Attachment == "" {
 		uids, err := m.uidSearch("CHARSET", "UTF-8", "TEXT", imapclient.Literal(query.Text))
 		if err != nil {
 			return nil, nil
 		}
 		return uids, nil
 	}
-	args := append(toAny(extra), "TEXT", quoted)
+	args := toAny(extra)
 	uids, err := m.uidSearch(append([]any{"CHARSET", "UTF-8"}, args...)...)
-	if err != nil && len(extra) == 0 {
-		uids, err = m.uidSearch("CHARSET", "UTF-8", "OR", "SUBJECT", quoted, "FROM", quoted)
-	}
 	if err != nil {
 		uids, err = m.uidSearch(args...)
 		if err != nil {
@@ -620,7 +726,7 @@ func (m *Mail) ThreadLimits(folder, uid string, maxMessages, maxBytes int) (*Thr
 				}
 			}
 			for otherUID := range extraSet {
-				key := folder + ":" + otherUID
+				key := ids.FormatMessageID(folder, otherUID)
 				if _, ok := byKey[key]; ok {
 					continue
 				}

@@ -26,13 +26,15 @@ func TestScreenRejectsArchive(t *testing.T) {
 
 func TestFolderAliases(t *testing.T) {
 	cases := map[string]string{
-		"screener":           SCREENER,
-		"INBOX/Paper Trail":  PAPER_TRAIL,
-		"Archive/Immo":       "Archive/Immo",
-		"Inbox/Feed":         FEED,
-		"feed":               FEED,
-		"The Feed":           FEED,
-		"paper trail":        PAPER_TRAIL,
+		"screener":          SCREENER,
+		"INBOX/Paper Trail": PAPER_TRAIL,
+		"Archive/Immo":      "Archive/Immo",
+		"Inbox/Feed":        FEED,
+		"feed":              FEED,
+		"The Feed":          FEED,
+		"paper trail":       PAPER_TRAIL,
+		"papertrail":        PAPER_TRAIL,
+		"trash":             TRASH,
 	}
 	for in, want := range cases {
 		got, err := ResolveFolder(in, nil)
@@ -97,9 +99,15 @@ func TestFolderCatalogArchiveOnly(t *testing.T) {
 }
 
 func TestUnknownFolderIsRefused(t *testing.T) {
-	_, err := ResolveFolder("imbox", nil)
-	if err == nil || !contains(err.Error(), "imbox") {
+	_, err := ResolveFolder("no-such-box", nil)
+	if err == nil || !contains(err.Error(), "no-such-box") {
 		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestImboxIsNotABox(t *testing.T) {
+	if _, err := ResolveFolder("imbox", nil); err == nil {
+		t.Fatal("imbox is not a box")
 	}
 }
 

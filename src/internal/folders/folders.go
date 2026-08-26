@@ -48,15 +48,15 @@ var folderAliasesMap = func() map[string]string {
 }()
 
 var FolderRoles = map[string]string{
-	"inbox":      "accepted senders",
-	"feed":       "skim",
-	"trail": "receipts",
-	"screener":   "sender unknown",
-	"block":      "blacklist",
-	"aside":      "read-later pile",
-	"archive":    "topic filing",
-	"drafts":     "unsent",
-	"sent":       "sent copies",
+	"inbox":    "accepted senders",
+	"feed":     "skim",
+	"trail":    "receipts",
+	"screener": "sender unknown",
+	"block":    "blacklist",
+	"aside":    "read-later pile",
+	"archive":  "topic filing",
+	"drafts":   "unsent",
+	"sent":     "sent copies",
 }
 
 var RoutingFolders = []string{INBOX, FEED, PAPER_TRAIL, SCREENER}
@@ -118,10 +118,18 @@ func usageErr(format string, args ...any) error {
 	return &UsageError{Msg: fmt.Sprintf(format, args...)}
 }
 
+var searchAliases = map[string]string{
+	"papertrail": PAPER_TRAIL,
+	"trash":      TRASH,
+}
+
 func ResolveFolder(name string, imapNames []string) (string, error) {
 	key := strings.TrimSpace(name)
 	if key == "" {
 		return "", usageErr("folder is empty")
+	}
+	if aliased, ok := searchAliases[strings.ToLower(key)]; ok {
+		return aliased, nil
 	}
 	if aliased, ok := folderAliasesMap[strings.ToLower(key)]; ok {
 		return aliased, nil

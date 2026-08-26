@@ -3,16 +3,16 @@ package calendar
 
 import (
 	"crypto/rand"
+	"encoding/xml"
 	"fmt"
 	"net/url"
-
-	"mailbox/src/internal/format"
 	"regexp"
 	"strings"
 	"time"
 
 	"mailbox/src/internal/config"
 	"mailbox/src/internal/dav"
+	"mailbox/src/internal/format"
 	"mailbox/src/internal/vobject"
 )
 
@@ -26,10 +26,17 @@ func init() {
 	TZ = loc
 }
 
+const (
+	habitsCalName = "mailbox-habits"
+	habitsUID     = "mailbox-habits"
+)
+
 type Cal struct {
-	acct    *config.Account
-	client  *dav.Client
-	baseURL string
+	acct       *config.Account
+	client     *dav.Client
+	baseURL    string
+	cols       []Collection
+	discovered bool
 }
 
 func NewCal(acct *config.Account) (*Cal, error) {
@@ -43,6 +50,26 @@ func NewCal(acct *config.Account) (*Cal, error) {
 	}, nil
 }
 
+type Collection struct {
+	Name     string
+	URL      string
+	Color    string
+	Comps    []string
+	Calendar bool
+}
+
+func (c Collection) hasComp(name string) bool {
+	if len(c.Comps) == 0 {
+		return true
+	}
+	for _, comp := range c.Comps {
+		if strings.EqualFold(comp, name) {
+			return true
+		}
+	}
+	return false
+}
+
 func uidMatches(full, query string) bool {
 	if query == "" {
 		return false
@@ -53,7 +80,56 @@ func uidMatches(full, query string) bool {
 type when struct {
 	t       time.Time
 	isDate  bool
-	dateStr string // for date-only values
+	dateStr string
+}
+
+func requireDate(name, value string) error {
+	if len(value) != 10 {
+		return fmt.Errorf("invalid %s %q; use YYYY-MM-DD", name, value)
+	}
+	_, err := time.ParseInLocation("2006-01-02", value, TZ)
+	if err != nil {
+		return fmt.Errorf("invalid %s %q; use YYYY-MM-DD", name, value)
+	}
+	return nil
+}
+
+func requireClock(name, value string) error {
+	if _, err := time.Parse("15:04", value); err != nil {
+		return fmt.Errorf("invalid %s: %s", name, value)
+	}
+	return nil
+}
+
+// CombineEventWhen turns hey-style date/time flags into parseWhen strings.
+func CombineEventWhen(startsOn, startTime, endsOn, endTime string, allDay bool) (start, end string, isAllDay bool, err error) {
+	if startsOn == "" {
+		startsOn = time.Now().In(TZ).Format("2006-01-02")
+	}
+	if err := requireDate("starts-on date", startsOn); err != nil {
+		return "", "", false, err
+	}
+	if endsOn == "" {
+		endsOn = startsOn
+	} else if err := requireDate("ends-on date", endsOn); err != nil {
+		return "", "", false, err
+	}
+	if endsOn < startsOn {
+		return "", "", false, fmt.Errorf("ends-on %s is before starts-on %s", endsOn, startsOn)
+	}
+	if allDay || startTime == "" {
+		return startsOn, endsOn, true, nil
+	}
+	if err := requireClock("start-time", startTime); err != nil {
+		return "", "", false, err
+	}
+	if endTime == "" {
+		t, _ := time.Parse("15:04", startTime)
+		endTime = t.Add(time.Hour).Format("15:04")
+	} else if err := requireClock("end-time", endTime); err != nil {
+		return "", "", false, err
+	}
+	return startsOn + "T" + startTime, endsOn + "T" + endTime, false, nil
 }
 
 func parseWhen(value string) (when, error) {
@@ -82,7 +158,6 @@ func parseWhen(value string) (when, error) {
 	return w, fmt.Errorf("invalid WHEN %q", value)
 }
 
-// asLocal renders an iCalendar dtstart/dtend prop like python _as_local.
 func asLocal(prop vobject.Prop, present bool) string {
 	if !present {
 		return ""
@@ -116,54 +191,10 @@ func parseICSDateTime(prop vobject.Prop) (time.Time, error) {
 			if strings.HasSuffix(v, "Z") {
 				return t, nil
 			}
-			if tzid := tzID(prop); tzid != "" && tzid == "Europe/Berlin" {
-				return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), 0, TZ), nil
-			}
 			return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), 0, TZ), nil
 		}
 	}
 	return time.Time{}, fmt.Errorf("unparsable datetime %q", v)
-}
-
-func tzID(prop vobject.Prop) string {
-	i := strings.Index(prop.Params, "TZID=")
-	if i < 0 {
-		return ""
-	}
-	rest := prop.Params[i+len("TZID="):]
-	if strings.HasPrefix(rest, `"`) {
-		end := strings.Index(rest[1:], `"`)
-		if end >= 0 {
-			return rest[1 : end+1]
-		}
-	}
-	end := strings.Index(rest, ";")
-	if end < 0 {
-		return rest
-	}
-	return rest[:end]
-}
-
-func eventFields(props []vobject.Prop, uid string, has map[string]bool) (*format.OM, error) {
-	if props == nil {
-		return nil, fmt.Errorf("event not found: %s", uid)
-	}
-	var attendees []string
-	for _, p := range props {
-		if p.Name == "ATTENDEE" {
-			attendees = append(attendees, strings.Replace(p.Value, "mailto:", "", 1))
-		}
-	}
-	return format.NewOM(
-		"id", shortID(orDefault(vobject.First(props, "UID"), uid)),
-		"summary", vobject.First(props, "SUMMARY"),
-		"start", asLocal(findProp(props, "DTSTART"), has["dtstart"]),
-		"end", asLocal(findProp(props, "DTEND"), has["dtend"]),
-		"location", vobject.First(props, "LOCATION"),
-		"status", vobject.First(props, "STATUS"),
-		"attendees", strings.Join(attendees, ", "),
-		"description", vobject.First(props, "DESCRIPTION"),
-	), nil
 }
 
 func findProp(props []vobject.Prop, name string) vobject.Prop {
@@ -173,6 +204,15 @@ func findProp(props []vobject.Prop, name string) vobject.Prop {
 		}
 	}
 	return vobject.Prop{}
+}
+
+func findHas(props []vobject.Prop, name string) bool {
+	for _, p := range props {
+		if p.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 func orDefault(v, def string) string {
@@ -195,9 +235,6 @@ func wrapVCALENDAR(inner string) string {
 	return strings.Join(lines, "\r\n") + "\r\n"
 }
 
-// ponytail: no RFC 5545 line folding (>75 octets); SOGo accepts unfolded lines.
-func foldless(s string) string { return s }
-
 func newUUID() string {
 	b := make([]byte, 16)
 	rand.Read(b)
@@ -205,90 +242,6 @@ func newUUID() string {
 	b[8] = (b[8] & 0x3f) | 0x80
 	h := fmt.Sprintf("%x", b)
 	return fmt.Sprintf("%s-%s-%s-%s-%s", h[0:8], h[8:12], h[12:16], h[16:20], h[20:32])
-}
-
-const eventsQueryTpl = `<?xml version="1.0" encoding="utf-8"?>
-<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
-  <d:prop>
-    <d:getetag/>
-    <c:calendar-data/>
-  </d:prop>
-  <c:filter>
-    <c:comp-filter name="VCALENDAR">
-      <c:comp-filter name="VEVENT">%s
-      </c:comp-filter>
-    </c:comp-filter>
-  </c:filter>
-</c:calendar-query>`
-
-func icsRange(t time.Time) string { return t.UTC().Format("20060102T150405Z") }
-
-func (cal *Cal) reportEvents(start, stop time.Time, expand bool) []*format.OM {
-	inner := ""
-	timeRange := fmt.Sprintf("\n        <c:time-range start=%q end=%q/>", icsRange(start), icsRange(stop))
-	if expand {
-		inner = timeRange + fmt.Sprintf("\n        <c:expand start=%q end=%q/>", icsRange(start), icsRange(stop))
-	} else {
-		inner = timeRange
-	}
-	query := fmt.Sprintf(eventsQueryTpl, inner)
-	raw, status, err := cal.client.Report(cal.acct.KalenderURL, query, "1")
-	if err != nil || (status != 200 && status != 207) {
-		return nil
-	}
-	var rows []*format.OM
-	for _, resp := range dav.ParseMultistatus(raw, "calendar-data") {
-		props := vobject.Component(resp.Data, "VEVENT")
-		if props == nil {
-			continue
-		}
-		has := map[string]bool{"dtstart": findHas(props, "DTSTART"), "dtend": findHas(props, "DTEND")}
-		row, err := eventFields(props, "", has)
-		if err != nil {
-			continue
-		}
-		rows = append(rows, row)
-	}
-	return rows
-}
-
-func findHas(props []vobject.Prop, name string) bool {
-	for _, p := range props {
-		if p.Name == name {
-			return true
-		}
-	}
-	return false
-}
-
-func (cal *Cal) Events(start, end string) ([]*format.OM, error) {
-	var begin time.Time
-	if start != "" {
-		w, err := parseWhen(start)
-		if err != nil {
-			return nil, err
-		}
-		begin = w.t
-		if w.isDate {
-			begin = time.Date(w.t.Year(), w.t.Month(), w.t.Day(), 0, 0, 0, 0, TZ)
-		}
-	} else {
-		begin = time.Now().In(TZ)
-	}
-	stop := begin.Add(7 * 24 * time.Hour)
-	if end != "" {
-		w, err := parseWhen(end)
-		if err != nil {
-			return nil, err
-		}
-		stop = w.t
-		if w.isDate {
-			stop = time.Date(w.t.Year(), w.t.Month(), w.t.Day(), 23, 59, 59, 0, TZ)
-		}
-	}
-	rows := cal.reportEvents(begin, stop, true)
-	sortRows(rows, func(a, b *format.OM) bool { return strOr(a.Get("start")) < strOr(b.Get("start")) })
-	return rows, nil
 }
 
 func sortRows(rows []*format.OM, less func(a, b *format.OM) bool) {
@@ -299,64 +252,6 @@ func sortRows(rows []*format.OM, less func(a, b *format.OM) bool) {
 	}
 }
 
-func (cal *Cal) Event(uid string) (*format.OM, error) {
-	props, err := cal.lookupEvent(uid)
-	if err != nil {
-		return nil, err
-	}
-	has := map[string]bool{"dtstart": findHas(props, "DTSTART"), "dtend": findHas(props, "DTEND")}
-	return eventFields(props, uid, has)
-}
-
-func (cal *Cal) lookupEvent(uid string) ([]vobject.Prop, error) {
-	eventURL := strings.TrimRight(cal.acct.KalenderURL, "/") + "/" + url.PathEscape(uid) + ".ics"
-	if text, status, err := cal.client.Get(eventURL); err == nil && status == 200 {
-		if props := vobject.Component(text, "VEVENT"); props != nil {
-			return props, nil
-		}
-	}
-	begin := time.Now().In(TZ).Add(-730 * 24 * time.Hour)
-	stop := time.Now().In(TZ).Add(730 * 24 * time.Hour)
-	type hit struct {
-		full  string
-		props []vobject.Prop
-	}
-	var scored []hit
-	for _, resp := range dav.ParseMultistatus(cal.reportRaw(begin, stop), "calendar-data") {
-		props := vobject.Component(resp.Data, "VEVENT")
-		full := vobject.First(props, "UID")
-		if uidMatches(full, uid) {
-			scored = append(scored, hit{full: full, props: props})
-		}
-	}
-	if len(scored) == 0 {
-		return nil, fmt.Errorf("event not found: %s", uid)
-	}
-	unique := map[string][]vobject.Prop{}
-	var order []string
-	for _, h := range scored {
-		if _, seen := unique[h.full]; !seen {
-			order = append(order, h.full)
-		}
-		unique[h.full] = h.props
-	}
-	if len(unique) > 1 {
-		sortStrings(order)
-		return nil, fmt.Errorf("ambiguous event id %q, matches:\n%s", uid, strings.Join(order, "\n"))
-	}
-	return unique[order[0]], nil
-}
-
-func (cal *Cal) reportRaw(start, stop time.Time) []byte {
-	inner := fmt.Sprintf("\n        <c:time-range start=%q end=%q/>", icsRange(start), icsRange(stop))
-	query := fmt.Sprintf(eventsQueryTpl, inner)
-	raw, status, err := cal.client.Report(cal.acct.KalenderURL, query, "1")
-	if err != nil || (status != 200 && status != 207) {
-		return nil
-	}
-	return raw
-}
-
 func sortStrings(s []string) {
 	for i := 1; i < len(s); i++ {
 		for j := i; j > 0 && s[j] < s[j-1]; j-- {
@@ -364,201 +259,6 @@ func sortStrings(s []string) {
 		}
 	}
 }
-
-func (cal *Cal) CreateEvent(title, start, end string, allDay bool) (string, error) {
-	beginW, err := parseWhen(start)
-	if err != nil {
-		return "", err
-	}
-	uid := newUUID()
-	var lines []string
-	lines = append(lines, "BEGIN:VEVENT", "UID:"+uid, "DTSTAMP:"+stampUTC(),
-		"SUMMARY:"+vobject.Escape(title))
-	if allDay {
-		startDate := beginW.t.Format("2006-01-02")
-		if !beginW.isDate {
-			startDate = beginW.t.In(TZ).Format("2006-01-02")
-		}
-		endDate := startDate
-		if end != "" {
-			stopW, err := parseWhen(end)
-			if err != nil {
-				return "", err
-			}
-			endDate = stopW.t.In(TZ).Add(24 * time.Hour).Format("2006-01-02")
-			if stopW.isDate {
-				endDate = stopW.t.Add(24 * time.Hour).Format("2006-01-02")
-			}
-		} else {
-			d, _ := time.Parse("2006-01-02", startDate)
-			endDate = d.Add(24 * time.Hour).Format("2006-01-02")
-		}
-		lines = append(lines,
-			"DTSTART;VALUE=DATE:"+startDate,
-			"DTEND;VALUE=DATE:"+endDate)
-	} else {
-		begin := beginW.t
-		if beginW.isDate {
-			begin = time.Date(beginW.t.Year(), beginW.t.Month(), beginW.t.Day(), 0, 0, 0, 0, TZ)
-		}
-		stop := begin.Add(time.Hour)
-		if end != "" {
-			stopW, err := parseWhen(end)
-			if err != nil {
-				return "", err
-			}
-			stop = stopW.t
-			if stopW.isDate {
-				stop = time.Date(stopW.t.Year(), stopW.t.Month(), stopW.t.Day(), 0, 0, 0, 0, TZ)
-			}
-		}
-		// ponytail: serialize timed events as UTC instead of TZID+VTIMEZONE.
-		lines = append(lines,
-			"DTSTART:"+begin.UTC().Format("20060102T150405Z"),
-			"DTEND:"+stop.UTC().Format("20060102T150405Z"))
-	}
-	lines = append(lines, "END:VEVENT")
-	putURL := strings.TrimRight(cal.acct.KalenderURL, "/") + "/" + uid + ".ics"
-	status, err := cal.client.Put(putURL, wrapVCALENDAR(strings.Join(lines, "\r\n")),
-		map[string]string{"Content-Type": "text/calendar; charset=utf-8"})
-	if err != nil || (status != 200 && status != 201 && status != 204) {
-		return "", fmt.Errorf("CalDAV put failed: %d", status)
-	}
-	return uid, nil
-}
-
-func (cal *Cal) Tasks() ([]*format.OM, error) {
-	raw, status, err := cal.client.Report(cal.acct.AufgabenURL, todosQuery, "1")
-	if err != nil || (status != 200 && status != 207) {
-		return nil, fmt.Errorf("CalDAV report failed: %d", status)
-	}
-	var rows []*format.OM
-	for _, resp := range dav.ParseMultistatus(raw, "calendar-data") {
-		props := vobject.Component(resp.Data, "VTODO")
-		if props == nil {
-			continue
-		}
-		if strings.EqualFold(vobject.First(props, "STATUS"), "COMPLETED") {
-			continue
-		}
-		statusVal := vobject.First(props, "STATUS")
-		if statusVal == "" {
-			statusVal = "NEEDS-ACTION"
-		}
-		rows = append(rows, format.NewOM(
-			"id", shortID(vobject.First(props, "UID")),
-			"due", asLocal(findProp(props, "DUE"), findHas(props, "DUE")),
-			"status", statusVal,
-			"summary", vobject.First(props, "SUMMARY"),
-		))
-	}
-	sortRows(rows, func(a, b *format.OM) bool {
-		ka := strOr(a.Get("due")) + "|" + strOr(a.Get("summary"))
-		kb := strOr(b.Get("due")) + "|" + strOr(b.Get("summary"))
-		return ka < kb
-	})
-	return rows, nil
-}
-
-const todosQuery = `<?xml version="1.0" encoding="utf-8"?>
-<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
-  <d:prop>
-    <d:getetag/>
-    <c:calendar-data/>
-  </d:prop>
-  <c:filter>
-    <c:comp-filter name="VCALENDAR">
-      <c:comp-filter name="VTODO"/>
-    </c:comp-filter>
-  </c:filter>
-</c:calendar-query>`
-
-func (cal *Cal) CreateTask(title, due string) (string, error) {
-	uid := newUUID()
-	lines := []string{"BEGIN:VTODO", "UID:" + uid, "DTSTAMP:" + stampUTC(),
-		"SUMMARY:" + vobject.Escape(title)}
-	if due != "" {
-		w, err := parseWhen(due)
-		if err != nil {
-			return "", err
-		}
-		if w.isDate {
-			lines = append(lines, "DUE;VALUE=DATE:"+w.t.Format("2006-01-02"))
-		} else {
-			lines = append(lines, "DUE:"+w.t.UTC().Format("20060102T150405Z"))
-		}
-	}
-	lines = append(lines, "END:VTODO")
-	putURL := strings.TrimRight(cal.acct.AufgabenURL, "/") + "/" + uid + ".ics"
-	status, err := cal.client.Put(putURL, wrapVCALENDAR(strings.Join(lines, "\r\n")),
-		map[string]string{"Content-Type": "text/calendar; charset=utf-8"})
-	if err != nil || (status != 200 && status != 201 && status != 204) {
-		return "", fmt.Errorf("CalDAV put failed: %d", status)
-	}
-	return uid, nil
-}
-
-func (cal *Cal) CompleteTask(uid string) error {
-	raw, status, err := cal.client.Report(cal.acct.AufgabenURL, todosQuery, "1")
-	if err != nil || (status != 200 && status != 207) {
-		return fmt.Errorf("CalDAV report failed: %d", status)
-	}
-	var matchResp dav.Response
-	var matchProps []vobject.Prop
-	seen := map[string]bool{}
-	n := 0
-	for _, resp := range dav.ParseMultistatus(raw, "calendar-data") {
-		props := vobject.Component(resp.Data, "VTODO")
-		full := vobject.First(props, "UID")
-		if !uidMatches(full, uid) || seen[full] {
-			continue
-		}
-		seen[full] = true
-		n++
-		matchResp, matchProps = resp, props
-	}
-	if n == 0 {
-		return fmt.Errorf("task not found: %s", uid)
-	}
-	if n > 1 {
-		return fmt.Errorf("ambiguous task id %q", uid)
-	}
-	resp, props := matchResp, matchProps
-	{
-		// rewrite STATUS / COMPLETED inside the VTODO component
-		var out []vobject.Prop
-		for _, p := range props {
-			switch p.Name {
-			case "STATUS":
-				p.Value = "COMPLETED"
-				out = append(out, p)
-			case "COMPLETED":
-				continue
-			default:
-				out = append(out, p)
-			}
-		}
-		out = append(out,
-			vobject.Prop{Name: "COMPLETED", Value: stampUTC()},
-			vobject.Prop{Name: "STATUS", Value: "COMPLETED"})
-		href := resp.Href
-		putURL := href
-		if !strings.HasPrefix(href, "http://") && !strings.HasPrefix(href, "https://") {
-			base, _ := url.Parse(cal.acct.AufgabenURL)
-			if ref, err := url.Parse(href); err == nil {
-				putURL = base.ResolveReference(ref).String()
-			}
-		}
-		st, err := cal.client.Put(putURL, wrapVCALENDAR("BEGIN:VTODO\r\n"+vobject.Serialize(out)+"END:VTODO\r\n"),
-			map[string]string{"Content-Type": "text/calendar; charset=utf-8"})
-		if err != nil || (st != 200 && st != 201 && st != 204) {
-			return fmt.Errorf("CalDAV put failed: %d", st)
-		}
-		return nil
-	}
-}
-
-var _ = regexp.MustCompile
 
 func strOr(v any) string {
 	if s, ok := v.(string); ok {
@@ -572,4 +272,380 @@ func shortID(uid string) string {
 		return uid[:8]
 	}
 	return uid
+}
+
+func absURL(base, href string) string {
+	if strings.HasPrefix(href, "http://") || strings.HasPrefix(href, "https://") {
+		return href
+	}
+	u, err := url.Parse(base)
+	if err != nil {
+		return href
+	}
+	ref, err := url.Parse(href)
+	if err != nil {
+		return href
+	}
+	return u.ResolveReference(ref).String()
+}
+
+func (cal *Cal) putICS(putURL, inner string) error {
+	status, err := cal.client.Put(putURL, wrapVCALENDAR(inner),
+		map[string]string{"Content-Type": "text/calendar; charset=utf-8"})
+	if err != nil || (status != 200 && status != 201 && status != 204) {
+		return fmt.Errorf("CalDAV put failed: %d", status)
+	}
+	return nil
+}
+
+func (cal *Cal) homeURL() string {
+	if cal.acct.KalenderURL != "" {
+		u := strings.TrimRight(cal.acct.KalenderURL, "/")
+		if i := strings.LastIndex(u, "/"); i > 0 {
+			return u[:i+1]
+		}
+	}
+	return cal.baseURL
+}
+
+const calPropfind = `<?xml version="1.0" encoding="utf-8"?>
+<d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:a="http://apple.com/ns/ical/">
+  <d:prop>
+    <d:displayname/>
+    <d:resourcetype/>
+    <c:supported-calendar-component-set/>
+    <a:calendar-color/>
+  </d:prop>
+</d:propfind>`
+
+func (cal *Cal) collections() ([]Collection, error) {
+	if cal.discovered {
+		return cal.cols, nil
+	}
+	raw, status, err := cal.client.Propfind(cal.homeURL(), calPropfind, "1")
+	if err == nil && (status == 200 || status == 207) {
+		cal.cols = parseCalendarsXML(raw, cal.homeURL())
+	}
+	if len(cal.cols) == 0 {
+		cal.cols = []Collection{{
+			Name: "Kalender", URL: cal.acct.KalenderURL, Calendar: true, Comps: []string{"VEVENT"},
+		}}
+	}
+	cal.discovered = true
+	return cal.cols, nil
+}
+
+func (cal *Cal) Calendars() ([]*format.OM, error) {
+	cols, err := cal.eventCals()
+	if err != nil {
+		return nil, err
+	}
+	var rows []*format.OM
+	for _, c := range cols {
+		rows = append(rows, format.NewOM(
+			"name", c.Name,
+			"color", c.Color,
+		))
+	}
+	sortRows(rows, func(a, b *format.OM) bool { return strOr(a.Get("name")) < strOr(b.Get("name")) })
+	return rows, nil
+}
+
+func (cal *Cal) eventCals() ([]Collection, error) {
+	cols, err := cal.collections()
+	if err != nil {
+		return nil, err
+	}
+	var out []Collection
+	for _, c := range cols {
+		if !isHabits(c) && isEventCal(c) {
+			out = append(out, c)
+		}
+	}
+	if len(out) == 0 {
+		out = []Collection{{
+			Name: "Kalender", URL: cal.acct.KalenderURL, Calendar: true, Comps: []string{"VEVENT"},
+		}}
+	}
+	return out, nil
+}
+
+func isHabits(c Collection) bool {
+	return strings.EqualFold(c.Name, habitsCalName)
+}
+
+func isEventCal(c Collection) bool {
+	if !c.Calendar && len(c.Comps) == 0 {
+		return false
+	}
+	if strings.EqualFold(c.Name, "Aufgaben") {
+		return false
+	}
+	if len(c.Comps) == 0 {
+		return c.Calendar
+	}
+	return c.hasComp("VEVENT") && !c.hasComp("VTODO")
+}
+
+func (cal *Cal) pickEventCal(name string) (Collection, error) {
+	cols, err := cal.eventCals()
+	if err != nil {
+		return Collection{}, err
+	}
+	if name != "" {
+		return matchCal(cols, name)
+	}
+	for _, c := range cols {
+		if strings.EqualFold(c.Name, "Kalender") {
+			return c, nil
+		}
+	}
+	return cols[0], nil
+}
+
+func matchCal(cols []Collection, q string) (Collection, error) {
+	ql := strings.ToLower(q)
+	for _, c := range cols {
+		if strings.EqualFold(c.Name, q) {
+			return c, nil
+		}
+	}
+	var hits []Collection
+	for _, c := range cols {
+		if strings.HasPrefix(strings.ToLower(c.Name), ql) {
+			hits = append(hits, c)
+		}
+	}
+	if len(hits) == 1 {
+		return hits[0], nil
+	}
+	if len(hits) == 0 {
+		return Collection{}, fmt.Errorf("calendar not found: %s", q)
+	}
+	return Collection{}, fmt.Errorf("ambiguous calendar %q", q)
+}
+
+func parseCalendarsXML(raw []byte, base string) []Collection {
+	dec := xml.NewDecoder(strings.NewReader(string(raw)))
+	var out []Collection
+	var cur Collection
+	var href string
+	capture := ""
+	inType := false
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			break
+		}
+		switch tt := tok.(type) {
+		case xml.StartElement:
+			name := dav.LocalName(tok)
+			switch name {
+			case "response":
+				cur = Collection{}
+				href = ""
+			case "href", "displayname", "calendar-color":
+				capture = name
+			case "resourcetype":
+				inType = true
+			case "calendar":
+				if inType {
+					cur.Calendar = true
+				}
+			case "comp":
+				for _, a := range tt.Attr {
+					if a.Name.Local == "name" && a.Value != "" {
+						cur.Comps = append(cur.Comps, a.Value)
+					}
+				}
+			}
+		case xml.CharData:
+			text := string(tt)
+			switch capture {
+			case "href":
+				href += text
+			case "displayname":
+				cur.Name += text
+			case "calendar-color":
+				cur.Color += text
+			}
+		case xml.EndElement:
+			name := dav.LocalName(tok)
+			switch name {
+			case "href", "displayname", "calendar-color":
+				capture = ""
+			case "resourcetype":
+				inType = false
+			case "response":
+				cur.Name = strings.TrimSpace(cur.Name)
+				cur.Color = strings.TrimSpace(cur.Color)
+				cur.URL = absURL(base, strings.TrimSpace(href))
+				if cur.Name != "" && (cur.Calendar || len(cur.Comps) > 0) {
+					out = append(out, cur)
+				}
+			}
+		}
+	}
+	return out
+}
+
+func setProp(props []vobject.Prop, name, params, value string) []vobject.Prop {
+	found := false
+	var out []vobject.Prop
+	for _, p := range props {
+		if p.Name != name {
+			out = append(out, p)
+			continue
+		}
+		if !found {
+			out = append(out, vobject.Prop{Name: name, Params: params, Value: value})
+			found = true
+		}
+	}
+	if !found {
+		out = append(out, vobject.Prop{Name: name, Params: params, Value: value})
+	}
+	return out
+}
+
+func dropProp(props []vobject.Prop, name string) []vobject.Prop {
+	var out []vobject.Prop
+	for _, p := range props {
+		if p.Name != name {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func dropAlarm(props []vobject.Prop) []vobject.Prop {
+	var out []vobject.Prop
+	in := false
+	for _, p := range props {
+		if p.Name == "BEGIN" && strings.EqualFold(p.Value, "VALARM") {
+			in = true
+			continue
+		}
+		if p.Name == "END" && strings.EqualFold(p.Value, "VALARM") {
+			in = false
+			continue
+		}
+		if !in {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+var remindSpecRe = regexp.MustCompile(`^(\d+)([mhd])$`)
+
+func icsTrigger(spec string) (string, error) {
+	m := remindSpecRe.FindStringSubmatch(strings.ToLower(strings.TrimSpace(spec)))
+	if m == nil {
+		return "", fmt.Errorf("invalid --remind %q; use e.g. 10m, 2h, 3d", spec)
+	}
+	if m[1] == "0" {
+		return "", fmt.Errorf("duration must be positive")
+	}
+	switch m[2] {
+	case "m":
+		return "-PT" + m[1] + "M", nil
+	case "h":
+		return "-PT" + m[1] + "H", nil
+	default:
+		return "-P" + m[1] + "D", nil
+	}
+}
+
+func rruleFromAlias(alias string, start time.Time, until string, times int) (string, error) {
+	key := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(alias), "-", "_"))
+	var freq string
+	switch key {
+	case "every_day":
+		freq = "FREQ=DAILY"
+	case "every_weekday":
+		freq = "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"
+	case "every_week":
+		freq = "FREQ=WEEKLY"
+	case "every_other_week":
+		freq = "FREQ=WEEKLY;INTERVAL=2"
+	case "every_day_of_month":
+		day := start.In(TZ).Day()
+		if day == 0 {
+			day = start.Day()
+		}
+		freq = fmt.Sprintf("FREQ=MONTHLY;BYMONTHDAY=%d", day)
+	case "every_year":
+		freq = "FREQ=YEARLY"
+	default:
+		return "", fmt.Errorf("unknown --repeat %q (every_day|every_weekday|every_week|every_other_week|every_day_of_month|every_year)", alias)
+	}
+	if until != "" {
+		w, err := parseWhen(until)
+		if err != nil {
+			return "", err
+		}
+		if w.isDate {
+			freq += ";UNTIL=" + w.t.Format("20060102")
+		} else {
+			freq += ";UNTIL=" + w.t.UTC().Format("20060102T150405Z")
+		}
+	}
+	if times > 0 {
+		freq += fmt.Sprintf(";COUNT=%d", times)
+	}
+	return freq, nil
+}
+
+func eventTimeProps(start, end string, allDay bool) (ds, de vobject.Prop, begin time.Time, err error) {
+	beginW, err := parseWhen(start)
+	if err != nil {
+		return ds, de, begin, err
+	}
+	begin = beginW.t
+	if allDay {
+		startDate := beginW.t.Format("20060102")
+		if !beginW.isDate {
+			startDate = beginW.t.In(TZ).Format("20060102")
+		}
+		endDate := startDate
+		if end != "" {
+			stopW, err := parseWhen(end)
+			if err != nil {
+				return ds, de, begin, err
+			}
+			t := stopW.t
+			if !stopW.isDate {
+				t = stopW.t.In(TZ)
+			}
+			endDate = t.Add(24 * time.Hour).Format("20060102")
+			if stopW.isDate {
+				endDate = stopW.t.Add(24 * time.Hour).Format("20060102")
+			}
+		} else {
+			d, _ := time.ParseInLocation("20060102", startDate, TZ)
+			endDate = d.Add(24 * time.Hour).Format("20060102")
+		}
+		return vobject.Prop{Name: "DTSTART", Params: ";VALUE=DATE", Value: startDate},
+			vobject.Prop{Name: "DTEND", Params: ";VALUE=DATE", Value: endDate},
+			begin, nil
+	}
+	if beginW.isDate {
+		begin = time.Date(beginW.t.Year(), beginW.t.Month(), beginW.t.Day(), 0, 0, 0, 0, TZ)
+	}
+	stop := begin.Add(time.Hour)
+	if end != "" {
+		stopW, err := parseWhen(end)
+		if err != nil {
+			return ds, de, begin, err
+		}
+		stop = stopW.t
+		if stopW.isDate {
+			stop = time.Date(stopW.t.Year(), stopW.t.Month(), stopW.t.Day(), 0, 0, 0, 0, TZ)
+		}
+	}
+	// ponytail: serialize timed events as UTC instead of TZID+VTIMEZONE.
+	return vobject.Prop{Name: "DTSTART", Value: begin.UTC().Format("20060102T150405Z")},
+		vobject.Prop{Name: "DTEND", Value: stop.UTC().Format("20060102T150405Z")},
+		begin, nil
 }

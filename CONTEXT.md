@@ -1,6 +1,6 @@
 # Email CLI
 
-Agent-facing command `mailbox` over one mailbox.org IMAP account, its CalDAV calendars, and its CardDAV address book. Mail verbs sit at the root (`box`, `search`, `thread`, `screener`, `move`, …). `contact`, `events`, and `tasks` stay grouped. One binary; talks IMAP, CalDAV, and CardDAV itself. Not a human mail client. Not Spark. Not a himalaya wrapper.
+Agent-facing command `mailbox` over one mailbox.org IMAP account, its CalDAV calendars, and its CardDAV address book. Mail verbs sit at the root (`box`, `search`, `thread`, `screener`, `move`, …). `contact`, `events`, and `todo` stay grouped. One binary; talks IMAP, CalDAV, and CardDAV itself. Not a human mail client. Not Spark. Not a himalaya wrapper.
 
 ## Language
 
@@ -104,22 +104,30 @@ _Avoid_: deliver (as the CLI verb)
 IMAP folder `Sent`. Copies of mail this CLI delivered. Not a routing destination.
 _Avoid_: outbox, sent-mail
 
+**Calendar**:
+A CalDAV collection of Events. Many, discovered. Maybe is a Calendar named Maybe, not a flag on an Event.
+_Avoid_: folder, recording, Kalender (that's one Calendar's name)
+
 **Event**:
-A timed entry on CalDAV collection **Kalender**.
+A timed or all-day entry on a Calendar. Recurrence, reminders, location, notes, and URL belong to it. Important means PRIORITY=1 (HEY's circle). Not a Todo.
 _Avoid_: meeting (no transcripts), appointment
 
-**Task**:
-An entry on CalDAV collection **Aufgaben**.
-_Avoid_: todo, reminder
+**Todo**:
+Work on CalDAV collection **Aufgaben**. Default undated (the week pile). May carry a due day so other clients round-trip; a due Todo also appears on that day and does not float. Completing it ends it.
+_Avoid_: task (CLI noun), reminder, dated todo (as the default)
+
+**Habit**:
+A repeating per-day practice. Completing one day does not end it. Not an Event. Not a Todo. All Habits live in one TRANSPARENT 1990 VEVENT (JSON bag) on CLI-owned Calendar **mailbox-habits**, omitted from `calendar list` and from Event lists.
+_Avoid_: recurring task, recurring event, journal
 
 **Contact**:
 A person in CardDAV collection **Kontakte**. Agents name it by vCard UID from `contact list`. The note is vCard NOTE, private to this mailbox.
 _Avoid_: hey hide/bundle (delivery settings, not an address book), Thunderbird local Personal Address Book
 
 **Envelope**:
-`--json` output `{ok, data}` plus `truncated` and `notice` when a list or thread was cut. Errors are `{ok, code, error}` with code `usage`, `auth`, or `runtime` matching exit codes 2/3/1. `--jq` filters that envelope; `--quiet --jq` filters `data`. `--ids-only` and `--count` skip it; their notices go to stderr. `--markdown` is a table or a thread document, not the envelope.
+TTY is a table; a pipe is `{ok, data}` unless `--styled`. `--json` forces the envelope. Lists add `truncated`/`notice`/`next_page` when cut. Errors are `{ok, code, error}` with code `usage`, `not_found`, `auth`, `network`, `api`, or `ambiguous` matching exit codes 1/2/3/6/7/8. `--jq` filters that envelope; `--quiet --jq` filters `data`. `--ids-only` and `--count` skip it; their notices go to stderr. `--markdown` is a table or a thread document, not the envelope.
 _Avoid_: pretty-printed arrays as the machine contract
 
 **Thread body**:
-`--json` `body` is Markdown (plain text kept as-is; HTML converted at the edge). `--html` is the original HTML, refused on a terminal. `body_state` is `hydrated`, `bodyless`, `over_limit`, or `failed`.
+`--json` `body` is Markdown (plain text kept as-is; HTML converted at the edge). `--html` is the original HTML. `body_state` is `hydrated`, `bodyless`, `over_limit`, or `failed`.
 _Avoid_: flattened HTML as the only agent body

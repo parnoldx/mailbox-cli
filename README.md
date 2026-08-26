@@ -1,6 +1,6 @@
 # mailbox
 
-CLI for one [mailbox.org](https://mailbox.org) account. Talks IMAP, SMTP, CalDAV, and CardDAV itself — mail, Kontakte, Kalender, and Aufgaben.
+CLI for one [mailbox.org](https://mailbox.org) account. Talks IMAP, SMTP, CalDAV, and CardDAV itself — mail, contacts, calendars, todos, and habits.
 
 Built for coding agents; works from a terminal.
 
@@ -9,12 +9,14 @@ mailbox box list --json
 mailbox screener list --json
 mailbox thread INBOX/Screener:342 --json
 mailbox compose --to someone@mailbox.org --subject "Hi" -m "..."
-mailbox events --json
-mailbox tasks --json
-mailbox contacts search QUERY --json
+mailbox calendar list --json
+mailbox event list --json
+mailbox todo list --json
+mailbox habit list --json
+mailbox contact search QUERY --json
 ```
 
-`mailbox` prints the full command list. `mailbox help output` is formats. `mailbox commands --json` is the machine index.
+`mailbox` prints the command map. `mailbox <command> --help` is flags. `mailbox help output` is formats. `mailbox commands --json` is the machine index.
 
 ## Serve (mail routing service)
 
@@ -95,7 +97,7 @@ Approve, deny, and move only IMAP-move. Sieve routing is owned elsewhere; the ne
 
 ## IDs and output
 
-Message IDs are `[box:]uid` copied from list/search. Bare uid means Inbox (`36722`); otherwise `feed:12` or a path (`Archive/Immo:4`). Attachment IDs are `[box:]uid:index` from `attachment list`. Event, task, and contact IDs come from their lists.
+Message IDs are `[box:]uid` copied from list/search. Bare uid means Inbox (`36722`); otherwise `feed:12` or a path (`Archive/Immo:4`). Attachment IDs are `[box:]uid:index` from `attachment list`. Event, todo, habit, and contact IDs come from their lists. `mailbox calendar list` is discovered Event calendars (`mailbox-habits` is omitted).
 
 `--json` is `{ok, data}` plus `truncated`/`notice` when a list or thread was cut. `--jq EXPR` filters that envelope (needs `jq`). `--ids-only` is one ID per line; `--count` is a number.
 

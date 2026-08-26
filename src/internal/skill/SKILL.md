@@ -1,172 +1,453 @@
 ---
 name: mailbox
-description: >
-  Use the mailbox CLI for user@mailbox.org — list, search, read, screen,
-  move, compose, and send mail; drafts; Kontakte contacts; Kalender events; Aufgaben tasks.
-  Trigger on email, inbox, screener, aside, set aside, read later, contact, calendar, tasks.
+description: |
+  Interact with mailbox.org via the mailbox CLI. Read and send emails, manage contacts,
+  boxes, calendars, todos, and habits. Use for ANY mailbox-related question or action.
+triggers:
+  - mailbox
+  - /mailbox
+  - mailbox box
+  - mailbox search
+  - mailbox thread
+  - mailbox contact
+  - mailbox screener
+  - mailbox reply
+  - mailbox compose
+  - mailbox draft
+  - mailbox attachment
+  - mailbox calendar
+  - mailbox event
+  - mailbox todo
+  - mailbox habit
+  - mailbox aside
+  - mailbox seen
+  - mailbox unseen
+  - mailbox move
+  - mailbox trash
+  - mailbox spam
+  - screen a sender
+  - approve a sender
+  - deny a sender
+  - check my email
+  - read email
+  - send email
+  - reply to email
+  - forward email
+  - compose email
+  - list mailboxes
+  - search email
+  - find email
+  - list contacts
+  - add contact
+  - check calendar
+  - add todo
+  - complete todo
+  - my emails
+  - my inbox
+  - my todos
+  - my calendar
+  - mailbox.org
+invocable: true
+argument-hint: "[command] [args...]"
 ---
 
-# mailbox
+# /mailbox - mailbox.org Email Workflow Command
 
-`mailbox` talks IMAP + CalDAV + CardDAV to mailbox.org. Not himalaya. Not Spark.
+CLI for one mailbox.org account: boxes, email threads, contacts, replies, compose, calendars, todos, and habits. IMAP + CalDAV + CardDAV. Not HEY.
+
+## Agent Invariants
+
+**MUST follow these rules:**
+
+1. **Choose the right structured output** — use `--jq '<expression>'` to filter or extract fields and `--json` for the full response. `--jq` shells out to the `jq` binary and implies `--json`. Never pipe mailbox to an external `jq`.
+2. **One ID scheme** — messages are `[box:]uid`. Bare uid is Inbox (`36722`). Else `feed:12`, `screener:342`, `drafts:12`, or a path (`Archive/Immo:4`). Copy IDs from box view, search, or screener list. Attachment IDs are `[box:]uid:index` from `attachment list`. Draft verbs take a bare uid (`12`) as Drafts.
+3. **Approve, deny, and move IMAP-move.** Routing (Sieve `logic`) is updated on the VPS. The next mail from that sender may still land in Screener. Deny `--spam` still goes to Block; mailbox.org has no spam trainer.
+4. **Incomplete thread without `--allow-partial` is a failed read**, not a whole thread. `--html` is the original HTML. `attachment list` is the same.
+5. **`mailbox spam` IMAP-moves to Junk. `mailbox trash` IMAP-moves to Trash.** Neither blacklists. Seen/unseen set the IMAP `\Seen` flag.
+
+## Output Filtering
+
+`--jq` filters the full JSON success envelope, so result data is under `.data`. String results print as plain text; objects and arrays print as formatted JSON. Use `--quiet --jq` when the expression should run against result data directly. Errors retain their complete structured envelope. A TTY is a table; a pipe is `{ok, data}` unless `--styled`.
 
 ```bash
-mailbox [--json|--jq EXPR|--ids-only|--count|--markdown] box|search|thread|screener|move|aside|seen|unseen|trash|spam|compose|draft|attachment ...
-mailbox aside [ID...] [--remind 30m|2h|3d]
-mailbox aside done ID...
-mailbox thread [box:]UID [--json|--html|--markdown|--allow-partial]
-mailbox compose --to ADDR --subject TEXT [-m TEXT | --message-html HTML] [--draft]
-mailbox draft list|show|edit|send|delete
-mailbox doctor
-mailbox commands --json
-mailbox skill install
-mailbox help output
-mailbox events [--start] [--end]
-mailbox events show ID
-mailbox events create --title TEXT --start WHEN [--end WHEN] [--all-day]
-mailbox tasks
-mailbox tasks create --title TEXT [--due WHEN]
-mailbox tasks complete ID
-mailbox contacts list
-mailbox contacts search QUERY
-mailbox contacts refresh
-mailbox contacts show ID
-mailbox contacts add --name TEXT --email ADDR [--note TEXT]
-mailbox contacts update ID [--name TEXT] [--email ADDR] [--note TEXT]
+mailbox box list --jq '.data[] | {id, name}'
+mailbox search "quarterly planning" --jq '.data[].id'
+mailbox box list --quiet --jq '.[].name'
 ```
 
-## Invariants
+An empty result is an empty array rather than `null`, so `.data[]` is safe to run against a
+listing that found nothing.
 
-1. `--json` returns `{ok, data}` plus `truncated`/`notice` when a list or thread was cut. `--jq EXPR` filters that envelope (needs `jq`; `--quiet --jq` filters `data`). `--ids-only` is one ID per line; `--count` is a bare number. Truncation notices for those two go to stderr. `--markdown` is a table (lists) or one document (threads).
-2. Message IDs are `[box:]uid` — bare uid means INBOX (`36722`), else `box:uid` with box one of `feed`, `trail`, `screener`, `aside`, `drafts`, `sent`, or a full box path for Archive sub-boxes (`Archive/Immo:4`). Copy them from box view/search/screener list. Attachment IDs are `[box:]uid:index` from `attachment list`.
-3. Approve, deny, and move IMAP-move. emailMoveHelper updates Routing. The next mail from that sender may still land in Screener. Deny `--spam` still goes to Block; mailbox.org has no spam trainer.
-4. `compose` SMTP-sends and copies to Sent. `--draft` saves to IMAP Drafts instead. `draft send` delivers a saved draft; `draft delete` trashes it.
-5. An incomplete thread without `--allow-partial` is a failed read, not a whole thread. `--html` goes to a file, not a terminal. `attachment list` is the same.
-6. `mailbox spam` IMAP-moves to Junk (this copy). `mailbox trash` IMAP-moves to Trash. Neither blacklists. Seen/unseen set the IMAP `\Seen` flag.
-7. `aside` moves a Message to the Aside pile (read-later); `--remind 2h` stores an `asidedue-…` keyword and serve moves it back to Inbox when due (30-min sweep). `aside done ID...` returns it early. `mailbox aside` alone lists the pile.
+For the two commonest shapes there is no need for an expression at all: `--ids-only` prints
+one ID per line and `--count` prints a bare number, both on stdout with any pagination
+notice on stderr. Both need list data, so they work on `mailbox box list`, `mailbox box view`,
+`mailbox search`, `mailbox screener list`, `mailbox aside`, `mailbox draft list`,
+`mailbox attachment list`, `mailbox calendar list`, `mailbox event list`, `mailbox todo list`,
+`mailbox habit list`, and `mailbox contact list`.
 
-## Decision
+`--page` / `--all` page lists. `--markdown` is a table (lists) or one document (threads).
+
+## Quick Reference
+
+| Task | Command |
+|------|---------|
+| List boxes | `mailbox box list --json` |
+| Archive boxes | `mailbox box list --archive --json` |
+| List emails in a box | `mailbox box view feed --json` |
+| Search email | `mailbox search "quarterly planning" --json` |
+| List search filters | `mailbox search filters --json` |
+| Read email thread | `mailbox thread 36722 --json` |
+| List files in a thread | `mailbox attachment list 36722 --json` |
+| Save a file | `mailbox attachment save 36722:1` |
+| Reply | `mailbox reply 36722 -m "Friday works."` |
+| Forward | `mailbox forward 36722 --to alice@example.com -m "FYI"` |
+| Compose | `mailbox compose --to alice@example.com --subject "Lunch plans" -m "Are you free Friday?"` |
+| List drafts | `mailbox draft list --json` |
+| Draft for review | `mailbox compose --to alice@example.com --subject "Lunch plans" -m "Free Friday?" --draft` |
+| Read a draft | `mailbox draft show 12 --json` |
+| Change a draft | `mailbox draft edit 12 --subject "New subject"` |
+| Send a draft | `mailbox draft send 12` |
+| Trash a draft | `mailbox draft delete 12` |
+| Who is waiting in Screener | `mailbox screener list --json` |
+| Number waiting | `mailbox screener list --count` |
+| Let a sender through | `mailbox screener approve screener:342` |
+| Turn a sender away | `mailbox screener deny screener:342` |
+| Mark as seen | `mailbox seen 36722` |
+| Mark as unseen | `mailbox unseen 36722` |
+| Move email | `mailbox move 36722 --to feed` |
+| Set aside (read-later) | `mailbox aside 36722 [--remind 2h]` |
+| List the Aside pile | `mailbox aside --json` |
+| Return from Aside | `mailbox aside done Aside:12` |
+| Move to Trash | `mailbox trash 36722` |
+| Mark as spam | `mailbox spam 36722` |
+| List contacts | `mailbox contact list --json` |
+| Find a contact | `mailbox contact search jane --json` |
+| View contact and note | `mailbox contact show <id> --json` |
+| Add contact | `mailbox contact add --name "Jane Doe" --email jane@example.com` |
+| Edit contact | `mailbox contact update <id> --name "Jane Dawson"` |
+| Refresh contacts from CardDAV | `mailbox contact refresh --json` |
+| List calendars | `mailbox calendar list --json` |
+| List events | `mailbox event list --json` |
+| Add an event | `mailbox event add "Design review" --starts-on 2026-09-02 --start-time 14:00` |
+| List todos | `mailbox todo list --json` |
+| Add todo | `mailbox todo add --title "Draft the quarterly report"` |
+| Complete todo | `mailbox todo complete <id>` |
+| List habits | `mailbox habit list --json` |
+| Create habit | `mailbox habit create "Gym" --days mon,wed,fri` |
+| Tick today's habit | `mailbox habit complete <id>` |
+| Check credentials and skill | `mailbox doctor --json` |
+| Refresh this skill | `mailbox skill install` |
+
+`mailbox commands --json` lists the rest. `mailbox help output` is formats.
+
+## Decision Trees
+
+### Reading Email
 
 ```
-Mail?
-├── Which mailbox? → mailbox box list --json
+Want to read email?
+├── Which box? → mailbox box list --json
 ├── Archive boxes? → mailbox box list --archive --json
-├── How many in Screener? → mailbox screener list --count
-├── Who is waiting? → mailbox screener list --json
-├── List a box → mailbox box view feed --json
-├── Search → mailbox search QUERY [--from ADDR] [--subject TEXT] [--in archive] --json
-├── Read → mailbox thread [box:]UID --json
+├── List emails in a box? → mailbox box view <name|id> --json
+├── Search? → mailbox search <query> --json
+├── Need available refinements? → mailbox search filters --json
+├── Read full thread? → mailbox thread [box:]UID --json
 │   ├── document → --markdown
 │   └── incomplete → --allow-partial, or stop
-├── Approve → mailbox screener approve [box:]UID [--box feed]
-├── Deny → mailbox screener deny [box:]UID [--spam]
-├── Move → mailbox move [box:]UID --to feed
-├── Set aside → mailbox aside [box:]UID [--remind 2h]
-├── Done reading → mailbox aside done Aside:12
-├── Seen → mailbox seen [box:]UID
-├── Unseen → mailbox unseen [box:]UID
-├── Trash → mailbox trash [box:]UID
-├── Spam → mailbox spam [box:]UID
-├── Compose → mailbox compose --to someone@example.com --subject "Hi" -m "..."
-│   ├── draft → add --draft
-│   ├── files → add --attach ./file.pdf (repeatable; >10 MiB auto-uploads to transfer.adminforge.de, link goes in body)
-│   ├── HTML → --message-html instead of -m
-│   └── reply → --reply-to [box:]UID -m "..."
-├── Drafts → mailbox draft list --json
-│   ├── read → mailbox draft show Drafts:12 --json
-│   ├── edit → mailbox draft edit Drafts:12 --subject "v2"
-│   ├── send → mailbox draft send Drafts:12
-│   └── trash → mailbox draft delete Drafts:12
-├── List files → mailbox attachment list [box:]UID --json
-└── Save a file → mailbox attachment save [box:]UID:INDEX [--output PATH] [--force]
+├── List or save files? → mailbox attachment list [box:]UID --json / mailbox attachment save [box:]UID:INDEX
+├── Mark as seen? → mailbox seen [box:]UID
+├── Mark as unseen? → mailbox unseen [box:]UID
+├── Move to another box? → mailbox move [box:]UID --to inbox|feed|trail|block
+├── Set aside? → mailbox aside [box:]UID [--remind 2h]
+├── Done with Aside? → mailbox aside done Aside:12
+├── Move to Trash? → mailbox trash [box:]UID
+├── Mark as spam? → mailbox spam [box:]UID
+├── Who is waiting to be screened? → mailbox screener list --json
+└── Screen a sender in or out? → mailbox screener approve|deny [box:]UID
 ```
 
-```
-Kalender / Aufgaben?
-├── Events this week → mailbox events --json
-├── One event → mailbox events show ID --json
-├── Create → mailbox events create --title "Dentist" --start 2026-08-22T09:00 --end 2026-08-22T10:00
-├── Tasks → mailbox tasks --json
-├── Add → mailbox tasks create --title "Call landlord" --due 2026-08-21
-└── Complete → mailbox tasks complete ID
-```
+### Sending Email
 
 ```
-Kontakte?
-├── List → mailbox contacts list --json
-├── Find one → mailbox contacts search QUERY --json
-├── Force fresh read → mailbox contacts refresh --json
-├── One contact and note → mailbox contacts show ID --json
-├── Add → mailbox contacts add --name "Jane Doe" --email jane@example.com
-└── Edit → mailbox contacts update ID --name "Jane Dawson"
+Want to send email?
+├── Reply? → mailbox reply [box:]UID -m "message"
+│   ├── Open editor? → mailbox reply [box:]UID (omit -m to open $EDITOR)
+│   └── Attach files? → add --attach ./report.pdf (repeatable)
+├── Forward? → mailbox forward [box:]UID --to <email>
+│   └── Add a note? → add -m "note"
+├── Compose new? → mailbox compose --to <email> --subject "Subject"
+│   ├── With body? → add -m "Body"
+│   ├── With files? → add --attach ./report.pdf (repeatable; >10 MiB uploads to transfer.adminforge.de, link goes in body)
+│   ├── HTML? → --message-html instead of -m/--message
+│   ├── With CC? → add --cc <email>
+│   └── With BCC? → add --bcc <email>
+├── Draft instead of sending? → add --draft to compose or reply
+│   ├── Read it back? → mailbox draft show 12 --json
+│   ├── Change it? → mailbox draft edit 12 --subject/--to/--cc/--bcc/-m (flags replace; omitted fields are kept)
+│   ├── Deliver it? → mailbox draft send 12
+│   └── Discard it? → mailbox draft delete 12
+└── Check drafts? → mailbox draft list --json
 ```
 
-`mailbox commands --json` lists the rest. `mailbox help output` is formats. `mailbox doctor --json` checks credentials, IMAP, CalDAV/CardDAV, and the installed skill.
+### Calendar, Todos, Habits
 
-## Auth
+```
+Want to manage time?
+├── Which calendars? → mailbox calendar list --json
+├── Events this week? → mailbox event list --json
+├── One calendar? → mailbox event list --calendar Maybe --json
+├── One event? → mailbox event show ID --json
+├── Add? → mailbox event add "Dentist" --starts-on 2026-08-22 --start-time 09:00 --end-time 10:00
+├── Edit / delete? → mailbox event edit ID --notes "..." / mailbox event delete ID
+├── Todos? → mailbox todo list --json
+├── Add a todo? → mailbox todo add --title "Call landlord" [--date 2026-08-21]
+├── Complete / undo / delete? → mailbox todo complete|uncomplete|delete ID
+├── Habits? → mailbox habit list --json
+├── Add a habit? → mailbox habit create "Gym" --days mon,wed,fri
+└── Tick today? → mailbox habit complete ID
+```
 
-Reads the Windows Thunderbird profile (newest `prefs.js`, or `MAILBOX_TB_PROFILE`). Env overrides: `MAILBOX_EMAIL`, `MAILBOX_PASSWORD`, `MAILBOX_DAV_PASSWORD`, `MAILBOX_IMAP_HOST`, `MAILBOX_IMAP_PORT`, `MAILBOX_SMTP_HOST`, `MAILBOX_SMTP_PORT`, `MAILBOX_CALDAV_KALENDER`, `MAILBOX_CALDAV_AUFGABEN`, `MAILBOX_CARDDAV_KONTAKTE`, `MAILBOX_TB_HOME`. IMAP/SMTP use the imap.mailbox.org password; CalDAV/CardDAV use dav.mailbox.org (`MAILBOX_DAV_PASSWORD`, else that Thunderbird login, else `MAILBOX_PASSWORD`).
+### Contacts
 
-## Boxes
+```
+Want to manage contacts?
+├── List? → mailbox contact list --json
+├── Find one? → mailbox contact search QUERY --json
+├── Force fresh read? → mailbox contact refresh --json
+├── One contact and note? → mailbox contact show ID --json
+├── Add? → mailbox contact add --name "Jane Doe" --email jane@example.com
+└── Edit? → mailbox contact update ID --name "Jane Dawson"
+```
 
-| Name | IMAP | Role |
-|---|---|---|
-| Inbox | `INBOX` | accepted senders |
-| Feed | `INBOX/Feed` | skim |
-| Paper Trail | `INBOX/Paper Trail` | receipts (space in name) |
-| Screener | `INBOX/Screener` | sender unknown; decision owed |
-| Block | `INBOX/Screener/Block` | blacklist this sender |
-| Archive | `Archive/…` | topic filing; searchable |
-| Drafts | `Drafts` | unsent |
-| Sent | `Sent` | dest of compose / `draft send` |
-| Trash | `Trash` | dest of `trash` |
-| Junk | `Junk` | dest of `spam`; this copy |
+## Resource Reference
 
-`mailbox box list` is Inbox/Feed/Paper Trail/Screener/Block/Drafts/Sent. `mailbox box list --archive` is the Archive tree. `mailbox box view` takes a name or id; names match aliases (`feed`) and box names (`Inbox/Feed`, `Feed`). Search `--in` is the same. Unknown names are refused.
-
-`--box` / `--to` accept `inbox`, `feed`, `trail`, `block`, plus `The Feed` and `paper trail`. Approve dests are inbox, feed, trail (default inbox). Deny is Block. Move dests are those four. `mailbox trash` and `mailbox spam` are Trash and Junk; they are not box view or `--to`.
+### Email - Boxes
 
 ```bash
 mailbox box list --json
 mailbox box list --archive --json
 mailbox box view feed --json
 mailbox box view Inbox/Feed
-mailbox screener list --json
-mailbox screener list --count
-mailbox screener approve INBOX/Screener:342
-mailbox screener approve INBOX/Screener:342 --box "The Feed"
-mailbox screener deny INBOX/Screener:342 INBOX/Screener:343
-mailbox screener deny INBOX/Screener:342 --spam
-mailbox move 12345 --to feed
-mailbox move 12345 67890 --to trail
-mailbox seen 12345
-mailbox unseen 12345 67890
-mailbox trash 12345
-mailbox spam 12345
-mailbox attachment list 456 --json
-mailbox attachment save 456:1
-mailbox attachment save 456:1 --output ./reports --force
+mailbox box view feed --page <next_page> --json
+```
+
+| Name | IMAP | Role |
+|---|---|---|
+| Inbox | `INBOX` | accepted senders |
+| Feed | `INBOX/Feed` | skim |
+| Paper Trail | `INBOX/Paper Trail` | receipts (space in the name) |
+| Screener | `INBOX/Screener` | sender unknown; decision owed |
+| Block | `INBOX/Screener/Block` | blacklist this sender |
+| Aside | `INBOX/Aside` | read-later pile |
+| Archive | `Archive/…` | topic filing; searchable |
+| Drafts | `Drafts` | unsent |
+| Sent | `Sent` | dest of compose / `draft send` |
+| Trash | `Trash` | dest of `trash` |
+| Junk | `Junk` | dest of `spam`; this copy |
+
+`mailbox box list` is Inbox/Feed/Paper Trail/Screener/Block/Aside/Drafts/Sent. `--archive` is the Archive tree. `box view` takes a name or id; names match aliases (`feed`) and box names (`Inbox/Feed`, `Feed`). Unknown names are refused.
+
+`--box` / `--to` accept `inbox`, `feed`, `trail`, `block`, plus `The Feed` and `paper trail`. Approve dests are inbox, feed, trail (default inbox). Deny is Block. Move dests are those four. Trash and Junk are not box view or `--to`.
+
+**Response format:** each row has `id` (`[box:]uid`), `from` (display name), `summary` (body preview, else subject), `date`. `--json` also has `subject` and `flags`. `--detail` shows flags in the table. Use `id` for thread, reply, forward, move, seen, unseen, trash, spam, aside, and attachment list.
+
+`next_page` is the cursor `--page` takes. `--all` reads to the end instead.
+
+### Email - Search
+
+```bash
+mailbox search "quarterly planning" --json
+mailbox search --from jane@example.com --date last_30_days --json
+mailbox search --subject invoice --attachment pdfs --all --json
+mailbox search filters --json
+```
+
+IMAP over routing boxes plus Archive. `--from`/`--to`/`--subject` are IMAP FROM/TO/SUBJECT. `--required`/`--any`/`--none`/`--exact` are TEXT words. `--in`, `--date`, and `--attachment` accept only the values `mailbox search filters` lists. An unrecognized value is refused before anything is sent.
+
+Default search covers Inbox/Feed/Paper Trail/Screener plus Archive.
+
+**Response format:** same row shape as box view. `--page` selects one result page; `--all` reads everything.
+
+### Email - Threads
+
+```bash
+mailbox thread 36722 --json
+mailbox thread feed:12 --json
+mailbox thread 36722 --html
+mailbox thread 36722 --markdown
+mailbox thread 36722 --allow-partial
+```
+
+`mailbox thread` walks the IMAP thread, oldest first. Each message `body` is **Markdown** (plain text kept as-is; HTML converted at the edge). `--html` returns the original HTML instead. `body_state` is `hydrated`, `bodyless`, `over_limit`, or `failed`.
+
+An incomplete thread without `--allow-partial` is a failed read (exit 7 / `api`), not a partial result.
+
+There is one ID, not two: the same `[box:]uid` works for thread, reply, forward, move, seen, and attachment list.
+
+### Email - Attachments
+
+```bash
+mailbox attachment list 36722 --json
+mailbox attachment save 36722:1
+mailbox attachment save 36722
+mailbox attachment save 36722:1 --output ./reports
+mailbox attachment save 36722:1 --output ./report.pdf --force
+```
+
+`attachment list` walks the thread the same way `thread` does (incomplete without `--allow-partial` fails). An attachment ID is `[box:]uid:index`. Saving uses the original filename unless `--output` names a destination. Existing files need `--force`. A bare message ID saves that message's only file; several files still need `:index`.
+
+### Email - Reply, Forward & Compose
+
+```bash
+mailbox reply 36722 -m "Friday works for me — I'll send an agenda."
+mailbox reply 36722
+mailbox reply 36722 -m "Here is the wiring diagram." --attach ./diagram.png
+mailbox forward 36722 --to alice@example.com
+mailbox forward 36722 --to alice@example.com -m "Please review before Thursday."
 mailbox compose --to alice@example.com --subject "Lunch plans" -m "Are you free Friday?"
 mailbox compose --to alice@example.com --subject "Q3 revenue report" -m "The numbers are attached." --attach ./report.pdf
 mailbox compose --to alice@example.com --cc bob@example.com --bcc carol@example.org --subject "Kitchen remodel timeline" -m "Cabinets land the week of the 14th."
 mailbox compose --to alice@example.com --subject "Sprint recap" -m "We **shipped** the pagination fix."
 mailbox compose --to alice@example.com --subject "Newsletter draft" --message-html "<h1>March</h1><p>What we shipped.</p>"
-mailbox compose --subject "Board update" -m "Numbers to follow." --draft
-mailbox compose --reply-to 342 -m "Friday works."
-mailbox draft list --json
-mailbox draft list --all
-mailbox draft show Drafts:12 --json
-mailbox draft edit Drafts:12 --to alice@example.com --subject "Board update (v2)"
-mailbox draft send Drafts:12
-mailbox draft delete Drafts:12
 ```
 
-`attachment save` writes the original filename unless `--output` names a file or directory. Existing files need `--force`.
+`-m` / `--message` is Markdown, converted to HTML on the way out. `--message-html` is raw HTML. The two are mutually exclusive. Omit both to read stdin or `$EDITOR`.
 
-`-m` is Markdown, converted to HTML on the way out. `--message-html` is raw HTML; the two are mutually exclusive. Omit both to read stdin or `$EDITOR`. `--draft` saves to Drafts instead of sending. `draft send` SMTP-delivers and copies to Sent. Draft IDs look like `Drafts:12`. `--all` on `draft list` reads the whole box; otherwise `--limit` (default 50) truncates like box view.
+`compose` SMTP-sends and copies to Sent. `--draft` saves to IMAP Drafts instead.
 
-Search is IMAP keyword (TEXT) over routing boxes plus Archive. `--from`/`--to`/`--subject` are IMAP FROM/TO/SUBJECT. Box view/search rows are `id`, `from` (display name), `summary` (body preview, else subject), `date`; `--json` also has `subject` and `flags`. `--detail` shows flags in the table. Thread bodies in `--json` are Markdown; `--html` is the original HTML.
+### Email - The Screener
 
-Events use `YYYY-MM-DD` or `YYYY-MM-DDTHH:MM`, timezone Europe/Berlin, default window now + 7 days. Create is personal only.
+```bash
+mailbox screener list --json
+mailbox screener list --count
+mailbox screener approve screener:342
+mailbox screener approve screener:342 --box "The Feed"
+mailbox screener deny screener:342 screener:343
+mailbox screener deny screener:342 --spam
+```
 
-Contacts live in CardDAV **Kontakte**. IDs are vCard UIDs from `contacts list`. `show` includes the private note (vCard NOTE). Updates keep omitted fields. `--note` on add/update writes that note; `--note=` clears it. Reads are cached on disk forever (`~/.cache/mailbox/contacts.json`); `contacts refresh` re-reads the address book, writes refresh the cache too. Edits made by other clients stay invisible until a refresh.
+Screener is first-time senders. `screener list` returns message IDs with the sender and a summary. `--count` is a bare number.
+
+Approving IMAP-moves that message into Inbox (or `--box` feed/trail). Denying IMAP-moves it into Block. `--spam` is still Block — mailbox.org has no spam trainer. Routing updates happen on the VPS; the next mail from that sender may still land in Screener.
+
+### Email - Aside
+
+```bash
+mailbox aside --json
+mailbox aside 36722
+mailbox aside 36722 --remind 2h
+mailbox aside done Aside:12
+mailbox aside --sweep
+```
+
+Aside is the read-later pile (`INBOX/Aside`). `mailbox aside` with IDs moves those messages there. `--remind 30m|2h|3d` stores an `asidedue-…` keyword; serve moves due mail back to Inbox on a 30-minute sweep. `aside done` returns it early. `aside --sweep` runs one pass now.
+
+### Email - Seen, Move, Trash, Spam
+
+```bash
+mailbox seen 36722
+mailbox seen 36722 feed:12
+mailbox unseen 36722
+mailbox move 36722 --to feed
+mailbox move 36722 36723 --to trail
+mailbox trash 36722
+mailbox spam 36722
+```
+
+All take `[box:]uid`. Move dests are inbox, feed, trail, block. Trash is Trash. Spam is Junk. Neither trash nor spam changes Routing or blacklists the sender.
+
+### Drafts
+
+```bash
+mailbox compose --subject "Board update" -m "Numbers to follow." --draft
+mailbox reply 36722 -m "Drafting this." --draft
+mailbox draft list --json
+mailbox draft show 12 --json
+mailbox draft edit 12 --to alice@example.com --subject "Board update (v2)"
+mailbox draft send 12
+mailbox draft delete 12
+```
+
+`--draft` on compose or reply saves to IMAP Drafts. Draft verbs take a bare uid (`12`); `drafts:12` still works. An edit is a revision: each flag replaces its field; omitted flags stay. `draft send` SMTP-delivers and copies to Sent. `draft delete` trashes it.
+
+`--all` on a list reads everything; otherwise `--limit` (default 50) and `--page` (from `next_page`) page it.
+
+### Calendars
+
+```bash
+mailbox calendar list --json
+```
+
+Discovered Event calendars. `mailbox-habits` is omitted. `--calendar` on event/todo lists takes a discovered name (not mailbox-habits).
+
+### Events
+
+```bash
+mailbox event list --json
+mailbox event list --calendar Maybe --starts-on 2026-01-01 --ends-on 2026-01-31 --json
+mailbox event show ID --json
+mailbox event add "Design review" --starts-on 2026-09-02 --start-time 14:00 --end-time 15:00
+mailbox event add "Sarah's birthday" --starts-on 2026-09-02
+mailbox event add "Standup" --start-time 09:15 --repeat every_weekday --remind 10m
+mailbox event edit ID --title "Design review (moved)"
+mailbox event delete ID
+```
+
+No `--start-time` is all-day; a `--start-time` with no `--end-time` runs an hour. Dates are `YYYY-MM-DD`, times `HH:MM`, timezone Europe/Berlin, default window now + 7 days. `--repeat` is `every_day|every_weekday|every_week|every_other_week|every_day_of_month|every_year`. `--circle` is PRIORITY=1.
+
+### Todos
+
+```bash
+mailbox todo list --json
+mailbox todo add --title "Draft the quarterly report"
+mailbox todo add --title "Book the venue" --date 2026-09-04
+mailbox todo complete ID
+mailbox todo uncomplete ID
+mailbox todo delete ID
+```
+
+Todos live on CalDAV **Aufgaben**. Default undated (the week pile). `--date` is a due day so other clients round-trip; a due Todo also appears on that day.
+
+### Habits
+
+```bash
+mailbox habit list --json
+mailbox habit list --date 2026-09-02 --json
+mailbox habit create "Gym" --days mon,wed,fri
+mailbox habit create "Practice piano" --icon music --color green --days mon,wed,fri
+mailbox habit edit ID --name "Evening walk"
+mailbox habit complete ID
+mailbox habit complete ID --date 2026-03-15
+mailbox habit uncomplete ID
+mailbox habit delete ID
+```
+
+Habits are a JSON bag on calendar mailbox-habits (hidden from `calendar list` and event lists). Completing one day does not end the habit. `--days` is `mon,wed,fri` (or `0`–`6`).
+
+### Contacts
+
+```bash
+mailbox contact list --json
+mailbox contact search jane --json
+mailbox contact refresh --json
+mailbox contact show ID --json
+mailbox contact add --name "Jane Doe" --email jane@example.com
+mailbox contact add --name "Jane Doe" --email jane@example.com --note "Prefers email"
+mailbox contact update ID --name "Jane Dawson"
+mailbox contact update ID --note=
+```
+
+Contacts live in CardDAV **Kontakte**. IDs are vCard UIDs from `contact list`. `show` includes the private note (vCard NOTE). Updates keep omitted fields. `--note` on add/update writes that note; `--note=` clears it.
+
+Reads are cached on disk forever (`~/.cache/mailbox/contacts.json`). `contact refresh` re-reads the address book; writes refresh the cache too. Edits made by other clients stay invisible until a refresh.
+
+### Authentication
+
+```bash
+mailbox doctor --json
+mailbox help environment
+```
+
+Reads the Windows Thunderbird profile (newest `prefs.js`, or `MAILBOX_TB_PROFILE`). Env overrides live in `mailbox help environment`. IMAP/SMTP use the imap.mailbox.org password; CalDAV/CardDAV use dav.mailbox.org (`MAILBOX_DAV_PASSWORD`, else that Thunderbird login, else `MAILBOX_PASSWORD`).
+
+`mailbox doctor --json` checks credentials, IMAP, CalDAV/CardDAV, and whether the installed skill matches this binary. If the skill check fails, run `mailbox skill install`.

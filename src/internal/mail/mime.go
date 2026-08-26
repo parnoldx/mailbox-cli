@@ -87,17 +87,11 @@ func decodeCTE(cte string, body []byte) []byte {
 			}
 			return r
 		}, string(body))
-		out, err := base64.StdEncoding.WithPadding(base64.NoPadding).DecodeString(stripped)
-		if err == nil {
-			return out
+		out, err := base64.RawStdEncoding.DecodeString(strings.TrimRight(stripped, "="))
+		if err != nil {
+			return body
 		}
-		// retry ignoring padding errors on truncated input
-		for pad := 1; pad <= 2; pad++ {
-			if out2, err2 := base64.StdEncoding.DecodeString(stripped + strings.Repeat("=", pad)); err2 == nil {
-				return out2
-			}
-		}
-		return body
+		return out
 	case "quoted-printable":
 		out, err := io.ReadAll(quotedprintable.NewReader(bytes.NewReader(body)))
 		if err != nil && len(out) > 0 {

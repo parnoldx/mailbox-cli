@@ -3,9 +3,12 @@ package format
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -71,9 +74,103 @@ type Output struct {
 	HTML         bool
 	Markdown     bool
 	Quiet        bool
+	Styled       bool
 	JQ           string
 	AllowPartial bool
 	TTY          bool
+}
+
+// NextPage is an optional WriteList extra: the cursor --page takes next.
+type NextPage string
+
+func (o *Output) machine() bool {
+	return o.JSON || o.IDsOnly || o.Count || o.HTML || o.Markdown || o.Quiet || o.JQ != ""
+}
+
+// ApplyDefaultFormat: TTY stays human; a pipe becomes the JSON envelope unless a format flag or --styled said otherwise.
+func ApplyDefaultFormat(o *Output, tty bool) {
+	o.TTY = tty
+	if !o.machine() && !o.Styled && !tty {
+		o.JSON = true
+	}
+}
+
+func PageSlice[T any](items []T, page, limit int, all bool) (out []T, next string, trunc bool) {
+	n := len(items)
+	if all || limit <= 0 {
+		return items, "", false
+	}
+	if page < 1 {
+		page = 1
+	}
+	from := (page - 1) * limit
+	if from > n {
+		from = n
+	}
+	to := from + limit
+	if to > n {
+		to = n
+	}
+	if to < n {
+		return items[from:to], strconv.Itoa(page + 1), true
+	}
+	return items[from:to], "", false
+}
+
+func ExitStatus(code string) int {
+	switch code {
+	case "usage":
+		return 1
+	case "not_found":
+		return 2
+	case "auth":
+		return 3
+	case "forbidden":
+		return 4
+	case "rate_limit":
+		return 5
+	case "network":
+		return 6
+	case "ambiguous":
+		return 8
+	default:
+		return 7
+	}
+}
+
+func Classify(err error) string {
+	var coded interface{ ErrorCode() string }
+	if errors.As(err, &coded) {
+		return coded.ErrorCode()
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "ambiguous"):
+		return "ambiguous"
+	case strings.Contains(msg, "not found"):
+		return "not_found"
+	case strings.Contains(msg, "message id must"), strings.Contains(msg, "attachment id must"):
+		return "usage"
+	case isNetwork(err):
+		return "network"
+	default:
+		return "api"
+	}
+}
+
+func isNetwork(err error) bool {
+	var ne net.Error
+	if errors.As(err, &ne) {
+		return true
+	}
+	var op *net.OpError
+	if errors.As(err, &op) {
+		return true
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "connection refused") || strings.Contains(s, "i/o timeout") ||
+		strings.Contains(s, "no such host") || strings.Contains(s, "tls:") ||
+		strings.Contains(s, "connection reset")
 }
 
 func (o *Output) formatCount() int {
@@ -108,6 +205,8 @@ func TakeOutputFlags(argv []string) ([]string, *Output, error) {
 			out.Markdown = true
 		case arg == "--quiet":
 			out.Quiet = true
+		case arg == "--styled":
+			out.Styled = true
 		case arg == "--allow-partial":
 			out.AllowPartial = true
 		case arg == "--jq":
@@ -189,12 +288,16 @@ func DumpJSON(value any) string {
 }
 
 func WriteError(message string, out *Output) int {
+	return WriteFail(message, "api", out)
+}
+
+func WriteFail(message, code string, out *Output) int {
 	if out.JSON || out.Quiet {
-		fmt.Println(DumpJSON(NewOM("ok", false, "code", "runtime", "error", message)))
+		fmt.Println(DumpJSON(NewOM("ok", false, "code", code, "error", message)))
 	} else {
 		fmt.Fprintln(os.Stderr, message)
 	}
-	return 1
+	return ExitStatus(code)
 }
 
 func writeJQ(payload any, out *Output) (int, error) {
@@ -247,6 +350,7 @@ func WriteList(rows []*OM, columns [][2]string, out *Output, opts ...any) int {
 	var limit *int
 	idKey := "id"
 	maxWidths := map[string]int{}
+	next := ""
 	for _, optv := range opts {
 		switch v := optv.(type) {
 		case bool:
@@ -255,13 +359,18 @@ func WriteList(rows []*OM, columns [][2]string, out *Output, opts ...any) int {
 			limit = v
 		case map[string]int:
 			maxWidths = v
+		case NextPage:
+			next = string(v)
 		}
 	}
 	_ = idKey
 	if out.HTML {
-		return WriteError("--html is for mailbox thread", out)
+		return WriteFail("--html is for mailbox thread", "usage", out)
 	}
 	notice := truncationNotice(truncated, limit)
+	if truncated && next != "" {
+		notice = fmt.Sprintf("truncated; pass --page %s", next)
+	}
 	if out.Count {
 		fmt.Println(len(rows))
 		noticeStderr(notice)
@@ -283,6 +392,9 @@ func WriteList(rows []*OM, columns [][2]string, out *Output, opts ...any) int {
 	if notice != "" {
 		payload.Set("notice", notice)
 	}
+	if next != "" {
+		payload.Set("next_page", next)
+	}
 	if out.JQ != "" {
 		target := any(payload)
 		if out.Quiet {
@@ -290,7 +402,7 @@ func WriteList(rows []*OM, columns [][2]string, out *Output, opts ...any) int {
 		}
 		rc, err := writeJQ(target, out)
 		if err != nil {
-			return WriteError(err.Error(), out)
+			return WriteFail(err.Error(), "usage", out)
 		}
 		if out.Quiet {
 			noticeStderr(notice)
@@ -313,7 +425,7 @@ func WriteList(rows []*OM, columns [][2]string, out *Output, opts ...any) int {
 
 func WriteOK(data any, out *Output, notice string) int {
 	if out.HTML {
-		return WriteError("--html is for mailbox thread", out)
+		return WriteFail("--html is for mailbox thread", "usage", out)
 	}
 	if out.Count {
 		switch data.(type) {
@@ -353,7 +465,7 @@ func WriteOK(data any, out *Output, notice string) int {
 		}
 		rc, err := writeJQ(target, out)
 		if err != nil {
-			return WriteError(err.Error(), out)
+			return WriteFail(err.Error(), "usage", out)
 		}
 		return rc
 	}
@@ -387,7 +499,7 @@ func WriteThread(messages []*OM, out *Output, truncated bool, notice string) int
 		if msg == "" {
 			msg = "thread is incomplete; pass --allow-partial"
 		}
-		return WriteError(msg, out)
+		return WriteFail(msg, "api", out)
 	}
 	emitNotice := func() {
 		if truncated && notice != "" {
@@ -395,9 +507,6 @@ func WriteThread(messages []*OM, out *Output, truncated bool, notice string) int
 		}
 	}
 	if out.HTML {
-		if out.TTY {
-			return WriteError("refuse --html on a terminal; redirect to a file", out)
-		}
 		n := ""
 		if truncated {
 			n = notice
@@ -434,7 +543,7 @@ func WriteThread(messages []*OM, out *Output, truncated bool, notice string) int
 		}
 		rc, err := writeJQ(target, out)
 		if err != nil {
-			return WriteError(err.Error(), out)
+			return WriteFail(err.Error(), "usage", out)
 		}
 		if out.Quiet && truncated && notice != "" {
 			fmt.Fprintln(os.Stderr, notice)

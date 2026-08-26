@@ -72,19 +72,43 @@ func TestUnscopedKeepsListedOrder(t *testing.T) {
 
 func TestListFolderName(t *testing.T) {
 	cases := map[string]string{
-		`(\HasChildren \UnMarked) "/" INBOX`:                                    "INBOX",
-		`(\HasChildren \UnMarked) "/" INBOX/Screener`:                           "INBOX/Screener",
-		`(\HasNoChildren \UnMarked) "/" "INBOX/Paper Trail"`:                    "INBOX/Paper Trail",
-		`(\HasNoChildren \UnMarked \Trash) "/" Trash`:                           "Trash",
-		`LIST (\HasNoChildren \UnMarked) "/" INBOX/Feed`:                        "INBOX/Feed",
-		`LIST (\HasNoChildren \UnMarked) "/" "INBOX/Paper Trail"`:               "INBOX/Paper Trail",
-		`LIST (\HasNoChildren \UnMarked) "/" "Archive/Travel/Japan 26"`:          "Archive/Travel/Japan 26",
-		`LIST (\HasChildren \Archive) "/" Archive`:                              "Archive",
+		`(\HasChildren \UnMarked) "/" INBOX`:                            "INBOX",
+		`(\HasChildren \UnMarked) "/" INBOX/Screener`:                   "INBOX/Screener",
+		`(\HasNoChildren \UnMarked) "/" "INBOX/Paper Trail"`:            "INBOX/Paper Trail",
+		`(\HasNoChildren \UnMarked \Trash) "/" Trash`:                   "Trash",
+		`LIST (\HasNoChildren \UnMarked) "/" INBOX/Feed`:                "INBOX/Feed",
+		`LIST (\HasNoChildren \UnMarked) "/" "INBOX/Paper Trail"`:       "INBOX/Paper Trail",
+		`LIST (\HasNoChildren \UnMarked) "/" "Archive/Travel/Japan 26"`: "Archive/Travel/Japan 26",
+		`LIST (\HasChildren \Archive) "/" Archive`:                      "Archive",
 	}
 	for line, want := range cases {
 		if got := ListFolderName(line); got != want {
 			t.Errorf("ListFolderName(%q) = %q, want %q", line, got, want)
 		}
+	}
+}
+
+func TestSearchCriteria(t *testing.T) {
+	got, err := searchCriteria(SearchQuery{From: "a@b.c", Date: "last_7_days", Required: "foo bar"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPrefix := []string{"FROM", `"a@b.c"`, "TEXT", `"foo"`, "TEXT", `"bar"`, "SINCE"}
+	if len(got) < len(wantPrefix) {
+		t.Fatalf("got %v", got)
+	}
+	for i, w := range wantPrefix {
+		if got[i] != w {
+			t.Fatalf("got %v want prefix %v", got, wantPrefix)
+		}
+	}
+	_, err = searchCriteria(SearchQuery{Date: "nope"})
+	if err == nil {
+		t.Fatal("expected bad date")
+	}
+	_, err = searchCriteria(SearchQuery{Attachment: "pdf"})
+	if err == nil {
+		t.Fatal("expected bad attachment")
 	}
 }
 

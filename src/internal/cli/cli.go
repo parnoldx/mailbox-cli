@@ -2,7 +2,6 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -23,109 +22,37 @@ import (
 	"mailbox/src/internal/skill"
 )
 
-const usage = `mailbox — mailbox.org mail, Kontakte, Kalender, Aufgaben
-
-Mail
-  mailbox box list [--archive]
-  mailbox box view NAME [--unread] [--limit N] [--detail]
-  mailbox search [QUERY] [--from ADDR] [--to ADDR] [--subject TEXT] [--in BOX] [--limit N] [--detail]
-  mailbox thread ID [--allow-partial]
-  mailbox screener list [--unread] [--limit N] [--detail]
-  mailbox screener approve ID... [--box inbox|feed|trail]
-  mailbox screener deny ID... [--spam]
-  mailbox move ID... --to inbox|feed|trail|block
-  mailbox aside [ID...] [--remind DURATION] [--limit N] [--detail]
-  mailbox aside done ID...
-  mailbox aside --sweep
-  mailbox seen ID...
-  mailbox unseen ID...
-  mailbox trash ID...
-  mailbox spam ID...
-  mailbox compose --to ADDR --subject TEXT [-m TEXT | --message-html HTML] [--draft]
-  mailbox draft list [--all] [--limit N]
-  mailbox draft show ID
-  mailbox draft edit ID [--to ADDR] [--subject TEXT] [-m TEXT]
-  mailbox draft send ID
-  mailbox draft delete ID
-  mailbox attachment list ID
-  mailbox attachment save ID [--output PATH] [--force]
-
-Sieve  (ManageSieve scripts)
-  mailbox sieve list
-  mailbox sieve get [NAME] [--output PATH]
-  mailbox sieve put NAME FILE|-
-  mailbox sieve activate NAME
-
-Events  (Kalender)
-  mailbox events [--start WHEN] [--end WHEN]
-  mailbox events show ID
-  mailbox events create --title TEXT --start WHEN [--end WHEN] [--all-day]
-
-Tasks  (Aufgaben)
-  mailbox tasks
-  mailbox tasks create --title TEXT [--due WHEN]
-  mailbox tasks complete ID
-
-Contacts  (Kontakte)
-  mailbox contacts list
-  mailbox contacts search QUERY
-  mailbox contacts refresh
-  mailbox contacts show ID
-  mailbox contacts add --name TEXT --email ADDR [--note TEXT]
-  mailbox contacts update ID [--name TEXT] [--email ADDR] [--note TEXT]
-
-Meta
-  mailbox doctor
-  mailbox commands
-  mailbox skill install
-  mailbox serve [--web] [--web-port N] [--interval S] [--print]
-  mailbox help [output|exit-codes|environment]
-Boxes: inbox, feed, trail, screener, aside, archive, drafts, sent, or Archive/…
-mailbox box list is routing boxes; --archive is the Archive tree. box view matches name or id (feed, Inbox/Feed).
-Mail IDs look like INBOX/Screener:342. Event/task/contact IDs come from the list.
-WHEN is YYYY-MM-DD or YYYY-MM-DDTHH:MM (Europe/Berlin). DURATION is e.g. 30m, 2h, 3d.
-serve sweeps due Aside messages back to the Inbox every 30 minutes; 'aside --sweep' runs one pass.
---json envelope {ok, data}. --jq EXPR filters it (needs jq). --quiet --jq filters data.
---ids-only / --count skip the envelope. --markdown is a table or a thread document.
---html thread HTML (redirect to a file). --allow-partial for an incomplete thread.
-
-Search is IMAP keyword (not semantic). --from/--to/--subject are IMAP FROM/TO/SUBJECT.
-Default search covers Inbox/Feed/Paper Trail/Screener plus Archive.
-Approve, deny, and move only IMAP-move; Sieve updates happen on the VPS.
-compose sends via SMTP unless --draft. -m is Markdown; --message-html is raw HTML.
-sieve talks ManageSieve (MAILBOX_SIEVE_HOST/_PORT, default IMAP host:4190);
-sieve get prints the raw script; sieve put uploads; sieve activate sets the active script; sieve list marks which is active.
-serve runs the mail routing service: watches Inbox/Feed/Paper Trail/Screener/Block
-and updates the "logic" Sieve script (sieve host: MAILBOX_SIEVE_HOST/_PORT, default IMAP host:4190).
---web serves the list-management UI on :8080. Needs the same env as the mail verbs.
-`
-
 var helpTopics = map[string]string{
 	"output": `Output
 
-  --json          envelope {ok, data}; truncated/notice when a list or thread was cut
+  default         table on a TTY; JSON envelope when piped
+  --styled        force the table
+  --json          envelope {ok, data}; truncated/notice/next_page when a list was cut
   --jq EXPR       filter that envelope (implies --json; needs the jq binary)
                   --quiet --jq filters data directly
   --quiet         JSON of data, no envelope
   --ids-only      one ID per line; truncation notice on stderr
   --count         a bare number; truncation notice on stderr
   --markdown      list as a table; thread as one document
-  --html          original HTML for mailbox thread; redirect to a file
+  --html          original HTML for mailbox thread
   --allow-partial incomplete thread is still a result
 
 Use only one of --json, --ids-only, --count, --html, --markdown.
 String --jq results print as plain text; objects and arrays print as JSON.
-Errors keep the structured envelope with a code field (usage, auth, runtime); --jq is not applied to them.
+Errors keep the structured envelope with a code field; --jq is not applied to them.
 `,
 	"exit-codes": `Exit codes
 
   0  success
-  1  runtime error (IMAP, CalDAV, incomplete thread without --allow-partial)
-  2  usage error (unknown flag or box, missing argument, invalid --jq)
+  1  usage error (unknown flag or box, missing argument, invalid --jq)
+  2  not found
   3  credentials missing or unreadable
+  6  network failure
+  7  operational failure (IMAP, CalDAV, incomplete thread without --allow-partial)
+  8  ambiguous id
 
-JSON errors carry a stable code field: usage (2), auth (3), runtime (1).
-Any command accepts -h/--help for its own usage line; mailbox commands lists all.
+JSON errors carry a stable code field: usage, not_found, auth, network, api, ambiguous.
+Any command accepts -h/--help; mailbox commands lists all.
 `,
 	"environment": `Environment
 
@@ -157,8 +84,10 @@ var (
 	attachColumns = []col{{"id", "ID"}, {"name", "Name"}, {"type", "Type"}, {"size", "Size"}}
 	draftColumns  = []col{{"id", "ID"}, {"to", "To"}, {"summary", "Summary"}, {"date", "Date"}}
 	draftColumnsD = []col{{"id", "ID"}, {"to", "To"}, {"summary", "Summary"}, {"date", "Date"}, {"flags", "Flags"}}
-	eventColumns  = []col{{"id", "ID"}, {"start", "Start"}, {"end", "End"}, {"summary", "Summary"}}
+	eventColumns  = []col{{"id", "ID"}, {"calendar", "Calendar"}, {"start", "Start"}, {"end", "End"}, {"summary", "Summary"}}
 	taskColumns   = []col{{"id", "ID"}, {"due", "Due"}, {"status", "Status"}, {"summary", "Summary"}}
+	habitColumns  = []col{{"id", "ID"}, {"name", "Name"}, {"days", "Days"}, {"done", "Done"}, {"color", "Color"}, {"icon", "Icon"}}
+	calColumns    = []col{{"name", "Name"}, {"color", "Color"}}
 	contactCols   = []col{{"id", "ID"}, {"name", "Name"}, {"email", "Email"}, {"updated", "Updated"}}
 )
 
@@ -178,11 +107,11 @@ func Main(argv []string) int {
 	argv, out, err := format.TakeOutputFlags(argv)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
-		return 2
+		return format.ExitStatus("usage")
 	}
-	out.TTY = isTTY(os.Stdout)
+	format.ApplyDefaultFormat(out, isTTY(os.Stdout))
 	if len(argv) == 0 || sameStrings(argv, []string{"-h"}) || sameStrings(argv, []string{"--help"}) || sameStrings(argv, []string{"help"}) {
-		fmt.Print(usage)
+		fmt.Print(helpText(nil))
 		return 0
 	}
 	if argv[0] == "help" {
@@ -191,35 +120,25 @@ func Main(argv []string) int {
 
 	rc, err := dispatch(argv, out)
 	if err != nil {
-		code := "runtime"
-		var coded interface{ ErrorCode() string }
-		if errors.As(err, &coded) {
-			code = coded.ErrorCode()
-		}
+		code := format.Classify(err)
 		if out.JSON || out.Quiet {
 			fmt.Println(format.DumpJSON(format.NewOM("ok", false, "code", code, "error", err.Error())))
 		} else {
 			fmt.Fprintln(os.Stderr, err.Error())
 		}
-		switch code {
-		case "usage":
-			return 2
-		case "auth":
-			return 3
-		}
-		return 1
+		return format.ExitStatus(code)
 	}
 	return rc
 }
 
 func dispatch(argv []string, out *format.Output) (int, error) {
 	if i := helpFlagIndex(argv); i >= 0 {
-		lines := usageFor(argv[:i])
-		if len(lines) == 0 {
+		text := helpText(argv[:i])
+		if text == "" {
 			fmt.Fprintf(os.Stderr, "no command matches %q\n", strings.Join(argv[:i], " "))
-			return 2, nil
+			return 1, nil
 		}
-		fmt.Println(strings.Join(lines, "\n"))
+		fmt.Print(text)
 		return 0, nil
 	}
 
@@ -289,6 +208,18 @@ func dispatch(argv []string, out *format.Output) (int, error) {
 			return 0, err
 		}
 		return cmdCompose(flags, out)
+	case "reply":
+		flags, err := parseFlags(flagSpec("reply", ""), rest)
+		if err != nil {
+			return 0, err
+		}
+		return cmdReply(flags, out)
+	case "forward":
+		flags, err := parseFlags(flagSpec("forward", ""), rest)
+		if err != nil {
+			return 0, err
+		}
+		return cmdForward(flags, out)
 	case "draft":
 		sub, flags, err := subcommand(rest, "draft")
 		if err != nil {
@@ -307,12 +238,16 @@ func dispatch(argv []string, out *format.Output) (int, error) {
 			return 0, err
 		}
 		return cmdSieve(sub, flags, out)
-	case "events":
-		return cmdEvents(rest, out)
-	case "tasks":
-		return cmdTasks(rest, out)
-	case "contacts":
-		sub, flags, err := subcommand(rest, "contacts")
+	case "event":
+		return cmdEvent(rest, out)
+	case "calendar":
+		return cmdCalendar(rest, out)
+	case "todo":
+		return cmdTodo(rest, out)
+	case "habit":
+		return cmdHabit(rest, out)
+	case "contact":
+		sub, flags, err := subcommand(rest, "contact")
 		if err != nil {
 			return 0, err
 		}
@@ -334,8 +269,8 @@ func dispatch(argv []string, out *format.Output) (int, error) {
 		}
 		return cmdServe(flags, out)
 	default:
-		fmt.Print(usage)
-		return 2, nil
+		fmt.Print(helpText(nil))
+		return 1, nil
 	}
 }
 
@@ -363,7 +298,7 @@ func sameStrings(a, b []string) bool {
 
 func helpTopic(args []string) int {
 	if len(args) == 0 {
-		fmt.Print(usage)
+		fmt.Print(helpText(nil))
 		return 0
 	}
 	text, ok := helpTopics[args[0]]
@@ -373,7 +308,7 @@ func helpTopic(args []string) int {
 			names = append(names, k)
 		}
 		fmt.Fprintf(os.Stderr, "unknown help topic %q; use %s\n", args[0], strings.Join(names, ", "))
-		return 2
+		return 1
 	}
 	fmt.Print(text)
 	return 0
@@ -396,6 +331,37 @@ func limitOf(flags *parsed, def int) (int, error) {
 
 func limitPtr(n int) *int { return &n }
 
+func pageOf(flags *parsed) (limit, page int, all bool, err error) {
+	all = flags.has("all")
+	page = 1
+	if flags.has("page") || flags.one("page") != "" {
+		page, err = strconv.Atoi(flags.one("page"))
+		if err != nil || page < 1 {
+			return 0, 0, false, usageErr("--page must be a positive integer")
+		}
+	}
+	limit, err = limitOf(flags, 50)
+	return
+}
+
+func messageOf(flags *parsed) string {
+	if flags.has("message") {
+		return flags.one("message")
+	}
+	return flags.one("m")
+}
+
+func listOpts(flags *parsed) (lim *int, page int, all bool, err error) {
+	limit, page, all, err := pageOf(flags)
+	if err != nil {
+		return nil, 0, false, err
+	}
+	if all {
+		return nil, 1, true, nil
+	}
+	return limitPtr(limit), page, false, nil
+}
+
 // --- flag parsing (strict: unknown flags are usage errors) ---
 
 type flagspec struct{ bools, vals set }
@@ -405,21 +371,24 @@ var noFlags = flagspec{newSet(), newSet()}
 // Output flags (--json, --jq, ...) are stripped earlier by format.TakeOutputFlags;
 // these tables cover the remaining domain flags per command (or per group union).
 var cmdFlagSpecs = map[string]flagspec{
-	"box":              {newSet("archive", "unread", "detail"), newSet("limit")},
-	"aside":            {newSet("sweep", "detail"), newSet("remind", "limit")},
-	"screener list":    {newSet("unread", "detail"), newSet("limit")},
+	"box":              {newSet("archive", "unread", "detail", "all"), newSet("limit", "page")},
+	"aside":            {newSet("sweep", "detail", "all"), newSet("remind", "limit", "page")},
+	"screener list":    {newSet("unread", "detail", "all"), newSet("limit", "page")},
 	"screener approve": {nil, newSet("box")},
 	"screener deny":    {newSet("spam"), nil},
-	"search":           {newSet("detail"), newSet("from", "to", "subject", "in", "limit")},
+	"search":           {newSet("detail", "all"), newSet("from", "to", "subject", "in", "limit", "page", "required", "any", "none", "exact", "date", "attachment")},
 	"move":             {nil, newSet("to")},
-	"compose":          {newSet("draft"), newSet("to", "cc", "bcc", "subject", "m", "message-html", "attach", "reply-to")},
-	"draft list":       {newSet("all", "unread", "detail"), newSet("limit")},
-	"draft edit":       {nil, newSet("to", "cc", "bcc", "subject", "m", "message-html")},
+	"compose":          {newSet("draft"), newSet("to", "cc", "bcc", "subject", "m", "message", "message-html", "attach")},
+	"reply":            {newSet("draft"), newSet("to", "cc", "bcc", "m", "message", "message-html", "attach")},
+	"forward":          {nil, newSet("to", "cc", "bcc", "m", "message", "message-html", "attach")},
+	"draft list":       {newSet("all", "unread", "detail"), newSet("limit", "page")},
+	"draft edit":       {nil, newSet("to", "cc", "bcc", "subject", "m", "message", "message-html")},
 	"attachment save":  {newSet("force"), newSet("output")},
 	"sieve get":        {nil, newSet("output")},
-	"events":           {newSet("all-day"), newSet("start", "end", "title")},
-	"tasks":            {nil, newSet("title", "due")},
-	"contacts":         {nil, newSet("name", "email", "note")},
+	"event":            {newSet("all-day", "circle", "all"), newSet("starts-on", "start-time", "ends-on", "end-time", "title", "calendar", "location", "notes", "link", "repeat", "repeat-until", "repeat-times", "remind", "limit", "page")},
+	"todo":             {newSet("all"), newSet("title", "date", "calendar", "starts-on", "ends-on", "limit", "page")},
+	"habit":            {nil, newSet("days", "name", "date", "color", "icon")},
+	"contact":          {nil, newSet("name", "email", "note")},
 	"serve":            {newSet("web", "print"), newSet("web-port", "interval")},
 }
 
@@ -517,7 +486,7 @@ func subcommand(tokens []string, group string) (string, *parsed, error) {
 		"draft":      {"list", "show", "edit", "send", "delete"},
 		"attachment": {"list", "save"},
 		"sieve":      {"list", "get", "put", "activate"},
-		"contacts":   {"list", "show", "add", "update", "search"},
+		"contact":    {"list", "show", "add", "update", "search"},
 		"skill":      {"install"},
 	}[group]
 	sub, rest := "", tokens
@@ -552,6 +521,7 @@ type cmdspec struct {
 	path  []string
 	usage string
 	flags []string
+	short string
 }
 
 func prefixOf(prefix, full []string) bool {
@@ -566,27 +536,15 @@ func prefixOf(prefix, full []string) bool {
 	return true
 }
 
-// usageFor lists catalog entries the given argv is a prefix of, so
-// `mailbox box --help` shows every box subcommand.
-func usageFor(argv []string) []string {
-	var lines []string
-	for _, s := range cmdSpecs {
-		if prefixOf(argv, s.path) {
-			lines = append(lines, s.usage)
-		}
-	}
-	return lines
-}
-
 func printUsage(path ...string) int {
 	for _, s := range cmdSpecs {
 		if sameStrings(s.path, path) {
 			fmt.Printf("usage: %s\n", s.usage)
-			return 2
+			return 1
 		}
 	}
-	fmt.Print(usage)
-	return 2
+	fmt.Print(helpText(nil))
+	return 1
 }
 
 // --- mail commands ---
@@ -654,11 +612,11 @@ func cmdBox(cmd string, flags *parsed, out *format.Output) (int, error) {
 		if err != nil {
 			return 0, err
 		}
-		limit, err := limitOf(flags, 50)
+		lim, page, _, err := listOpts(flags)
 		if err != nil {
 			return 0, err
 		}
-		listing, err := m.ListMessages(folder, flags.has("unread"), limitPtr(limit))
+		listing, err := m.ListMessages(folder, flags.has("unread"), lim, page)
 		if err != nil {
 			return 0, err
 		}
@@ -666,29 +624,45 @@ func cmdBox(cmd string, flags *parsed, out *format.Output) (int, error) {
 		for _, e := range listing.Items {
 			rows = append(rows, envRow(e))
 		}
-		return format.WriteList(rows, mailColumnsFor(flags.has("detail")), out, listing.Truncated, limitPtr(limit), mailWidths), nil
+		return format.WriteList(rows, mailColumnsFor(flags.has("detail")), out, listing.Truncated, lim, mailWidths, format.NextPage(listing.NextPage)), nil
 	})
 }
 
 func cmdSearch(flags *parsed, out *format.Output) (int, error) {
+	if len(flags.positional) == 1 && flags.positional[0] == "filters" &&
+		flags.one("from") == "" && flags.one("to") == "" && flags.one("subject") == "" &&
+		flags.one("required") == "" && flags.one("any") == "" && flags.one("none") == "" &&
+		flags.one("exact") == "" && flags.one("date") == "" && flags.one("attachment") == "" && flags.one("in") == "" {
+		vals := mail.SearchFilterValues()
+		row := format.NewOM("in", strings.Join(vals["in"], ", "), "date", strings.Join(vals["date"], ", ")+", or a year", "attachment", strings.Join(vals["attachment"], ", "))
+		return format.WriteOK(row, out, ""), nil
+	}
 	query := mail.SearchQuery{
-		Text:    "",
-		From:    flags.one("from"),
-		To:      flags.one("to"),
-		Subject: flags.one("subject"),
+		From:       flags.one("from"),
+		To:         flags.one("to"),
+		Subject:    flags.one("subject"),
+		Required:   flags.one("required"),
+		Any:        flags.one("any"),
+		None:       flags.one("none"),
+		Exact:      flags.one("exact"),
+		Date:       flags.one("date"),
+		Attachment: flags.one("attachment"),
 	}
 	if len(flags.positional) > 0 {
 		query.Text = strings.Join(flags.positional, " ")
 	}
 	if query.Empty() {
-		return 0, usageErr("search needs QUERY or --from/--to/--subject")
+		return 0, usageErr("search needs QUERY or a refinement")
 	}
-	limit, err := limitOf(flags, 50)
+	limit, page, all, err := pageOf(flags)
 	if err != nil {
 		return 0, err
 	}
+	if all {
+		limit = -1
+	}
 	return withMail(func(m *mail.Mail) (int, error) {
-		listing, err := m.Search(query, limit, flags.one("in"))
+		listing, err := m.Search(query, limit, page, flags.one("in"))
 		if err != nil {
 			return 0, err
 		}
@@ -696,7 +670,11 @@ func cmdSearch(flags *parsed, out *format.Output) (int, error) {
 		for _, e := range listing.Items {
 			rows = append(rows, envRow(e))
 		}
-		return format.WriteList(rows, mailColumnsFor(flags.has("detail")), out, listing.Truncated, limitPtr(limit), mailWidths), nil
+		var lim *int
+		if !all {
+			lim = limitPtr(limit)
+		}
+		return format.WriteList(rows, mailColumnsFor(flags.has("detail")), out, listing.Truncated, lim, mailWidths, format.NextPage(listing.NextPage)), nil
 	})
 }
 
@@ -746,16 +724,22 @@ func cmdThread(id string, out *format.Output) (int, error) {
 
 func cmdScreener(cmd string, flags *parsed, out *format.Output) (int, error) {
 	if cmd == "list" || cmd == "" {
-		limit, err := limitOf(flags, 50)
+		if out.Count {
+			return withMail(func(m *mail.Mail) (int, error) {
+				n, err := m.CountMessages("screener", flags.has("unread"))
+				if err != nil {
+					return 0, err
+				}
+				fmt.Println(n)
+				return 0, nil
+			})
+		}
+		lim, page, _, err := listOpts(flags)
 		if err != nil {
 			return 0, err
 		}
-		if flags.has("count") {
-			n, err := withMailCount("screener", flags.has("unread"))
-			return n, err
-		}
 		return withMail(func(m *mail.Mail) (int, error) {
-			listing, err := m.ListMessages("screener", flags.has("unread"), limitPtr(limit))
+			listing, err := m.ListMessages("screener", flags.has("unread"), lim, page)
 			if err != nil {
 				return 0, err
 			}
@@ -763,7 +747,7 @@ func cmdScreener(cmd string, flags *parsed, out *format.Output) (int, error) {
 			for _, e := range listing.Items {
 				rows = append(rows, envRow(e))
 			}
-			return format.WriteList(rows, mailColumnsFor(flags.has("detail")), out, listing.Truncated, limitPtr(limit), mailWidths), nil
+			return format.WriteList(rows, mailColumnsFor(flags.has("detail")), out, listing.Truncated, lim, mailWidths, format.NextPage(listing.NextPage)), nil
 		})
 	}
 	if cmd == "approve" {
@@ -828,12 +812,12 @@ func cmdAside(sub string, flags *parsed, out *format.Output) (int, error) {
 		})
 	}
 	if sub == "list" || (len(flags.positional) == 0 && flags.one("remind") == "") {
-		limit, err := limitOf(flags, 50)
+		lim, page, _, err := listOpts(flags)
 		if err != nil {
 			return 0, err
 		}
 		return withMail(func(m *mail.Mail) (int, error) {
-			listing, err := m.ListMessages(folders.ASIDE, false, limitPtr(limit))
+			listing, err := m.ListMessages(folders.ASIDE, false, lim, page)
 			if err != nil {
 				return 0, err
 			}
@@ -845,7 +829,7 @@ func cmdAside(sub string, flags *parsed, out *format.Output) (int, error) {
 				}
 				rows = append(rows, row)
 			}
-			return format.WriteList(rows, mailColumnsFor(flags.has("detail")), out, listing.Truncated, limitPtr(limit), mailWidths), nil
+			return format.WriteList(rows, mailColumnsFor(flags.has("detail")), out, listing.Truncated, lim, mailWidths, format.NextPage(listing.NextPage)), nil
 		})
 	}
 	if len(flags.positional) == 0 {
@@ -1040,48 +1024,58 @@ func editInEditor() (string, error) {
 
 func checkCompose(flags *parsed) error {
 	to := splitAddrs(flags.list("to"))
-	reply := flags.one("reply-to")
 	draft := flags.has("draft")
-	if !draft && len(to) == 0 && reply == "" {
-		return usageErr("compose needs --to or --reply-to")
+	if !draft && len(to) == 0 {
+		return usageErr("compose needs --to")
 	}
-	if flags.one("subject") == "" && reply == "" {
+	if flags.one("subject") == "" {
 		return usageErr("compose needs --subject")
 	}
-	if flags.has("m") && flags.has("message-html") {
-		return usageErr("-m and --message-html are mutually exclusive")
+	if (flags.has("m") || flags.has("message")) && flags.has("message-html") {
+		return usageErr("-m/--message and --message-html are mutually exclusive")
 	}
 	return nil
+}
+
+func collectAttachments(paths []string) (atts []mail.OutAttachment, links []string, err error) {
+	for _, path := range paths {
+		att, err := mail.ReadAttachmentFile(path)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(att.Data) > mail.MaxInlineAttachment {
+			url, err := mail.UploadToTransfer(att.Name, att.Data)
+			if err != nil {
+				return nil, nil, fmt.Errorf("%s over %d MiB and upload failed: %w", att.Name, mail.MaxInlineAttachment>>20, err)
+			}
+			links = append(links, fmt.Sprintf("- [%s](%s)", att.Name, url))
+			continue
+		}
+		atts = append(atts, att)
+	}
+	return atts, links, nil
+}
+
+func appendLinks(body string, links []string) string {
+	if len(links) == 0 {
+		return body
+	}
+	return body + "\n\nLarge attachments available for download:\n" + strings.Join(links, "\n")
 }
 
 func cmdCompose(flags *parsed, out *format.Output) (int, error) {
 	if err := checkCompose(flags); err != nil {
 		return 0, err
 	}
-	body, htmlBody, err := composeBody(flags.one("m"), flags.one("message-html"), os.Stdin, isTTY(os.Stdin))
+	body, htmlBody, err := composeBody(messageOf(flags), flags.one("message-html"), os.Stdin, isTTY(os.Stdin))
 	if err != nil {
 		return 0, err
 	}
-	var attachments []mail.OutAttachment
-	var links []string
-	for _, path := range flags.list("attach") {
-		att, err := mail.ReadAttachmentFile(path)
-		if err != nil {
-			return 0, err
-		}
-		if len(att.Data) > mail.MaxInlineAttachment {
-			url, err := mail.UploadToTransfer(att.Name, att.Data)
-			if err != nil {
-				return 0, fmt.Errorf("%s over %d MiB and upload failed: %w", att.Name, mail.MaxInlineAttachment>>20, err)
-			}
-			links = append(links, fmt.Sprintf("- [%s](%s)", att.Name, url))
-			continue
-		}
-		attachments = append(attachments, att)
+	attachments, links, err := collectAttachments(flags.list("attach"))
+	if err != nil {
+		return 0, err
 	}
-	if len(links) > 0 {
-		body += "\n\nLarge attachments available for download:\n" + strings.Join(links, "\n")
-	}
+	body = appendLinks(body, links)
 	outgoing := &mail.Outgoing{
 		To:          splitAddrs(flags.list("to")),
 		Cc:          splitAddrs(flags.list("cc")),
@@ -1090,13 +1084,6 @@ func cmdCompose(flags *parsed, out *format.Output) (int, error) {
 		Body:        body,
 		HTML:        htmlBody,
 		Attachments: attachments,
-	}
-	if reply := flags.one("reply-to"); reply != "" {
-		folder, uid, err := ids.ParseMessageID(reply)
-		if err != nil {
-			return 0, err
-		}
-		outgoing.ReplyTo = &[2]string{folder, uid}
 	}
 	draftFlag := flags.has("draft")
 	return withMail(func(m *mail.Mail) (int, error) {
@@ -1112,30 +1099,123 @@ func cmdCompose(flags *parsed, out *format.Output) (int, error) {
 	})
 }
 
+func cmdReply(flags *parsed, out *format.Output) (int, error) {
+	if len(flags.positional) != 1 {
+		return printUsage("reply"), nil
+	}
+	if (flags.has("m") || flags.has("message")) && flags.has("message-html") {
+		return 0, usageErr("-m/--message and --message-html are mutually exclusive")
+	}
+	folder, uid, err := ids.ParseMessageID(flags.positional[0])
+	if err != nil {
+		return 0, err
+	}
+	body, htmlBody, err := composeBody(messageOf(flags), flags.one("message-html"), os.Stdin, isTTY(os.Stdin))
+	if err != nil {
+		return 0, err
+	}
+	attachments, links, err := collectAttachments(flags.list("attach"))
+	if err != nil {
+		return 0, err
+	}
+	body = appendLinks(body, links)
+	outgoing := &mail.Outgoing{
+		To:          splitAddrs(flags.list("to")),
+		Cc:          splitAddrs(flags.list("cc")),
+		Bcc:         splitAddrs(flags.list("bcc")),
+		Body:        body,
+		HTML:        htmlBody,
+		Attachments: attachments,
+		ReplyTo:     &[2]string{folder, uid},
+	}
+	draftFlag := flags.has("draft")
+	return withMail(func(m *mail.Mail) (int, error) {
+		newID, err := m.Compose(outgoing, draftFlag)
+		if err != nil {
+			return 0, err
+		}
+		folderName := folders.SENT
+		if draftFlag {
+			folderName = folders.DRAFTS
+		}
+		return format.WriteOK(format.NewOM("id", newID, "folder", folderName), out, ""), nil
+	})
+}
+
+func cmdForward(flags *parsed, out *format.Output) (int, error) {
+	if len(flags.positional) != 1 {
+		return printUsage("forward"), nil
+	}
+	to := splitAddrs(flags.list("to"))
+	cc := splitAddrs(flags.list("cc"))
+	bcc := splitAddrs(flags.list("bcc"))
+	if len(to)+len(cc)+len(bcc) == 0 {
+		return 0, usageErr("forward needs --to")
+	}
+	if (flags.has("m") || flags.has("message")) && flags.has("message-html") {
+		return 0, usageErr("-m/--message and --message-html are mutually exclusive")
+	}
+	folder, uid, err := ids.ParseMessageID(flags.positional[0])
+	if err != nil {
+		return 0, err
+	}
+	note, htmlBody, err := composeBody(messageOf(flags), flags.one("message-html"), os.Stdin, isTTY(os.Stdin))
+	if err != nil {
+		return 0, err
+	}
+	attachments, links, err := collectAttachments(flags.list("attach"))
+	if err != nil {
+		return 0, err
+	}
+	return withMail(func(m *mail.Mail) (int, error) {
+		msg, err := m.Message(folder, uid)
+		if err != nil {
+			return 0, err
+		}
+		subject := msg.Subject
+		if !strings.HasPrefix(strings.ToLower(subject), "fwd:") {
+			subject = "Fwd: " + subject
+		}
+		quote := fmt.Sprintf("----- Forwarded message -----\nFrom: %s\nDate: %s\nSubject: %s\nTo: %s\n\n%s",
+			msg.From, msg.Date, msg.Subject, msg.To, msg.Body)
+		body := note
+		if htmlBody == "" {
+			if body != "" {
+				body += "\n\n"
+			}
+			body += quote
+			body = appendLinks(body, links)
+		} else {
+			htmlBody = htmlBody + "<pre>" + quote + "</pre>"
+		}
+		outgoing := &mail.Outgoing{
+			To: to, Cc: cc, Bcc: bcc, Subject: subject,
+			Body: body, HTML: htmlBody, Attachments: attachments,
+		}
+		newID, err := m.Compose(outgoing, false)
+		if err != nil {
+			return 0, err
+		}
+		return format.WriteOK(format.NewOM("id", newID, "folder", folders.SENT), out, ""), nil
+	})
+}
+
 func draftID(value string) (string, string, error) {
-	folder, uid, err := ids.ParseMessageID(value)
+	folder, uid, err := ids.ParseMessageIDIn(value, folders.DRAFTS)
 	if err != nil {
 		return "", "", err
 	}
-	resolved, err := folders.ResolveFolder(folder, nil)
-	if err != nil {
-		return "", "", err
-	}
-	if resolved != folders.DRAFTS {
+	if folder != folders.DRAFTS {
 		return "", "", usageErr("draft id must be in Drafts, got %q", value)
 	}
-	return resolved, uid, nil
+	return folder, uid, nil
 }
 
 func cmdDraft(cmd string, flags *parsed, out *format.Output) (int, error) {
 	if cmd == "list" || cmd == "" {
-		limit, err := limitOf(flags, 50)
+		lim, page, _, err := listOpts(flags)
 		if err != nil {
 			return 0, err
-		}
-		var lim *int
-		if !flags.has("all") {
-			lim = limitPtr(limit)
 		}
 		return withMail(func(m *mail.Mail) (int, error) {
 			if out.Count {
@@ -1146,7 +1226,7 @@ func cmdDraft(cmd string, flags *parsed, out *format.Output) (int, error) {
 				fmt.Println(n)
 				return 0, nil
 			}
-			listing, err := m.ListMessages(folders.DRAFTS, flags.has("unread"), lim)
+			listing, err := m.ListMessages(folders.DRAFTS, flags.has("unread"), lim, page)
 			if err != nil {
 				return 0, err
 			}
@@ -1158,23 +1238,19 @@ func cmdDraft(cmd string, flags *parsed, out *format.Output) (int, error) {
 			if flags.has("detail") {
 				cols = draftColumnsD
 			}
-			truncLim := limitPtr(limit)
-			if lim == nil {
-				truncLim = nil
-			}
-			return format.WriteList(rows, cols, out, listing.Truncated, truncLim, mailWidths), nil
+			return format.WriteList(rows, cols, out, listing.Truncated, lim, mailWidths, format.NextPage(listing.NextPage)), nil
 		})
 	}
 	if len(flags.positional) != 1 {
 		return printUsage("draft", cmd), nil
 	}
 	id := flags.positional[0]
+	folder, uid, err := draftID(id)
+	if err != nil {
+		return 0, err
+	}
 	switch cmd {
 	case "show":
-		folder, uid, err := draftID(id)
-		if err != nil {
-			return 0, err
-		}
 		return withMail(func(m *mail.Mail) (int, error) {
 			msg, err := m.Message(folder, uid)
 			if err != nil {
@@ -1183,18 +1259,14 @@ func cmdDraft(cmd string, flags *parsed, out *format.Output) (int, error) {
 			return format.WriteThread([]*format.OM{threadRow(msg, false)}, out, false, ""), nil
 		})
 	case "edit":
-		folder, uid, err := draftID(id)
-		if err != nil {
-			return 0, err
-		}
 		hasAny := flags.has("to") || flags.has("cc") || flags.has("bcc") ||
-			flags.has("subject") || flags.has("m") || flags.has("message-html")
+			flags.has("subject") || flags.has("m") || flags.has("message") || flags.has("message-html")
 		if !hasAny {
 			return 0, usageErr("draft edit needs --to, --cc, --bcc, --subject, -m, or --message-html")
 		}
 		var bodyPtr, htmlPtr *string
-		if flags.has("m") || flags.has("message-html") {
-			body, htmlBody, err := composeBody(flags.one("m"), flags.one("message-html"), os.Stdin, isTTY(os.Stdin))
+		if flags.has("m") || flags.has("message") || flags.has("message-html") {
+			body, htmlBody, err := composeBody(messageOf(flags), flags.one("message-html"), os.Stdin, isTTY(os.Stdin))
 			if err != nil {
 				return 0, err
 			}
@@ -1223,10 +1295,6 @@ func cmdDraft(cmd string, flags *parsed, out *format.Output) (int, error) {
 			return format.WriteOK(format.NewOM("id", newID, "folder", folders.DRAFTS), out, ""), nil
 		})
 	case "send":
-		folder, uid, err := draftID(id)
-		if err != nil {
-			return 0, err
-		}
 		return withMail(func(m *mail.Mail) (int, error) {
 			newID, err := m.SendDraft(folder, uid)
 			if err != nil {
@@ -1235,7 +1303,7 @@ func cmdDraft(cmd string, flags *parsed, out *format.Output) (int, error) {
 			return format.WriteOK(format.NewOM("id", newID, "folder", folders.SENT), out, ""), nil
 		})
 	default: // delete
-		return imapMove([]string{id}, folders.TRASH, out, "")
+		return imapMove([]string{ids.FormatMessageID(folder, uid)}, folders.TRASH, out, "")
 	}
 }
 
@@ -1295,12 +1363,29 @@ func cmdAttachment(cmd string, flags *parsed, out *format.Output) (int, error) {
 			return format.WriteList(rows, attachColumns, out), nil
 		})
 	}
-	// save
+	// save: [box:]uid:index, or [box:]uid when that message has exactly one file
 	folder, uid, index, err := ids.ParseAttachmentID(id)
 	if err != nil {
-		return 0, err
+		folder, uid, err = ids.ParseMessageID(id)
+		if err != nil {
+			return 0, fmt.Errorf("attachment id must be [box:]uid:index, got %q", id)
+		}
 	}
 	return withMail(func(m *mail.Mail) (int, error) {
+		if index == 0 {
+			msg, err := m.Message(folder, uid)
+			if err != nil {
+				return 0, err
+			}
+			switch len(msg.Attachments) {
+			case 0:
+				return 0, fmt.Errorf("%s has no attachments", msg.ID())
+			case 1:
+				index = msg.Attachments[0].Index
+			default:
+				return 0, fmt.Errorf("%s has %d attachments; pass [box:]uid:index", msg.ID(), len(msg.Attachments))
+			}
+		}
 		att, blob, err := m.Attachment(folder, uid, index)
 		if err != nil {
 			return 0, err
@@ -1320,13 +1405,9 @@ func cmdAttachment(cmd string, flags *parsed, out *format.Output) (int, error) {
 	})
 }
 
-// --- calendar / tasks / contacts ---
+// --- calendar / todo / contacts ---
 
-func cmdEvents(args []string, out *format.Output) (int, error) {
-	flags, err := parseFlags(flagSpec("events", ""), args)
-	if err != nil {
-		return 0, err
-	}
+func withCal(fn func(*calendar.Cal) (int, error)) (int, error) {
 	acct, err := config.LoadAccount(true, false)
 	if err != nil {
 		return 0, err
@@ -1335,70 +1416,287 @@ func cmdEvents(args []string, out *format.Output) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	if flags.has("title") { // events create
-		if flags.one("start") == "" {
-			return 0, usageErr("events create needs --start")
-		}
-		uid, err := cal.CreateEvent(flags.one("title"), flags.one("start"), flags.one("end"), flags.has("all-day"))
-		if err != nil {
-			return 0, err
-		}
-		return format.WriteOK(format.NewOM("id", uid, "calendar", "Kalender"), out, ""), nil
-	}
-	if len(flags.positional) >= 1 && flags.positional[0] == "show" {
-		if len(flags.positional) < 2 {
-			return 0, usageErr("events show needs ID")
-		}
-		row, err := cal.Event(flags.positional[1])
-		if err != nil {
-			return 0, err
-		}
-		return format.WriteOK(row, out, ""), nil
-	}
-	if len(flags.positional) > 0 {
-		return 0, usageErr("unknown events command %q", flags.positional[0])
-	}
-	rows, err := cal.Events(flags.one("start"), flags.one("end"))
-	if err != nil {
-		return 0, err
-	}
-	return format.WriteList(rows, eventColumns, out), nil
+	return fn(cal)
 }
 
-func cmdTasks(args []string, out *format.Output) (int, error) {
-	flags, err := parseFlags(flagSpec("tasks", ""), args)
+func eventInFrom(flags *parsed, add bool) (calendar.EventIn, error) {
+	in := calendar.EventIn{
+		Title: flags.one("title"), Calendar: flags.one("calendar"), Location: flags.one("location"),
+		Notes: flags.one("notes"), URL: flags.one("link"),
+		Repeat: flags.one("repeat"), RepeatUntil: flags.one("repeat-until"),
+		Remind: flags.one("remind"), Circle: flags.has("circle"),
+		Has: calendar.EventHas{
+			Title: flags.has("title"), Location: flags.has("location"), Notes: flags.has("notes"),
+			URL: flags.has("link"), Repeat: flags.has("repeat"), Remind: flags.has("remind"),
+			Circle: flags.has("circle"),
+		},
+	}
+	touchTime := add || flags.has("starts-on") || flags.has("start-time") || flags.has("ends-on") || flags.has("end-time") || flags.has("all-day")
+	if touchTime {
+		start, end, allDay, err := calendar.CombineEventWhen(
+			flags.one("starts-on"), flags.one("start-time"), flags.one("ends-on"), flags.one("end-time"), flags.has("all-day"))
+		if err != nil {
+			return in, usageErr("%v", err)
+		}
+		in.Start, in.End, in.AllDay = start, end, allDay
+		in.Has.Start, in.Has.End, in.Has.AllDay = true, true, true
+	}
+	if flags.has("repeat-times") {
+		n, err := strconv.Atoi(flags.one("repeat-times"))
+		if err != nil || n <= 0 {
+			return in, usageErr("--repeat-times must be a positive integer")
+		}
+		in.RepeatTimes = n
+	}
+	return in, nil
+}
+
+func cmdCalendar(args []string, out *format.Output) (int, error) {
+	flags, err := parseFlags(noFlags, args)
 	if err != nil {
 		return 0, err
 	}
-	acct, err := config.LoadAccount(true, false)
-	if err != nil {
-		return 0, err
+	if len(flags.positional) > 0 && flags.positional[0] != "list" {
+		return 0, usageErr("unknown calendar command %q", flags.positional[0])
 	}
-	cal, err := calendar.NewCal(acct)
-	if err != nil {
-		return 0, err
-	}
-	if flags.has("title") {
-		uid, err := cal.CreateTask(flags.one("title"), flags.one("due"))
+	return withCal(func(cal *calendar.Cal) (int, error) {
+		rows, err := cal.Calendars()
 		if err != nil {
 			return 0, err
 		}
-		return format.WriteOK(format.NewOM("id", uid, "calendar", "Aufgaben"), out, ""), nil
-	}
-	if len(flags.positional) >= 1 && flags.positional[0] == "complete" {
-		if len(flags.positional) < 2 {
-			return 0, usageErr("tasks complete needs ID")
-		}
-		if err := cal.CompleteTask(flags.positional[1]); err != nil {
-			return 0, err
-		}
-		return format.WriteOK(format.NewOM("id", flags.positional[1], "status", "COMPLETED"), out, ""), nil
-	}
-	rows, err := cal.Tasks()
+		return format.WriteList(rows, calColumns, out), nil
+	})
+}
+
+func cmdEvent(args []string, out *format.Output) (int, error) {
+	flags, err := parseFlags(flagSpec("event", ""), args)
 	if err != nil {
 		return 0, err
 	}
-	return format.WriteList(rows, taskColumns, out), nil
+	sub, rest := "", flags.positional
+	if len(rest) > 0 {
+		switch rest[0] {
+		case "list", "add", "show", "edit", "delete":
+			sub, rest = rest[0], rest[1:]
+		default:
+			return 0, usageErr("unknown event command %q", rest[0])
+		}
+	}
+	if sub == "" && (flags.has("title") || flags.has("starts-on") && flags.has("title")) {
+		sub = "add"
+	}
+	if sub == "" {
+		sub = "list"
+	}
+	if sub == "add" && !flags.has("title") && len(rest) > 0 {
+		flags.flags["title"] = []string{strings.Join(rest, " ")}
+		rest = nil
+	}
+	in, err := eventInFrom(flags, sub == "add")
+	if err != nil {
+		return 0, err
+	}
+	return withCal(func(cal *calendar.Cal) (int, error) {
+		switch sub {
+		case "add":
+			if in.Title == "" {
+				return 0, usageErr("event add needs a title")
+			}
+			uid, name, err := cal.CreateEvent(in)
+			if err != nil {
+				return 0, err
+			}
+			return format.WriteOK(format.NewOM("id", uid, "calendar", name), out, ""), nil
+		case "show":
+			if len(rest) < 1 {
+				return 0, usageErr("event show needs ID")
+			}
+			row, err := cal.Event(rest[0])
+			if err != nil {
+				return 0, err
+			}
+			return format.WriteOK(row, out, ""), nil
+		case "edit":
+			if len(rest) < 1 {
+				return 0, usageErr("event edit needs ID")
+			}
+			row, err := cal.UpdateEvent(rest[0], in)
+			if err != nil {
+				return 0, err
+			}
+			return format.WriteOK(row, out, ""), nil
+		case "delete":
+			if len(rest) < 1 {
+				return 0, usageErr("event delete needs ID")
+			}
+			if err := cal.DeleteEvent(rest[0]); err != nil {
+				return 0, err
+			}
+			return format.WriteOK(format.NewOM("id", rest[0]), out, ""), nil
+		default:
+			rows, err := cal.Events(flags.one("starts-on"), flags.one("ends-on"), flags.one("calendar"))
+			if err != nil {
+				return 0, err
+			}
+			limit, page, all, err := pageOf(flags)
+			if err != nil {
+				return 0, err
+			}
+			rows, next, trunc := format.PageSlice(rows, page, limit, all)
+			var lim *int
+			if !all {
+				lim = limitPtr(limit)
+			}
+			return format.WriteList(rows, eventColumns, out, trunc, lim, format.NextPage(next)), nil
+		}
+	})
+}
+
+func cmdTodo(args []string, out *format.Output) (int, error) {
+	flags, err := parseFlags(flagSpec("todo", ""), args)
+	if err != nil {
+		return 0, err
+	}
+	sub, rest := "", flags.positional
+	if len(rest) > 0 {
+		switch rest[0] {
+		case "list", "add", "complete", "uncomplete", "delete":
+			sub, rest = rest[0], rest[1:]
+		default:
+			return 0, usageErr("unknown todo command %q", rest[0])
+		}
+	}
+	if sub == "" && flags.has("title") {
+		sub = "add"
+	}
+	if sub == "" {
+		sub = "list"
+	}
+	return withCal(func(cal *calendar.Cal) (int, error) {
+		switch sub {
+		case "add":
+			if !flags.has("title") {
+				return 0, usageErr("todo add needs --title")
+			}
+			uid, err := cal.CreateTask(flags.one("title"), flags.one("date"))
+			if err != nil {
+				return 0, err
+			}
+			return format.WriteOK(format.NewOM("id", uid, "calendar", "Aufgaben"), out, ""), nil
+		case "complete":
+			if len(rest) < 1 {
+				return 0, usageErr("todo complete needs ID")
+			}
+			if err := cal.CompleteTask(rest[0]); err != nil {
+				return 0, err
+			}
+			return format.WriteOK(format.NewOM("id", rest[0], "status", "COMPLETED"), out, ""), nil
+		case "uncomplete":
+			if len(rest) < 1 {
+				return 0, usageErr("todo uncomplete needs ID")
+			}
+			if err := cal.UncompleteTask(rest[0]); err != nil {
+				return 0, err
+			}
+			return format.WriteOK(format.NewOM("id", rest[0], "status", "NEEDS-ACTION"), out, ""), nil
+		case "delete":
+			if len(rest) < 1 {
+				return 0, usageErr("todo delete needs ID")
+			}
+			if err := cal.DeleteTask(rest[0]); err != nil {
+				return 0, err
+			}
+			return format.WriteOK(format.NewOM("id", rest[0]), out, ""), nil
+		default:
+			if calName := flags.one("calendar"); calName != "" && !strings.EqualFold(calName, "Aufgaben") {
+				return 0, usageErr("unknown todo calendar %q", calName)
+			}
+			rows, err := cal.Tasks(flags.one("starts-on"), flags.one("ends-on"))
+			if err != nil {
+				return 0, err
+			}
+			limit, page, all, err := pageOf(flags)
+			if err != nil {
+				return 0, err
+			}
+			rows, next, trunc := format.PageSlice(rows, page, limit, all)
+			var lim *int
+			if !all {
+				lim = limitPtr(limit)
+			}
+			return format.WriteList(rows, taskColumns, out, trunc, lim, format.NextPage(next)), nil
+		}
+	})
+}
+
+func cmdHabit(args []string, out *format.Output) (int, error) {
+	flags, err := parseFlags(flagSpec("habit", ""), args)
+	if err != nil {
+		return 0, err
+	}
+	sub, rest := "", flags.positional
+	if len(rest) > 0 {
+		switch rest[0] {
+		case "list", "create", "edit", "delete", "complete", "uncomplete":
+			sub, rest = rest[0], rest[1:]
+		default:
+			return 0, usageErr("unknown habit command %q", rest[0])
+		}
+	}
+	return withCal(func(cal *calendar.Cal) (int, error) {
+		switch sub {
+		case "create":
+			name := strings.Join(rest, " ")
+			uid, err := cal.CreateHabit(name, flags.one("days"), flags.one("color"), flags.one("icon"))
+			if err != nil {
+				return 0, err
+			}
+			return format.WriteOK(format.NewOM("id", uid), out, ""), nil
+		case "edit":
+			if len(rest) < 1 {
+				return 0, usageErr("habit edit needs ID")
+			}
+			if !flags.has("name") && !flags.has("days") && !flags.has("color") && !flags.has("icon") {
+				return 0, usageErr("habit edit needs --name, --days, --color, or --icon")
+			}
+			row, err := cal.EditHabit(rest[0], flags.one("name"), flags.one("days"), flags.one("color"), flags.one("icon"),
+				flags.has("name"), flags.has("days"), flags.has("color"), flags.has("icon"))
+			if err != nil {
+				return 0, err
+			}
+			return format.WriteOK(row, out, ""), nil
+		case "delete":
+			if len(rest) < 1 {
+				return 0, usageErr("habit delete needs ID")
+			}
+			if err := cal.DeleteHabit(rest[0]); err != nil {
+				return 0, err
+			}
+			return format.WriteOK(format.NewOM("id", rest[0]), out, ""), nil
+		case "complete":
+			if len(rest) < 1 {
+				return 0, usageErr("habit complete needs ID")
+			}
+			if err := cal.CompleteHabit(rest[0], flags.one("date")); err != nil {
+				return 0, err
+			}
+			return format.WriteOK(format.NewOM("id", rest[0], "done", true), out, ""), nil
+		case "uncomplete":
+			if len(rest) < 1 {
+				return 0, usageErr("habit uncomplete needs ID")
+			}
+			if err := cal.UncompleteHabit(rest[0], flags.one("date")); err != nil {
+				return 0, err
+			}
+			return format.WriteOK(format.NewOM("id", rest[0], "done", false), out, ""), nil
+		default:
+			rows, err := cal.Habits(flags.one("date"))
+			if err != nil {
+				return 0, err
+			}
+			return format.WriteList(rows, habitColumns, out), nil
+		}
+	})
 }
 
 func cmdContact(cmd string, flags *parsed, out *format.Output) (int, error) {
@@ -1415,7 +1713,7 @@ func cmdContact(cmd string, flags *parsed, out *format.Output) (int, error) {
 		name := flags.one("name")
 		email := flags.one("email")
 		if name == "" || email == "" {
-			return 0, usageErr("contacts add needs --name and --email")
+			return 0, usageErr("contact add needs --name and --email")
 		}
 		uid, err := book.Add(name, email, flags.one("note"))
 		if err != nil {
@@ -1430,7 +1728,7 @@ func cmdContact(cmd string, flags *parsed, out *format.Output) (int, error) {
 		return format.WriteOK(format.NewOM("addressbook", "Kontakte", "count", n), out, ""), nil
 	case "show":
 		if len(flags.positional) != 1 {
-			return 0, usageErr("contacts show needs ID")
+			return 0, usageErr("contact show needs ID")
 		}
 		row, err := book.Show(flags.positional[0])
 		if err != nil {
@@ -1439,7 +1737,7 @@ func cmdContact(cmd string, flags *parsed, out *format.Output) (int, error) {
 		return format.WriteOK(row, out, ""), nil
 	case "search":
 		if len(flags.positional) != 1 {
-			return 0, usageErr("contacts search needs QUERY")
+			return 0, usageErr("contact search needs QUERY")
 		}
 		rows, err := book.Search(flags.positional[0])
 		if err != nil {
@@ -1448,11 +1746,11 @@ func cmdContact(cmd string, flags *parsed, out *format.Output) (int, error) {
 		return format.WriteList(rows, contactCols, out), nil
 	case "update":
 		if len(flags.positional) != 1 {
-			return 0, usageErr("contacts update needs ID")
+			return 0, usageErr("contact update needs ID")
 		}
 		name, email, note := flags.one("name"), flags.one("email"), flags.one("note")
 		if !flags.has("name") && !flags.has("email") && !flags.has("note") {
-			return 0, usageErr("contacts update needs --name, --email, or --note")
+			return 0, usageErr("contact update needs --name, --email, or --note")
 		}
 		strPtr := func(s string, present bool) *string {
 			if !present {
@@ -1485,53 +1783,67 @@ func cmdDoctor(out *format.Output) int {
 	if report.OK() {
 		return 0
 	}
-	return 1
+	return 7
 }
 
 var cmdSpecs = []cmdspec{
-	{[]string{"box", "list"}, "mailbox box list [--archive]", []string{"--archive"}},
-	{[]string{"box", "view"}, "mailbox box view NAME [--unread] [--limit N] [--detail]", []string{"--unread", "--limit", "--detail"}},
-	{[]string{"search"}, "mailbox search [QUERY] [--from ADDR] [--to ADDR] [--subject TEXT] [--in BOX] [--limit N] [--detail]", []string{"--from", "--to", "--subject", "--in", "--limit", "--detail"}},
-	{[]string{"thread"}, "mailbox thread ID [--allow-partial] [--html]", []string{"--allow-partial", "--html"}},
-	{[]string{"screener", "list"}, "mailbox screener list [--unread] [--limit N] [--detail]", []string{"--unread", "--limit", "--detail"}},
-	{[]string{"screener", "approve"}, "mailbox screener approve ID... [--box inbox|feed|trail]", []string{"--box"}},
-	{[]string{"screener", "deny"}, "mailbox screener deny ID... [--spam]", []string{"--spam"}},
-	{[]string{"move"}, "mailbox move ID... --to inbox|feed|trail|block", []string{"--to"}},
-	{[]string{"aside"}, "mailbox aside [ID...] [--remind DURATION] [--limit N] [--detail]", []string{"--remind", "--limit", "--detail", "--sweep"}},
-	{[]string{"aside", "done"}, "mailbox aside done ID...", nil},
-	{[]string{"seen"}, "mailbox seen ID...", nil},
-	{[]string{"unseen"}, "mailbox unseen ID...", nil},
-	{[]string{"trash"}, "mailbox trash ID...", nil},
-	{[]string{"spam"}, "mailbox spam ID...", nil},
-	{[]string{"compose"}, "mailbox compose --to ADDR --subject TEXT [-m TEXT]", []string{"--to", "--cc", "--bcc", "--subject", "-m", "--message-html", "--attach", "--reply-to", "--draft"}},
-	{[]string{"draft", "list"}, "mailbox draft list [--all] [--limit N]", []string{"--all", "--limit", "--detail"}},
-	{[]string{"draft", "show"}, "mailbox draft show ID", nil},
-	{[]string{"draft", "edit"}, "mailbox draft edit ID [--to ADDR] [--subject TEXT] [-m TEXT]", []string{"--to", "--cc", "--bcc", "--subject", "-m", "--message-html"}},
-	{[]string{"draft", "send"}, "mailbox draft send ID", nil},
-	{[]string{"draft", "delete"}, "mailbox draft delete ID", nil},
-	{[]string{"attachment", "list"}, "mailbox attachment list ID", nil},
-	{[]string{"attachment", "save"}, "mailbox attachment save ID [--output PATH] [--force]", []string{"--output", "--force"}},
-	{[]string{"sieve", "list"}, "mailbox sieve list", nil},
-	{[]string{"sieve", "get"}, "mailbox sieve get [NAME] [--output PATH]", []string{"--output"}},
-	{[]string{"sieve", "put"}, "mailbox sieve put NAME FILE|-", nil},
-	{[]string{"sieve", "activate"}, "mailbox sieve activate NAME", nil},
-	{[]string{"events"}, "mailbox events [--start WHEN] [--end WHEN]", []string{"--start", "--end"}},
-	{[]string{"events", "show"}, "mailbox events show ID", nil},
-	{[]string{"events", "create"}, "mailbox events create --title TEXT --start WHEN [--end WHEN] [--all-day]", []string{"--title", "--start", "--end", "--all-day"}},
-	{[]string{"tasks"}, "mailbox tasks", nil},
-	{[]string{"tasks", "create"}, "mailbox tasks create --title TEXT [--due WHEN]", []string{"--title", "--due"}},
-	{[]string{"tasks", "complete"}, "mailbox tasks complete ID", nil},
-	{[]string{"contacts", "list"}, "mailbox contacts list", nil},
-	{[]string{"contacts", "search"}, "mailbox contacts search QUERY", nil},
-	{[]string{"contacts", "refresh"}, "mailbox contacts refresh", nil},
-	{[]string{"contacts", "show"}, "mailbox contacts show ID", nil},
-	{[]string{"contacts", "add"}, "mailbox contacts add --name TEXT --email ADDR [--note TEXT]", []string{"--name", "--email", "--note"}},
-	{[]string{"contacts", "update"}, "mailbox contacts update ID [--name TEXT] [--email ADDR] [--note TEXT]", []string{"--name", "--email", "--note"}},
-	{[]string{"doctor"}, "mailbox doctor", nil},
-	{[]string{"serve"}, "mailbox serve [--web] [--web-port N] [--interval S] [--print]", []string{"--web", "--web-port", "--interval", "--print"}},
-	{[]string{"commands"}, "mailbox commands", nil},
-	{[]string{"skill", "install"}, "mailbox skill install", nil},
-	{[]string{"help"}, "mailbox help [output|exit-codes|environment]", nil},
+	{[]string{"box", "list"}, "mailbox box list [--archive]", []string{"--archive"}, "Routing boxes"},
+	{[]string{"box", "view"}, "mailbox box view NAME [--unread] [--limit N] [--page N] [--all] [--detail]", []string{"--unread", "--limit", "--page", "--all", "--detail"}, "Mail in a box"},
+	{[]string{"search"}, "mailbox search [QUERY] [--from ADDR] [--to ADDR] [--subject TEXT] [--in BOX] [--date RANGE] [--required W] [--any W] [--none W] [--exact PHRASE] [--attachment KIND] [--limit N] [--page N] [--all] [--detail]", []string{"--from", "--to", "--subject", "--in", "--date", "--required", "--any", "--none", "--exact", "--attachment", "--limit", "--page", "--all", "--detail"}, "Search mail"},
+	{[]string{"search", "filters"}, "mailbox search filters", nil, "Available --in/--date/--attachment values"},
+	{[]string{"thread"}, "mailbox thread ID [--allow-partial] [--html]", []string{"--allow-partial", "--html"}, "Read a thread"},
+	{[]string{"reply"}, "mailbox reply ID [-m TEXT]", []string{"-m", "--message", "--message-html", "--attach", "--draft", "--to", "--cc", "--bcc"}, "Reply"},
+	{[]string{"forward"}, "mailbox forward ID --to ADDR [-m TEXT]", []string{"--to", "--cc", "--bcc", "-m", "--message", "--message-html", "--attach"}, "Forward the latest message"},
+	{[]string{"screener", "list"}, "mailbox screener list [--unread] [--limit N] [--page N] [--all] [--detail]", []string{"--unread", "--limit", "--page", "--all", "--detail"}, "Who is waiting"},
+	{[]string{"screener", "approve"}, "mailbox screener approve ID... [--box inbox|feed|trail]", []string{"--box"}, "Let a sender through"},
+	{[]string{"screener", "deny"}, "mailbox screener deny ID... [--spam]", []string{"--spam"}, "Turn a sender away"},
+	{[]string{"move"}, "mailbox move ID... --to inbox|feed|trail|block", []string{"--to"}, "Move to inbox|feed|trail|block"},
+	{[]string{"aside"}, "mailbox aside [ID...] [--remind DURATION] [--limit N] [--page N] [--all] [--detail]", []string{"--remind", "--limit", "--page", "--all", "--detail", "--sweep"}, "Read-later pile"},
+	{[]string{"aside", "done"}, "mailbox aside done ID...", nil, "Return from Aside"},
+	{[]string{"seen"}, "mailbox seen ID...", nil, "Mark seen"},
+	{[]string{"unseen"}, "mailbox unseen ID...", nil, "Mark unseen"},
+	{[]string{"trash"}, "mailbox trash ID...", nil, "Move to Trash"},
+	{[]string{"spam"}, "mailbox spam ID...", nil, "Move to Junk"},
+	{[]string{"compose"}, "mailbox compose --to ADDR --subject TEXT [-m TEXT]", []string{"--to", "--cc", "--bcc", "--subject", "-m", "--message", "--message-html", "--attach", "--draft"}, "Write and send"},
+	{[]string{"draft", "list"}, "mailbox draft list [--all] [--limit N] [--page N]", []string{"--all", "--limit", "--page", "--detail"}, "Unsent drafts"},
+	{[]string{"draft", "show"}, "mailbox draft show ID", nil, "Read a draft"},
+	{[]string{"draft", "edit"}, "mailbox draft edit ID [--to ADDR] [--subject TEXT] [-m TEXT]", []string{"--to", "--cc", "--bcc", "--subject", "-m", "--message", "--message-html"}, "Change a draft"},
+	{[]string{"draft", "send"}, "mailbox draft send ID", nil, "Deliver a draft"},
+	{[]string{"draft", "delete"}, "mailbox draft delete ID", nil, "Trash a draft"},
+	{[]string{"attachment", "list"}, "mailbox attachment list ID", nil, "Files in a thread"},
+	{[]string{"attachment", "save"}, "mailbox attachment save ID [--output PATH] [--force]", []string{"--output", "--force"}, "Save a file"},
+	{[]string{"calendar", "list"}, "mailbox calendar list", nil, "Discovered calendars"},
+	{[]string{"event", "list"}, "mailbox event list [--starts-on DATE] [--ends-on DATE] [--calendar NAME] [--limit N] [--all]", []string{"--starts-on", "--ends-on", "--calendar", "--limit", "--all", "--page"}, "Events in a date window"},
+	{[]string{"event", "show"}, "mailbox event show ID", nil, "One event"},
+	{[]string{"event", "add"}, "mailbox event add [TITLE] [--title TEXT] [--starts-on DATE] [--start-time HH:MM] [--ends-on DATE] [--end-time HH:MM] [--all-day] [--calendar NAME] [--circle] [--repeat ALIAS] [--repeat-until DATE] [--repeat-times N] [--location TEXT] [--notes TEXT] [--link URL] [--remind DURATION]", []string{"--title", "--starts-on", "--start-time", "--ends-on", "--end-time", "--all-day", "--calendar", "--circle", "--repeat", "--repeat-until", "--repeat-times", "--location", "--notes", "--link", "--remind"}, "Create an event"},
+	{[]string{"event", "edit"}, "mailbox event edit ID [same flags as add]", []string{"--title", "--starts-on", "--start-time", "--ends-on", "--end-time", "--all-day", "--calendar", "--circle", "--repeat", "--repeat-until", "--repeat-times", "--location", "--notes", "--link", "--remind"}, "Change an event"},
+	{[]string{"event", "delete"}, "mailbox event delete ID", nil, "Delete an event"},
+	{[]string{"todo", "list"}, "mailbox todo list [--starts-on DATE] [--ends-on DATE] [--calendar NAME] [--limit N] [--all]", []string{"--starts-on", "--ends-on", "--calendar", "--limit", "--all", "--page"}, "Todos on Aufgaben"},
+	{[]string{"todo", "add"}, "mailbox todo add --title TEXT [--date WHEN]", []string{"--title", "--date"}, "Add a todo"},
+	{[]string{"todo", "complete"}, "mailbox todo complete ID", nil, "Mark complete"},
+	{[]string{"todo", "uncomplete"}, "mailbox todo uncomplete ID", nil, "Mark incomplete"},
+	{[]string{"todo", "delete"}, "mailbox todo delete ID", nil, "Delete a todo"},
+	{[]string{"habit", "list"}, "mailbox habit list [--date WHEN]", []string{"--date"}, "Habits"},
+	{[]string{"habit", "create"}, "mailbox habit create TITLE [--days DAYS] [--color TEXT] [--icon TEXT]", []string{"--days", "--color", "--icon"}, "Create a habit"},
+	{[]string{"habit", "edit"}, "mailbox habit edit ID [--name TEXT] [--days DAYS] [--color TEXT] [--icon TEXT]", []string{"--name", "--days", "--color", "--icon"}, "Change a habit"},
+	{[]string{"habit", "delete"}, "mailbox habit delete ID", nil, "Delete a habit"},
+	{[]string{"habit", "complete"}, "mailbox habit complete ID [--date WHEN]", []string{"--date"}, "Tick a day"},
+	{[]string{"habit", "uncomplete"}, "mailbox habit uncomplete ID [--date WHEN]", []string{"--date"}, "Untick a day"},
+	{[]string{"contact", "list"}, "mailbox contact list", nil, "All contacts"},
+	{[]string{"contact", "search"}, "mailbox contact search QUERY", nil, "Find a contact"},
+	{[]string{"contact", "refresh"}, "mailbox contact refresh", nil, "Re-read CardDAV"},
+	{[]string{"contact", "show"}, "mailbox contact show ID", nil, "One contact and note"},
+	{[]string{"contact", "add"}, "mailbox contact add --name TEXT --email ADDR [--note TEXT]", []string{"--name", "--email", "--note"}, "Add a contact"},
+	{[]string{"contact", "update"}, "mailbox contact update ID [--name TEXT] [--email ADDR] [--note TEXT]", []string{"--name", "--email", "--note"}, "Edit a contact"},
+	{[]string{"sieve", "list"}, "mailbox sieve list", nil, "Scripts on the server"},
+	{[]string{"sieve", "get"}, "mailbox sieve get [NAME] [--output PATH]", []string{"--output"}, "Print a script"},
+	{[]string{"sieve", "put"}, "mailbox sieve put NAME FILE|-", nil, "Upload a script"},
+	{[]string{"sieve", "activate"}, "mailbox sieve activate NAME", nil, "Set the active script"},
+	{[]string{"doctor"}, "mailbox doctor", nil, "Credentials, IMAP, CalDAV, skill"},
+	{[]string{"serve"}, "mailbox serve [--web] [--web-port N] [--interval S] [--print]", []string{"--web", "--web-port", "--interval", "--print"}, "Routing service"},
+	{[]string{"commands"}, "mailbox commands", nil, "Machine command index"},
+	{[]string{"skill", "install"}, "mailbox skill install", nil, "Install the agent skill"},
+	{[]string{"help"}, "mailbox help [output|exit-codes|environment]", nil, "output | exit-codes | environment"},
 }
 
 func commandsPayload() []*format.OM {
@@ -1546,6 +1858,7 @@ func commandsPayload() []*format.OM {
 		rows = append(rows, format.NewOM(
 			"path", pathVals,
 			"usage", s.usage,
+			"short", s.short,
 			"flags", flagVals,
 		))
 	}

@@ -33,9 +33,14 @@ func isDigits(s string) bool {
 // ParseMessageID accepts bare uid (INBOX), alias:uid (feed:12, trail:3,
 // Archive/Immo:4) and full folder:uid.
 func ParseMessageID(value string) (string, string, error) {
+	return ParseMessageIDIn(value, folders.INBOX)
+}
+
+// ParseMessageIDIn is ParseMessageID with a default folder for a bare uid.
+func ParseMessageIDIn(value, defaultFolder string) (string, string, error) {
 	v := strings.TrimSpace(value)
 	if isDigits(v) {
-		return folders.INBOX, v, nil
+		return defaultFolder, v, nil
 	}
 	i := strings.LastIndex(v, ":")
 	if i < 0 {

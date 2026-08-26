@@ -62,6 +62,16 @@ func (c *Client) Put(url, body string, headers map[string]string) (int, error) {
 	return status, err
 }
 
+func (c *Client) Delete(url string) (int, error) {
+	_, status, err := c.do("DELETE", url, "", "", nil)
+	return status, err
+}
+
+func (c *Client) MkCalendar(url, body string) (int, error) {
+	_, status, err := c.do("MKCALENDAR", url, body, "", nil)
+	return status, err
+}
+
 // Response is one <d:response> of a multistatus with the payload tag's text.
 type Response struct {
 	Href string

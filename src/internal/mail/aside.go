@@ -135,7 +135,7 @@ type AsideReturn struct {
 // SweepAside moves every pile message whose due time has passed back to the
 // Inbox. Returns what moved.
 func (m *Mail) SweepAside(now time.Time) ([]AsideReturn, error) {
-	listing, err := m.ListMessages(folders.ASIDE, false, nil)
+	listing, err := m.ListMessages(folders.ASIDE, false, nil, 1)
 	if err != nil {
 		return nil, err
 	}
