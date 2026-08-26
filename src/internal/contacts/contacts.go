@@ -36,7 +36,7 @@ func New(acct *config.Account) (*Contacts, error) {
 	if acct.KontakteURL == "" {
 		return nil, fmt.Errorf("missing MAILBOX_CARDDAV_KONTAKTE")
 	}
-	return &Contacts{acct: acct, client: dav.New(acct.Email, acct.Password), URL: acct.KontakteURL}, nil
+	return &Contacts{acct: acct, client: dav.New(acct.Email, acct.DAVPass()), URL: acct.KontakteURL}, nil
 }
 
 func uidMatches(full, query string) bool {

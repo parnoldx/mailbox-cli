@@ -91,6 +91,70 @@ func TestContactsEnvURL(t *testing.T) {
 	}
 }
 
+func TestDAVPasswordFromEnv(t *testing.T) {
+	isolateEnv(t)
+	setTBError(t)
+	os.Setenv("MAILBOX_EMAIL", "user@mailbox.org")
+	os.Setenv("MAILBOX_PASSWORD", "imap-secret")
+	os.Setenv("MAILBOX_DAV_PASSWORD", "dav-secret")
+	os.Setenv("MAILBOX_CALDAV_KALENDER", "https://dav.mailbox.org/caldav/KAL/")
+	os.Setenv("MAILBOX_CALDAV_AUFGABEN", "https://dav.mailbox.org/caldav/TODO/")
+	defer func() {
+		os.Unsetenv("MAILBOX_EMAIL")
+		os.Unsetenv("MAILBOX_PASSWORD")
+		os.Unsetenv("MAILBOX_DAV_PASSWORD")
+		os.Unsetenv("MAILBOX_CALDAV_KALENDER")
+		os.Unsetenv("MAILBOX_CALDAV_AUFGABEN")
+	}()
+
+	acc, err := LoadAccount(true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acc.Password != "imap-secret" || acc.DAVPass() != "dav-secret" {
+		t.Fatalf("password=%q dav=%q", acc.Password, acc.DAVPass())
+	}
+}
+
+func TestDAVPasswordFallsBackToIMAP(t *testing.T) {
+	isolateEnv(t)
+	setTBError(t)
+	os.Setenv("MAILBOX_EMAIL", "user@mailbox.org")
+	os.Setenv("MAILBOX_PASSWORD", "secret")
+	defer os.Unsetenv("MAILBOX_EMAIL")
+	defer os.Unsetenv("MAILBOX_PASSWORD")
+
+	acc, err := LoadAccount(false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acc.DAVPass() != "secret" {
+		t.Fatalf("dav=%q", acc.DAVPass())
+	}
+}
+
+func TestDAVPasswordFromThunderbird(t *testing.T) {
+	isolateEnv(t)
+	LoadThunderbirdHook = func(string) (*thunderbird.Account, error) {
+		return &thunderbird.Account{
+			Email:       "user@mailbox.org",
+			Password:    "imap-pw",
+			DAVPassword: "dav-pw",
+			KalenderURL: "https://dav.mailbox.org/caldav/KAL/",
+			AufgabenURL: "https://dav.mailbox.org/caldav/TODO/",
+		}, nil
+	}
+	t.Cleanup(func() { LoadThunderbirdHook = nil })
+
+	acc, err := LoadAccount(true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acc.Password != "imap-pw" || acc.DAVPass() != "dav-pw" {
+		t.Fatalf("password=%q dav=%q", acc.Password, acc.DAVPass())
+	}
+}
+
 func TestEventsStillNeedCalDAV(t *testing.T) {
 	isolateEnv(t)
 	setTBError(t)

@@ -53,6 +53,10 @@ func (c *Client) Report(url, query string, depth string) ([]byte, int, error) {
 	return c.do("REPORT", url, query, depth, nil)
 }
 
+func (c *Client) Propfind(url, body, depth string) ([]byte, int, error) {
+	return c.do("PROPFIND", url, body, depth, nil)
+}
+
 func (c *Client) Put(url, body string, headers map[string]string) (int, error) {
 	_, status, err := c.do("PUT", url, body, "", headers)
 	return status, err

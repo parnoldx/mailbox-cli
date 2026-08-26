@@ -12,6 +12,7 @@ import (
 type Account struct {
 	Email       string
 	Password    string
+	DAVPassword string
 	IMAPHost    string
 	IMAPPort    int
 	KalenderURL string
@@ -20,6 +21,13 @@ type Account struct {
 	DisplayName string
 	SMTPHost    string
 	SMTPPort    int
+}
+
+func (a *Account) DAVPass() string {
+	if a.DAVPassword != "" {
+		return a.DAVPassword
+	}
+	return a.Password
 }
 
 // MissingCredsError maps to python SystemExit -> exit code 3.
@@ -51,29 +59,30 @@ func pick(envKey string, tbVal string, def string) string {
 func opt(v string) string { return v }
 
 type Probe struct {
-	Email             string
-	PasswordSet       bool
-	IMAPHost          string
-	IMAPPort          int
-	KalenderURL       string
-	AufgabenURL       string
-	KontakteURL       string
-	DisplayName       string
+	Email              string
+	PasswordSet        bool
+	IMAPHost           string
+	IMAPPort           int
+	KalenderURL        string
+	AufgabenURL        string
+	KontakteURL        string
+	DisplayName        string
 	ThunderbirdProfile string
-	Missing           []string
-	Hint              string
+	Missing            []string
+	Hint               string
 
-	password   string
-	SMTPHost   string
-	SMTPPort   int
+	password    string
+	davPassword string
+	SMTPHost    string
+	SMTPPort    int
 }
 
 func ProbeAccount() *Probe {
 	tb, err := loadTB()
-	var tbEmail, tbPassword, tbIMAPHost, tbKalender, tbAufgaben, tbKontakte, tbDisplay string
+	var tbEmail, tbPassword, tbDAVPassword, tbIMAPHost, tbKalender, tbAufgaben, tbKontakte, tbDisplay string
 	var tbPort int
 	if err == nil && tb != nil {
-		tbEmail, tbPassword = tb.Email, tb.Password
+		tbEmail, tbPassword, tbDAVPassword = tb.Email, tb.Password, tb.DAVPassword
 		tbIMAPHost = tb.IMAPHost
 		tbPort = tb.IMAPPort
 		tbKalender, tbAufgaben, tbKontakte = tb.KalenderURL, tb.AufgabenURL, tb.KontakteURL
@@ -82,6 +91,7 @@ func ProbeAccount() *Probe {
 
 	email := pick("MAILBOX_EMAIL", tbEmail, "")
 	password := pick("MAILBOX_PASSWORD", tbPassword, "")
+	davPassword := pick("MAILBOX_DAV_PASSWORD", tbDAVPassword, password)
 	imapHost := pick("MAILBOX_IMAP_HOST", tbIMAPHost, "imap.mailbox.org")
 	imapPort := 993
 	if raw := os.Getenv("MAILBOX_IMAP_PORT"); raw != "" {
@@ -128,7 +138,7 @@ func ProbeAccount() *Probe {
 		KalenderURL: kalender, AufgabenURL: aufgaben, KontakteURL: kontakte,
 		DisplayName: display, ThunderbirdProfile: profile,
 		Missing: missing, Hint: hint,
-		password: password, SMTPHost: smtpHost, SMTPPort: smtpPort,
+		password: password, davPassword: davPassword, SMTPHost: smtpHost, SMTPPort: smtpPort,
 	}
 }
 
@@ -154,13 +164,14 @@ func LoadAccount(calendars, contacts bool) (*Account, error) {
 		displayName = strings.SplitN(probe.Email, "@", 2)[0]
 	}
 	return &Account{
-		Email: probe.Email, Password: probe.password,
+		Email: probe.Email, Password: probe.password, DAVPassword: probe.davPassword,
 		IMAPHost: probe.IMAPHost, IMAPPort: probe.IMAPPort,
 		KalenderURL: probe.KalenderURL, AufgabenURL: probe.AufgabenURL, KontakteURL: probe.KontakteURL,
 		DisplayName: displayName, SMTPHost: probe.SMTPHost, SMTPPort: probe.SMTPPort,
 	}, nil
 }
 
-func (p *Probe) Password() string { return p.password }
+func (p *Probe) Password() string    { return p.password }
+func (p *Probe) DAVPassword() string { return p.davPassword }
 
 var _ = fmt.Sprintf

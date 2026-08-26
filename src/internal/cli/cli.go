@@ -130,6 +130,7 @@ Any command accepts -h/--help for its own usage line; mailbox commands lists all
 
   MAILBOX_EMAIL
   MAILBOX_PASSWORD
+  MAILBOX_DAV_PASSWORD
   MAILBOX_IMAP_HOST
   MAILBOX_IMAP_PORT
   MAILBOX_SMTP_HOST
@@ -141,6 +142,7 @@ Any command accepts -h/--help for its own usage line; mailbox commands lists all
   MAILBOX_TB_PROFILE
 
 Reads the Windows Thunderbird profile when env is unset (newest prefs.js, or MAILBOX_TB_PROFILE).
+IMAP/SMTP use the imap.mailbox.org password. CalDAV/CardDAV use dav.mailbox.org (MAILBOX_DAV_PASSWORD, else that Thunderbird login, else MAILBOX_PASSWORD).
 `,
 }
 

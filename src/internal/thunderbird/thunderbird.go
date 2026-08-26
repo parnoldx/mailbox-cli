@@ -19,6 +19,7 @@ type Account struct {
 	AufgabenURL string
 	KontakteURL string
 	Password    string
+	DAVPassword string
 	Profile     string
 }
 
@@ -98,7 +99,10 @@ func getInt(p *Prefs, key string) (int, bool) {
 
 func accountFromPrefs(p *Prefs) *Account {
 	acc := &Account{}
-	type server struct{ host, user string; port int }
+	type server struct {
+		host, user string
+		port       int
+	}
 	var mailbox, other *server
 	for _, key := range p.Keys {
 		if !strings.HasPrefix(key, "mail.server.") || !strings.HasSuffix(key, ".type") {
@@ -347,46 +351,52 @@ func LoadThunderbird(tbHome, profileName string) (*Account, error) {
 	}
 	acc := accountFromPrefs(ParsePrefs(string(raw)))
 	acc.Profile = profile
-	acc.Password, _ = PasswordFromLogins(profile)
+	acc.Password, acc.DAVPassword = PasswordsFromLogins(profile)
 	return acc, nil
 }
 
-func PasswordFromLogins(profile string) (string, error) {
+type loginEntry struct {
+	Hostname          string `json:"hostname"`
+	EncryptedPassword string `json:"encryptedPassword"`
+}
+
+func PasswordsFromLogins(profile string) (imapPW, davPW string) {
 	path := filepath.Join(profile, "logins.json")
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return "", nil
+		return "", ""
 	}
 	var data struct {
-		Logins []struct {
-			Hostname          string `json:"hostname"`
-			EncryptedPassword string `json:"encryptedPassword"`
-		} `json:"logins"`
+		Logins []loginEntry `json:"logins"`
 	}
 	if err := json.Unmarshal(raw, &data); err != nil {
-		return "", nil
+		return "", ""
 	}
-	imapLogin, davLogin := "", ""
-	chosen := ""
-	for _, row := range data.Logins {
-		if strings.Contains(row.Hostname, "imap.mailbox.org") {
-			imapLogin = row.EncryptedPassword
-		} else if strings.Contains(row.Hostname, "dav.mailbox.org") {
-			davLogin = row.EncryptedPassword
+	imapBlob, davBlob := pickLoginBlobs(data.Logins)
+	if imapBlob != "" {
+		if pw, ok := decryptNSS(profile, imapBlob); ok {
+			imapPW = pw
 		}
 	}
-	chosen = imapLogin
-	if chosen == "" {
-		chosen = davLogin
+	if davBlob != "" {
+		if pw, ok := decryptNSS(profile, davBlob); ok {
+			davPW = pw
+		}
 	}
-	if chosen == "" {
-		return "", nil
+	return imapPW, davPW
+}
+
+// mailbox.org 2FA issues a separate app password for dav.mailbox.org.
+func pickLoginBlobs(logins []loginEntry) (imapBlob, davBlob string) {
+	for _, row := range logins {
+		switch {
+		case strings.Contains(row.Hostname, "imap.mailbox.org"):
+			imapBlob = row.EncryptedPassword
+		case strings.Contains(row.Hostname, "dav.mailbox.org"):
+			davBlob = row.EncryptedPassword
+		}
 	}
-	pw, ok := decryptNSS(profile, chosen)
-	if !ok {
-		return "", nil
-	}
-	return pw, nil
+	return imapBlob, davBlob
 }
 
 var _ = sort.Strings

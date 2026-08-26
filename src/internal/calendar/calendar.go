@@ -38,7 +38,7 @@ func NewCal(acct *config.Account) (*Cal, error) {
 	}
 	return &Cal{
 		acct:    acct,
-		client:  dav.New(acct.Email, acct.Password),
+		client:  dav.New(acct.Email, acct.DAVPass()),
 		baseURL: "https://dav.mailbox.org/caldav/",
 	}, nil
 }
@@ -181,7 +181,6 @@ func orDefault(v, def string) string {
 	}
 	return v
 }
-
 
 func stampUTC() string { return time.Now().UTC().Format("20060102T150405Z") }
 

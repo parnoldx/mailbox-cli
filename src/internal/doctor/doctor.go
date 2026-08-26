@@ -6,10 +6,14 @@ import (
 	"strings"
 
 	"mailbox/src/internal/config"
+	"mailbox/src/internal/dav"
 	"mailbox/src/internal/format"
 	"mailbox/src/internal/mail"
 	"mailbox/src/internal/skill"
 )
+
+const davPropfind = `<?xml version="1.0" encoding="utf-8"?>
+<d:propfind xmlns:d="DAV:"><d:prop><d:displayname/></d:prop></d:propfind>`
 
 type Check struct {
 	Name   string
@@ -103,14 +107,46 @@ func caldav(probe *config.Probe) Check {
 	if len(missing) > 0 {
 		return Check{"caldav", false, "missing " + strings.Join(missing, ", ")}
 	}
-	return Check{"caldav", true, "Kalender and Aufgaben URLs set"}
+	if probe.DAVPassword() == "" {
+		return Check{"caldav", false, "skipped; credentials missing"}
+	}
+	client := dav.New(probe.Email, probe.DAVPassword())
+	for _, item := range []struct{ name, url string }{
+		{"Kalender", probe.KalenderURL},
+		{"Aufgaben", probe.AufgabenURL},
+	} {
+		if detail, ok := davCheck(client, item.url, item.name); !ok {
+			return Check{"caldav", false, detail}
+		}
+	}
+	return Check{"caldav", true, "Kalender and Aufgaben reachable"}
 }
 
 func carddav(probe *config.Probe) Check {
 	if probe.KontakteURL == "" {
 		return Check{"carddav", false, "missing Kontakte"}
 	}
-	return Check{"carddav", true, "Kontakte URL set"}
+	if probe.DAVPassword() == "" {
+		return Check{"carddav", false, "skipped; credentials missing"}
+	}
+	if detail, ok := davCheck(dav.New(probe.Email, probe.DAVPassword()), probe.KontakteURL, "Kontakte"); !ok {
+		return Check{"carddav", false, detail}
+	}
+	return Check{"carddav", true, "Kontakte reachable"}
+}
+
+func davCheck(client *dav.Client, url, label string) (string, bool) {
+	_, status, err := client.Propfind(url, davPropfind, "0")
+	if err != nil {
+		return fmt.Sprintf("%s: %v", label, err), false
+	}
+	if status == 401 || status == 403 {
+		return fmt.Sprintf("%s HTTP %d (set MAILBOX_DAV_PASSWORD to the dav.mailbox.org password)", label, status), false
+	}
+	if status != 200 && status != 207 {
+		return fmt.Sprintf("%s HTTP %d", label, status), false
+	}
+	return "", true
 }
 
 func skillCheck() Check {

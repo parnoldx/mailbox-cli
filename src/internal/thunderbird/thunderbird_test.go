@@ -55,6 +55,29 @@ user_pref("mail.server.server9.port", 993);
 	}
 }
 
+func TestPickLoginBlobsPrefersIMAPAndDAVSeparately(t *testing.T) {
+	imapBlob, davBlob := pickLoginBlobs([]loginEntry{
+		{Hostname: "imap://imap.mailbox.org", EncryptedPassword: "imap-enc"},
+		{Hostname: "smtp://smtp.mailbox.org", EncryptedPassword: "smtp-enc"},
+		{Hostname: "https://dav.mailbox.org", EncryptedPassword: "dav-enc"},
+	})
+	if imapBlob != "imap-enc" {
+		t.Fatalf("imap blob %q", imapBlob)
+	}
+	if davBlob != "dav-enc" {
+		t.Fatalf("dav blob %q", davBlob)
+	}
+}
+
+func TestPickLoginBlobsIMAPOnlyLeavesDAVEmpty(t *testing.T) {
+	imapBlob, davBlob := pickLoginBlobs([]loginEntry{
+		{Hostname: "imap://imap.mailbox.org", EncryptedPassword: "imap-enc"},
+	})
+	if imapBlob != "imap-enc" || davBlob != "" {
+		t.Fatalf("imap=%q dav=%q", imapBlob, davBlob)
+	}
+}
+
 func TestDisplayNameMatchesMailboxIdentity(t *testing.T) {
 	extra := `
 user_pref("mail.identity.id2.useremail", "user@mailbox.org");

@@ -101,11 +101,11 @@ Kontakte?
 └── Edit → mailbox contacts update ID --name "Jane Dawson"
 ```
 
-`mailbox commands --json` lists the rest. `mailbox help output` is formats. `mailbox doctor --json` checks credentials, IMAP, CalDAV/CardDAV URLs, and the installed skill.
+`mailbox commands --json` lists the rest. `mailbox help output` is formats. `mailbox doctor --json` checks credentials, IMAP, CalDAV/CardDAV, and the installed skill.
 
 ## Auth
 
-Reads the Windows Thunderbird profile (newest `prefs.js`, or `MAILBOX_TB_PROFILE`). Env overrides: `MAILBOX_EMAIL`, `MAILBOX_PASSWORD`, `MAILBOX_IMAP_HOST`, `MAILBOX_IMAP_PORT`, `MAILBOX_SMTP_HOST`, `MAILBOX_SMTP_PORT`, `MAILBOX_CALDAV_KALENDER`, `MAILBOX_CALDAV_AUFGABEN`, `MAILBOX_CARDDAV_KONTAKTE`, `MAILBOX_TB_HOME`.
+Reads the Windows Thunderbird profile (newest `prefs.js`, or `MAILBOX_TB_PROFILE`). Env overrides: `MAILBOX_EMAIL`, `MAILBOX_PASSWORD`, `MAILBOX_DAV_PASSWORD`, `MAILBOX_IMAP_HOST`, `MAILBOX_IMAP_PORT`, `MAILBOX_SMTP_HOST`, `MAILBOX_SMTP_PORT`, `MAILBOX_CALDAV_KALENDER`, `MAILBOX_CALDAV_AUFGABEN`, `MAILBOX_CARDDAV_KONTAKTE`, `MAILBOX_TB_HOME`. IMAP/SMTP use the imap.mailbox.org password; CalDAV/CardDAV use dav.mailbox.org (`MAILBOX_DAV_PASSWORD`, else that Thunderbird login, else `MAILBOX_PASSWORD`).
 
 ## Boxes
 
