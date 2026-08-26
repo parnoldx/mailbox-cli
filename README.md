@@ -59,7 +59,8 @@ Reads the Thunderbird profile (newest `prefs.js`) when env is unset. WSL looks u
 
 ```
 MAILBOX_EMAIL
-MAILBOX_PASSWORD
+MAILBOX_PASSWORD           # IMAP/SMTP (imap.mailbox.org)
+MAILBOX_DAV_PASSWORD       # CalDAV/CardDAV (dav.mailbox.org); else Thunderbird DAV login; else MAILBOX_PASSWORD
 MAILBOX_IMAP_HOST          # default imap.mailbox.org
 MAILBOX_IMAP_PORT          # default 993
 MAILBOX_SMTP_HOST          # default smtp.mailbox.org
@@ -71,7 +72,7 @@ MAILBOX_TB_HOME
 MAILBOX_TB_PROFILE
 ```
 
-`mailbox doctor` checks credentials, IMAP, CalDAV/CardDAV URLs, and the installed skill.
+`mailbox doctor` checks credentials, IMAP, CalDAV/CardDAV, and the installed skill.
 
 ## Boxes
 

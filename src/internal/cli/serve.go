@@ -201,7 +201,16 @@ func cmdSieve(cmd string, flags *parsed, out *format.Output) (int, error) {
 		if err := server.PutScriptNamed(name, string(content)); err != nil {
 			return 0, err
 		}
-		return format.WriteOK(format.NewOM("name", name, "bytes", len(content), "active", true), out, ""), nil
+		return format.WriteOK(format.NewOM("name", name, "bytes", len(content)), out, ""), nil
+	case "activate":
+		if len(flags.positional) != 1 {
+			return printUsage("sieve", "activate"), nil
+		}
+		name := flags.positional[0]
+		if err := server.ActivateScript(name); err != nil {
+			return 0, err
+		}
+		return format.WriteOK(format.NewOM("name", name, "active", true), out, ""), nil
 	default:
 		return printUsage("sieve", cmd), nil
 	}

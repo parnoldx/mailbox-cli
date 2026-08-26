@@ -67,7 +67,7 @@ func (s Server) GetScriptNamed(name string) (string, error) {
 	return content, nil
 }
 
-// PutScriptNamed uploads one script by name and activates it.
+// PutScriptNamed uploads one script by name. It does not change which script is active.
 func (s Server) PutScriptNamed(name, content string) error {
 	client, err := s.dial()
 	if err != nil {
@@ -81,6 +81,16 @@ func (s Server) PutScriptNamed(name, content string) error {
 	if warnings != "" {
 		log.Printf("sieve: script warnings: %s", warnings)
 	}
+	return nil
+}
+
+// ActivateScript makes name the active script. Only one is active at a time.
+func (s Server) ActivateScript(name string) error {
+	client, err := s.dial()
+	if err != nil {
+		return err
+	}
+	defer client.Close()
 	if err := client.ActivateScript(name); err != nil {
 		return fmt.Errorf("failed to activate %s script: %w", name, err)
 	}
@@ -94,19 +104,7 @@ func (s Server) GetScript() (string, error) {
 
 // PutScript uploads the logic script body.
 func (s Server) PutScript(content string) error {
-	client, err := s.dial()
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-	warnings, err := client.PutScript(ScriptName, content)
-	if err != nil {
-		return fmt.Errorf("failed to upload %s script: %w", ScriptName, err)
-	}
-	if warnings != "" {
-		log.Printf("sieve: script warnings: %s", warnings)
-	}
-	return nil
+	return s.PutScriptNamed(ScriptName, content)
 }
 
 // EnsureScript creates the default logic script if the server has none.

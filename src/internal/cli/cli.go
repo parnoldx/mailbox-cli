@@ -54,6 +54,7 @@ Sieve  (ManageSieve scripts)
   mailbox sieve list
   mailbox sieve get [NAME] [--output PATH]
   mailbox sieve put NAME FILE|-
+  mailbox sieve activate NAME
 
 Events  (Kalender)
   mailbox events [--start WHEN] [--end WHEN]
@@ -93,7 +94,7 @@ Default search covers Inbox/Feed/Paper Trail/Screener plus Archive.
 Approve, deny, and move only IMAP-move; Sieve updates happen on the VPS.
 compose sends via SMTP unless --draft. -m is Markdown; --message-html is raw HTML.
 sieve talks ManageSieve (MAILBOX_SIEVE_HOST/_PORT, default IMAP host:4190);
-sieve get prints the raw script; sieve put uploads and activates.
+sieve get prints the raw script; sieve put uploads; sieve activate sets the active script; sieve list marks which is active.
 serve runs the mail routing service: watches Inbox/Feed/Paper Trail/Screener/Block
 and updates the "logic" Sieve script (sieve host: MAILBOX_SIEVE_HOST/_PORT, default IMAP host:4190).
 --web serves the list-management UI on :8080. Needs the same env as the mail verbs.
@@ -515,7 +516,7 @@ func subcommand(tokens []string, group string) (string, *parsed, error) {
 		"screener":   {"list", "approve", "deny"},
 		"draft":      {"list", "show", "edit", "send", "delete"},
 		"attachment": {"list", "save"},
-		"sieve":      {"list", "get", "put"},
+		"sieve":      {"list", "get", "put", "activate"},
 		"contacts":   {"list", "show", "add", "update", "search"},
 		"skill":      {"install"},
 	}[group]
@@ -1513,6 +1514,7 @@ var cmdSpecs = []cmdspec{
 	{[]string{"sieve", "list"}, "mailbox sieve list", nil},
 	{[]string{"sieve", "get"}, "mailbox sieve get [NAME] [--output PATH]", []string{"--output"}},
 	{[]string{"sieve", "put"}, "mailbox sieve put NAME FILE|-", nil},
+	{[]string{"sieve", "activate"}, "mailbox sieve activate NAME", nil},
 	{[]string{"events"}, "mailbox events [--start WHEN] [--end WHEN]", []string{"--start", "--end"}},
 	{[]string{"events", "show"}, "mailbox events show ID", nil},
 	{[]string{"events", "create"}, "mailbox events create --title TEXT --start WHEN [--end WHEN] [--all-day]", []string{"--title", "--start", "--end", "--all-day"}},
