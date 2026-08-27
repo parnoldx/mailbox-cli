@@ -19,6 +19,7 @@ MAIL
   screener     First-time senders
   move         Move to inbox|feed|trail|block
   aside        Read-later pile
+  label        Labels on mail
   seen         Mark seen
   unseen       Mark unseen
   trash        Move to Trash
@@ -27,22 +28,22 @@ MAIL
 CALENDARS
   calendar     Discovered calendars
   event        Events
+  habit        Repeating per-day practices
 
 TODOS
   todo         Todos on Aufgaben
-
-HABITS
-  habit        Repeating per-day practices
 
 CONTACTS
   contact      CardDAV Kontakte
 
 META
+  tui          Interactive terminal UI
   sieve        ManageSieve scripts
+  setup        First-run wizard
   doctor       Credentials, IMAP, CalDAV, skill
   serve        Routing service
   commands     Machine command index
-  skill        Install the agent skill
+  version      Installed version
   help         output | exit-codes | environment
 
 Mail IDs: 36722, feed:12, Drafts:12.
@@ -104,6 +105,7 @@ var flagDesc = map[string]string{
 	"--icon":          "icon",
 	"--email":         "email address",
 	"--note":          "vCard NOTE",
+	"--screener":      "open The Screener",
 	"--web":           "list-management UI",
 	"--web-port":      "UI port (default 8080)",
 	"--interval":      "poll seconds",
@@ -113,6 +115,12 @@ var flagDesc = map[string]string{
 func flagHelp(path []string, flag string) string {
 	if flag == "--to" && len(path) > 0 && path[0] == "move" {
 		return "inbox|feed|trail|block"
+	}
+	if flag == "--to" && len(path) > 0 && path[0] == "label" {
+		return "label name"
+	}
+	if flag == "--from" && len(path) > 0 && path[0] == "label" {
+		return "label name or all"
 	}
 	if flag == "--date" && len(path) > 0 && path[0] != "search" {
 		return "YYYY-MM-DD"

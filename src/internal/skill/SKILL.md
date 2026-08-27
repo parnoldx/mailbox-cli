@@ -2,7 +2,7 @@
 name: mailbox
 description: |
   Interact with mailbox.org via the mailbox CLI. Read and send emails, manage contacts,
-  boxes, calendars, todos, and habits. Use for ANY mailbox-related question or action.
+  boxes, labels, calendars, todos, and habits. Use for ANY mailbox-related question or action.
 triggers:
   - mailbox
   - /mailbox
@@ -20,6 +20,7 @@ triggers:
   - mailbox todo
   - mailbox habit
   - mailbox aside
+  - mailbox label
   - mailbox seen
   - mailbox unseen
   - mailbox move
@@ -53,7 +54,7 @@ argument-hint: "[command] [args...]"
 
 # /mailbox - mailbox.org Email Workflow Command
 
-CLI for one mailbox.org account: boxes, email threads, contacts, replies, compose, calendars, todos, and habits. IMAP + CalDAV + CardDAV. Not HEY.
+CLI for one mailbox.org account: boxes, labels, email threads, contacts, replies, compose, calendars, todos, and habits. IMAP + CalDAV + CardDAV. Not HEY.
 
 ## Agent Invariants
 
@@ -81,7 +82,7 @@ listing that found nothing.
 For the two commonest shapes there is no need for an expression at all: `--ids-only` prints
 one ID per line and `--count` prints a bare number, both on stdout with any pagination
 notice on stderr. Both need list data, so they work on `mailbox box list`, `mailbox box view`,
-`mailbox search`, `mailbox screener list`, `mailbox aside`, `mailbox draft list`,
+`mailbox search`, `mailbox screener list`, `mailbox aside`, `mailbox label list`, `mailbox label view`, `mailbox draft list`,
 `mailbox attachment list`, `mailbox calendar list`, `mailbox event list`, `mailbox todo list`,
 `mailbox habit list`, and `mailbox contact list`.
 
@@ -120,6 +121,11 @@ notice on stderr. Both need list data, so they work on `mailbox box list`, `mail
 | Return from Aside | `mailbox aside done Aside:12` |
 | Move to Trash | `mailbox trash 36722` |
 | Mark as spam | `mailbox spam 36722` |
+| List labels | `mailbox label list --json` |
+| Create a label | `mailbox label create travel-receipts` |
+| List emails with a label | `mailbox label view travel-receipts --json` |
+| Add a label | `mailbox label add 36722 --to travel-receipts` |
+| Remove a label | `mailbox label remove 36722 --from travel-receipts` |
 | List contacts | `mailbox contact list --json` |
 | Find a contact | `mailbox contact search jane --json` |
 | View contact and note | `mailbox contact show <id> --json` |
@@ -136,7 +142,7 @@ notice on stderr. Both need list data, so they work on `mailbox box list`, `mail
 | Create habit | `mailbox habit create "Gym" --days mon,wed,fri` |
 | Tick today's habit | `mailbox habit complete <id>` |
 | Check credentials and skill | `mailbox doctor --json` |
-| Refresh this skill | `mailbox skill install` |
+| Refresh this skill | `mailbox setup skill` |
 
 `mailbox commands --json` lists the rest. `mailbox help output` is formats.
 
@@ -158,6 +164,9 @@ Want to read email?
 ├── Mark as seen? → mailbox seen [box:]UID
 ├── Mark as unseen? → mailbox unseen [box:]UID
 ├── Move to another box? → mailbox move [box:]UID --to inbox|feed|trail|block
+├── List labels or labeled email? → mailbox label list --json / mailbox label view NAME --json
+├── Create a label? → mailbox label create NAME [ID...]
+├── Add or remove a label? → mailbox label add ID --to NAME / mailbox label remove ID --from NAME|all
 ├── Set aside? → mailbox aside [box:]UID [--remind 2h]
 ├── Done with Aside? → mailbox aside done Aside:12
 ├── Move to Trash? → mailbox trash [box:]UID
@@ -249,7 +258,7 @@ mailbox box view feed --page <next_page> --json
 
 `--box` / `--to` accept `inbox`, `feed`, `trail`, `block`, plus `The Feed` and `paper trail`. Approve dests are inbox, feed, trail (default inbox). Deny is Block. Move dests are those four. Trash and Junk are not box view or `--to`.
 
-**Response format:** each row has `id` (`[box:]uid`), `from` (display name), `summary` (body preview, else subject), `date`. `--json` also has `subject` and `flags`. `--detail` shows flags in the table. Use `id` for thread, reply, forward, move, seen, unseen, trash, spam, aside, and attachment list.
+**Response format:** each row has `id` (`[box:]uid`), `from` (display name), `summary` (body preview, else subject), `date`. `--json` also has `subject`, `flags`, and `labels`. `--detail` shows flags in the table. Use `id` for thread, reply, forward, move, seen, unseen, trash, spam, aside, label add/remove, and attachment list.
 
 `next_page` is the cursor `--page` takes. `--all` reads to the end instead.
 
@@ -341,6 +350,20 @@ mailbox aside --sweep
 ```
 
 Aside is the read-later pile (`INBOX/Aside`). `mailbox aside` with IDs moves those messages there. `--remind 30m|2h|3d` stores an `asidedue-…` keyword; serve moves due mail back to Inbox on a 30-minute sweep. `aside done` returns it early. `aside --sweep` runs one pass now.
+
+### Email - Labels
+
+```bash
+mailbox label list --json
+mailbox label create travel-receipts
+mailbox label create travel-receipts 36722
+mailbox label view travel-receipts --json
+mailbox label add 36722 --to travel-receipts
+mailbox label remove 36722 --from travel-receipts
+mailbox label remove 36722 --from all
+```
+
+Labels are IMAP keywords on a Message, not a Box. Names slugify (`Travel receipts` → `travel-receipts`). `label create NAME` records it; IDs also apply it. `label add` applies a name. `label list` is created names, not Thunderbird/client flags. `label view` is Inbox and its subfolders (not Archive). `--from all` strips every label. System flags and `asidedue-…` are not labels.
 
 ### Email - Seen, Move, Trash, Spam
 
@@ -444,10 +467,11 @@ Reads are cached on disk forever (`~/.cache/mailbox/contacts.json`). `contact re
 ### Authentication
 
 ```bash
+mailbox setup skill
 mailbox doctor --json
 mailbox help environment
 ```
 
-Reads the Windows Thunderbird profile (newest `prefs.js`, or `MAILBOX_TB_PROFILE`). Env overrides live in `mailbox help environment`. IMAP/SMTP use the imap.mailbox.org password; CalDAV/CardDAV use dav.mailbox.org (`MAILBOX_DAV_PASSWORD`, else that Thunderbird login, else `MAILBOX_PASSWORD`).
+Humans run `mailbox setup` (Thunderbird slave or typed credentials; app passwords split IMAP vs DAV). Agents run `mailbox setup skill`. Credentials: process env, then `~/.config/mailbox/env` (or `MAILBOX_CONFIG`), then Thunderbird (newest `prefs.js`, or `MAILBOX_TB_PROFILE`). IMAP/SMTP use the imap.mailbox.org password; CalDAV/CardDAV use dav.mailbox.org (`MAILBOX_DAV_PASSWORD`, else that Thunderbird login, else `MAILBOX_PASSWORD`).
 
-`mailbox doctor --json` checks credentials, IMAP, CalDAV/CardDAV, and whether the installed skill matches this binary. If the skill check fails, run `mailbox skill install`.
+`mailbox doctor --json` checks credentials, IMAP, CalDAV/CardDAV, and whether the installed skill matches this binary. If the skill check fails, run `mailbox setup skill`.

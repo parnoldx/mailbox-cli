@@ -1,6 +1,10 @@
 .PHONY: build test fmt fmt-check vet tidy tidy-check check clean install help
 
 BINARY := $(CURDIR)/bin/mailbox
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT := $(shell git rev-parse HEAD 2>/dev/null || echo)
+DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+LDFLAGS := -X mailbox/src/internal/cli.Version=$(VERSION) -X mailbox/src/internal/cli.Commit=$(COMMIT) -X mailbox/src/internal/cli.Date=$(DATE)
 
 help:
 	@echo "mailbox CLI"
@@ -19,7 +23,7 @@ help:
 # Build CLI
 build:
 	@mkdir -p bin
-	go build -o $(BINARY) ./src/cmd/mailbox
+	go build -ldflags "$(LDFLAGS)" -o $(BINARY) ./src/cmd/mailbox
 
 # Run tests
 test:

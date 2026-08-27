@@ -78,6 +78,7 @@ type SearchQuery struct {
 	Exact      string
 	Date       string
 	Attachment string
+	Keyword    string
 }
 
 func NewSearchQuery(text string) SearchQuery { return SearchQuery{Text: text} }
@@ -85,7 +86,7 @@ func NewSearchQuery(text string) SearchQuery { return SearchQuery{Text: text} }
 func (q SearchQuery) Empty() bool {
 	return q.Text == "" && q.From == "" && q.To == "" && q.Subject == "" &&
 		q.Required == "" && q.Any == "" && q.None == "" && q.Exact == "" &&
-		q.Date == "" && q.Attachment == ""
+		q.Date == "" && q.Attachment == "" && q.Keyword == ""
 }
 
 type Outgoing struct {
@@ -331,7 +332,25 @@ func (m *Mail) Search(query SearchQuery, limit, page int, folder string) (*Listi
 	if err != nil {
 		return nil, err
 	}
-	required := folder != ""
+	return m.searchFolders(scope, query, limit, page, folder != "")
+}
+
+// Labeled is Search for one Label, Inbox tree only (not Archive).
+func (m *Mail) Labeled(name string, limit, page int) (*Listing, error) {
+	names, err := m.SearchFolders()
+	if err != nil {
+		return nil, err
+	}
+	var scope []string
+	for _, n := range names {
+		if !folders.IsArchive(n) {
+			scope = append(scope, n)
+		}
+	}
+	return m.searchFolders(scope, SearchQuery{Keyword: name}, limit, page, false)
+}
+
+func (m *Mail) searchFolders(scope []string, query SearchQuery, limit, page int, required bool) (*Listing, error) {
 	fetch := limit
 	if limit < 0 || page > 1 {
 		fetch = -1
@@ -396,7 +415,6 @@ func (m *Mail) searchFolder(folder string, query SearchQuery, limit int, require
 		if required {
 			return nil, err
 		}
-		fmt.Fprintf(stderr(), "cannot select %s\n", folder)
 		return &Listing{}, nil
 	}
 	uids, err := m.searchUIDs(query)
@@ -450,6 +468,9 @@ func hasNonASCII(s string) bool {
 
 func searchCriteria(q SearchQuery) ([]string, error) {
 	var extra []string
+	if q.Keyword != "" {
+		extra = append(extra, "KEYWORD", q.Keyword)
+	}
 	if q.From != "" {
 		extra = append(extra, "FROM", imapQuoteAtom(q.From))
 	}

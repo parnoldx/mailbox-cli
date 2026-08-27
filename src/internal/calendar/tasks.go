@@ -179,6 +179,15 @@ func (cal *Cal) UncompleteTask(uid string) error {
 	return cal.putICS(cal.taskPutURL(hit.resp.Href), "BEGIN:VTODO\r\n"+vobject.Serialize(props)+"END:VTODO")
 }
 
+func (cal *Cal) RenameTask(uid, title string) error {
+	hit, err := cal.lookupTask(uid)
+	if err != nil {
+		return err
+	}
+	props := setProp(hit.props, "SUMMARY", "", title)
+	return cal.putICS(cal.taskPutURL(hit.resp.Href), "BEGIN:VTODO\r\n"+vobject.Serialize(props)+"END:VTODO")
+}
+
 func (cal *Cal) DeleteTask(uid string) error {
 	hit, err := cal.lookupTask(uid)
 	if err != nil {

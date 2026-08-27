@@ -1,11 +1,12 @@
 # mailbox
 
-CLI for one [mailbox.org](https://mailbox.org) account. Talks IMAP, SMTP, CalDAV, and CardDAV itself — mail, contacts, calendars, todos, and habits.
+CLI for one [mailbox.org](https://mailbox.org) account. Talks IMAP, SMTP, CalDAV, and CardDAV itself — mail, labels, contacts, calendars, todos, and habits.
 
-Built for coding agents; works from a terminal.
+Built for coding agents; works from a terminal. `mailbox tui` is the interactive UI.
 
 ```bash
 mailbox box list --json
+mailbox label list --json
 mailbox screener list --json
 mailbox thread INBOX/Screener:342 --json
 mailbox compose --to someone@mailbox.org --subject "Hi" -m "..."
@@ -57,7 +58,9 @@ Installs to `~/.local/bin/mailbox`. `make build` writes `bin/mailbox` instead.
 
 ## Auth
 
-Reads the Thunderbird profile (newest `prefs.js`) when env is unset. WSL looks under `/mnt/c/Users/*/AppData/Roaming/Thunderbird`; otherwise `~/.thunderbird`.
+`mailbox setup` is the first-run wizard: Thunderbird slave (re-reads the profile each run) or typed credentials. App passwords: IMAP and DAV are then different.
+
+Otherwise: process env, then `~/.config/mailbox/env` (or `MAILBOX_CONFIG`), then Thunderbird (newest `prefs.js`). WSL looks under `/mnt/c/Users/*/AppData/Roaming/Thunderbird`; otherwise `~/.thunderbird`.
 
 ```
 MAILBOX_EMAIL
@@ -72,6 +75,7 @@ MAILBOX_CALDAV_AUFGABEN
 MAILBOX_CARDDAV_KONTAKTE
 MAILBOX_TB_HOME
 MAILBOX_TB_PROFILE
+MAILBOX_CONFIG             # env file path (default ~/.config/mailbox/env)
 ```
 
 `mailbox doctor` checks credentials, IMAP, CalDAV/CardDAV, and the installed skill.
@@ -106,7 +110,7 @@ Message IDs are `[box:]uid` copied from list/search. Bare uid means Inbox (`3672
 ## Agent skill
 
 ```bash
-mailbox skill install
+mailbox setup skill
 ```
 
-Copies the packaged skill into `~/.agents/skills/mailbox`, and into `~/.grok` / `~/.claude` if those skill dirs exist.
+Copies the packaged skill into `~/.agents/skills/mailbox`, and into `~/.grok` / `~/.claude` if those skill dirs exist. `mailbox setup` on a terminal also does this after the wizard.

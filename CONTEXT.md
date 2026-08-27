@@ -32,6 +32,10 @@ _Avoid_: snooze, star, pin, set-aside (as verb)
 IMAP `\Seen` flag on a Message. `mailbox seen` sets it; `mailbox unseen` clears it.
 _Avoid_: read, unread (those name the `--unread` list filter)
 
+**Label**:
+An IMAP keyword on a Message. Named tag; not a Box. System flags and Aside due keywords are not Labels.
+_Avoid_: tag, folder, category, Gmail label
+
 **Trash**:
 IMAP folder `Trash`. A Message moved here leaves its source folder. Does not change Routing.
 _Avoid_: delete, expunge

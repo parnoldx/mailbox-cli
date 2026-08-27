@@ -315,39 +315,65 @@ func (cal *Cal) UpdateEvent(uid string, in EventIn) (*format.OM, error) {
 
 func applyEventExtras(props []vobject.Prop, in EventIn, begin time.Time) ([]vobject.Prop, error) {
 	if in.Has.Location {
-		props = setProp(props, "LOCATION", "", in.Location)
+		if in.Location == "" {
+			props = dropProp(props, "LOCATION")
+		} else {
+			props = setProp(props, "LOCATION", "", in.Location)
+		}
 	}
 	if in.Has.Notes {
-		props = setProp(props, "DESCRIPTION", "", in.Notes)
+		if in.Notes == "" {
+			props = dropProp(props, "DESCRIPTION")
+		} else {
+			props = setProp(props, "DESCRIPTION", "", in.Notes)
+		}
 	}
 	if in.Has.URL {
-		props = setProp(props, "URL", "", in.URL)
+		if in.URL == "" {
+			props = dropProp(props, "URL")
+		} else {
+			props = setProp(props, "URL", "", in.URL)
+		}
 	}
-	if in.Has.Circle && in.Circle {
-		props = setProp(props, "PRIORITY", "", "1")
+	if in.Has.Circle {
+		if in.Circle {
+			props = setProp(props, "PRIORITY", "", "1")
+		} else {
+			props = dropProp(props, "PRIORITY")
+		}
 	}
 	if in.Has.Repeat {
-		rule, err := rruleFromAlias(in.Repeat, begin, in.RepeatUntil, in.RepeatTimes)
-		if err != nil {
-			return nil, err
+		if in.Repeat == "" {
+			props = dropProp(props, "RRULE")
+		} else {
+			rule, err := rruleFromAlias(in.Repeat, begin, in.RepeatUntil, in.RepeatTimes)
+			if err != nil {
+				return nil, err
+			}
+			props = setProp(props, "RRULE", "", rule)
 		}
-		props = setProp(props, "RRULE", "", rule)
 	} else if in.RepeatUntil != "" || in.RepeatTimes > 0 {
 		return nil, fmt.Errorf("--repeat-until/--repeat-times need --repeat")
 	}
 	if in.Has.Remind {
-		trig, err := icsTrigger(in.Remind)
-		if err != nil {
-			return nil, err
-		}
 		props = dropAlarm(props)
-		props = append(props,
-			vobject.Prop{Name: "BEGIN", Value: "VALARM"},
-			vobject.Prop{Name: "ACTION", Value: "DISPLAY"},
-			vobject.Prop{Name: "DESCRIPTION", Value: "Reminder"},
-			vobject.Prop{Name: "TRIGGER", Value: trig},
-			vobject.Prop{Name: "END", Value: "VALARM"},
-		)
+		for _, spec := range strings.Split(in.Remind, ",") {
+			spec = strings.TrimSpace(spec)
+			if spec == "" {
+				continue
+			}
+			trig, err := icsTrigger(spec)
+			if err != nil {
+				return nil, err
+			}
+			props = append(props,
+				vobject.Prop{Name: "BEGIN", Value: "VALARM"},
+				vobject.Prop{Name: "ACTION", Value: "DISPLAY"},
+				vobject.Prop{Name: "DESCRIPTION", Value: "Reminder"},
+				vobject.Prop{Name: "TRIGGER", Value: trig},
+				vobject.Prop{Name: "END", Value: "VALARM"},
+			)
+		}
 	}
 	return props, nil
 }

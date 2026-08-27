@@ -39,16 +39,19 @@ func (e *MissingCredsError) ErrorCode() string { return "auth" }
 // LoadThunderbirdHook is overridden in tests.
 var LoadThunderbirdHook func(profileName string) (*thunderbird.Account, error)
 
-func loadTB() (*thunderbird.Account, error) {
+func loadTB(profileName string) (*thunderbird.Account, error) {
 	if LoadThunderbirdHook != nil {
-		return LoadThunderbirdHook(os.Getenv("MAILBOX_TB_PROFILE"))
+		return LoadThunderbirdHook(profileName)
 	}
-	return thunderbird.LoadThunderbird("", os.Getenv("MAILBOX_TB_PROFILE"))
+	return thunderbird.LoadThunderbird("", profileName)
 }
 
-func pick(envKey string, tbVal string, def string) string {
+func pick(envKey string, fileVal, tbVal, def string) string {
 	if env := os.Getenv(envKey); env != "" {
 		return env
+	}
+	if fileVal != "" {
+		return fileVal
 	}
 	if tbVal != "" {
 		return tbVal
@@ -78,7 +81,8 @@ type Probe struct {
 }
 
 func ProbeAccount() *Probe {
-	tb, err := loadTB()
+	file := ReadFile()
+	tb, err := loadTB(pick("MAILBOX_TB_PROFILE", file["MAILBOX_TB_PROFILE"], "", ""))
 	var tbEmail, tbPassword, tbDAVPassword, tbIMAPHost, tbKalender, tbAufgaben, tbKontakte, tbDisplay string
 	var tbPort int
 	if err == nil && tb != nil {
@@ -89,23 +93,23 @@ func ProbeAccount() *Probe {
 		tbDisplay = tb.DisplayName
 	}
 
-	email := pick("MAILBOX_EMAIL", tbEmail, "")
-	password := pick("MAILBOX_PASSWORD", tbPassword, "")
-	davPassword := pick("MAILBOX_DAV_PASSWORD", tbDAVPassword, password)
-	imapHost := pick("MAILBOX_IMAP_HOST", tbIMAPHost, "imap.mailbox.org")
+	email := pick("MAILBOX_EMAIL", file["MAILBOX_EMAIL"], tbEmail, "")
+	password := pick("MAILBOX_PASSWORD", file["MAILBOX_PASSWORD"], tbPassword, "")
+	davPassword := pick("MAILBOX_DAV_PASSWORD", file["MAILBOX_DAV_PASSWORD"], tbDAVPassword, password)
+	imapHost := pick("MAILBOX_IMAP_HOST", file["MAILBOX_IMAP_HOST"], tbIMAPHost, "imap.mailbox.org")
 	imapPort := 993
-	if raw := os.Getenv("MAILBOX_IMAP_PORT"); raw != "" {
+	if raw := pick("MAILBOX_IMAP_PORT", file["MAILBOX_IMAP_PORT"], "", ""); raw != "" {
 		imapPort, _ = strconv.Atoi(raw)
 	} else if err == nil && tb != nil && tbPort != 0 {
 		imapPort = tbPort
 	}
-	kalender := pick("MAILBOX_CALDAV_KALENDER", tbKalender, "")
-	aufgaben := pick("MAILBOX_CALDAV_AUFGABEN", tbAufgaben, "")
-	kontakte := pick("MAILBOX_CARDDAV_KONTAKTE", tbKontakte, "")
-	display := pick("MAILBOX_DISPLAY_NAME", tbDisplay, "")
-	smtpHost := pick("MAILBOX_SMTP_HOST", "", "smtp.mailbox.org")
+	kalender := pick("MAILBOX_CALDAV_KALENDER", file["MAILBOX_CALDAV_KALENDER"], tbKalender, "")
+	aufgaben := pick("MAILBOX_CALDAV_AUFGABEN", file["MAILBOX_CALDAV_AUFGABEN"], tbAufgaben, "")
+	kontakte := pick("MAILBOX_CARDDAV_KONTAKTE", file["MAILBOX_CARDDAV_KONTAKTE"], tbKontakte, "")
+	display := pick("MAILBOX_DISPLAY_NAME", file["MAILBOX_DISPLAY_NAME"], tbDisplay, "")
+	smtpHost := pick("MAILBOX_SMTP_HOST", file["MAILBOX_SMTP_HOST"], "", "smtp.mailbox.org")
 	smtpPort := 465
-	if raw := os.Getenv("MAILBOX_SMTP_PORT"); raw != "" {
+	if raw := pick("MAILBOX_SMTP_PORT", file["MAILBOX_SMTP_PORT"], "", ""); raw != "" {
 		smtpPort, _ = strconv.Atoi(raw)
 	}
 
@@ -119,11 +123,11 @@ func ProbeAccount() *Probe {
 	hint := ""
 	switch {
 	case err != nil:
-		hint = "Thunderbird profile unread or incomplete; set env"
+		hint = "Thunderbird profile unread or incomplete; run mailbox setup"
 	case password == "":
-		hint = "Thunderbird password unread; set MAILBOX_PASSWORD"
+		hint = "password unread; run mailbox setup"
 	default:
-		hint = "set env"
+		hint = "run mailbox setup"
 	}
 	profile := ""
 	if err == nil && tb != nil && tb.Profile != "" {

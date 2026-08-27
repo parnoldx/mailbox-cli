@@ -165,7 +165,7 @@ func skillCheck() Check {
 		for i, c := range copies {
 			paths[i] = c.Path
 		}
-		return Check{"skill", false, "not installed; run mailbox skill install (" + strings.Join(paths, ", ") + ")"}
+		return Check{"skill", false, "not installed; run mailbox setup (" + strings.Join(paths, ", ") + ")"}
 	}
 	var unmanaged []string
 	for _, c := range installed {
@@ -183,7 +183,7 @@ func skillCheck() Check {
 		}
 	}
 	if len(stale) > 0 {
-		return Check{"skill", false, "stale copy at " + strings.Join(stale, ", ") + "; run mailbox skill install"}
+		return Check{"skill", false, "stale copy at " + strings.Join(stale, ", ") + "; run mailbox setup"}
 	}
 	paths := make([]string, len(installed))
 	for i, c := range installed {

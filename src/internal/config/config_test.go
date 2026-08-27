@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"mailbox/src/internal/thunderbird"
@@ -15,6 +16,7 @@ func isolateEnv(t *testing.T) {
 			os.Unsetenv(kv[:i])
 		}
 	}
+	os.Setenv("MAILBOX_CONFIG", filepath.Join(t.TempDir(), "nope"))
 	t.Cleanup(func() {})
 }
 
@@ -152,6 +154,65 @@ func TestDAVPasswordFromThunderbird(t *testing.T) {
 	}
 	if acc.Password != "imap-pw" || acc.DAVPass() != "dav-pw" {
 		t.Fatalf("password=%q dav=%q", acc.Password, acc.DAVPass())
+	}
+}
+
+func TestFileBeatsThunderbird(t *testing.T) {
+	isolateEnv(t)
+	LoadThunderbirdHook = func(string) (*thunderbird.Account, error) {
+		return &thunderbird.Account{
+			Email:    "tb@mailbox.org",
+			Password: "tb-secret",
+		}, nil
+	}
+	t.Cleanup(func() { LoadThunderbirdHook = nil })
+
+	path := filepath.Join(t.TempDir(), "env")
+	os.Setenv("MAILBOX_CONFIG", path)
+	if err := os.WriteFile(path, []byte("MAILBOX_EMAIL=file@mailbox.org\nMAILBOX_PASSWORD=file-secret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	acc, err := LoadAccount(false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acc.Email != "file@mailbox.org" || acc.Password != "file-secret" {
+		t.Fatalf("acc=%+v", acc)
+	}
+}
+
+func TestEnvBeatsFile(t *testing.T) {
+	isolateEnv(t)
+	setTBError(t)
+	path := filepath.Join(t.TempDir(), "env")
+	os.Setenv("MAILBOX_CONFIG", path)
+	if err := os.WriteFile(path, []byte("MAILBOX_EMAIL=file@mailbox.org\nMAILBOX_PASSWORD=file-secret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	os.Setenv("MAILBOX_EMAIL", "env@mailbox.org")
+	os.Setenv("MAILBOX_PASSWORD", "env-secret")
+	acc, err := LoadAccount(false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acc.Email != "env@mailbox.org" || acc.Password != "env-secret" {
+		t.Fatalf("acc=%+v", acc)
+	}
+}
+
+func TestWriteFileRoundtrip(t *testing.T) {
+	isolateEnv(t)
+	path := filepath.Join(t.TempDir(), "mailbox", "env")
+	os.Setenv("MAILBOX_CONFIG", path)
+	if err := WriteFile(map[string]string{
+		"MAILBOX_EMAIL":    "user@mailbox.org",
+		"MAILBOX_PASSWORD": "secret",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got := ReadFile()
+	if got["MAILBOX_EMAIL"] != "user@mailbox.org" || got["MAILBOX_PASSWORD"] != "secret" {
+		t.Fatalf("%+v", got)
 	}
 }
 

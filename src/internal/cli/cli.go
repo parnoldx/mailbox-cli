@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -19,7 +20,14 @@ import (
 	"mailbox/src/internal/format"
 	"mailbox/src/internal/ids"
 	"mailbox/src/internal/mail"
-	"mailbox/src/internal/skill"
+	"mailbox/src/internal/tui"
+)
+
+// Filled by -ldflags at build time.
+var (
+	Version = "dev"
+	Commit  = ""
+	Date    = ""
 )
 
 var helpTopics = map[string]string{
@@ -68,9 +76,11 @@ Any command accepts -h/--help; mailbox commands lists all.
   MAILBOX_CARDDAV_KONTAKTE
   MAILBOX_TB_HOME
   MAILBOX_TB_PROFILE
+  MAILBOX_CONFIG
 
-Reads the Windows Thunderbird profile when env is unset (newest prefs.js, or MAILBOX_TB_PROFILE).
+Reads ~/.config/mailbox/env (or MAILBOX_CONFIG), then the Thunderbird profile (newest prefs.js, or MAILBOX_TB_PROFILE), when env is unset.
 IMAP/SMTP use the imap.mailbox.org password. CalDAV/CardDAV use dav.mailbox.org (MAILBOX_DAV_PASSWORD, else that Thunderbird login, else MAILBOX_PASSWORD).
+Run mailbox setup to write the env file. MAILBOX_NONINTERACTIVE=1 skips the wizard.
 `,
 }
 
@@ -80,6 +90,7 @@ var (
 	folderColumns = []col{{"id", "ID"}, {"imap", "IMAP"}, {"role", "Role"}}
 	mailColumns   = []col{{"id", "ID"}, {"from", "From"}, {"summary", "Summary"}, {"date", "Date"}}
 	mailColumnsD  = []col{{"id", "ID"}, {"from", "From"}, {"summary", "Summary"}, {"date", "Date"}, {"flags", "Flags"}}
+	labelColumns  = []col{{"id", "ID"}}
 	mailWidths    = map[string]int{"from": 24, "summary": 60}
 	attachColumns = []col{{"id", "ID"}, {"name", "Name"}, {"type", "Type"}, {"size", "Size"}}
 	draftColumns  = []col{{"id", "ID"}, {"to", "To"}, {"summary", "Summary"}, {"date", "Date"}}
@@ -116,6 +127,9 @@ func Main(argv []string) int {
 	}
 	if argv[0] == "help" {
 		return helpTopic(argv[1:])
+	}
+	if argv[0] == "--version" {
+		argv[0] = "version"
 	}
 
 	rc, err := dispatch(argv, out)
@@ -184,6 +198,12 @@ func dispatch(argv []string, out *format.Output) (int, error) {
 			return 0, err
 		}
 		return cmdAside(sub, flags, out)
+	case "label":
+		sub, flags, err := subcommand(rest, "label")
+		if err != nil {
+			return 0, err
+		}
+		return cmdLabel(sub, flags, out)
 	case "seen", "unseen":
 		flags, err := parseFlags(noFlags, rest)
 		if err != nil {
@@ -256,18 +276,25 @@ func dispatch(argv []string, out *format.Output) (int, error) {
 		return cmdDoctor(out), nil
 	case "commands":
 		return cmdCommands(out)
-	case "skill":
-		sub, _, err := subcommand(rest, "skill")
-		if err != nil {
-			return 0, err
-		}
-		return cmdSkill(sub, out)
+	case "setup", "skill":
+		return cmdSetup(rest, out)
+	case "version":
+		return cmdVersion(out)
 	case "serve":
 		flags, err := parseFlags(flagSpec("serve", ""), rest)
 		if err != nil {
 			return 0, err
 		}
 		return cmdServe(flags, out)
+	case "tui":
+		flags, err := parseFlags(flagSpec("tui", ""), rest)
+		if err != nil {
+			return 0, err
+		}
+		if len(flags.positional) != 0 {
+			return printUsage("tui"), nil
+		}
+		return cmdTui(flags)
 	default:
 		fmt.Print(helpText(nil))
 		return 1, nil
@@ -378,6 +405,9 @@ var cmdFlagSpecs = map[string]flagspec{
 	"screener deny":    {newSet("spam"), nil},
 	"search":           {newSet("detail", "all"), newSet("from", "to", "subject", "in", "limit", "page", "required", "any", "none", "exact", "date", "attachment")},
 	"move":             {nil, newSet("to")},
+	"label view":       {newSet("all", "detail"), newSet("limit", "page")},
+	"label add":        {nil, newSet("to")},
+	"label remove":     {nil, newSet("from")},
 	"compose":          {newSet("draft"), newSet("to", "cc", "bcc", "subject", "m", "message", "message-html", "attach")},
 	"reply":            {newSet("draft"), newSet("to", "cc", "bcc", "m", "message", "message-html", "attach")},
 	"forward":          {nil, newSet("to", "cc", "bcc", "m", "message", "message-html", "attach")},
@@ -390,6 +420,7 @@ var cmdFlagSpecs = map[string]flagspec{
 	"habit":            {nil, newSet("days", "name", "date", "color", "icon")},
 	"contact":          {nil, newSet("name", "email", "note")},
 	"serve":            {newSet("web", "print"), newSet("web-port", "interval")},
+	"tui":              {newSet("screener"), nil},
 }
 
 func flagSpec(group, sub string) flagspec {
@@ -481,13 +512,13 @@ func parseFlags(spec flagspec, tokens []string) (*parsed, error) {
 func subcommand(tokens []string, group string) (string, *parsed, error) {
 	subs := map[string][]string{
 		"aside":      {"done", "list"},
+		"label":      {"list", "create", "view", "add", "remove"},
 		"box":        {"list", "view"},
 		"screener":   {"list", "approve", "deny"},
 		"draft":      {"list", "show", "edit", "send", "delete"},
 		"attachment": {"list", "save"},
 		"sieve":      {"list", "get", "put", "activate"},
 		"contact":    {"list", "show", "add", "update", "search"},
-		"skill":      {"install"},
 	}[group]
 	sub, rest := "", tokens
 	if len(tokens) > 0 && containsStr(subs, tokens[0]) {
@@ -570,6 +601,7 @@ func envRow(e *mail.Envelope) *format.OM {
 		"date", e.Date,
 		"subject", e.Subject,
 		"flags", strings.Join(e.Flags, ","),
+		"labels", strings.Join(mail.LabelsFromFlags(e.Flags), ","),
 	)
 }
 
@@ -960,6 +992,156 @@ func cmdSeen(group string, idList []string, out *format.Output) (int, error) {
 		}
 		return format.WriteOK(rows, out, ""), nil
 	})
+}
+
+func cmdLabel(cmd string, flags *parsed, out *format.Output) (int, error) {
+	if cmd == "" && len(flags.positional) > 0 {
+		return 0, usageErr("unknown label command %q", flags.positional[0])
+	}
+	switch cmd {
+	case "create":
+		if len(flags.positional) == 0 {
+			return printUsage("label", "create"), nil
+		}
+		name, err := mail.CreateLabel(flags.positional[0])
+		if err != nil {
+			return 0, usageErr("%v", err)
+		}
+		if len(flags.positional) == 1 {
+			return format.WriteOK(format.NewOM("id", name), out, ""), nil
+		}
+		pairs, err := idPairs(flags.positional[1:])
+		if err != nil {
+			return 0, err
+		}
+		return withMail(func(m *mail.Mail) (int, error) {
+			var rows []*format.OM
+			for _, p := range pairs {
+				if err := m.SetLabel(p.folder, p.uid, name, true); err != nil {
+					return 0, err
+				}
+				rows = append(rows, format.NewOM("id", ids.FormatMessageID(p.folder, p.uid), "label", name))
+			}
+			if len(rows) == 1 {
+				return format.WriteOK(rows[0], out, ""), nil
+			}
+			return format.WriteOK(rows, out, ""), nil
+		})
+	case "view":
+		if len(flags.positional) == 0 {
+			return printUsage("label", "view"), nil
+		}
+		raw := strings.Join(flags.positional, " ")
+		name, err := mail.NormalizeLabel(raw)
+		if err != nil {
+			return 0, usageErr("%v", err)
+		}
+		limit, page, all, err := pageOf(flags)
+		if err != nil {
+			return 0, err
+		}
+		if all {
+			limit = -1
+		}
+		return withMail(func(m *mail.Mail) (int, error) {
+			listing, err := m.Labeled(name, limit, page)
+			if err != nil {
+				return 0, err
+			}
+			rows := make([]*format.OM, 0, len(listing.Items))
+			for _, e := range listing.Items {
+				rows = append(rows, envRow(e))
+			}
+			var lim *int
+			if !all {
+				lim = limitPtr(limit)
+			}
+			return format.WriteList(rows, mailColumnsFor(flags.has("detail")), out, listing.Truncated, lim, mailWidths, format.NextPage(listing.NextPage)), nil
+		})
+	case "add":
+		to := flags.one("to")
+		if to == "" || len(flags.positional) == 0 {
+			return printUsage("label", "add"), nil
+		}
+		name, err := mail.NormalizeLabel(to)
+		if err != nil {
+			return 0, usageErr("%v", err)
+		}
+		pairs, err := idPairs(flags.positional)
+		if err != nil {
+			return 0, err
+		}
+		return withMail(func(m *mail.Mail) (int, error) {
+			var rows []*format.OM
+			for _, p := range pairs {
+				if err := m.SetLabel(p.folder, p.uid, name, true); err != nil {
+					return 0, err
+				}
+				rows = append(rows, format.NewOM("id", ids.FormatMessageID(p.folder, p.uid), "label", name))
+			}
+			if len(rows) == 1 {
+				return format.WriteOK(rows[0], out, ""), nil
+			}
+			return format.WriteOK(rows, out, ""), nil
+		})
+	case "remove":
+		from := flags.one("from")
+		if from == "" || len(flags.positional) == 0 {
+			return printUsage("label", "remove"), nil
+		}
+		pairs, err := idPairs(flags.positional)
+		if err != nil {
+			return 0, err
+		}
+		clearAll := strings.EqualFold(from, "all")
+		var name string
+		if !clearAll {
+			name, err = mail.NormalizeLabel(from)
+			if err != nil {
+				return 0, usageErr("%v", err)
+			}
+		}
+		return withMail(func(m *mail.Mail) (int, error) {
+			var rows []*format.OM
+			for _, p := range pairs {
+				id := ids.FormatMessageID(p.folder, p.uid)
+				if clearAll {
+					if err := m.ClearLabels(p.folder, p.uid); err != nil {
+						return 0, err
+					}
+					rows = append(rows, format.NewOM("id", id, "label", "all"))
+					continue
+				}
+				if err := m.SetLabel(p.folder, p.uid, name, false); err != nil {
+					return 0, err
+				}
+				rows = append(rows, format.NewOM("id", id, "label", name))
+			}
+			if len(rows) == 1 {
+				return format.WriteOK(rows[0], out, ""), nil
+			}
+			return format.WriteOK(rows, out, ""), nil
+		})
+	default:
+		if names, ok := mail.CatalogLabels(); ok {
+			return writeLabelList(names, out), nil
+		}
+		return withMail(func(m *mail.Mail) (int, error) {
+			names, err := m.ListLabels()
+			if err != nil {
+				return 0, err
+			}
+			return writeLabelList(names, out), nil
+		})
+	}
+}
+
+func writeLabelList(names []string, out *format.Output) int {
+	rows := make([]*format.OM, 0, len(names))
+	for _, name := range names {
+		rows = append(rows, format.NewOM("id", name))
+	}
+	return format.WriteList(rows, labelColumns, out)
 }
 
 func splitAddrs(values []string) []string {
@@ -1777,6 +1959,14 @@ func cmdContact(cmd string, flags *parsed, out *format.Output) (int, error) {
 
 // --- meta ---
 
+func cmdTui(flags *parsed) (int, error) {
+	err := tui.Run(tui.Options{Screener: flags.has("screener")})
+	if err != nil {
+		return 0, err
+	}
+	return 0, nil
+}
+
 func cmdDoctor(out *format.Output) int {
 	report := doctor.Run(nil, nil)
 	format.WriteOK(report.AsDict(), out, "")
@@ -1800,6 +1990,11 @@ var cmdSpecs = []cmdspec{
 	{[]string{"move"}, "mailbox move ID... --to inbox|feed|trail|block", []string{"--to"}, "Move to inbox|feed|trail|block"},
 	{[]string{"aside"}, "mailbox aside [ID...] [--remind DURATION] [--limit N] [--page N] [--all] [--detail]", []string{"--remind", "--limit", "--page", "--all", "--detail", "--sweep"}, "Read-later pile"},
 	{[]string{"aside", "done"}, "mailbox aside done ID...", nil, "Return from Aside"},
+	{[]string{"label", "list"}, "mailbox label list", nil, "Labels"},
+	{[]string{"label", "create"}, "mailbox label create NAME [ID...]", nil, "Create a label"},
+	{[]string{"label", "view"}, "mailbox label view NAME [--limit N] [--page N] [--all] [--detail]", []string{"--limit", "--page", "--all", "--detail"}, "Mail with a label"},
+	{[]string{"label", "add"}, "mailbox label add ID... --to NAME", []string{"--to"}, "Add a label"},
+	{[]string{"label", "remove"}, "mailbox label remove ID... --from NAME|all", []string{"--from"}, "Remove a label"},
 	{[]string{"seen"}, "mailbox seen ID...", nil, "Mark seen"},
 	{[]string{"unseen"}, "mailbox unseen ID...", nil, "Mark unseen"},
 	{[]string{"trash"}, "mailbox trash ID...", nil, "Move to Trash"},
@@ -1841,8 +2036,11 @@ var cmdSpecs = []cmdspec{
 	{[]string{"sieve", "activate"}, "mailbox sieve activate NAME", nil, "Set the active script"},
 	{[]string{"doctor"}, "mailbox doctor", nil, "Credentials, IMAP, CalDAV, skill"},
 	{[]string{"serve"}, "mailbox serve [--web] [--web-port N] [--interval S] [--print]", []string{"--web", "--web-port", "--interval", "--print"}, "Routing service"},
+	{[]string{"tui"}, "mailbox tui [--screener]", []string{"--screener"}, "Interactive terminal UI"},
+	{[]string{"setup"}, "mailbox setup", nil, "First-run wizard"},
+	{[]string{"setup", "skill"}, "mailbox setup skill", nil, "Install the agent skill"},
 	{[]string{"commands"}, "mailbox commands", nil, "Machine command index"},
-	{[]string{"skill", "install"}, "mailbox skill install", nil, "Install the agent skill"},
+	{[]string{"version"}, "mailbox version", nil, "Installed version"},
 	{[]string{"help"}, "mailbox help [output|exit-codes|environment]", nil, "output | exit-codes | environment"},
 }
 
@@ -1869,33 +2067,14 @@ func cmdCommands(out *format.Output) (int, error) {
 	return format.WriteOK(commandsPayload(), out, ""), nil
 }
 
-func cmdSkill(cmd string, out *format.Output) (int, error) {
-	if cmd == "install" {
-		paths, err := skill.InstallSkill("")
-		if err != nil {
-			return 0, err
-		}
-		return format.WriteOK(format.NewOM("installed", paths), out, ""), nil
-	}
-	packaged := skill.PackagedSkill()
-	targets := skill.DefaultTargets("")
-	copiesRows := make([]*format.OM, 0, len(copiesToList(skill.InstalledCopies(""))))
-	for _, c := range skill.InstalledCopies("") {
-		copiesRows = append(copiesRows, format.NewOM(
-			"path", c.Path,
-			"installed", c.Installed,
-			"managed", c.Managed,
-			"current", c.Current,
-		))
-	}
+func cmdVersion(out *format.Output) (int, error) {
 	return format.WriteOK(format.NewOM(
-		"packaged_bytes", len(packaged),
-		"targets", targets,
-		"copies", copiesRows,
+		"version", Version,
+		"commit", Commit,
+		"date", Date,
+		"go", runtime.Version(),
 	), out, ""), nil
 }
-
-func copiesToList(rows []skill.CopyRow) []skill.CopyRow { return rows }
 
 func isTTY(f *os.File) bool {
 	fi, err := f.Stat()

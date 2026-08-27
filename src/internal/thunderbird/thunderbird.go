@@ -287,6 +287,36 @@ func DefaultTBHome() string {
 	return filepath.Join(home, ".thunderbird")
 }
 
+func ListProfiles(tbHome string) []string {
+	if tbHome == "" {
+		tbHome = DefaultTBHome()
+	}
+	dir := filepath.Join(tbHome, "Profiles")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	type cand struct {
+		mtime int64
+		path  string
+	}
+	var all []cand
+	for _, e := range entries {
+		prefs := filepath.Join(dir, e.Name(), "prefs.js")
+		fi, err := os.Stat(prefs)
+		if err != nil || fi.IsDir() {
+			continue
+		}
+		all = append(all, cand{mtime: fi.ModTime().UnixNano(), path: filepath.Dir(prefs)})
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i].mtime > all[j].mtime })
+	out := make([]string, len(all))
+	for i, c := range all {
+		out[i] = c.path
+	}
+	return out
+}
+
 func FindProfile(tbHome, explicit string) (string, error) {
 	if explicit != "" {
 		if fi, err := os.Stat(explicit); err == nil && fi.IsDir() {
@@ -398,5 +428,3 @@ func pickLoginBlobs(logins []loginEntry) (imapBlob, davBlob string) {
 	}
 	return imapBlob, davBlob
 }
-
-var _ = sort.Strings

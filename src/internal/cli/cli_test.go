@@ -9,7 +9,7 @@ import (
 
 func TestHelpRoot(t *testing.T) {
 	text := helpText(nil)
-	for _, want := range []string{"MAIL", "box", "draft", "mailbox <command> --help"} {
+	for _, want := range []string{"MAIL", "box", "label", "draft", "tui", "mailbox <command> --help"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("root help missing %q", want)
 		}
@@ -55,9 +55,30 @@ func TestHelpEventGroup(t *testing.T) {
 	}
 }
 
+func TestHelpLabelGroup(t *testing.T) {
+	text := helpText([]string{"label"})
+	for _, want := range []string{"list", "create", "view", "add", "remove"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("label help missing %q\n%s", want, text)
+		}
+	}
+}
+
 func TestHelpUnknown(t *testing.T) {
 	if helpText([]string{"nope"}) != "" {
 		t.Fatal("unknown command should have empty help")
+	}
+}
+
+func TestHelpSetupAndVersion(t *testing.T) {
+	root := helpText(nil)
+	for _, want := range []string{"setup", "version"} {
+		if !strings.Contains(root, want) {
+			t.Fatalf("root help missing %q", want)
+		}
+	}
+	if !strings.Contains(helpText([]string{"setup"}), "skill") {
+		t.Fatal("setup help missing skill")
 	}
 }
 

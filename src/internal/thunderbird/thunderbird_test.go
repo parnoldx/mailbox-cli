@@ -1,6 +1,11 @@
 package thunderbird
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
 
 const prefs = `
 user_pref("mail.server.server2.hostname", "imap.mailbox.org");
@@ -75,6 +80,32 @@ func TestPickLoginBlobsIMAPOnlyLeavesDAVEmpty(t *testing.T) {
 	})
 	if imapBlob != "imap-enc" || davBlob != "" {
 		t.Fatalf("imap=%q dav=%q", imapBlob, davBlob)
+	}
+}
+
+func TestListProfilesNewestFirst(t *testing.T) {
+	home := t.TempDir()
+	old := filepath.Join(home, "Profiles", "old.default")
+	newp := filepath.Join(home, "Profiles", "new.default")
+	if err := os.MkdirAll(old, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(newp, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	oldPrefs := filepath.Join(old, "prefs.js")
+	newPrefs := filepath.Join(newp, "prefs.js")
+	if err := os.WriteFile(oldPrefs, []byte("user_pref(\"x\", 1);\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(newPrefs, []byte("user_pref(\"x\", 2);\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.Chtimes(oldPrefs, time.Unix(1, 0), time.Unix(1, 0))
+	_ = os.Chtimes(newPrefs, time.Unix(2, 0), time.Unix(2, 0))
+	got := ListProfiles(home)
+	if len(got) != 2 || got[0] != newp || got[1] != old {
+		t.Fatalf("%q", got)
 	}
 }
 
