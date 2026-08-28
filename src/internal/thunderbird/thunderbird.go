@@ -3,12 +3,21 @@ package thunderbird
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 )
+
+type CalDAV struct {
+	Name     string
+	URL      string
+	Username string
+	Password string
+	Color    string
+}
 
 type Account struct {
 	Email       string
@@ -18,6 +27,7 @@ type Account struct {
 	KalenderURL string
 	AufgabenURL string
 	KontakteURL string
+	ExtraCals   []CalDAV
 	Password    string
 	DAVPassword string
 	Profile     string
@@ -225,6 +235,13 @@ func accountFromPrefs(p *Prefs) *Account {
 			acc.KalenderURL = uri
 		} else if name == "Aufgaben" {
 			acc.AufgabenURL = uri
+		} else if name != "" {
+			acc.ExtraCals = append(acc.ExtraCals, CalDAV{
+				Name:     name,
+				URL:      uri,
+				Username: f["username"].Str,
+				Color:    f["color"].Str,
+			})
 		}
 	}
 
@@ -381,7 +398,9 @@ func LoadThunderbird(tbHome, profileName string) (*Account, error) {
 	}
 	acc := accountFromPrefs(ParsePrefs(string(raw)))
 	acc.Profile = profile
-	acc.Password, acc.DAVPassword = PasswordsFromLogins(profile)
+	logins := readLogins(profile)
+	acc.Password, acc.DAVPassword = passwordsFromLogins(profile, logins)
+	fillExtraCalPasswords(profile, logins, acc.ExtraCals)
 	return acc, nil
 }
 
@@ -390,19 +409,22 @@ type loginEntry struct {
 	EncryptedPassword string `json:"encryptedPassword"`
 }
 
-func PasswordsFromLogins(profile string) (imapPW, davPW string) {
-	path := filepath.Join(profile, "logins.json")
-	raw, err := os.ReadFile(path)
+func readLogins(profile string) []loginEntry {
+	raw, err := os.ReadFile(filepath.Join(profile, "logins.json"))
 	if err != nil {
-		return "", ""
+		return nil
 	}
 	var data struct {
 		Logins []loginEntry `json:"logins"`
 	}
 	if err := json.Unmarshal(raw, &data); err != nil {
-		return "", ""
+		return nil
 	}
-	imapBlob, davBlob := pickLoginBlobs(data.Logins)
+	return data.Logins
+}
+
+func passwordsFromLogins(profile string, logins []loginEntry) (imapPW, davPW string) {
+	imapBlob, davBlob := pickLoginBlobs(logins)
 	if imapBlob != "" {
 		if pw, ok := decryptNSS(profile, imapBlob); ok {
 			imapPW = pw
@@ -416,6 +438,26 @@ func PasswordsFromLogins(profile string) (imapPW, davPW string) {
 	return imapPW, davPW
 }
 
+func fillExtraCalPasswords(profile string, logins []loginEntry, cals []CalDAV) {
+	for i := range cals {
+		blob := pickLoginBlobForHost(logins, urlHost(cals[i].URL))
+		if blob == "" {
+			continue
+		}
+		if pw, ok := decryptNSS(profile, blob); ok {
+			cals[i].Password = pw
+		}
+	}
+}
+
+func urlHost(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return u.Host
+}
+
 // mailbox.org 2FA issues a separate app password for dav.mailbox.org.
 func pickLoginBlobs(logins []loginEntry) (imapBlob, davBlob string) {
 	for _, row := range logins {
@@ -427,4 +469,16 @@ func pickLoginBlobs(logins []loginEntry) (imapBlob, davBlob string) {
 		}
 	}
 	return imapBlob, davBlob
+}
+
+func pickLoginBlobForHost(logins []loginEntry, host string) string {
+	if host == "" {
+		return ""
+	}
+	for _, row := range logins {
+		if strings.Contains(row.Hostname, host) {
+			return row.EncryptedPassword
+		}
+	}
+	return ""
 }

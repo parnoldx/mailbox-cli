@@ -151,7 +151,7 @@ func (s *session) events(start, end time.Time) ([]*format.OM, error) {
 	if s.cal == nil {
 		return nil, nil
 	}
-	return s.cal.Events(start.Format("2006-01-02"), end.Format("2006-01-02"), "")
+	return s.cal.Events(start.Format("2006-01-02T15:04:05"), end.Format("2006-01-02T15:04:05"), "")
 }
 
 func (s *session) todos() ([]*format.OM, error) {

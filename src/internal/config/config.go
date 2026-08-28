@@ -18,6 +18,7 @@ type Account struct {
 	KalenderURL string
 	AufgabenURL string
 	KontakteURL string
+	ExtraCals   []thunderbird.CalDAV
 	DisplayName string
 	SMTPHost    string
 	SMTPPort    int
@@ -69,6 +70,7 @@ type Probe struct {
 	KalenderURL        string
 	AufgabenURL        string
 	KontakteURL        string
+	ExtraCals          []thunderbird.CalDAV
 	DisplayName        string
 	ThunderbirdProfile string
 	Missing            []string
@@ -85,12 +87,14 @@ func ProbeAccount() *Probe {
 	tb, err := loadTB(pick("MAILBOX_TB_PROFILE", file["MAILBOX_TB_PROFILE"], "", ""))
 	var tbEmail, tbPassword, tbDAVPassword, tbIMAPHost, tbKalender, tbAufgaben, tbKontakte, tbDisplay string
 	var tbPort int
+	var extra []thunderbird.CalDAV
 	if err == nil && tb != nil {
 		tbEmail, tbPassword, tbDAVPassword = tb.Email, tb.Password, tb.DAVPassword
 		tbIMAPHost = tb.IMAPHost
 		tbPort = tb.IMAPPort
 		tbKalender, tbAufgaben, tbKontakte = tb.KalenderURL, tb.AufgabenURL, tb.KontakteURL
 		tbDisplay = tb.DisplayName
+		extra = tb.ExtraCals
 	}
 
 	email := pick("MAILBOX_EMAIL", file["MAILBOX_EMAIL"], tbEmail, "")
@@ -140,7 +144,7 @@ func ProbeAccount() *Probe {
 		Email: email, PasswordSet: password != "",
 		IMAPHost: imapHost, IMAPPort: imapPort,
 		KalenderURL: kalender, AufgabenURL: aufgaben, KontakteURL: kontakte,
-		DisplayName: display, ThunderbirdProfile: profile,
+		ExtraCals: extra, DisplayName: display, ThunderbirdProfile: profile,
 		Missing: missing, Hint: hint,
 		password: password, davPassword: davPassword, SMTPHost: smtpHost, SMTPPort: smtpPort,
 	}
@@ -171,7 +175,7 @@ func LoadAccount(calendars, contacts bool) (*Account, error) {
 		Email: probe.Email, Password: probe.password, DAVPassword: probe.davPassword,
 		IMAPHost: probe.IMAPHost, IMAPPort: probe.IMAPPort,
 		KalenderURL: probe.KalenderURL, AufgabenURL: probe.AufgabenURL, KontakteURL: probe.KontakteURL,
-		DisplayName: displayName, SMTPHost: probe.SMTPHost, SMTPPort: probe.SMTPPort,
+		ExtraCals: probe.ExtraCals, DisplayName: displayName, SMTPHost: probe.SMTPHost, SMTPPort: probe.SMTPPort,
 	}, nil
 }
 

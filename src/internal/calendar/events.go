@@ -26,11 +26,12 @@ const eventsQueryTpl = `<?xml version="1.0" encoding="utf-8"?>
 <c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
   <d:prop>
     <d:getetag/>
-    <c:calendar-data/>
+    <c:calendar-data>%s</c:calendar-data>
   </d:prop>
   <c:filter>
     <c:comp-filter name="VCALENDAR">
-      <c:comp-filter name="VEVENT">%s
+      <c:comp-filter name="VEVENT">
+        <c:time-range start="%s" end="%s"/>
       </c:comp-filter>
     </c:comp-filter>
   </c:filter>
@@ -39,30 +40,18 @@ const eventsQueryTpl = `<?xml version="1.0" encoding="utf-8"?>
 func icsRange(t time.Time) string { return t.UTC().Format("20060102T150405Z") }
 
 func (cal *Cal) reportEvents(col Collection, start, stop time.Time, expand bool) []*format.OM {
-	inner := ""
-	timeRange := fmt.Sprintf("\n        <c:time-range start=%q end=%q/>", icsRange(start), icsRange(stop))
+	expandXML := ""
 	if expand {
-		inner = timeRange + fmt.Sprintf("\n        <c:expand start=%q end=%q/>", icsRange(start), icsRange(stop))
-	} else {
-		inner = timeRange
+		expandXML = fmt.Sprintf("\n      <c:expand start=%q end=%q/>\n    ", icsRange(start), icsRange(stop))
 	}
-	query := fmt.Sprintf(eventsQueryTpl, inner)
-	raw, status, err := cal.client.Report(col.URL, query, "1")
+	query := fmt.Sprintf(eventsQueryTpl, expandXML, icsRange(start), icsRange(stop))
+	raw, status, err := cal.dav(col).Report(col.URL, query, "1")
 	if err != nil || (status != 200 && status != 207) {
 		return nil
 	}
 	var rows []*format.OM
 	for _, resp := range dav.ParseMultistatus(raw, "calendar-data") {
-		props := vobject.Component(resp.Data, "VEVENT")
-		if props == nil {
-			continue
-		}
-		has := map[string]bool{"dtstart": findHas(props, "DTSTART"), "dtend": findHas(props, "DTEND")}
-		row, err := eventFields(props, "", col.Name, has)
-		if err != nil {
-			continue
-		}
-		rows = append(rows, row)
+		rows = append(rows, eventsFromICS(resp.Data, col.Name, start, stop)...)
 	}
 	return rows
 }
@@ -177,7 +166,7 @@ func (cal *Cal) lookupEvent(uid string) (eventHit, error) {
 	}
 	for _, col := range cols {
 		eventURL := strings.TrimRight(col.URL, "/") + "/" + url.PathEscape(uid) + ".ics"
-		if text, status, err := cal.client.Get(eventURL); err == nil && status == 200 {
+		if text, status, err := cal.dav(col).Get(eventURL); err == nil && status == 200 {
 			if props := vobject.Component(text, "VEVENT"); props != nil {
 				full := vobject.First(props, "UID")
 				if uidMatches(full, uid) || strings.EqualFold(full, uid) {
@@ -190,7 +179,7 @@ func (cal *Cal) lookupEvent(uid string) (eventHit, error) {
 	stop := time.Now().In(TZ).Add(730 * 24 * time.Hour)
 	var scored []eventHit
 	for _, col := range cols {
-		for _, resp := range dav.ParseMultistatus(cal.reportRaw(col.URL, begin, stop), "calendar-data") {
+		for _, resp := range dav.ParseMultistatus(cal.reportRaw(col, begin, stop), "calendar-data") {
 			props := vobject.Component(resp.Data, "VEVENT")
 			full := vobject.First(props, "UID")
 			if uidMatches(full, uid) {
@@ -218,10 +207,9 @@ func (cal *Cal) lookupEvent(uid string) (eventHit, error) {
 	return unique[order[0]], nil
 }
 
-func (cal *Cal) reportRaw(calURL string, start, stop time.Time) []byte {
-	inner := fmt.Sprintf("\n        <c:time-range start=%q end=%q/>", icsRange(start), icsRange(stop))
-	query := fmt.Sprintf(eventsQueryTpl, inner)
-	raw, status, err := cal.client.Report(calURL, query, "1")
+func (cal *Cal) reportRaw(col Collection, start, stop time.Time) []byte {
+	query := fmt.Sprintf(eventsQueryTpl, "", icsRange(start), icsRange(stop))
+	raw, status, err := cal.dav(col).Report(col.URL, query, "1")
 	if err != nil || (status != 200 && status != 207) {
 		return nil
 	}
@@ -255,7 +243,7 @@ func (cal *Cal) CreateEvent(in EventIn) (string, string, error) {
 		return "", "", err
 	}
 	putURL := strings.TrimRight(col.URL, "/") + "/" + uid + ".ics"
-	if err := cal.putICS(putURL, "BEGIN:VEVENT\r\n"+vobject.Serialize(props)+"END:VEVENT"); err != nil {
+	if err := cal.putICSClient(cal.dav(col), putURL, "BEGIN:VEVENT\r\n"+vobject.Serialize(props)+"END:VEVENT"); err != nil {
 		return "", "", err
 	}
 	return uid, col.Name, nil
@@ -306,7 +294,7 @@ func (cal *Cal) UpdateEvent(uid string, in EventIn) (*format.OM, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := cal.putICS(hit.href, "BEGIN:VEVENT\r\n"+vobject.Serialize(props)+"END:VEVENT"); err != nil {
+	if err := cal.putICSClient(cal.dav(hit.col), hit.href, "BEGIN:VEVENT\r\n"+vobject.Serialize(props)+"END:VEVENT"); err != nil {
 		return nil, err
 	}
 	has := map[string]bool{"dtstart": findHas(props, "DTSTART"), "dtend": findHas(props, "DTEND")}
@@ -383,7 +371,7 @@ func (cal *Cal) DeleteEvent(uid string) error {
 	if err != nil {
 		return err
 	}
-	status, err := cal.client.Delete(hit.href)
+	status, err := cal.dav(hit.col).Delete(hit.href)
 	if err != nil || (status != 200 && status != 204 && status != 202) {
 		return fmt.Errorf("CalDAV delete failed: %d", status)
 	}

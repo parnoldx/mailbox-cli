@@ -157,6 +157,31 @@ func TestDAVPasswordFromThunderbird(t *testing.T) {
 	}
 }
 
+func TestExtraCalsFromThunderbird(t *testing.T) {
+	isolateEnv(t)
+	LoadThunderbirdHook = func(string) (*thunderbird.Account, error) {
+		return &thunderbird.Account{
+			Email:       "user@mailbox.org",
+			Password:    "imap-pw",
+			DAVPassword: "dav-pw",
+			KalenderURL: "https://dav.mailbox.org/caldav/KAL/",
+			AufgabenURL: "https://dav.mailbox.org/caldav/TODO/",
+			ExtraCals: []thunderbird.CalDAV{{
+				Name: "Work", URL: "https://sogo.example/personal/", Username: "user", Password: "sogo-pw",
+			}},
+		}, nil
+	}
+	t.Cleanup(func() { LoadThunderbirdHook = nil })
+
+	acc, err := LoadAccount(true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(acc.ExtraCals) != 1 || acc.ExtraCals[0].Name != "Work" || acc.ExtraCals[0].Password != "sogo-pw" {
+		t.Fatalf("%+v", acc.ExtraCals)
+	}
+}
+
 func TestFileBeatsThunderbird(t *testing.T) {
 	isolateEnv(t)
 	LoadThunderbirdHook = func(string) (*thunderbird.Account, error) {

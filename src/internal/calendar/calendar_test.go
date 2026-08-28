@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"mailbox/src/internal/config"
+	"mailbox/src/internal/thunderbird"
 	"mailbox/src/internal/vobject"
 )
 
@@ -87,13 +89,13 @@ func TestParseCalendarsXML(t *testing.T) {
 }
 
 func TestRruleFromAlias(t *testing.T) {
-	start := time.Date(2026, 8, 22, 9, 0, 0, 0, TZ)
+	start := time.Date(2026, 8, 29, 10, 0, 0, 0, TZ)
 	got, err := rruleFromAlias("every_weekday", start, "", 0)
 	if err != nil || got != "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR" {
 		t.Fatalf("got %q %v", got, err)
 	}
-	got, err = rruleFromAlias("every_day_of_month", start, "2026-12-31", 0)
-	if err != nil || got != "FREQ=MONTHLY;BYMONTHDAY=22;UNTIL=20261231" {
+	got, err = rruleFromAlias("every_day_of_month", start, "2026-11-30", 0)
+	if err != nil || got != "FREQ=MONTHLY;BYMONTHDAY=29;UNTIL=20261130" {
 		t.Fatalf("got %q %v", got, err)
 	}
 	got, err = rruleFromAlias("every_week", start, "", 4)
@@ -139,13 +141,13 @@ func TestParseDays(t *testing.T) {
 
 func TestHabitCompleteUncomplete(t *testing.T) {
 	h := habit{ID: "abc", Name: "Gym", Days: []string{"mon", "wed"}}
-	h.complete("2026-08-26")
-	h.complete("2026-08-26")
-	if !h.hasDone("2026-08-26") || len(h.Done) != 1 {
+	h.complete("2026-09-02")
+	h.complete("2026-09-02")
+	if !h.hasDone("2026-09-02") || len(h.Done) != 1 {
 		t.Fatalf("done %#v", h.Done)
 	}
-	h.uncomplete("2026-08-26")
-	if h.hasDone("2026-08-26") {
+	h.uncomplete("2026-09-02")
+	if h.hasDone("2026-09-02") {
 		t.Fatal("still done")
 	}
 	bag := habitBag{Habits: []habit{{ID: "aaaaaaaa-1111", Name: "A"}, {ID: "bbbbbbbb-2222", Name: "B"}}}
@@ -159,26 +161,26 @@ func TestHabitCompleteUncomplete(t *testing.T) {
 }
 
 func TestCombineEventWhen(t *testing.T) {
-	start, end, allDay, err := CombineEventWhen("2026-09-02", "", "", "", false)
-	if err != nil || !allDay || start != "2026-09-02" || end != "2026-09-02" {
+	start, end, allDay, err := CombineEventWhen("2026-09-09", "", "", "", false)
+	if err != nil || !allDay || start != "2026-09-09" || end != "2026-09-09" {
 		t.Fatalf("all-day %s %s %v %v", start, end, allDay, err)
 	}
-	start, end, allDay, err = CombineEventWhen("2026-09-02", "14:00", "", "", false)
-	if err != nil || allDay || start != "2026-09-02T14:00" || end != "2026-09-02T15:00" {
+	start, end, allDay, err = CombineEventWhen("2026-09-09", "14:00", "", "", false)
+	if err != nil || allDay || start != "2026-09-09T14:00" || end != "2026-09-09T15:00" {
 		t.Fatalf("hour %s %s %v %v", start, end, allDay, err)
 	}
-	_, _, _, err = CombineEventWhen("2026-09-04", "", "2026-09-02", "", false)
+	_, _, _, err = CombineEventWhen("2026-09-11", "", "2026-09-09", "", false)
 	if err == nil {
 		t.Fatal("expected ends-on before starts-on")
 	}
 }
 
 func TestEventTimePropsAllDay(t *testing.T) {
-	ds, de, _, err := eventTimeProps("2026-08-22", "", true)
+	ds, de, _, err := eventTimeProps("2026-08-29", "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ds.Value != "20260822" || de.Value != "20260823" {
+	if ds.Value != "20260829" || de.Value != "20260830" {
 		t.Fatalf("start=%s end=%s", ds.Value, de.Value)
 	}
 	if !strings.Contains(ds.Params, "VALUE=DATE") {
@@ -190,7 +192,7 @@ func TestEventFieldsCircle(t *testing.T) {
 	props := []vobject.Prop{
 		{Name: "UID", Value: "abcdef12-xxxx"},
 		{Name: "SUMMARY", Value: "Dentist"},
-		{Name: "DTSTART", Value: "20260822T070000Z"},
+		{Name: "DTSTART", Value: "20260829T070000Z"},
 		{Name: "PRIORITY", Value: "1"},
 		{Name: "LOCATION", Value: "Clinic"},
 	}
@@ -203,5 +205,27 @@ func TestEventFieldsCircle(t *testing.T) {
 	}
 	if row.Get("id") != "abcdef12" {
 		t.Fatalf("id %v", row.Get("id"))
+	}
+}
+
+func TestExtraCols(t *testing.T) {
+	cal := &Cal{acct: &config.Account{
+		Email:       "user@example.com",
+		KalenderURL: "https://caldav.example.com/cal/KAL/",
+		ExtraCals: []thunderbird.CalDAV{
+			{Name: "Maybe", URL: "https://caldav.example.com/cal/maybe/", Username: "user@example.com"},
+			{Name: "Work", URL: "https://caldav.other.example.org/SOGo/dav/user/Calendar/personal/", Username: "user", Password: "secret", Color: "#6600cc"},
+		},
+	}}
+	got := cal.extraCols()
+	if len(got) != 1 || got[0].Name != "Work" || got[0].client == nil {
+		t.Fatalf("%+v", got)
+	}
+	if !isEventCal(got[0]) {
+		t.Fatalf("not event cal %+v", got[0])
+	}
+	hit, err := matchCal(got, "Work")
+	if err != nil || hit.Name != "Work" {
+		t.Fatalf("match %v %v", hit, err)
 	}
 }

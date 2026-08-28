@@ -24,6 +24,11 @@ user_pref("calendar.registry.bbb.uri", "https://dav.mailbox.org/caldav/TODO/");
 user_pref("calendar.registry.ccc.name", "Privat");
 user_pref("calendar.registry.ccc.type", "storage");
 user_pref("calendar.registry.ccc.disabled", true);
+user_pref("calendar.registry.ddd.name", "Work");
+user_pref("calendar.registry.ddd.type", "caldav");
+user_pref("calendar.registry.ddd.uri", "https://caldav.other.example.org/SOGo/dav/user/Calendar/personal/");
+user_pref("calendar.registry.ddd.username", "user");
+user_pref("calendar.registry.ddd.color", "#6600cc");
 user_pref("ldap_2.servers.Kontakte.carddav.url", "https://dav.mailbox.org/carddav/32/");
 user_pref("ldap_2.servers.Kontakte.description", "Kontakte");
 user_pref("ldap_2.servers.Kontakte.dirType", 102);
@@ -44,6 +49,12 @@ func TestParseIMAPAndCalDAV(t *testing.T) {
 	}
 	if acc.KontakteURL != "https://dav.mailbox.org/carddav/32/" {
 		t.Fatalf("carddav %q", acc.KontakteURL)
+	}
+	if len(acc.ExtraCals) != 1 || acc.ExtraCals[0].Name != "Work" || acc.ExtraCals[0].Username != "user" {
+		t.Fatalf("extras %+v", acc.ExtraCals)
+	}
+	if acc.ExtraCals[0].URL != "https://caldav.other.example.org/SOGo/dav/user/Calendar/personal/" {
+		t.Fatalf("work url %q", acc.ExtraCals[0].URL)
 	}
 }
 
@@ -71,6 +82,23 @@ func TestPickLoginBlobsPrefersIMAPAndDAVSeparately(t *testing.T) {
 	}
 	if davBlob != "dav-enc" {
 		t.Fatalf("dav blob %q", davBlob)
+	}
+}
+
+func TestPickLoginBlobForHost(t *testing.T) {
+	logins := []loginEntry{
+		{Hostname: "imap://imap.mailbox.org", EncryptedPassword: "imap-enc"},
+		{Hostname: "https://dav.mailbox.org", EncryptedPassword: "dav-enc"},
+		{Hostname: "https://caldav.other.example.org", EncryptedPassword: "sogo-enc"},
+	}
+	if got := pickLoginBlobForHost(logins, "caldav.other.example.org"); got != "sogo-enc" {
+		t.Fatalf("sogo %q", got)
+	}
+	if got := pickLoginBlobForHost(logins, "dav.mailbox.org"); got != "dav-enc" {
+		t.Fatalf("dav %q", got)
+	}
+	if got := pickLoginBlobForHost(logins, ""); got != "" {
+		t.Fatalf("empty host %q", got)
 	}
 }
 

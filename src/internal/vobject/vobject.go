@@ -127,17 +127,29 @@ func First(props []Prop, name string) string {
 
 // Component returns the props of the first NAME block (e.g. VEVENT).
 func Component(text, name string) []Prop {
+	all := Components(text, name)
+	if len(all) == 0 {
+		return nil
+	}
+	return all[0]
+}
+
+// Components returns every NAME block (master + overrides in one .ics).
+func Components(text, name string) [][]Prop {
 	props := ParseLines(text)
-	var out []Prop
+	var out [][]Prop
+	var cur []Prop
 	in := false
 	for _, p := range props {
 		switch {
 		case !in && p.Name == "BEGIN" && strings.EqualFold(p.Value, name):
 			in = true
+			cur = nil
 		case in && p.Name == "END" && strings.EqualFold(p.Value, name):
-			return out
+			out = append(out, cur)
+			in = false
 		case in:
-			out = append(out, p)
+			cur = append(cur, p)
 		}
 	}
 	return out

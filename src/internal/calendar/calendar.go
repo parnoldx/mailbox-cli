@@ -56,6 +56,7 @@ type Collection struct {
 	Color    string
 	Comps    []string
 	Calendar bool
+	client   *dav.Client
 }
 
 func (c Collection) hasComp(name string) bool {
@@ -289,8 +290,22 @@ func absURL(base, href string) string {
 	return u.ResolveReference(ref).String()
 }
 
+func (cal *Cal) dav(col Collection) *dav.Client {
+	if col.client != nil {
+		return col.client
+	}
+	return cal.client
+}
+
 func (cal *Cal) putICS(putURL, inner string) error {
-	status, err := cal.client.Put(putURL, wrapVCALENDAR(inner),
+	return cal.putICSClient(cal.client, putURL, inner)
+}
+
+func (cal *Cal) putICSClient(client *dav.Client, putURL, inner string) error {
+	if client == nil {
+		client = cal.client
+	}
+	status, err := client.Put(putURL, wrapVCALENDAR(inner),
 		map[string]string{"Content-Type": "text/calendar; charset=utf-8"})
 	if err != nil || (status != 200 && status != 201 && status != 204) {
 		return fmt.Errorf("CalDAV put failed: %d", status)
@@ -331,8 +346,40 @@ func (cal *Cal) collections() ([]Collection, error) {
 			Name: "Kalender", URL: cal.acct.KalenderURL, Calendar: true, Comps: []string{"VEVENT"},
 		}}
 	}
+	cal.cols = append(cal.cols, cal.extraCols()...)
 	cal.discovered = true
 	return cal.cols, nil
+}
+
+func (cal *Cal) extraCols() []Collection {
+	skip := urlHost(cal.acct.KalenderURL)
+	var out []Collection
+	for _, e := range cal.acct.ExtraCals {
+		if e.Name == "" || e.URL == "" {
+			continue
+		}
+		if skip != "" && urlHost(e.URL) == skip {
+			continue
+		}
+		user := e.Username
+		if user == "" {
+			user = cal.acct.Email
+		}
+		out = append(out, Collection{
+			Name: e.Name, URL: e.URL, Color: e.Color,
+			Calendar: true, Comps: []string{"VEVENT"},
+			client: dav.New(user, e.Password),
+		})
+	}
+	return out
+}
+
+func urlHost(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return u.Host
 }
 
 func (cal *Cal) Calendars() ([]*format.OM, error) {
