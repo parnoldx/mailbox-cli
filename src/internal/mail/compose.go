@@ -2,20 +2,21 @@ package mail
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/base64"
+	"errors"
 	"fmt"
-	"strconv"
 	"io"
 	"mime"
 	"mime/quotedprintable"
 	"net"
 	"net/http"
-	"net/url"
 	nativeNetMail "net/mail"
 	"net/smtp"
-	"crypto/tls"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -36,6 +37,15 @@ type OutAttachment struct {
 const MaxInlineAttachment = 10 << 20 // 10 MiB
 
 var transferURL = "https://transfer.adminforge.de/"
+
+// TransferHost names the third-party host used for oversized attachments, so
+// callers can say where the data would go before sending it there.
+func TransferHost() string {
+	if u, err := url.Parse(transferURL); err == nil && u.Host != "" {
+		return u.Host
+	}
+	return transferURL
+}
 
 // UploadToTransfer PUTs data to a transfer.sh host and returns the download URL.
 func UploadToTransfer(name string, data []byte) (string, error) {
@@ -190,8 +200,14 @@ func (m *Mail) BuildOutgoing(out *Outgoing) ([]byte, string, error) {
 	}
 
 	contentType, body := buildBody(plain, html, out.Attachments)
+	// RFC 2045 §6.4: a composite type carries no content encoding of its own —
+	// each part declares its own. Only the single-part body is quoted-printable.
+	topCTE := "quoted-printable"
+	if strings.HasPrefix(contentType, "multipart/") {
+		topCTE = "7bit"
+	}
 	headers = append(headers, "Content-Type: "+contentType,
-		"Content-Transfer-Encoding: quoted-printable")
+		"Content-Transfer-Encoding: "+topCTE)
 	raw := append([]byte(strings.Join(headers, "\r\n")), []byte("\r\n\r\n")...)
 	raw = append(raw, body...)
 	return raw, msgid, nil
@@ -431,7 +447,29 @@ func recipientsOf(raw []byte, extraBcc []string) []string {
 	return uniq
 }
 
+// DeliveredError reports a step that failed after SMTP already accepted the
+// message — filing it in Sent, removing the draft. The mail is gone; retrying
+// the send would deliver it twice, so callers must report this as a warning on
+// a successful send, not as a failure.
+type DeliveredError struct {
+	Step string
+	Err  error
+}
+
+func (e *DeliveredError) Error() string {
+	return fmt.Sprintf("message was sent, but %s failed: %v", e.Step, e.Err)
+}
+
+func (e *DeliveredError) Unwrap() error { return e.Err }
+
+// Delivered reports whether err means the message went out despite the error.
+func Delivered(err error) bool {
+	var d *DeliveredError
+	return errors.As(err, &d)
+}
+
 // Compose sends via SMTP or saves to Drafts; returns the new message id.
+// A non-nil error for which Delivered reports true means the message was sent.
 func (m *Mail) Compose(out *Outgoing, draft bool) (string, error) {
 	raw, msgid, err := m.BuildOutgoing(out)
 	if err != nil {
@@ -445,7 +483,11 @@ func (m *Mail) Compose(out *Outgoing, draft bool) (string, error) {
 	if err := m.SMTPSend(m.Acct, wire, rcpts, wire); err != nil {
 		return "", err
 	}
-	return m.AppendBytes(folders.SENT, "\\Seen", raw, msgid)
+	sentID, err := m.AppendBytes(folders.SENT, "\\Seen", raw, msgid)
+	if err != nil {
+		return msgid, &DeliveredError{Step: "filing a copy in Sent", Err: err}
+	}
+	return sentID, nil
 }
 
 func (m *Mail) Draft(to []string, subject, body string, replyTo *[2]string) (string, error) {
@@ -480,10 +522,10 @@ func (m *Mail) SendDraft(folder, uid string) (string, error) {
 	}
 	sentID, err := m.AppendBytes(folders.SENT, "\\Seen", raw, msgid)
 	if err != nil {
-		return "", err
+		return msgid, &DeliveredError{Step: "filing a copy in Sent", Err: err}
 	}
 	if err := m.purge(resolved, uid); err != nil {
-		return "", err
+		return sentID, &DeliveredError{Step: "removing the draft", Err: err}
 	}
 	return sentID, nil
 }

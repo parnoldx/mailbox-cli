@@ -62,6 +62,16 @@ func pick(envKey string, fileVal, tbVal, def string) string {
 
 func opt(v string) string { return v }
 
+// parsePort keeps the default when the configured value is not a usable port,
+// so a typo surfaces as "connection refused on 993" rather than "port 0".
+func parsePort(raw string, def int) int {
+	n, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || n <= 0 || n > 65535 {
+		return def
+	}
+	return n
+}
+
 type Probe struct {
 	Email              string
 	PasswordSet        bool
@@ -103,7 +113,7 @@ func ProbeAccount() *Probe {
 	imapHost := pick("MAILBOX_IMAP_HOST", file["MAILBOX_IMAP_HOST"], tbIMAPHost, "imap.mailbox.org")
 	imapPort := 993
 	if raw := pick("MAILBOX_IMAP_PORT", file["MAILBOX_IMAP_PORT"], "", ""); raw != "" {
-		imapPort, _ = strconv.Atoi(raw)
+		imapPort = parsePort(raw, imapPort)
 	} else if err == nil && tb != nil && tbPort != 0 {
 		imapPort = tbPort
 	}
@@ -114,7 +124,7 @@ func ProbeAccount() *Probe {
 	smtpHost := pick("MAILBOX_SMTP_HOST", file["MAILBOX_SMTP_HOST"], "", "smtp.mailbox.org")
 	smtpPort := 465
 	if raw := pick("MAILBOX_SMTP_PORT", file["MAILBOX_SMTP_PORT"], "", ""); raw != "" {
-		smtpPort, _ = strconv.Atoi(raw)
+		smtpPort = parsePort(raw, smtpPort)
 	}
 
 	var missing []string

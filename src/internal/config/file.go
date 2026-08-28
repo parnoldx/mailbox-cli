@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -43,9 +44,23 @@ func ReadFile() map[string]string {
 		if k == "" {
 			continue
 		}
-		out[k] = strings.TrimSpace(v)
+		out[k] = unquote(strings.TrimSpace(v))
 	}
 	return out
+}
+
+// unquote drops one layer of matching quotes. The file looks like a shell env
+// file, so people write MAILBOX_PASSWORD="secret" and would otherwise end up
+// with the quotes inside their password.
+func unquote(v string) string {
+	if len(v) < 2 {
+		return v
+	}
+	first, last := v[0], v[len(v)-1]
+	if first == last && (first == '"' || first == '\'') {
+		return v[1 : len(v)-1]
+	}
+	return v
 }
 
 func WriteFile(vals map[string]string) error {
@@ -67,23 +82,55 @@ func WriteFile(vals map[string]string) error {
 		"MAILBOX_CARDDAV_KONTAKTE",
 	}
 	seen := map[string]bool{}
-	for _, k := range order {
-		if v := vals[k]; v != "" {
-			b.WriteString(k)
-			b.WriteByte('=')
-			b.WriteString(strings.ReplaceAll(v, "\n", ""))
-			b.WriteByte('\n')
-			seen[k] = true
-		}
-	}
-	for k, v := range vals {
-		if seen[k] || v == "" {
-			continue
-		}
+	write := func(k, v string) {
 		b.WriteString(k)
 		b.WriteByte('=')
 		b.WriteString(strings.ReplaceAll(v, "\n", ""))
 		b.WriteByte('\n')
 	}
-	return os.WriteFile(path, []byte(b.String()), 0o600)
+	for _, k := range order {
+		if v := vals[k]; v != "" {
+			write(k, v)
+			seen[k] = true
+		}
+	}
+	rest := make([]string, 0, len(vals))
+	for k, v := range vals {
+		if seen[k] || v == "" {
+			continue
+		}
+		rest = append(rest, k)
+	}
+	sort.Strings(rest)
+	for _, k := range rest {
+		write(k, vals[k])
+	}
+	return writeAtomic(path, []byte(b.String()))
+}
+
+// writeAtomic writes via a temp file in the same directory and renames, so an
+// interrupted write cannot leave the credentials file truncated.
+func writeAtomic(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	defer os.Remove(name)
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(name, path)
 }

@@ -141,6 +141,8 @@ func (s *session) message(folder, uid string) (*mail.ThreadMessage, error) {
 }
 
 func (s *session) calendars() ([]*format.OM, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.cal == nil {
 		return nil, nil
 	}
@@ -148,6 +150,8 @@ func (s *session) calendars() ([]*format.OM, error) {
 }
 
 func (s *session) events(start, end time.Time) ([]*format.OM, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.cal == nil {
 		return nil, nil
 	}
@@ -155,6 +159,8 @@ func (s *session) events(start, end time.Time) ([]*format.OM, error) {
 }
 
 func (s *session) todos() ([]*format.OM, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.cal == nil {
 		return nil, nil
 	}
@@ -162,6 +168,8 @@ func (s *session) todos() ([]*format.OM, error) {
 }
 
 func (s *session) completeTodo(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.cal == nil {
 		return nil
 	}
@@ -169,6 +177,8 @@ func (s *session) completeTodo(id string) error {
 }
 
 func (s *session) addTodo(title string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.cal == nil {
 		return nil
 	}
@@ -177,6 +187,8 @@ func (s *session) addTodo(title string) error {
 }
 
 func (s *session) uncompleteTodo(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.cal == nil {
 		return nil
 	}
@@ -184,6 +196,8 @@ func (s *session) uncompleteTodo(id string) error {
 }
 
 func (s *session) renameTodo(id, title string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.cal == nil {
 		return nil
 	}
@@ -191,6 +205,8 @@ func (s *session) renameTodo(id, title string) error {
 }
 
 func (s *session) deleteTodo(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.cal == nil {
 		return nil
 	}
@@ -198,6 +214,8 @@ func (s *session) deleteTodo(id string) error {
 }
 
 func (s *session) deleteHabit(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.cal == nil {
 		return nil
 	}
@@ -205,6 +223,8 @@ func (s *session) deleteHabit(id string) error {
 }
 
 func (s *session) addEvent(in calendar.EventIn) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.cal == nil {
 		return fmt.Errorf("calendar not configured")
 	}
@@ -213,6 +233,8 @@ func (s *session) addEvent(in calendar.EventIn) error {
 }
 
 func (s *session) updateEvent(id string, in calendar.EventIn) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.cal == nil {
 		return fmt.Errorf("calendar not configured")
 	}
@@ -221,6 +243,8 @@ func (s *session) updateEvent(id string, in calendar.EventIn) error {
 }
 
 func (s *session) deleteEvent(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.cal == nil {
 		return nil
 	}
@@ -228,6 +252,8 @@ func (s *session) deleteEvent(id string) error {
 }
 
 func (s *session) createHabit(name, days, color, icon string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.cal == nil {
 		return nil
 	}
@@ -236,6 +262,8 @@ func (s *session) createHabit(name, days, color, icon string) error {
 }
 
 func (s *session) editHabit(id, name, days, color, icon string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.cal == nil {
 		return nil
 	}
@@ -244,6 +272,8 @@ func (s *session) editHabit(id, name, days, color, icon string) error {
 }
 
 func (s *session) habits(when string) ([]*format.OM, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.cal == nil {
 		return nil, nil
 	}
@@ -251,6 +281,8 @@ func (s *session) habits(when string) ([]*format.OM, error) {
 }
 
 func (s *session) completeHabit(id, when string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.cal == nil {
 		return nil
 	}
@@ -258,6 +290,8 @@ func (s *session) completeHabit(id, when string) error {
 }
 
 func (s *session) uncompleteHabit(id, when string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.cal == nil {
 		return nil
 	}
@@ -265,6 +299,8 @@ func (s *session) uncompleteHabit(id, when string) error {
 }
 
 func (s *session) contacts() ([]*format.OM, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.book == nil {
 		return nil, nil
 	}
@@ -272,6 +308,8 @@ func (s *session) contacts() ([]*format.OM, error) {
 }
 
 func (s *session) contactShow(id string) (*format.OM, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.book == nil {
 		return nil, nil
 	}
@@ -279,6 +317,8 @@ func (s *session) contactShow(id string) (*format.OM, error) {
 }
 
 func (s *session) contactSearch(q string) ([]*format.OM, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.book == nil {
 		return nil, nil
 	}

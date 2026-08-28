@@ -76,6 +76,7 @@ var flagDesc = map[string]string{
 	"--message":       "body as Markdown",
 	"--message-html":  "body as raw HTML",
 	"--attach":        "file (repeatable)",
+	"--upload-large":  "send files over 10 MiB via a third-party host as a link",
 	"--draft":         "save to Drafts instead of sending",
 	"--cc":            "CC",
 	"--bcc":           "BCC",
@@ -108,6 +109,7 @@ var flagDesc = map[string]string{
 	"--screener":      "open The Screener",
 	"--web":           "list-management UI",
 	"--web-port":      "UI port (default 8080)",
+	"--web-addr":      "UI bind address (default 127.0.0.1; the UI has no auth)",
 	"--interval":      "poll seconds",
 	"--print":         "print Sieve script instead of uploading",
 }

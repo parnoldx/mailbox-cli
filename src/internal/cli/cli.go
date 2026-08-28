@@ -408,9 +408,9 @@ var cmdFlagSpecs = map[string]flagspec{
 	"label view":       {newSet("all", "detail"), newSet("limit", "page")},
 	"label add":        {nil, newSet("to")},
 	"label remove":     {nil, newSet("from")},
-	"compose":          {newSet("draft"), newSet("to", "cc", "bcc", "subject", "m", "message", "message-html", "attach")},
-	"reply":            {newSet("draft"), newSet("to", "cc", "bcc", "m", "message", "message-html", "attach")},
-	"forward":          {nil, newSet("to", "cc", "bcc", "m", "message", "message-html", "attach")},
+	"compose":          {newSet("draft", "upload-large"), newSet("to", "cc", "bcc", "subject", "m", "message", "message-html", "attach")},
+	"reply":            {newSet("draft", "upload-large"), newSet("to", "cc", "bcc", "m", "message", "message-html", "attach")},
+	"forward":          {newSet("upload-large"), newSet("to", "cc", "bcc", "m", "message", "message-html", "attach")},
 	"draft list":       {newSet("all", "unread", "detail"), newSet("limit", "page")},
 	"draft edit":       {nil, newSet("to", "cc", "bcc", "subject", "m", "message", "message-html")},
 	"attachment save":  {newSet("force"), newSet("output")},
@@ -419,7 +419,7 @@ var cmdFlagSpecs = map[string]flagspec{
 	"todo":             {newSet("all"), newSet("title", "date", "calendar", "starts-on", "ends-on", "limit", "page")},
 	"habit":            {nil, newSet("days", "name", "date", "color", "icon")},
 	"contact":          {nil, newSet("name", "email", "note")},
-	"serve":            {newSet("web", "print"), newSet("web-port", "interval")},
+	"serve":            {newSet("web", "print"), newSet("web-port", "web-addr", "interval")},
 	"tui":              {newSet("screener"), nil},
 }
 
@@ -579,6 +579,14 @@ func printUsage(path ...string) int {
 }
 
 // --- mail commands ---
+
+// noticeOf renders a tolerated error as a warning string for WriteOK.
+func noticeOf(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
 
 func withMail(fn func(*mail.Mail) (int, error)) (int, error) {
 	acct, err := config.LoadAccount(false, false)
@@ -1219,13 +1227,20 @@ func checkCompose(flags *parsed) error {
 	return nil
 }
 
-func collectAttachments(paths []string) (atts []mail.OutAttachment, links []string, err error) {
+// collectAttachments reads --attach paths. Anything over the inline limit can
+// only be sent by uploading it to a third-party host, which copies the file off
+// the user's machine, so that needs --upload-large rather than happening quietly.
+func collectAttachments(paths []string, uploadLarge bool) (atts []mail.OutAttachment, links []string, err error) {
 	for _, path := range paths {
 		att, err := mail.ReadAttachmentFile(path)
 		if err != nil {
 			return nil, nil, err
 		}
 		if len(att.Data) > mail.MaxInlineAttachment {
+			if !uploadLarge {
+				return nil, nil, fmt.Errorf("%s is over %d MiB; pass --upload-large to upload it to %s and send a link instead",
+					att.Name, mail.MaxInlineAttachment>>20, mail.TransferHost())
+			}
 			url, err := mail.UploadToTransfer(att.Name, att.Data)
 			if err != nil {
 				return nil, nil, fmt.Errorf("%s over %d MiB and upload failed: %w", att.Name, mail.MaxInlineAttachment>>20, err)
@@ -1253,7 +1268,7 @@ func cmdCompose(flags *parsed, out *format.Output) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	attachments, links, err := collectAttachments(flags.list("attach"))
+	attachments, links, err := collectAttachments(flags.list("attach"), flags.has("upload-large"))
 	if err != nil {
 		return 0, err
 	}
@@ -1270,14 +1285,14 @@ func cmdCompose(flags *parsed, out *format.Output) (int, error) {
 	draftFlag := flags.has("draft")
 	return withMail(func(m *mail.Mail) (int, error) {
 		newID, err := m.Compose(outgoing, draftFlag)
-		if err != nil {
+		if err != nil && !mail.Delivered(err) {
 			return 0, err
 		}
 		folderName := folders.SENT
 		if draftFlag {
 			folderName = folders.DRAFTS
 		}
-		return format.WriteOK(format.NewOM("id", newID, "folder", folderName), out, ""), nil
+		return format.WriteOK(format.NewOM("id", newID, "folder", folderName), out, noticeOf(err)), nil
 	})
 }
 
@@ -1296,7 +1311,7 @@ func cmdReply(flags *parsed, out *format.Output) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	attachments, links, err := collectAttachments(flags.list("attach"))
+	attachments, links, err := collectAttachments(flags.list("attach"), flags.has("upload-large"))
 	if err != nil {
 		return 0, err
 	}
@@ -1313,14 +1328,14 @@ func cmdReply(flags *parsed, out *format.Output) (int, error) {
 	draftFlag := flags.has("draft")
 	return withMail(func(m *mail.Mail) (int, error) {
 		newID, err := m.Compose(outgoing, draftFlag)
-		if err != nil {
+		if err != nil && !mail.Delivered(err) {
 			return 0, err
 		}
 		folderName := folders.SENT
 		if draftFlag {
 			folderName = folders.DRAFTS
 		}
-		return format.WriteOK(format.NewOM("id", newID, "folder", folderName), out, ""), nil
+		return format.WriteOK(format.NewOM("id", newID, "folder", folderName), out, noticeOf(err)), nil
 	})
 }
 
@@ -1345,7 +1360,7 @@ func cmdForward(flags *parsed, out *format.Output) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	attachments, links, err := collectAttachments(flags.list("attach"))
+	attachments, links, err := collectAttachments(flags.list("attach"), flags.has("upload-large"))
 	if err != nil {
 		return 0, err
 	}
@@ -1375,10 +1390,10 @@ func cmdForward(flags *parsed, out *format.Output) (int, error) {
 			Body: body, HTML: htmlBody, Attachments: attachments,
 		}
 		newID, err := m.Compose(outgoing, false)
-		if err != nil {
+		if err != nil && !mail.Delivered(err) {
 			return 0, err
 		}
-		return format.WriteOK(format.NewOM("id", newID, "folder", folders.SENT), out, ""), nil
+		return format.WriteOK(format.NewOM("id", newID, "folder", folders.SENT), out, noticeOf(err)), nil
 	})
 }
 
@@ -1479,10 +1494,10 @@ func cmdDraft(cmd string, flags *parsed, out *format.Output) (int, error) {
 	case "send":
 		return withMail(func(m *mail.Mail) (int, error) {
 			newID, err := m.SendDraft(folder, uid)
-			if err != nil {
+			if err != nil && !mail.Delivered(err) {
 				return 0, err
 			}
-			return format.WriteOK(format.NewOM("id", newID, "folder", folders.SENT), out, ""), nil
+			return format.WriteOK(format.NewOM("id", newID, "folder", folders.SENT), out, noticeOf(err)), nil
 		})
 	default: // delete
 		return imapMove([]string{ids.FormatMessageID(folder, uid)}, folders.TRASH, out, "")
@@ -1982,8 +1997,8 @@ var cmdSpecs = []cmdspec{
 	{[]string{"search"}, "mailbox search [QUERY] [--from ADDR] [--to ADDR] [--subject TEXT] [--in BOX] [--date RANGE] [--required W] [--any W] [--none W] [--exact PHRASE] [--attachment KIND] [--limit N] [--page N] [--all] [--detail]", []string{"--from", "--to", "--subject", "--in", "--date", "--required", "--any", "--none", "--exact", "--attachment", "--limit", "--page", "--all", "--detail"}, "Search mail"},
 	{[]string{"search", "filters"}, "mailbox search filters", nil, "Available --in/--date/--attachment values"},
 	{[]string{"thread"}, "mailbox thread ID [--allow-partial] [--html]", []string{"--allow-partial", "--html"}, "Read a thread"},
-	{[]string{"reply"}, "mailbox reply ID [-m TEXT]", []string{"-m", "--message", "--message-html", "--attach", "--draft", "--to", "--cc", "--bcc"}, "Reply"},
-	{[]string{"forward"}, "mailbox forward ID --to ADDR [-m TEXT]", []string{"--to", "--cc", "--bcc", "-m", "--message", "--message-html", "--attach"}, "Forward the latest message"},
+	{[]string{"reply"}, "mailbox reply ID [-m TEXT]", []string{"-m", "--message", "--message-html", "--attach", "--upload-large", "--draft", "--to", "--cc", "--bcc"}, "Reply"},
+	{[]string{"forward"}, "mailbox forward ID --to ADDR [-m TEXT]", []string{"--to", "--cc", "--bcc", "-m", "--message", "--message-html", "--attach", "--upload-large"}, "Forward the latest message"},
 	{[]string{"screener", "list"}, "mailbox screener list [--unread] [--limit N] [--page N] [--all] [--detail]", []string{"--unread", "--limit", "--page", "--all", "--detail"}, "Who is waiting"},
 	{[]string{"screener", "approve"}, "mailbox screener approve ID... [--box inbox|feed|trail]", []string{"--box"}, "Let a sender through"},
 	{[]string{"screener", "deny"}, "mailbox screener deny ID... [--spam]", []string{"--spam"}, "Turn a sender away"},
@@ -1999,7 +2014,7 @@ var cmdSpecs = []cmdspec{
 	{[]string{"unseen"}, "mailbox unseen ID...", nil, "Mark unseen"},
 	{[]string{"trash"}, "mailbox trash ID...", nil, "Move to Trash"},
 	{[]string{"spam"}, "mailbox spam ID...", nil, "Move to Junk"},
-	{[]string{"compose"}, "mailbox compose --to ADDR --subject TEXT [-m TEXT]", []string{"--to", "--cc", "--bcc", "--subject", "-m", "--message", "--message-html", "--attach", "--draft"}, "Write and send"},
+	{[]string{"compose"}, "mailbox compose --to ADDR --subject TEXT [-m TEXT]", []string{"--to", "--cc", "--bcc", "--subject", "-m", "--message", "--message-html", "--attach", "--upload-large", "--draft"}, "Write and send"},
 	{[]string{"draft", "list"}, "mailbox draft list [--all] [--limit N] [--page N]", []string{"--all", "--limit", "--page", "--detail"}, "Unsent drafts"},
 	{[]string{"draft", "show"}, "mailbox draft show ID", nil, "Read a draft"},
 	{[]string{"draft", "edit"}, "mailbox draft edit ID [--to ADDR] [--subject TEXT] [-m TEXT]", []string{"--to", "--cc", "--bcc", "--subject", "-m", "--message", "--message-html"}, "Change a draft"},
@@ -2035,7 +2050,7 @@ var cmdSpecs = []cmdspec{
 	{[]string{"sieve", "put"}, "mailbox sieve put NAME FILE|-", nil, "Upload a script"},
 	{[]string{"sieve", "activate"}, "mailbox sieve activate NAME", nil, "Set the active script"},
 	{[]string{"doctor"}, "mailbox doctor", nil, "Credentials, IMAP, CalDAV, skill"},
-	{[]string{"serve"}, "mailbox serve [--web] [--web-port N] [--interval S] [--print]", []string{"--web", "--web-port", "--interval", "--print"}, "Routing service"},
+	{[]string{"serve"}, "mailbox serve [--web] [--web-port N] [--web-addr HOST] [--interval S] [--print]", []string{"--web", "--web-port", "--web-addr", "--interval", "--print"}, "Routing service"},
 	{[]string{"tui"}, "mailbox tui [--screener]", []string{"--screener"}, "Interactive terminal UI"},
 	{[]string{"setup"}, "mailbox setup", nil, "First-run wizard"},
 	{[]string{"setup", "skill"}, "mailbox setup skill", nil, "Install the agent skill"},

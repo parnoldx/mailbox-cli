@@ -264,3 +264,59 @@ func contains(s, sub string) bool {
 	}
 	return false
 }
+
+func TestReadFileStripsQuotes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "env")
+	body := "MAILBOX_EMAIL=\"user@example.com\"\nMAILBOX_PASSWORD='se cret'\nMAILBOX_IMAP_HOST=plain.example.com\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("MAILBOX_CONFIG", path)
+	got := ReadFile()
+	want := map[string]string{
+		"MAILBOX_EMAIL":     "user@example.com",
+		"MAILBOX_PASSWORD":  "se cret",
+		"MAILBOX_IMAP_HOST": "plain.example.com",
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Fatalf("%s = %q, want %q", k, got[k], v)
+		}
+	}
+}
+
+func TestWriteFileIsAtomicAndPrivate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sub", "env")
+	t.Setenv("MAILBOX_CONFIG", path)
+	if err := WriteFile(map[string]string{"MAILBOX_EMAIL": "a@b.com", "MAILBOX_PASSWORD": "pw"}); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode().Perm() != 0o600 {
+		t.Fatalf("mode = %v, want 0600", fi.Mode().Perm())
+	}
+	entries, err := os.ReadDir(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("temp file left behind: %v", entries)
+	}
+	if ReadFile()["MAILBOX_PASSWORD"] != "pw" {
+		t.Fatal("value did not round-trip")
+	}
+}
+
+func TestParsePortFallsBackOnGarbage(t *testing.T) {
+	for _, raw := range []string{"", "abc", "0", "-1", "70000", "99 3"} {
+		if got := parsePort(raw, 993); got != 993 {
+			t.Fatalf("parsePort(%q) = %d, want the 993 default", raw, got)
+		}
+	}
+	if got := parsePort(" 143 ", 993); got != 143 {
+		t.Fatalf("parsePort(\" 143 \") = %d, want 143", got)
+	}
+}

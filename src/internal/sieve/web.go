@@ -3,6 +3,7 @@ package sieve
 import (
 	"html/template"
 	"log"
+	"net"
 	"net/http"
 	"sort"
 	"strings"
@@ -23,7 +24,8 @@ var webTmpl = template.Must(template.New("index").Parse(`
         .section h2 { margin-top: 0; color: #333; }
         .email-list { margin: 10px 0; }
         .email-item { display: inline-block; background: #f0f0f0; padding: 5px 10px; margin: 2px; border-radius: 3px; font-size: 14px; }
-        .remove-btn { color: red; text-decoration: none; margin-left: 5px; font-weight: bold; }
+        .remove-btn { color: red; background: none; border: none; padding: 0; margin-left: 5px; font-weight: bold; cursor: pointer; }
+        .remove-form { display: inline; }
         .add-form { margin-top: 10px; }
         input[type="email"] { padding: 5px; width: 200px; margin-right: 10px; }
         button { padding: 5px 10px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
@@ -51,7 +53,7 @@ var webTmpl = template.Must(template.New("index").Parse(`
             <input type="text" class="search-box" placeholder="Search blacklist..." onkeyup="filterList('blacklist', this.value)">
             <div class="email-list" id="blacklist-container">
                 {{range .Blacklist}}
-                    <span class="email-item">{{.}}<a href="/remove?list=blacklist&amp;email={{.}}" class="remove-btn" onclick="return confirm('Remove {{.}} from blacklist?')">×</a></span>
+                    <span class="email-item">{{.}}<form method="POST" action="/remove?list=blacklist" class="remove-form" onsubmit="return confirm('Remove {{.}} from blacklist?')"><input type="hidden" name="email" value="{{.}}"><button type="submit" class="remove-btn">×</button></form></span>
                 {{end}}
             </div>
             <form method="POST" action="/add?list=blacklist" class="add-form">
@@ -66,7 +68,7 @@ var webTmpl = template.Must(template.New("index").Parse(`
             <input type="text" class="search-box" placeholder="Search whitelist..." onkeyup="filterList('whitelist', this.value)">
             <div class="email-list" id="whitelist-container">
                 {{range .Whitelist}}
-                    <span class="email-item">{{.}}<a href="/remove?list=whitelist&amp;email={{.}}" class="remove-btn" onclick="return confirm('Remove {{.}} from whitelist?')">×</a></span>
+                    <span class="email-item">{{.}}<form method="POST" action="/remove?list=whitelist" class="remove-form" onsubmit="return confirm('Remove {{.}} from whitelist?')"><input type="hidden" name="email" value="{{.}}"><button type="submit" class="remove-btn">×</button></form></span>
                 {{end}}
             </div>
             <form method="POST" action="/add?list=whitelist" class="add-form">
@@ -81,7 +83,7 @@ var webTmpl = template.Must(template.New("index").Parse(`
             <input type="text" class="search-box" placeholder="Search paper trail..." onkeyup="filterList('papertrail', this.value)">
             <div class="email-list" id="papertrail-container">
                 {{range .PaperTrail}}
-                    <span class="email-item">{{.}}<a href="/remove?list=papertrail&amp;email={{.}}" class="remove-btn" onclick="return confirm('Remove {{.}} from paper trail?')">×</a></span>
+                    <span class="email-item">{{.}}<form method="POST" action="/remove?list=papertrail" class="remove-form" onsubmit="return confirm('Remove {{.}} from paper trail?')"><input type="hidden" name="email" value="{{.}}"><button type="submit" class="remove-btn">×</button></form></span>
                 {{end}}
             </div>
             <form method="POST" action="/add?list=papertrail" class="add-form">
@@ -96,7 +98,7 @@ var webTmpl = template.Must(template.New("index").Parse(`
             <input type="text" class="search-box" placeholder="Search feed..." onkeyup="filterList('feed', this.value)">
             <div class="email-list" id="feed-container">
                 {{range .Feed}}
-                    <span class="email-item">{{.}}<a href="/remove?list=feed&amp;email={{.}}" class="remove-btn" onclick="return confirm('Remove {{.}} from feed?')">×</a></span>
+                    <span class="email-item">{{.}}<form method="POST" action="/remove?list=feed" class="remove-form" onsubmit="return confirm('Remove {{.}} from feed?')"><input type="hidden" name="email" value="{{.}}"><button type="submit" class="remove-btn">×</button></form></span>
                 {{end}}
             </div>
             <form method="POST" action="/add?list=feed" class="add-form">
@@ -107,7 +109,7 @@ var webTmpl = template.Must(template.New("index").Parse(`
 
         <div class="section">
             <h2>Actions</h2>
-            <a href="/reload"><button>Reload from Sieve Server</button></a>
+            <form method="POST" action="/reload" style="display:inline"><button type="submit">Reload from Sieve Server</button></form>
             <button onclick="location.reload()">Refresh Page</button>
         </div>
     </div>
@@ -179,9 +181,19 @@ type WebUI struct {
 	fetched time.Time
 }
 
+// current returns a private copy of the lists; handlers mutate their copy and
+// hand it back to save, so no two requests ever touch the same slice.
 func (ui *WebUI) current() (*Lists, time.Time, error) {
 	ui.mu.Lock()
 	defer ui.mu.Unlock()
+	lists, fetched, err := ui.cachedLocked()
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	return lists.Clone(), fetched, nil
+}
+
+func (ui *WebUI) cachedLocked() (*Lists, time.Time, error) {
 	if ui.lists != nil && time.Since(ui.fetched) < 5*time.Second {
 		return ui.lists, ui.fetched, nil
 	}
@@ -198,13 +210,23 @@ func (ui *WebUI) current() (*Lists, time.Time, error) {
 	return lists, ui.fetched, nil
 }
 
-func (ui *WebUI) save(lists *Lists) error {
+// edit runs one read-modify-write under the lock so concurrent adds and
+// removes cannot clobber each other.
+func (ui *WebUI) edit(change func(*Lists) bool) error {
 	ui.mu.Lock()
 	defer ui.mu.Unlock()
-	if err := ui.Server.PutScript(GenerateScript(lists)); err != nil {
+	lists, _, err := ui.cachedLocked()
+	if err != nil {
 		return err
 	}
-	ui.lists = lists
+	updated := lists.Clone()
+	if !change(updated) {
+		return nil
+	}
+	if err := ui.Server.PutScript(GenerateScript(updated)); err != nil {
+		return err
+	}
+	ui.lists = updated
 	ui.fetched = time.Now()
 	return nil
 }
@@ -226,10 +248,31 @@ func (ui *WebUI) Handler() http.Handler {
 	return mux
 }
 
-// ListenAndServe blocks serving the UI.
+// server wraps the handler with timeouts so a stalled client cannot pin a
+// connection open indefinitely.
+func (ui *WebUI) server() *http.Server {
+	return &http.Server{
+		Handler:           ui.Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       2 * time.Minute,
+	}
+}
+
+// Serve blocks serving the UI on an already-bound listener.
+func (ui *WebUI) Serve(listener net.Listener) error {
+	return ui.server().Serve(listener)
+}
+
+// ListenAndServe blocks serving the UI on addr.
 func (ui *WebUI) ListenAndServe(addr string) error {
-	log.Printf("sieve: web interface on http://localhost%s", addr)
-	return http.ListenAndServe(addr, ui.Handler())
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	log.Printf("sieve: web interface on http://%s", listener.Addr())
+	return ui.Serve(listener)
 }
 
 func sortedCopy(in []string) []string {
@@ -273,71 +316,72 @@ func (ui *WebUI) handleAdd(w http.ResponseWriter, r *http.Request) {
 	key := r.URL.Query().Get("list")
 	email := strings.TrimSpace(r.FormValue("email"))
 	get := listKeys[key]
-	if get == nil || email == "" || !strings.Contains(email, "@") {
+	if get == nil || !ValidAddress(email) {
 		http.Error(w, "Missing or invalid list/email parameter", http.StatusBadRequest)
 		return
 	}
-	lists, _, err := ui.current()
+	added := false
+	err := ui.edit(func(lists *Lists) bool {
+		target := get(lists)
+		if contains(*target, email) {
+			return false
+		}
+		*target = append(*target, email)
+		added = true
+		return true
+	})
 	if err != nil {
 		log.Printf("sieve: web: %v", err)
-		http.Error(w, "Failed to get current lists", http.StatusInternalServerError)
+		http.Error(w, "Failed to update sieve script", http.StatusInternalServerError)
 		return
 	}
-	target := get(lists)
-	if !contains(*target, email) {
-		*target = append(*target, email)
-		if err := ui.save(lists); err != nil {
-			log.Printf("sieve: web: %v", err)
-			http.Error(w, "Failed to update sieve script", http.StatusInternalServerError)
-			return
-		}
+	if added {
 		log.Printf("sieve: web: added %s to %s", email, key)
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func (ui *WebUI) handleRemove(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	key := r.URL.Query().Get("list")
-	email := strings.TrimSpace(r.URL.Query().Get("email"))
+	email := strings.TrimSpace(r.FormValue("email"))
 	get := listKeys[key]
 	if get == nil || email == "" {
 		http.Error(w, "Missing list or email parameter", http.StatusBadRequest)
 		return
 	}
-	lists, _, err := ui.current()
-	if err != nil {
-		log.Printf("sieve: web: %v", err)
-		http.Error(w, "Failed to get current lists", http.StatusInternalServerError)
-		return
-	}
-	target := get(lists)
-	var kept []string
-	for _, addr := range *target {
-		if addr != email {
-			kept = append(kept, addr)
+	removed := false
+	err := ui.edit(func(lists *Lists) bool {
+		target := get(lists)
+		kept := []string{}
+		for _, addr := range *target {
+			if addr != email {
+				kept = append(kept, addr)
+			}
 		}
-	}
-	if len(kept) != len(*target) {
-		if kept == nil {
-			kept = []string{}
+		if len(kept) == len(*target) {
+			return false
 		}
 		*target = kept
-		if err := ui.save(lists); err != nil {
-			log.Printf("sieve: web: %v", err)
-			http.Error(w, "Failed to update sieve script", http.StatusInternalServerError)
-			return
-		}
+		removed = true
+		return true
+	})
+	if err != nil {
+		log.Printf("sieve: web: %v", err)
+		http.Error(w, "Failed to update sieve script", http.StatusInternalServerError)
+		return
+	}
+	if removed {
 		log.Printf("sieve: web: removed %s from %s", email, key)
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func (ui *WebUI) handleReload(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}

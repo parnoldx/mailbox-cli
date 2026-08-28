@@ -12,8 +12,8 @@ import (
 	"strings"
 
 	"golang.org/x/net/html"
-	"golang.org/x/text/encoding/charmap"
 	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/charmap"
 	"golang.org/x/text/encoding/ianaindex"
 	"golang.org/x/text/encoding/unicode"
 )
@@ -139,11 +139,17 @@ func splitMultipart(body []byte, boundary string) []*Part {
 }
 
 var charsetReaders = map[string]func(string) (io.Reader, error){
-	"utf-8":       func(s string) (io.Reader, error) { return strings.NewReader(s), nil },
-	"us-ascii":    func(s string) (io.Reader, error) { return strings.NewReader(s), nil },
-	"ascii":       func(s string) (io.Reader, error) { return strings.NewReader(s), nil },
-	"iso-8859-1":  func(s string) (io.Reader, error) { r := charmap.ISO8859_1.NewDecoder().Reader(strings.NewReader(s)); return r, nil },
-	"windows-1252": func(s string) (io.Reader, error) { r := charmap.Windows1252.NewDecoder().Reader(strings.NewReader(s)); return r, nil },
+	"utf-8":    func(s string) (io.Reader, error) { return strings.NewReader(s), nil },
+	"us-ascii": func(s string) (io.Reader, error) { return strings.NewReader(s), nil },
+	"ascii":    func(s string) (io.Reader, error) { return strings.NewReader(s), nil },
+	"iso-8859-1": func(s string) (io.Reader, error) {
+		r := charmap.ISO8859_1.NewDecoder().Reader(strings.NewReader(s))
+		return r, nil
+	},
+	"windows-1252": func(s string) (io.Reader, error) {
+		r := charmap.Windows1252.NewDecoder().Reader(strings.NewReader(s))
+		return r, nil
+	},
 }
 
 func charsetReader(charset string, input io.Reader) (io.Reader, error) {

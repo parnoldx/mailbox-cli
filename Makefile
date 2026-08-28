@@ -1,4 +1,4 @@
-.PHONY: build test fmt fmt-check vet tidy tidy-check check clean install help
+.PHONY: build test test-race fmt fmt-check vet tidy tidy-check check clean install help
 
 BINARY := $(CURDIR)/bin/mailbox
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -12,11 +12,12 @@ help:
 	@echo "Usage:"
 	@echo "  make build      Build the CLI into bin/"
 	@echo "  make test       Run tests"
+	@echo "  make test-race  Run tests with the race detector"
 	@echo "  make fmt        Format Go source files"
 	@echo "  make fmt-check  Check formatting (CI gate)"
 	@echo "  make vet        Run go vet"
 	@echo "  make tidy-check Verify go.mod/go.sum tidiness"
-	@echo "  make check      fmt-check + vet + test + tidy-check"
+	@echo "  make check      fmt-check + vet + test-race + tidy-check"
 	@echo "  make clean      Remove build artifacts"
 	@echo "  make install    Build and install into ~/.local/bin/mailbox"
 
@@ -27,7 +28,10 @@ build:
 
 # Run tests
 test:
-	go test ./src/internal/...
+	go test ./...
+
+test-race:
+	go test -race ./...
 
 fmt:
 	gofmt -s -w .
@@ -52,7 +56,7 @@ tidy-check:
 		exit 1; \
 	fi
 
-check: fmt-check vet test tidy-check
+check: fmt-check vet test-race tidy-check
 
 clean:
 	rm -rf bin/

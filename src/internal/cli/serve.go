@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"strconv"
 	"time"
@@ -34,7 +35,12 @@ func sweepAsideLoop(acct *config.Account) {
 func newSieveServer(acct *config.Account) sieve.Server {
 	sievePort := 4190
 	if raw := os.Getenv("MAILBOX_SIEVE_PORT"); raw != "" {
-		sievePort, _ = strconv.Atoi(raw)
+		n, err := strconv.Atoi(raw)
+		if err != nil || n <= 0 || n > 65535 {
+			log.Printf("serve: ignoring invalid MAILBOX_SIEVE_PORT %q, using %d", raw, sievePort)
+		} else {
+			sievePort = n
+		}
 	}
 	return sieve.Server{
 		Host:     pickEnv("MAILBOX_SIEVE_HOST", acct.IMAPHost),
@@ -85,10 +91,23 @@ func cmdServe(flags *parsed, out *format.Output) (int, error) {
 		if port == "" {
 			port = "8080"
 		}
+		// The UI has no authentication and edits the live mail filter, so it
+		// stays on the loopback interface unless the user opts out explicitly.
+		host := flags.one("web-addr")
+		if host == "" {
+			host = "127.0.0.1"
+		}
+		addr := net.JoinHostPort(host, port)
+		ui := &sieve.WebUI{Server: server}
+		listener, err := net.Listen("tcp", addr)
+		if err != nil {
+			return 0, fmt.Errorf("web interface cannot listen on %s: %w", addr, err)
+		}
+		log.Printf("serve: web interface on http://%s", addr)
 		go func() {
-			ui := &sieve.WebUI{Server: server}
-			if err := ui.ListenAndServe(":" + port); err != nil {
-				log.Fatalf("serve: web interface failed: %v", err)
+			// The watcher is the point of `serve`; a dead UI must not take it down.
+			if err := ui.Serve(listener); err != nil {
+				log.Printf("serve: web interface stopped: %v", err)
 			}
 		}()
 	}

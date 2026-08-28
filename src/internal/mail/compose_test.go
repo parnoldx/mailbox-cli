@@ -175,3 +175,46 @@ func TestUploadToTransferError(t *testing.T) {
 		t.Fatal("want error on non-200")
 	}
 }
+
+func TestMultipartUsesSevenBitTopLevelEncoding(t *testing.T) {
+	m := &Mail{Acct: fakeAccount()}
+	cases := []struct {
+		name string
+		out  *Outgoing
+		want string
+	}{
+		{"single part", &Outgoing{To: []string{"d@example.com"}, Subject: "s"}, "quoted-printable"},
+		{"markdown body becomes alternative", &Outgoing{To: []string{"d@example.com"}, Subject: "s", Body: "body"}, "7bit"},
+		{"alternative", &Outgoing{To: []string{"d@example.com"}, Subject: "s", HTML: "<p>body</p>"}, "7bit"},
+		{"mixed", &Outgoing{
+			To: []string{"d@example.com"}, Subject: "s", Body: "body",
+			Attachments: []OutAttachment{{Name: "a.txt", Data: []byte("x"), ContentType: "text/plain"}},
+		}, "7bit"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			raw, _, err := m.BuildOutgoing(tc.out)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := headerValueOf(raw, "Content-Transfer-Encoding")
+			if got != tc.want {
+				head, _ := splitRaw(raw)
+				t.Fatalf("top-level CTE = %q, want %q\n%s", got, tc.want, head)
+			}
+		})
+	}
+}
+
+func TestDeliveredClassifiesPostSendFailures(t *testing.T) {
+	err := &DeliveredError{Step: "filing a copy in Sent", Err: io.EOF}
+	if !Delivered(err) {
+		t.Fatal("DeliveredError should report as delivered")
+	}
+	if Delivered(io.EOF) || Delivered(nil) {
+		t.Fatal("plain errors should not report as delivered")
+	}
+	if !strings.Contains(err.Error(), "was sent") {
+		t.Fatalf("message should say the mail went out: %q", err.Error())
+	}
+}

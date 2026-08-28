@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Literal marks an argument sent as {n} literal bytes.
@@ -36,6 +37,14 @@ type Response struct {
 	Chunks []Chunk  // all chunks in order (text + literals), untagged + tagged
 }
 
+// DialTimeout bounds the TCP+TLS handshake; IdleTimeout bounds how long a
+// single read or write may stall. Long FETCHes keep extending the deadline as
+// data arrives, so only a truly wedged server trips it.
+const (
+	DialTimeout = 30 * time.Second
+	IdleTimeout = 2 * time.Minute
+)
+
 type Client struct {
 	conn net.Conn
 	br   *bufio.Reader
@@ -43,7 +52,8 @@ type Client struct {
 }
 
 func Dial(host string, port int, user, pass string) (*Client, error) {
-	conn, err := tls.Dial("tcp", net.JoinHostPort(host, strconv.Itoa(port)), &tls.Config{})
+	dialer := &net.Dialer{Timeout: DialTimeout}
+	conn, err := tls.DialWithDialer(dialer, "tcp", net.JoinHostPort(host, strconv.Itoa(port)), &tls.Config{})
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +90,19 @@ func (c *Client) nextTag() string {
 	return "a" + strconv.Itoa(c.tagN)
 }
 
+// touch resets the idle deadline before each read or write.
+func (c *Client) touch() {
+	c.conn.SetDeadline(time.Now().Add(IdleTimeout))
+}
+
+func (c *Client) write(b []byte) error {
+	c.touch()
+	_, err := c.conn.Write(b)
+	return err
+}
+
 func (c *Client) readLine() (string, error) {
+	c.touch()
 	line, err := c.br.ReadString('\n')
 	if err != nil {
 		return "", err
@@ -93,12 +115,15 @@ func (c *Client) Command(parts ...any) (*Response, error) {
 	tag := c.nextTag()
 	var b strings.Builder
 	b.WriteString(tag)
+	// A literal's own trailing CRLF terminates the command line, so only the
+	// text left over after the last literal still needs one.
+	pending := true
 	for _, p := range parts {
 		b.WriteByte(' ')
 		switch v := p.(type) {
 		case Literal:
 			fmt.Fprintf(&b, "{%d}", len(v))
-			if _, err := c.conn.Write([]byte(b.String() + "\r\n")); err != nil {
+			if err := c.write([]byte(b.String() + "\r\n")); err != nil {
 				return nil, err
 			}
 			cont, err := c.readLine()
@@ -108,17 +133,21 @@ func (c *Client) Command(parts ...any) (*Response, error) {
 			if !strings.HasPrefix(cont, "+") {
 				return nil, fmt.Errorf("imap: expected continuation, got %q", cont)
 			}
-			if _, err := c.conn.Write(append([]byte(v), '\r', '\n')); err != nil {
+			if err := c.write(append([]byte(v), '\r', '\n')); err != nil {
 				return nil, err
 			}
 			b.Reset()
+			pending = false
 			continue
 		default:
 			b.WriteString(fmt.Sprint(v))
+			pending = true
 		}
 	}
-	if _, err := c.conn.Write([]byte(b.String() + "\r\n")); err != nil {
-		return nil, err
+	if pending {
+		if err := c.write([]byte(b.String() + "\r\n")); err != nil {
+			return nil, err
+		}
 	}
 
 	resp := &Response{}
@@ -172,7 +201,7 @@ func (c *Client) readResponseLine() ([]Chunk, error) {
 		}
 		head := line[:len(line)-len(m[0])]
 		raw := make([]byte, n)
-		if _, err := ioReadFull(c.br, raw); err != nil {
+		if err := c.readFull(raw); err != nil {
 			return nil, err
 		}
 		rest, err := c.readLine()
@@ -184,14 +213,17 @@ func (c *Client) readResponseLine() ([]Chunk, error) {
 	}
 }
 
-func ioReadFull(br *bufio.Reader, buf []byte) (int, error) {
+// readFull fills buf, refreshing the idle deadline so a large literal is only
+// cut off when the server actually stalls.
+func (c *Client) readFull(buf []byte) error {
 	total := 0
 	for total < len(buf) {
-		n, err := br.Read(buf[total:])
+		c.touch()
+		n, err := c.br.Read(buf[total:])
 		total += n
 		if err != nil {
-			return total, err
+			return err
 		}
 	}
-	return total, nil
+	return nil
 }

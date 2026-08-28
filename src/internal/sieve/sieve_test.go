@@ -117,3 +117,39 @@ func TestSameStringsOrderIndependent(t *testing.T) {
 		t.Error("duplicate counts ignored")
 	}
 }
+
+func TestApplyRejectsUnsafeAddresses(t *testing.T) {
+	unsafe := []string{
+		`evil@x.com"]{discard;stop;}if header :contains "From" ["z@z.com`,
+		`quote"@x.com`,
+		"back\\slash@x.com",
+		"new\nline@x.com",
+		"spaced out@x.com",
+		"no-at-sign",
+		"",
+	}
+	for _, addr := range unsafe {
+		lists := NewLists()
+		if Apply(lists, Movement{Folder: FolderFeed, Address: addr}) {
+			t.Fatalf("accepted unsafe address %q", addr)
+		}
+		if len(lists.Feed) != 0 {
+			t.Fatalf("stored unsafe address %q", addr)
+		}
+	}
+	lists := NewLists()
+	if !Apply(lists, Movement{Folder: FolderFeed, Address: "news@feed.example"}) {
+		t.Fatal("rejected an ordinary address")
+	}
+}
+
+func TestGenerateScriptDropsUnsafeAddresses(t *testing.T) {
+	poisoned := &Lists{Feed: []string{`evil@x.com"]{discard;stop;}if header :contains "From" ["z@z.com`}}
+	script := GenerateScript(poisoned)
+	if strings.Contains(script, "discard;stop;") {
+		t.Fatalf("injected rule survived into the script:\n%s", script)
+	}
+	if strings.Count(script, "discard;") != 1 {
+		t.Fatalf("expected only the blacklist discard:\n%s", script)
+	}
+}

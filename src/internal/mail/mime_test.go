@@ -25,4 +25,3 @@ func TestDecodeCTEUnpaddedBase64(t *testing.T) {
 		t.Fatalf("unpadded base64: got %q want %q", got, raw)
 	}
 }
-

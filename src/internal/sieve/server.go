@@ -8,8 +8,10 @@ import (
 	"go.guido-berhoerster.org/managesieve"
 )
 
-// Server locates the ManageSieve endpoint. TLS is opportunistic STARTTLS,
-// like the old helper.
+// Server locates the ManageSieve endpoint. With UseTLS the connection is
+// upgraded via STARTTLS before authenticating, and a server that does not
+// offer it is refused rather than downgraded — the password goes over this
+// connection in cleartext otherwise.
 type Server struct {
 	Host     string
 	Port     int
@@ -25,7 +27,11 @@ func (s Server) dial() (*managesieve.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to Sieve server: %w", err)
 	}
-	if s.UseTLS && client.SupportsTLS() {
+	if s.UseTLS {
+		if !client.SupportsTLS() {
+			client.Close()
+			return nil, fmt.Errorf("sieve server %s does not offer STARTTLS; refusing to send credentials in cleartext", s.addr())
+		}
 		if err := client.StartTLS(&tls.Config{ServerName: s.Host}); err != nil {
 			client.Close()
 			return nil, fmt.Errorf("failed to start TLS: %w", err)

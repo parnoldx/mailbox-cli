@@ -57,9 +57,20 @@ type Movement struct {
 	Address string
 }
 
+// addressRe accepts the shape of an address that is safe to embed in a Sieve
+// quoted string. Senders control the From header, so anything with a quote,
+// backslash, bracket or newline in it would let a crafted message inject rules
+// into the generated script; those are rejected outright rather than escaped.
+var addressRe = regexp.MustCompile(`^[^\s"\\\[\]<>,;]+@[^\s"\\\[\]<>,;]+$`)
+
+// ValidAddress reports whether addr can be stored in a list.
+func ValidAddress(addr string) bool {
+	return len(addr) <= 320 && addressRe.MatchString(addr)
+}
+
 // Apply folds a movement into the lists; reports whether anything changed.
 func Apply(lists *Lists, mv Movement) bool {
-	if mv.Address == "" {
+	if !ValidAddress(mv.Address) {
 		return false
 	}
 	var list *[]string
@@ -150,12 +161,15 @@ func parseAddressString(raw string) []string {
 // with emailMoveHelper's output.
 func GenerateScript(lists *Lists) string {
 	format := func(addresses []string) string {
-		if len(addresses) == 0 {
-			return `["example@example.com"]`
+		var quoted []string
+		for _, addr := range addresses {
+			if !ValidAddress(addr) {
+				continue
+			}
+			quoted = append(quoted, fmt.Sprintf(`"%s"`, addr))
 		}
-		quoted := make([]string, len(addresses))
-		for i, addr := range addresses {
-			quoted[i] = fmt.Sprintf(`"%s"`, addr)
+		if len(quoted) == 0 {
+			return `["example@example.com"]`
 		}
 		return "[" + strings.Join(quoted, ",") + "]"
 	}

@@ -4,9 +4,16 @@ package dav
 import (
 	"bytes"
 	"encoding/xml"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"time"
 )
+
+// RequestTimeout bounds a single DAV request. Without it a wedged server hangs
+// the TUI with no way to cancel.
+const RequestTimeout = 60 * time.Second
 
 type Client struct {
 	User string
@@ -14,8 +21,18 @@ type Client struct {
 	HTTP *http.Client
 }
 
+// isLoopback allows plain http against a DAV server on this machine, where the
+// password never leaves the host; anything remote must use TLS.
+func isLoopback(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
 func New(user, pass string) *Client {
-	return &Client{User: user, Pass: pass, HTTP: &http.Client{}}
+	return &Client{User: user, Pass: pass, HTTP: &http.Client{Timeout: RequestTimeout}}
 }
 
 func (c *Client) do(method, url string, body string, depth string, headers map[string]string) ([]byte, int, error) {
@@ -26,6 +43,9 @@ func (c *Client) do(method, url string, body string, depth string, headers map[s
 	req, err := http.NewRequest(method, url, reader)
 	if err != nil {
 		return nil, 0, err
+	}
+	if req.URL.Scheme != "https" && !isLoopback(req.URL.Hostname()) {
+		return nil, 0, fmt.Errorf("refusing to send credentials over %s to %s; use an https:// URL", req.URL.Scheme, req.URL.Host)
 	}
 	req.SetBasicAuth(c.User, c.Pass)
 	if body != "" {
