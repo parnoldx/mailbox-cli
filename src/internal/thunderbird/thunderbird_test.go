@@ -151,3 +151,73 @@ user_pref("mail.identity.id9.useremail", "other@gmail.com");
 		t.Fatalf("name %q", acc.DisplayName)
 	}
 }
+
+// Linux packaging keeps profiles directly in the Thunderbird home; Windows and
+// macOS keep them under Profiles/.
+func TestListProfilesFlatLinuxLayout(t *testing.T) {
+	home := t.TempDir()
+	profile := filepath.Join(home, "ea87uvpr.default-release")
+	if err := os.MkdirAll(profile, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, "Crash Reports"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(profile, "prefs.js"), []byte(prefs), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := ListProfiles(home); len(got) != 1 || got[0] != profile {
+		t.Fatalf("%q", got)
+	}
+	got, err := FindProfile(home, "")
+	if err != nil || got != profile {
+		t.Fatalf("%q %v", got, err)
+	}
+}
+
+func TestFindProfileByNameInBothLayouts(t *testing.T) {
+	for _, root := range []string{"", "Profiles"} {
+		home := t.TempDir()
+		profile := filepath.Join(home, root, "ea87uvpr.default-release")
+		if err := os.MkdirAll(profile, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(profile, "prefs.js"), []byte(prefs), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range []string{"ea87uvpr.default-release", "default-release"} {
+			got, err := FindProfile(home, name)
+			if err != nil || got != profile {
+				t.Fatalf("root %q name %q: %q %v", root, name, got, err)
+			}
+		}
+		if _, err := FindProfile(home, "nope"); err == nil {
+			t.Fatalf("root %q: expected error for unknown profile", root)
+		}
+	}
+}
+
+func TestLoadThunderbirdFlatLayout(t *testing.T) {
+	home := t.TempDir()
+	profile := filepath.Join(home, "ea87uvpr.default-release")
+	if err := os.MkdirAll(profile, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(profile, "prefs.js"), []byte(prefs), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	acc, err := LoadThunderbird(home, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acc.Email != "user@mailbox.org" || acc.Profile != profile {
+		t.Fatalf("acc=%+v", acc)
+	}
+}
+
+func TestDefaultTBHomeHonoursEnv(t *testing.T) {
+	t.Setenv("MAILBOX_TB_HOME", "/somewhere/else")
+	if got := DefaultTBHome(); got != "/somewhere/else" {
+		t.Fatalf("%q", got)
+	}
+}

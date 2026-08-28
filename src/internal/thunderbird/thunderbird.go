@@ -289,46 +289,90 @@ func accountFromPrefs(p *Prefs) *Account {
 	return acc
 }
 
+// tbHomeCandidates lists the Thunderbird homes we know about, most specific
+// first. Linux packaging (native, flatpak, snap) keeps profiles directly in the
+// home; Windows and macOS keep them under a "Profiles" subdirectory, and under
+// WSL the Windows home is reachable through /mnt/c.
+func tbHomeCandidates() []string {
+	var out []string
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		out = append(out,
+			filepath.Join(home, ".thunderbird"),
+			filepath.Join(home, ".var", "app", "org.mozilla.Thunderbird", ".thunderbird"),
+			filepath.Join(home, "snap", "thunderbird", "common", ".thunderbird"),
+			filepath.Join(home, "Library", "Thunderbird"),
+			filepath.Join(home, "AppData", "Roaming", "Thunderbird"),
+		)
+	}
+	// ponytail: single-user glob; enumerate /mnt/c/Users properly if others use this box
+	wsl, _ := filepath.Glob("/mnt/c/Users/*/AppData/Roaming/Thunderbird")
+	sort.Strings(wsl)
+	return append(out, wsl...)
+}
+
 func DefaultTBHome() string {
 	if env := os.Getenv("MAILBOX_TB_HOME"); env != "" {
 		return env
 	}
-	// ponytail: single-user glob; enumerate /mnt/c/Users properly if others use this box
-	matches, _ := filepath.Glob("/mnt/c/Users/*/AppData/Roaming/Thunderbird")
-	for _, m := range matches {
-		if fi, err := os.Stat(m); err == nil && fi.IsDir() {
-			return m
+	candidates := tbHomeCandidates()
+	for _, c := range candidates {
+		if len(profileDirs(c)) > 0 {
+			return c
+		}
+	}
+	for _, c := range candidates {
+		if fi, err := os.Stat(c); err == nil && fi.IsDir() {
+			return c
 		}
 	}
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".thunderbird")
 }
 
+// profileRoots is where profile directories live inside a Thunderbird home.
+// Both layouts are probed so one binary works across platforms.
+func profileRoots(tbHome string) []string {
+	return []string{filepath.Join(tbHome, "Profiles"), tbHome}
+}
+
+type profileCand struct {
+	mtime int64
+	path  string
+}
+
+// profileDirs returns every directory under tbHome holding a prefs.js, newest first.
+func profileDirs(tbHome string) []profileCand {
+	var all []profileCand
+	seen := map[string]bool{}
+	for _, root := range profileRoots(tbHome) {
+		entries, err := os.ReadDir(root)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			dir := filepath.Join(root, e.Name())
+			if seen[dir] {
+				continue
+			}
+			fi, err := os.Stat(filepath.Join(dir, "prefs.js"))
+			if err != nil || fi.IsDir() {
+				continue
+			}
+			seen[dir] = true
+			all = append(all, profileCand{mtime: fi.ModTime().UnixNano(), path: dir})
+		}
+	}
+	sort.SliceStable(all, func(i, j int) bool { return all[i].mtime > all[j].mtime })
+	return all
+}
+
 func ListProfiles(tbHome string) []string {
 	if tbHome == "" {
 		tbHome = DefaultTBHome()
 	}
-	dir := filepath.Join(tbHome, "Profiles")
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil
-	}
-	type cand struct {
-		mtime int64
-		path  string
-	}
-	var all []cand
-	for _, e := range entries {
-		prefs := filepath.Join(dir, e.Name(), "prefs.js")
-		fi, err := os.Stat(prefs)
-		if err != nil || fi.IsDir() {
-			continue
-		}
-		all = append(all, cand{mtime: fi.ModTime().UnixNano(), path: filepath.Dir(prefs)})
-	}
-	sort.Slice(all, func(i, j int) bool { return all[i].mtime > all[j].mtime })
-	out := make([]string, len(all))
-	for i, c := range all {
+	cands := profileDirs(tbHome)
+	out := make([]string, len(cands))
+	for i, c := range cands {
 		out[i] = c.path
 	}
 	return out
@@ -341,45 +385,36 @@ func FindProfile(tbHome, explicit string) (string, error) {
 				return explicit, nil
 			}
 		}
-		named := filepath.Join(tbHome, "Profiles", explicit)
-		if fi, err := os.Stat(named); err == nil && fi.IsDir() {
-			return named, nil
+		for _, root := range profileRoots(tbHome) {
+			named := filepath.Join(root, explicit)
+			if fi, err := os.Stat(named); err == nil && fi.IsDir() {
+				return named, nil
+			}
 		}
-		entries, err := os.ReadDir(filepath.Join(tbHome, "Profiles"))
-		if err == nil {
-			var matches []string
+		var matches []string
+		seen := map[string]bool{}
+		for _, root := range profileRoots(tbHome) {
+			entries, err := os.ReadDir(root)
+			if err != nil {
+				continue
+			}
 			for _, e := range entries {
+				if !e.IsDir() || seen[filepath.Join(root, e.Name())] {
+					continue
+				}
 				if strings.HasSuffix(e.Name(), explicit) || e.Name() == explicit {
-					matches = append(matches, filepath.Join(tbHome, "Profiles", e.Name()))
+					seen[filepath.Join(root, e.Name())] = true
+					matches = append(matches, filepath.Join(root, e.Name()))
 				}
 			}
-			if len(matches) == 1 {
-				return matches[0], nil
-			}
+		}
+		if len(matches) == 1 {
+			return matches[0], nil
 		}
 		return "", fmt.Errorf("Thunderbird profile not found: %s", explicit)
 	}
-	type cand struct {
-		mtime int64
-		path  string
-	}
-	var newest *cand
-	profiles := filepath.Join(tbHome, "Profiles")
-	entries, err := os.ReadDir(profiles)
-	if err == nil {
-		for _, e := range entries {
-			prefs := filepath.Join(profiles, e.Name(), "prefs.js")
-			fi, err := os.Stat(prefs)
-			if err != nil || fi.IsDir() {
-				continue
-			}
-			if newest == nil || fi.ModTime().UnixNano() > newest.mtime {
-				newest = &cand{mtime: fi.ModTime().UnixNano(), path: filepath.Dir(prefs)}
-			}
-		}
-	}
-	if newest != nil {
-		return newest.path, nil
+	if cands := profileDirs(tbHome); len(cands) > 0 {
+		return cands[0].path, nil
 	}
 	return "", fmt.Errorf("no Thunderbird profile with prefs.js under %s", tbHome)
 }

@@ -60,7 +60,11 @@ Installs to `~/.local/bin/mailbox`. `make build` writes `bin/mailbox` instead.
 
 `mailbox setup` is the first-run wizard: Thunderbird slave (re-reads the profile each run) or typed credentials. App passwords: IMAP and DAV are then different.
 
-Otherwise: process env, then `~/.config/mailbox/env` (or `MAILBOX_CONFIG`), then Thunderbird (newest `prefs.js`). WSL looks under `/mnt/c/Users/*/AppData/Roaming/Thunderbird`; otherwise `~/.thunderbird`.
+Otherwise: process env, then `~/.config/mailbox/env` (or `MAILBOX_CONFIG`), then Thunderbird (newest `prefs.js`).
+The Thunderbird home is the first of these that holds a profile: `~/.thunderbird`, the flatpak and snap
+homes, `~/Library/Thunderbird`, `~/AppData/Roaming/Thunderbird`, then WSL's
+`/mnt/c/Users/*/AppData/Roaming/Thunderbird`. `MAILBOX_TB_HOME` overrides it. Profiles are read either
+directly from that home (Linux) or from its `Profiles/` subdirectory (Windows, macOS).
 
 ```
 MAILBOX_EMAIL
