@@ -1056,10 +1056,51 @@ func styleHides(style string) bool {
 	visibility := styleProp(style, "visibility")
 	contentVisibility := styleProp(style, "content-visibility")
 	userSelect := styleProp(style, "user-select", "-webkit-user-select")
-	return display == "none" ||
+	if display == "none" ||
 		visibility == "hidden" || visibility == "collapse" ||
 		contentVisibility == "hidden" ||
-		userSelect == "none"
+		userSelect == "none" ||
+		styleProp(style, "mso-hide") == "all" {
+		return true
+	}
+	// Fully transparent box.
+	if o := styleProp(style, "opacity"); o != "" {
+		if f, err := strconv.ParseFloat(o, 64); err == nil && f == 0 {
+			return true
+		}
+	}
+	// Newsletter preheader spacers: a zero-height (or zero-width) box with
+	// its overflow clipped, so the padded text never renders.
+	overflow := styleProp(style, "overflow", "overflow-x", "overflow-y")
+	clipped := overflow == "hidden" || overflow == "clip"
+	zeroH := zeroCSSLength(styleProp(style, "max-height")) || zeroCSSLength(styleProp(style, "height"))
+	zeroW := zeroCSSLength(styleProp(style, "max-width")) || zeroCSSLength(styleProp(style, "width"))
+	if (zeroH || zeroW) && clipped {
+		return true
+	}
+	if zeroH && zeroW {
+		return true
+	}
+	// Text collapsed to nothing: font-size:0 paired with line-height:0.
+	// Both are required so image-button cells that only zero font-size
+	// (to kill inline-block whitespace) keep their alt text.
+	if zeroCSSLength(styleProp(style, "font-size")) &&
+		zeroCSSLength(styleProp(style, "line-height")) {
+		return true
+	}
+	return false
+}
+
+// zeroCSSLength reports whether a CSS length value is zero, ignoring any
+// unit suffix (0, 0px, 0.0em, 0%, …). Keywords like "normal" are not zero.
+func zeroCSSLength(value string) bool {
+	value = strings.TrimRight(strings.TrimSpace(value), "abcdefghijklmnopqrstuvwxyz%")
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	f, err := strconv.ParseFloat(value, 64)
+	return err == nil && f == 0
 }
 
 func styleProp(style string, names ...string) string {

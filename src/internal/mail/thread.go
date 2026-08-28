@@ -2,8 +2,10 @@ package mail
 
 import (
 	"fmt"
+	"html"
 	"net/mail"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -11,6 +13,7 @@ import (
 
 	"mailbox/src/internal/htmlmd"
 	"mailbox/src/internal/imaputf7"
+	"mailbox/src/internal/terminal"
 )
 
 func stderr() *os.File { return os.Stderr }
@@ -46,6 +49,35 @@ func FmtDate(value string) string {
 		}
 	}
 	return value
+}
+
+// entityNoise matches HTML entity references that have no business in a
+// real text/plain part: some ESPs generate the plain alternative by
+// crudely stripping tags, leaving &nbsp;/&zwnj;/&#8203; spacer entities
+// (and the hidden preheader text they pad) as literal characters.
+var entityNoise = regexp.MustCompile(`&(?:nbsp|zwnj|zwj|shy|#x?[0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]+);`)
+
+// blankish matches a line that carries no visible content: empty, or only
+// spaces / tabs / no-break and other exotic spaces.
+var blankish = regexp.MustCompile(`(?m)^[\s\x{00A0}\x{202F}\x{2000}-\x{200A}\x{205F}\x{3000}]*$`)
+
+// sanitizePlainText repairs a botched text/plain part: it decodes stray
+// HTML entities (only when the part clearly contains them), drops the
+// invisible spacer characters newsletters pad preheaders with, and
+// collapses the blank lines that padding leaves behind.
+func sanitizePlainText(text string) string {
+	if text == "" {
+		return ""
+	}
+	if entityNoise.MatchString(text) {
+		text = html.UnescapeString(text)
+	}
+	text = terminal.SanitizeText(text)
+	text = blankish.ReplaceAllString(text, "")
+	for strings.Contains(text, "\n\n\n") {
+		text = strings.ReplaceAll(text, "\n\n\n", "\n\n")
+	}
+	return strings.TrimSpace(text)
 }
 
 func looksLikeHTML(text string) bool {
@@ -99,7 +131,7 @@ func previewFromParsed(parsed *Part) string {
 	} else {
 		plain = append(plain, parsed.DecodeText())
 	}
-	text := strings.TrimSpace(strings.Join(plain, "\n"))
+	text := sanitizePlainText(strings.TrimSpace(strings.Join(plain, "\n")))
 	htmlBlob := strings.TrimSpace(strings.Join(htmlParts, "\n"))
 	switch {
 	case htmlBlob != "" && (text == "" || looksLikeHTML(text)):
@@ -150,7 +182,7 @@ func threadFromParsed(folder, uid string, parsed *Part) *ThreadMessage {
 	} else {
 		plain = append(plain, parsed.DecodeText())
 	}
-	body := strings.TrimSpace(strings.Join(plain, "\n"))
+	body := sanitizePlainText(strings.TrimSpace(strings.Join(plain, "\n")))
 	bodyHTML := strings.TrimSpace(strings.Join(htmlParts, "\n"))
 	switch {
 	case bodyHTML != "" && (body == "" || looksLikeHTML(body)):

@@ -81,6 +81,32 @@ func TestHiddenElementsSkipped(t *testing.T) {
 	}
 }
 
+func TestHiddenPreheaderStylesSkipped(t *testing.T) {
+	cases := []string{
+		`<div style="max-height:0;overflow:hidden">8 &euro; geschenkt</div>`,
+		`<div style="max-height:0px; mso-hide:all;">8 &euro; geschenkt</div>`,
+		`<div style="height:0;width:0">8 &euro; geschenkt</div>`,
+		`<div style="opacity:0">8 &euro; geschenkt</div>`,
+		`<div style="font-size:0;line-height:0">8 &euro; geschenkt</div>`,
+		`<span style="mso-hide:all">8 &euro; geschenkt</span>`,
+	}
+	for _, c := range cases {
+		got := HTMLToMarkdown(`<p>keep me</p>` + c)
+		if strings.Contains(got, "geschenkt") || !strings.Contains(got, "keep me") {
+			t.Fatalf("preheader leaked for %q: %q", c, got)
+		}
+	}
+}
+
+func TestFontSizeZeroAloneKeepsContent(t *testing.T) {
+	// font-size:0 on its own is the inline-block whitespace trick, not
+	// hiding: the button's alt text must survive.
+	got := HTMLToMarkdown(`<td style="font-size:0"><a href="https://x.example">Shop now</a></td>`)
+	if !strings.Contains(got, "Shop now") {
+		t.Fatalf("dropped visible button: %q", got)
+	}
+}
+
 func TestEscapesMarkdownMeta(t *testing.T) {
 	got := HTMLToMarkdown("<p>a*b | c</p>")
 	if !strings.Contains(got, `a\*b`) {
