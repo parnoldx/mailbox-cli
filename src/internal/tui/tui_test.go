@@ -641,3 +641,23 @@ func TestLabelBrowse(t *testing.T) {
 		t.Fatal("esc should return to labels")
 	}
 }
+
+func TestThreadTrash(t *testing.T) {
+	v := &mailView{
+		inThread:     true,
+		threadFolder: folders.INBOX,
+		threadUID:    "1",
+	}
+	if cmd := v.HandleContentKey(keyPress("t")); cmd == nil {
+		t.Fatal("t did not trash")
+	}
+	found := false
+	for _, b := range v.HelpBindings() {
+		if b.key == "t" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("thread help missing trash")
+	}
+}

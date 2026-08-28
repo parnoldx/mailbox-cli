@@ -599,7 +599,7 @@ func (v *mailView) HelpBindings() []helpBinding {
 		return []helpBinding{{"enter", "view"}, {"n", "new"}, {"esc", "back"}}
 	}
 	if v.inThread {
-		return []helpBinding{{"r", "reply"}, {"f", "forward"}, {"l", "label"}}
+		return []helpBinding{{"r", "reply"}, {"f", "forward"}, {"l", "label"}, {"t", "trash"}}
 	}
 	if v.labelFilter != "" {
 		return []helpBinding{{"enter", "open"}, {"l", "label"}, {"esc", "back"}}
@@ -722,6 +722,8 @@ func (v *mailView) HandleContentKey(msg tea.KeyPressMsg) tea.Cmd {
 			return v.openCompose(composeForward)
 		case "l":
 			return v.openLabels()
+		case "t":
+			return v.moveSelected(folders.TRASH, "Trashed")
 		}
 		return nil
 	}
@@ -851,8 +853,8 @@ func (v *mailView) openSelected() tea.Cmd {
 }
 
 func (v *mailView) actSelected(label string, fn func(*mail.Envelope) error) tea.Cmd {
-	e := v.selected()
-	if e == nil {
+	e := v.targetEnv()
+	if e == nil || e.UID == "" {
 		return nil
 	}
 	return func() tea.Msg {
