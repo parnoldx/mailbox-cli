@@ -10,7 +10,11 @@ Item {
 
     function open() {
         query.text = ""
-        active = win.bucketIndex
+        // active is a list position, not a bucket index — they differ now that
+        // the Screener is skipped. Land on the current bucket if it is listed.
+        active = 0
+        for (var i = 0; i < rows.length; i++)
+            if (rows[i].i === win.bucketIndex) { active = i; break }
         opened = true
         Qt.callLater(function () { query.forceActiveFocus() })
     }
@@ -22,6 +26,9 @@ Item {
         var out = []
         for (var i = 0; i < win.buckets.length; i++) {
             var b = win.buckets[i]
+            // The Screener is not a destination here: it is reached only from
+            // the button in the Inbox, when senders are actually waiting.
+            if (b.key === "Screener") continue
             if (!q || b.label.toLowerCase().indexOf(q) >= 0 || b.blurb.toLowerCase().indexOf(q) >= 0)
                 out.push({ i: i, b: b })
         }

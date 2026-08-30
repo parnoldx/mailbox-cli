@@ -315,6 +315,41 @@ Item {
                 HoverHandler { id: dmHover }
                 TapHandler { onTapped: root.darkOverride = root.applyDark ? 0 : 1 }
             }
+
+            // Reply / Reply all — hand off to the compose view in reply mode.
+            Repeater {
+                model: [ { label: "Reply", all: false }, { label: "Reply all", all: true } ]
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: !!win.openMsg
+                    width: rpRow.implicitWidth + 18
+                    height: 20
+                    radius: 10
+                    color: rpHover.hovered ? Theme.cardHover : Theme.selection
+                    Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    Row {
+                        id: rpRow
+                        anchors.centerIn: parent
+                        spacing: 5
+                        Text {
+                            text: modelData.all ? "" : ""
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 10
+                            color: rpHover.hovered ? Theme.accent : Theme.textDim
+                            Behavior on color { ColorAnimation { duration: Theme.anim } }
+                        }
+                        Text {
+                            text: modelData.label
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 10
+                            color: Theme.textDim
+                            Behavior on color { ColorAnimation { duration: Theme.anim } }
+                        }
+                    }
+                    HoverHandler { id: rpHover; cursorShape: Qt.PointingHandCursor }
+                    TapHandler { onTapped: win.startReply(modelData.all) }
+                }
+            }
         }
 
         Text {
@@ -452,7 +487,7 @@ Item {
         anchors.leftMargin: Math.max(28, (root.width - 900) / 2)
         anchors.rightMargin: anchors.leftMargin
         anchors.bottomMargin: 22
-        visible: root.htmlMode && !win.openLoading
+        visible: root.htmlMode && !win.openLoading && !win.composeOpen
         radius: Theme.radiusSmall
         color: root.applyDark ? Theme.background : "#ffffff"
         border.width: 1
@@ -467,7 +502,7 @@ Item {
         parent: sheet
         anchors.fill: parent
         anchors.margins: 1
-        visible: root.htmlMode && !win.openLoading
+        visible: root.htmlMode && !win.openLoading && !win.composeOpen
         backgroundColor: root.applyDark ? Theme.background : "#ffffff"
         onNavigationRequested: function (req) {
             if (req.navigationType === WebEngineNavigationRequest.LinkClickedNavigation) {
@@ -491,7 +526,7 @@ Item {
         anchors.fill: parent
         anchors.margins: 1
         z: 1
-        visible: root.webCovered && root.htmlMode && !win.openLoading
+        visible: root.webCovered && root.htmlMode && !win.openLoading && !win.composeOpen
         color: sheet.color
     }
 

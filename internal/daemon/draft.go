@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"mailbox/internal/htmlmd"
 	compose "mailbox/internal/message"
 	"mailbox/internal/mirror"
 	"mailbox/internal/sync/mailsync"
@@ -207,6 +208,13 @@ func (d *Daemon) draftFrom(acct *Account, row mirror.Row, req Request) (compose.
 	draft.Body = row.Message.TextPlain
 	if v, ok := req.Args["body"].(string); ok && v != "" {
 		draft.Body = v
+	}
+	if raw, _ := req.Args["body_html"].(string); raw != "" {
+		draft.BodyHTML = raw
+	} else if strings.TrimSpace(draft.Body) != "" {
+		// An edited draft is sent like any other: its body is Markdown and
+		// carries a rendered text/html twin (see draftOf).
+		draft.BodyHTML = htmlmd.MarkdownToHTML(draft.Body)
 	}
 	if strings.TrimSpace(draft.Body) == "" {
 		draft.Body = "\n"

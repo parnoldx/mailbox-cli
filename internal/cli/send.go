@@ -25,7 +25,7 @@ func runCompose(in *input, stdout, stderr io.Writer) int {
 		fmt.Fprint(stderr, "compose needs a --subject\n")
 		return ExitUsage
 	}
-	text, code := bodyText(in.Str("body"), stderr)
+	text, code := composeBody(in, stderr)
 	if code != ExitOK {
 		return code
 	}
@@ -44,7 +44,7 @@ func runCompose(in *input, stdout, stderr io.Writer) int {
 		Args: map[string]any{
 			"to": to, "cc": in.List("cc"), "bcc": in.List("bcc"),
 			"subject": in.Str("subject"), "body": text, "attach": paths,
-			"account": in.Str("account"),
+			"body_html": in.Str("body-html"), "account": in.Str("account"),
 		},
 	}, in.JSON(), render, stdout, stderr)
 }
@@ -52,7 +52,7 @@ func runCompose(in *input, stdout, stderr io.Writer) int {
 // runReply answers a Message. The recipients and the References come from the
 // Daemon's copy of the parent, so a caller never assembles a thread by hand.
 func runReply(in *input, stdout, stderr io.Writer) int {
-	text, code := bodyText(in.Str("body"), stderr)
+	text, code := composeBody(in, stderr)
 	if code != ExitOK {
 		return code
 	}
@@ -73,7 +73,7 @@ func runReply(in *input, stdout, stderr io.Writer) int {
 			"positional": in.First(), "all": in.Bool("all"),
 			"to": in.List("to"), "cc": in.List("cc"),
 			"subject": in.Str("subject"), "body": text, "attach": paths,
-			"draft": in.Bool("draft"),
+			"body_html": in.Str("body-html"), "draft": in.Bool("draft"),
 		},
 	}, in.JSON(), render, stdout, stderr)
 }
@@ -90,6 +90,17 @@ func outboxVerb(verb string) func(*input, io.Writer, io.Writer) int {
 			Args: map[string]any{"positional": in.First()},
 		}, in.JSON(), render, stdout, stderr)
 	}
+}
+
+// composeBody is the body a send or reply carries. Without --body-html it is
+// --body or stdin, as before, and the daemon renders it from Markdown. With
+// --body-html the HTML is the body: --body, if given, is the plain-text twin,
+// and stdin is left alone so a `--body-html` mail is not a hang on the tty.
+func composeBody(in *input, stderr io.Writer) (string, int) {
+	if in.Str("body-html") != "" {
+		return in.Str("body"), ExitOK
+	}
+	return bodyText(in.Str("body"), stderr)
 }
 
 // bodyText takes the body from --body, or from stdin when it is piped in. A

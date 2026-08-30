@@ -49,6 +49,16 @@ int main(int argc, char *argv[]) {
         darkReaderJs = QString::fromUtf8(f.readAll());
     ctx->setContextProperty("DarkReaderJs", darkReaderJs);
 
+    // The vendored Lexxy editor (github.com/basecamp/lexxy), self-contained ESM
+    // bundle + stylesheet, inlined by LexxyEditor.qml into the compose editor's
+    // WebEngine document.
+    auto readResource = [](const char *path) {
+        QFile f(QString::fromLatin1(path));
+        return f.open(QIODevice::ReadOnly | QIODevice::Text) ? QString::fromUtf8(f.readAll()) : QString();
+    };
+    ctx->setContextProperty("LexxyJs", readResource(":/qml/vendor/lexxy.js"));
+    ctx->setContextProperty("LexxyCss", readResource(":/qml/vendor/lexxy.css"));
+
     QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreationFailed, &app,
         [] { QCoreApplication::exit(-1); }, Qt::QueuedConnection);

@@ -237,3 +237,133 @@ func TestParseAddressList(t *testing.T) {
 		t.Fatal("that is not an address")
 	}
 }
+
+// readTyped parses composed bytes and keeps each inline part under its own
+// content type, so a test can tell the text/plain twin from the text/html one.
+func readTyped(t *testing.T, raw []byte) (topType string, parts map[string]string, files []Attachment) {
+	t.Helper()
+	r, err := gomail.CreateReader(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("the mail we composed does not parse: %v", err)
+	}
+	topType, _, _ = r.Header.ContentType()
+	parts = map[string]string{}
+	for {
+		p, err := r.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("part: %v", err)
+		}
+		body, err := io.ReadAll(p.Body)
+		if err != nil {
+			t.Fatalf("read part: %v", err)
+		}
+		switch h := p.Header.(type) {
+		case *gomail.AttachmentHeader:
+			name, _ := h.Filename()
+			kind, _, _ := h.ContentType()
+			files = append(files, Attachment{Filename: name, MIMEType: kind, Content: body})
+		case *gomail.InlineHeader:
+			kind, _, _ := h.ContentType()
+			parts[kind] = string(body)
+		}
+	}
+	return topType, parts, files
+}
+
+func TestPlainBodyStaysASinglePart(t *testing.T) {
+	// The promise for the ordinary agent send: no BodyHTML, no multipart, byte
+	// for byte what it was before this existed.
+	d := Draft{
+		From: Address{Addr: "peter@example.org"}, To: []Address{{Addr: "k@example.com"}},
+		Subject: "kurz", Body: "Passt.",
+	}
+	raw, err := d.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	top, parts, _ := readTyped(t, raw)
+	if top != "text/plain" {
+		t.Fatalf("top-level type = %q, want text/plain", top)
+	}
+	if _, ok := parts["text/html"]; ok {
+		t.Fatal("a plain body should not carry an HTML part")
+	}
+}
+
+func TestBodyHTMLMakesAnAlternative(t *testing.T) {
+	d := Draft{
+		From: Address{Addr: "peter@example.org"}, To: []Address{{Addr: "k@example.com"}},
+		Subject:  "zwei Formate",
+		Body:     "Hallo Käthe,\n\nes ist **wichtig**.",
+		BodyHTML: "<p>Hallo Käthe,</p><p>es ist <strong>wichtig</strong>.</p>",
+	}
+	raw, err := d.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	top, parts, files := readTyped(t, raw)
+	if top != "multipart/alternative" {
+		t.Fatalf("top-level type = %q, want multipart/alternative", top)
+	}
+	if len(files) != 0 {
+		t.Fatalf("no attachments were added, got %d", len(files))
+	}
+	plain := strings.ReplaceAll(strings.TrimRight(parts["text/plain"], "\r\n"), "\r\n", "\n")
+	if plain != "Hallo Käthe,\n\nes ist **wichtig**." {
+		t.Fatalf("text/plain twin = %q; it must be the body verbatim", plain)
+	}
+	if !strings.Contains(parts["text/html"], "<strong>wichtig</strong>") {
+		t.Fatalf("text/html part = %q", parts["text/html"])
+	}
+	// Least-preferred first is what multipart/alternative means.
+	if pi, hi := bytes.Index(raw, []byte("text/plain")), bytes.Index(raw, []byte("text/html")); pi > hi {
+		t.Fatal("text/plain part must come before text/html")
+	}
+}
+
+func TestBodyHTMLWithAttachmentNestsTheAlternative(t *testing.T) {
+	png := []byte("\x89PNG\r\n\x1a\nmock")
+	d := Draft{
+		From: Address{Addr: "peter@example.org"}, To: []Address{{Addr: "k@example.com"}},
+		Subject:     "mit Anhang",
+		Body:        "siehe Anhang",
+		BodyHTML:    "<p>siehe Anhang</p>",
+		Attachments: []Attachment{{Filename: "bild.png", MIMEType: "image/png", Content: png}},
+	}
+	raw, err := d.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	top, parts, files := readTyped(t, raw)
+	if top != "multipart/mixed" {
+		t.Fatalf("top-level type = %q, want multipart/mixed", top)
+	}
+	if len(files) != 1 || files[0].Filename != "bild.png" || !bytes.Equal(files[0].Content, png) {
+		t.Fatalf("attachment did not survive: %+v", files)
+	}
+	if _, ok := parts["text/plain"]; !ok {
+		t.Fatal("missing text/plain part")
+	}
+	if _, ok := parts["text/html"]; !ok {
+		t.Fatal("missing text/html part")
+	}
+}
+
+func TestAlternativeLinesEndCRLF(t *testing.T) {
+	d := Draft{
+		From: Address{Addr: "peter@example.org"}, To: []Address{{Addr: "k@example.com"}},
+		Subject: "crlf", Body: "erste\nzweite", BodyHTML: "<p>erste<br>zweite</p>",
+	}
+	raw, err := d.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, b := range raw {
+		if b == '\n' && (i == 0 || raw[i-1] != '\r') {
+			t.Fatalf("bare LF at byte %d", i)
+		}
+	}
+}

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"mailbox/internal/htmlmd"
 	compose "mailbox/internal/message"
 	"mailbox/internal/mirror"
 	"mailbox/internal/outbox"
@@ -196,6 +197,18 @@ func (d *Daemon) draftOf(a *Account, req Request) (compose.Draft, error) {
 	}
 	draft.Subject, _ = req.Args["subject"].(string)
 	draft.Body, _ = req.Args["body"].(string)
+	// The body carries an HTML twin. A caller that has real HTML (a GUI
+	// composer) passes it as body_html and we send it verbatim; otherwise the
+	// body is Markdown — plain prose is valid Markdown too — and we render it.
+	// Either way draft.Body stays the text/plain part, untouched.
+	if raw, _ := req.Args["body_html"].(string); raw != "" {
+		draft.BodyHTML = raw
+		if draft.Body == "" {
+			draft.Body = htmlmd.HTMLToMarkdown(raw)
+		}
+	} else if draft.Body != "" {
+		draft.BodyHTML = htmlmd.MarkdownToHTML(draft.Body)
+	}
 	for _, path := range strList(req.Args["attach"]) {
 		// The Daemon reads the file, so the path has to mean the same thing
 		// here as it did in the caller's shell: an absolute one. The CLI
@@ -499,7 +512,11 @@ func (d *Daemon) handleForward(ctx context.Context, req Request, resp Response) 
 	if draft.Subject == "" {
 		draft.Subject = forwardSubject(original.Message.Subject)
 	}
+	// A forward is a plain-text quote of what was actually said: the note and
+	// the whole original, verbatim. Rendering the "---- Forwarded message ----"
+	// block as Markdown would only mangle it, so it stays text/plain.
 	draft.Body = forwardBody(draft.Body, original.Message)
+	draft.BodyHTML = ""
 	return d.deliver(ctx, acct, draft, resp)
 }
 

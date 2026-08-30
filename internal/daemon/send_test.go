@@ -403,3 +403,57 @@ func TestForwardNeedsARecipient(t *testing.T) {
 		t.Fatalf("resp = %+v", resp)
 	}
 }
+
+func TestSendRendersMarkdownToAnHTMLAlternative(t *testing.T) {
+	d, tr := seedSend(t)
+	send(t, d, map[string]any{
+		"to": []string{"kaethe@example.com"}, "subject": "Formatiert",
+		"body": "Hallo,\n\ndas ist **wichtig**.",
+	})
+	if tr.count() != 1 {
+		t.Fatalf("sent %d mails", tr.count())
+	}
+	raw := string(tr.sent[0])
+	if !strings.Contains(raw, "multipart/alternative") {
+		t.Fatalf("no alternative part:\n%s", raw)
+	}
+	if !strings.Contains(raw, "<strong>wichtig</strong>") {
+		t.Fatalf("markdown was not rendered to HTML:\n%s", raw)
+	}
+	// The text/plain twin is the body verbatim, Markdown and all.
+	if !strings.Contains(raw, "das ist **wichtig**.") {
+		t.Fatalf("the text/plain twin is not the body verbatim:\n%s", raw)
+	}
+}
+
+func TestSendCarriesAnHTMLBodyVerbatim(t *testing.T) {
+	d, tr := seedSend(t)
+	send(t, d, map[string]any{
+		"to": []string{"kaethe@example.com"}, "subject": "HTML",
+		"body_html": "<p>Hallo <em>Welt</em></p>",
+	})
+	raw := string(tr.sent[0])
+	if !strings.Contains(raw, "multipart/alternative") {
+		t.Fatalf("no alternative part:\n%s", raw)
+	}
+	if !strings.Contains(raw, "<p>Hallo <em>Welt</em></p>") {
+		t.Fatalf("the html body was not carried verbatim:\n%s", raw)
+	}
+}
+
+func TestEvenAPlainSendCarriesBothParts(t *testing.T) {
+	// The body is always Markdown, so every send is a multipart/alternative
+	// whose text/plain part is the body verbatim and whose text/html part is
+	// the rendering. Prose with no Markdown in it round-trips unchanged.
+	d, tr := seedSend(t)
+	send(t, d, map[string]any{
+		"to": []string{"kaethe@example.com"}, "subject": "kurz", "body": "Passt.",
+	})
+	raw := string(tr.sent[0])
+	if !strings.Contains(raw, "multipart/alternative") {
+		t.Fatalf("a send should carry both parts:\n%s", raw)
+	}
+	if !strings.Contains(raw, "\nPasst.") || !strings.Contains(raw, "<p>Passt.</p>") {
+		t.Fatalf("both parts should hold the body:\n%s", raw)
+	}
+}

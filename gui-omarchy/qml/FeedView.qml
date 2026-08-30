@@ -132,6 +132,15 @@ Item {
     function anyOpen() { return Object.keys(openIds).length > 0 }
     function collapseAll() { openIds = ({}) }
 
+    // Opaque floor. Main cross-fades this view against BucketView; without a
+    // solid background the outgoing bucket header shows through the fade for a
+    // few frames. With it, the Feed covers the bucket the instant it is shown.
+    Rectangle {
+        anchors.fill: parent
+        color: Theme.windowBg
+        Behavior on color { ColorAnimation { duration: Theme.anim } }
+    }
+
     Flickable {
         id: flick
         anchors.fill: parent
@@ -155,45 +164,63 @@ Item {
 
         Column {
             id: col
-            x: Math.max(36, (parent.width - 680) / 2)
-            width: Math.min(680, parent.width - 72)
-            topPadding: 52
+            // Same measure as BucketView, so the header lines up pixel-for-pixel
+            // with every other bucket while the two views cross-fade.
+            x: Math.max(40, (parent.width - 880) / 2)
+            width: Math.min(880, parent.width - 80)
+            topPadding: 56
             spacing: 6
 
-            // Header
-            Item { width: parent.width; height: title.implicitHeight + 40
+            // Header — the same shape as every other bucket (see BucketView):
+            // the bucket glyph, its name, and a status line under it. Keeping it
+            // identical means switching in and out of the Feed never swaps one
+            // header design for another mid-fade.
+            Item {
+                width: parent.width
+                height: hdr.implicitHeight
 
-                Column {
-                    id: title
+                Row {
+                    id: hdr
                     anchors.left: parent.left
-                    anchors.right: markBtn.left
+                    anchors.right: markBtn.visible ? markBtn.left : parent.right
                     anchors.rightMargin: 14
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 4
+                    spacing: 14
+
                     Text {
-                        text: "The Feed"
+                        text: win.buckets[win.bucketIndex].glyph
                         font.family: Theme.fontFamily
-                        font.pixelSize: 27
-                        font.weight: Font.Bold
-                        color: Theme.textPrimary
+                        font.pixelSize: 30
+                        color: Theme.accent
                         Behavior on color { ColorAnimation { duration: Theme.anim } }
                     }
-                    Text {
-                        text: root.newCount > 0
-                              ? root.newCount + (root.newCount === 1 ? " new item since your last visit"
-                                                                     : " new items since your last visit")
-                              : "Nothing new — you are caught up"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 12
-                        color: Theme.textDim
-                        Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    Column {
+                        width: parent.width - 44
+                        spacing: 4
+                        Text {
+                            text: "The Feed"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 30
+                            font.weight: Font.Bold
+                            color: Theme.textPrimary
+                            Behavior on color { ColorAnimation { duration: Theme.anim } }
+                        }
+                        Text {
+                            text: root.newCount > 0
+                                  ? root.newCount + (root.newCount === 1 ? " new item since your last visit"
+                                                                         : " new items since your last visit")
+                                  : "Nothing new — you are caught up"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 12
+                            color: Theme.textDim
+                            Behavior on color { ColorAnimation { duration: Theme.anim } }
+                        }
                     }
                 }
 
                 Rectangle {
                     id: markBtn
                     anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.verticalCenter: hdr.verticalCenter
                     visible: root.newCount > 0
                     width: markRow.implicitWidth + 22
                     height: 28
@@ -224,50 +251,63 @@ Item {
                 }
             }
 
-            Repeater {
-                id: repeater
-                model: root.active ? root.rows : []
-                FeedCard {
-                    width: col.width
-                    controller: root
-                    scroller: flick
-                    row: modelData
-                    isNew: index < root.newCount
-                    highlighted: root.hi === index
-                    expanded: !!root.openIds[modelData.id]
-                    showDividerBelow: root.newCount > 0 && root.newCount < root.rows.length
-                                      && index === root.newCount - 1
-                }
-            }
+            // The gap BucketView leaves between its header and its first row.
+            Item { width: 1; height: 28 }
 
-            // When everything is already read the divider has nothing above it;
-            // still show it so the column has a "caught up" cap.
-            FeedDivider {
-                width: parent.width
-                visible: root.active && root.newCount === 0 && root.rows.length > 0
-                label: "You are all caught up"
-            }
-
+            // The cards keep a 680 reading measure, centred in the window like
+            // before, while the header above still spans the wider bucket
+            // column so it lines up with every other bucket.
             Column {
-                width: parent.width
-                spacing: 10
-                topPadding: 70
-                visible: root.active && root.rows.length === 0
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: ""
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 32
-                    color: Theme.hairline
-                    Behavior on color { ColorAnimation { duration: Theme.anim } }
+                id: list
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: Math.min(680, col.width)
+                spacing: 6
+
+                Repeater {
+                    id: repeater
+                    model: root.active ? root.rows : []
+                    FeedCard {
+                        width: list.width
+                        controller: root
+                        scroller: flick
+                        row: modelData
+                        isNew: index < root.newCount
+                        highlighted: root.hi === index
+                        expanded: !!root.openIds[modelData.id]
+                        showDividerBelow: root.newCount > 0 && root.newCount < root.rows.length
+                                          && index === root.newCount - 1
+                    }
                 }
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: "The Feed is empty"
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 12
-                    color: Theme.textDim
-                    Behavior on color { ColorAnimation { duration: Theme.anim } }
+
+                // When everything is already read the divider has nothing above it;
+                // still show it so the column has a "caught up" cap.
+                FeedDivider {
+                    width: parent.width
+                    visible: root.active && root.newCount === 0 && root.rows.length > 0
+                    label: "You are all caught up"
+                }
+
+                Column {
+                    width: parent.width
+                    spacing: 10
+                    topPadding: 70
+                    visible: root.active && root.rows.length === 0
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: ""
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 32
+                        color: Theme.hairline
+                        Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "The Feed is empty"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 12
+                        color: Theme.textDim
+                        Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    }
                 }
             }
         }

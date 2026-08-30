@@ -151,6 +151,21 @@ Item {
         }
     }
 
+    // The same width oscillation as pulse but with no cover: used when the
+    // window only regained focus (never unmapped), so at worst the user sees a
+    // sub-frame repaint, not an ~80ms sheet flash.
+    Timer {
+        id: heal
+        interval: 16; repeat: true
+        property int count: 0
+        onTriggered: {
+            root._nudge = (count % 2 === 0)
+            web.update()
+            if (++count >= 4) { stop(); root._nudge = false }
+        }
+        onRunningChanged: if (running) count = 0
+    }
+
     Connections {
         target: root._win
         enabled: root._win !== null
@@ -161,8 +176,12 @@ Item {
             else if (root._dirty) { root._dirty = false; root._repaintCycle() }
         }
         function onActiveChanged() {
-            if (!root._win.active) { root.covered = true; root._dirty = true }
-            else if (root._dirty) { root._dirty = false; root._repaintCycle() }
+            // A focus change — the pointer moving to another window — does not
+            // unmap the Wayland surface, so the article never actually goes
+            // black here. Covering it anyway just blanks the whole feed every
+            // time focus wanders. Do nothing on the way out; only force a few
+            // fresh frames on the way back, in case the surface did go stale.
+            if (root._win.active && !root._dirty) heal.restart()
         }
     }
 

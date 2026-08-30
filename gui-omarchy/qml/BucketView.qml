@@ -6,6 +6,11 @@ Item {
 
     readonly property bool isInbox: win.currentKey() === "INBOX"
 
+    // Senders sitting in the Screener, waiting on a decision. Drives the one
+    // entry point to the Screener — the button top-left of the Inbox.
+    readonly property int screenerWaiting:
+        (win.counts["Screener"] && win.counts["Screener"].count) || 0
+
     function rowsWhere(seen) {
         var out = []
         for (var i = 0; i < listModel.count; i++) {
@@ -146,6 +151,30 @@ Item {
                 }
             }
         }
+    }
+
+    // Into the compose view. Mirrors the `c` shortcut, for the pointer. Only in
+    // the Inbox \u2014 writing a new mail is an Inbox action, not something you do
+    // from Paper Trail or Set Aside.
+    AppButton {
+        anchors { right: parent.right; top: parent.top; margins: 24 }
+        visible: root.isInbox
+        kind: "primary"
+        glyph: "\uf040"
+        text: "Compose"
+        onClicked: win.startCompose()
+    }
+
+    // The Screener lives here: a button, top-left of the Inbox, shown only when
+    // senders are actually waiting. It is the one way in \u2014 there is no bucket
+    // key or launcher entry for it \u2014 and `screener` decisions send you back.
+    AppButton {
+        anchors { left: parent.left; top: parent.top; margins: 24 }
+        visible: root.isInbox && root.screenerWaiting > 0
+        kind: "ghost"
+        glyph: "\uf0c0"
+        text: "Screener \u00b7 " + root.screenerWaiting
+        onClicked: win.switchToKey("Screener")
     }
 
     Row {

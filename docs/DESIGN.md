@@ -528,7 +528,7 @@ Bcc is in the SMTP envelope and in the Outbox row, and in the message nowhere. A
 Bcc header written into the mail is carried by the copy in Sent, and one forward
 of that copy is how a blind copy stops being blind.
 
-Done when all five hold:
+Done when all six hold:
 
 1. What is composed survives being read: an umlaut in the subject and the body
    comes back as itself, and an attachment comes back byte for byte.
@@ -540,6 +540,9 @@ Done when all five hold:
    its parent's Thread; `--all` copies everyone except us.
 5. `send` reports the id of the filed copy, and that id reads back out of the
    Mirror without waiting for a poll.
+6. A body goes out as `multipart/alternative`: the `text/plain` part is what the
+   caller wrote, the `text/html` part is it rendered from Markdown. `--body-html`
+   supplies the HTML directly. A forward stays `text/plain` (ADR-0022).
 
 Schema version 5: `messages` gains `cc_addr`. Reply-to-all is built from Cc, and
 a Cc that is not mirrored would have to be fetched again to answer the mail.

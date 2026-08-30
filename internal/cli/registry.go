@@ -227,12 +227,16 @@ func tree(l Locals) []*Command {
 				"                [--attach PATH] [--account NAME] [--draft]",
 			},
 			Long: "Omit --body and the text is read from stdin, which is how a heredoc " +
-				"or a generated mail gets in. With --draft it goes to the drafts box " +
-				"instead of out, and `mailbox draft` takes it from there.",
+				"or a generated mail gets in. The body is Markdown — plain prose is " +
+				"Markdown too — and the mail carries both it and a rendered HTML copy; " +
+				"pass --body-html instead to send HTML you already have. With --draft " +
+				"it goes to the drafts box instead of out, and `mailbox draft` takes " +
+				"it from there.",
 			Flags: []Flag{
 				{Name: "to", Kind: KindList, Arg: "ADDR", Desc: "a recipient (repeatable, or comma separated)"},
 				{Name: "subject", Kind: KindString, Arg: "S", Desc: "the subject"},
-				{Name: "body", Kind: KindString, Arg: "TEXT", Desc: "the text; omit to read it from stdin"},
+				{Name: "body", Kind: KindString, Arg: "TEXT", Desc: "the text, as Markdown; omit to read it from stdin"},
+				{Name: "body-html", Kind: KindString, Arg: "HTML", Desc: "send this HTML as the body instead of rendering --body"},
 				{Name: "cc", Kind: KindList, Arg: "ADDR", Desc: "a copied recipient"},
 				{Name: "bcc", Kind: KindList, Arg: "ADDR", Desc: "a blind copied recipient"},
 				{Name: "attach", Kind: KindList, Arg: "PATH", Desc: "a file to attach (repeatable)"},
@@ -256,7 +260,8 @@ func tree(l Locals) []*Command {
 				"from there.",
 			Flags: []Flag{
 				{Name: "all", Kind: KindBool, Desc: "copy everyone the message was addressed to"},
-				{Name: "body", Kind: KindString, Arg: "TEXT", Desc: "the text; omit to read it from stdin"},
+				{Name: "body", Kind: KindString, Arg: "TEXT", Desc: "the text, as Markdown; omit to read it from stdin"},
+				{Name: "body-html", Kind: KindString, Arg: "HTML", Desc: "send this HTML as the body instead of rendering --body"},
 				{Name: "to", Kind: KindList, Arg: "ADDR", Desc: "answer somebody other than the sender"},
 				{Name: "cc", Kind: KindList, Arg: "ADDR", Desc: "an extra copied recipient"},
 				{Name: "subject", Kind: KindString, Arg: "S", Desc: "override the Re: subject"},

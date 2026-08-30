@@ -64,12 +64,16 @@ func LoadAttachment(path string) (Attachment, error) {
 // by the server, so the Outbox row, the copy in Sent and the Thread the reply
 // belongs to all name the same Message.
 type Draft struct {
-	From        Address
-	To          []Address
-	Cc          []Address
-	Bcc         []Address
-	Subject     string
-	Body        string
+	From    Address
+	To      []Address
+	Cc      []Address
+	Bcc     []Address
+	Subject string
+	Body    string
+	// BodyHTML is the text/html alternative. Empty means the mail is text/plain
+	// only, exactly as before; set, and Build writes a multipart/alternative
+	// with Body as the text/plain part and this as the text/html one.
+	BodyHTML    string
 	InReplyTo   []string // Message-IDs, without angle brackets
 	References  []string
 	Attachments []Attachment
@@ -136,22 +140,38 @@ func (d *Draft) Build() ([]byte, error) {
 	h.Set("User-Agent", "mailbox")
 
 	var buf bytes.Buffer
+	alt := d.BodyHTML != ""
+
 	if len(d.Attachments) == 0 {
-		// The charset goes on the message's own header, because there is no
-		// part header to put it on. Leaving it off does not mean "unspecified":
-		// a text part with no charset is us-ascii by definition, and every
-		// reader on the way — including our own mirror — then turns each byte
-		// of a UTF-8 character into a replacement character. A one-attachment
-		// mail was fine and a plain reply was quietly mangled.
-		h.Set("Content-Type", "text/plain; charset=utf-8")
-		w, err := gomail.CreateSingleInlineWriter(&buf, h)
+		if !alt {
+			// The charset goes on the message's own header, because there is no
+			// part header to put it on. Leaving it off does not mean
+			// "unspecified": a text part with no charset is us-ascii by
+			// definition, and every reader on the way — including our own
+			// mirror — then turns each byte of a UTF-8 character into a
+			// replacement character. A one-attachment mail was fine and a
+			// plain reply was quietly mangled.
+			h.Set("Content-Type", "text/plain; charset=utf-8")
+			w, err := gomail.CreateSingleInlineWriter(&buf, h)
+			if err != nil {
+				return nil, err
+			}
+			if _, err := w.Write([]byte(d.text())); err != nil {
+				return nil, err
+			}
+			if err := w.Close(); err != nil {
+				return nil, err
+			}
+			return crlf(buf.Bytes()), nil
+		}
+		iw, err := gomail.CreateInlineWriter(&buf, h)
 		if err != nil {
 			return nil, err
 		}
-		if _, err := w.Write([]byte(d.text())); err != nil {
+		if err := d.writeAlternative(iw); err != nil {
 			return nil, err
 		}
-		if err := w.Close(); err != nil {
+		if err := iw.Close(); err != nil {
 			return nil, err
 		}
 		return crlf(buf.Bytes()), nil
@@ -162,17 +182,33 @@ func (d *Draft) Build() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	var th gomail.InlineHeader
-	th.Set("Content-Type", "text/plain; charset=utf-8")
-	tw, err := mw.CreateSingleInline(th)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := tw.Write([]byte(d.text())); err != nil {
-		return nil, err
-	}
-	if err := tw.Close(); err != nil {
-		return nil, err
+	if alt {
+		// The text parts are their own multipart/alternative nested inside the
+		// mixed one, so a reader still gets to choose plain or HTML and the
+		// attachments hang off the outer level either way.
+		iw, err := mw.CreateInline()
+		if err != nil {
+			return nil, err
+		}
+		if err := d.writeAlternative(iw); err != nil {
+			return nil, err
+		}
+		if err := iw.Close(); err != nil {
+			return nil, err
+		}
+	} else {
+		var th gomail.InlineHeader
+		th.Set("Content-Type", "text/plain; charset=utf-8")
+		tw, err := mw.CreateSingleInline(th)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := tw.Write([]byte(d.text())); err != nil {
+			return nil, err
+		}
+		if err := tw.Close(); err != nil {
+			return nil, err
+		}
 	}
 	for _, a := range d.Attachments {
 		var ah gomail.AttachmentHeader
@@ -202,6 +238,45 @@ func (d Draft) text() string {
 		return d.Body
 	}
 	return d.Body + "\n"
+}
+
+// html is the text/html body, newline-terminated for the same reason as text.
+func (d Draft) html() string {
+	if d.BodyHTML == "" || strings.HasSuffix(d.BodyHTML, "\n") {
+		return d.BodyHTML
+	}
+	return d.BodyHTML + "\n"
+}
+
+// writeAlternative writes the text/plain part then the text/html part. Order is
+// the contract of multipart/alternative: least-preferred first, so a reader
+// that walks to the last part it can render lands on the HTML. The text/plain
+// part is Body verbatim — a caller who wrote plain prose sees it unchanged
+// whatever the HTML side was rendered from.
+func (d Draft) writeAlternative(iw *gomail.InlineWriter) error {
+	var th gomail.InlineHeader
+	th.Set("Content-Type", "text/plain; charset=utf-8")
+	tw, err := iw.CreatePart(th)
+	if err != nil {
+		return err
+	}
+	if _, err := tw.Write([]byte(d.text())); err != nil {
+		return err
+	}
+	if err := tw.Close(); err != nil {
+		return err
+	}
+
+	var hh gomail.InlineHeader
+	hh.Set("Content-Type", "text/html; charset=utf-8")
+	hw, err := iw.CreatePart(hh)
+	if err != nil {
+		return err
+	}
+	if _, err := hw.Write([]byte(d.html())); err != nil {
+		return err
+	}
+	return hw.Close()
 }
 
 // crlf makes every line ending a CRLF. Both destinations require it — an IMAP

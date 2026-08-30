@@ -27,6 +27,11 @@ qt_add_resources(mailbox-omarchy "qml"
         qml/FeedDivider.qml
         qml/ReadingView.qml
         qml/CommandLauncher.qml
+        qml/ComposerView.qml
+        qml/LexxyEditor.qml
+        qml/RecipientPills.qml
+        qml/AppButton.qml
+        qml/SendUndoToast.qml
         qml/MailRow.qml
         qml/SectionLabel.qml
         qml/Avatar.qml
@@ -35,6 +40,8 @@ qt_add_resources(mailbox-omarchy "qml"
         qml/AttachmentChip.qml
         qml/QuickLook.qml
         qml/vendor/darkreader.js
+        qml/vendor/lexxy.js
+        qml/vendor/lexxy.css
 )
 
 target_include_directories(mailbox-omarchy PRIVATE src)
