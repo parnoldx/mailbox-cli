@@ -6,6 +6,8 @@
 #include <QJSEngine>
 #include <QDateTime>
 #include <QProcessEnvironment>
+#include <QDir>
+#include <QStandardPaths>
 #include <QTimer>
 
 MailboxClient::MailboxClient(QObject *parent) : QObject(parent) {
@@ -108,6 +110,24 @@ void MailboxClient::deliver(const QString &id, const QVariantMap &reply) {
         cb.call({m_engine->toScriptValue(reply)});
 }
 
+QString MailboxClient::downloadDir() const {
+    QString d = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+    if (d.isEmpty())
+        d = QDir::homePath() + "/Downloads";
+    QDir().mkpath(d);
+    return d;
+}
+
+QString MailboxClient::cacheDir() const {
+    QString d = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+    if (d.isEmpty())
+        d = QDir::homePath() + "/.cache/mailbox-omarchy";
+    else
+        d += "/attachments";
+    QDir().mkpath(d);
+    return d;
+}
+
 // ---- offline demo answers -------------------------------------------------
 
 static QVariantMap msg(const QString &id, const QString &date, const QString &from,
@@ -162,6 +182,18 @@ void MailboxClient::answerOffline(const QString &id, const QStringList &cmd, con
                      "The daemon is offline, so this is a canned message. Start it with:\n"
                      "  ./bin/mailbox daemon\n\n"
                      "and the real Mirror shows up here — headers, bodies and all."}};
+    } else if (verb == "attachment list") {
+        QString mid = args.value("positional").toString();
+        if (mid.contains("36635"))
+            reply["data"] = QVariantList{QVariantMap{
+                {"id", mid + ":1"}, {"index", 1},
+                {"filename", "recipe-card.pdf"},
+                {"mime_type", "application/pdf"}, {"disposition", "attachment"}, {"size", 38444}}};
+        else
+            reply["data"] = QVariantList{};
+    } else if (verb == "attachment save") {
+        reply["ok"] = false;
+        reply["error"] = "offline: start the daemon to save attachments";
     } else if (verb == "status") {
         reply["data"] = QVariantList{QVariantMap{{"account", "primary"}, {"count", 3}}};
     } else {

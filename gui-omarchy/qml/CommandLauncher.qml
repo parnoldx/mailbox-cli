@@ -87,7 +87,7 @@ Item {
                     spacing: 10
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: ""
+                        text: "\uf002"
                         font.family: Theme.fontFamily
                         font.pixelSize: 13
                         color: Theme.textDim

@@ -21,8 +21,15 @@ itself the instant you switch Omarchy themes.
   no restart. Font is JetBrainsMono Nerd Font, radii/hairlines/pills match the
   rest of the desktop.
 - **Real data.** Talks NDJSON to the daemon on `$XDG_RUNTIME_DIR/mailbox.sock`
-  (`box list`, `box view`, `message view`). If the daemon is down it falls back
-  to a small canned set and says so in the footer.
+  (`box list`, `box view`, `message view`, `attachment list`, `attachment save`).
+  If the daemon is down it falls back to a small canned set; a green dot bottom-
+  left means connected, amber means demo data.
+
+## Daemon dependency
+
+This build expects `message view` to return `body_html` (added to
+`internal/daemon/serve.go`). Rebuild and restart the daemon after pulling:
+`go build -o bin/mailbox ./cmd/mailbox && systemctl --user restart mailbox`.
 
 ## Why watching the theme is fiddly
 
@@ -43,7 +50,7 @@ cmake --build build
 ./build/mailbox-omarchy --open-first   # auto-open the first message (for demos/screenshots)
 ```
 
-Requires Qt 6 (Core, Gui, Qml, Quick, QuickControls2, Network). No WebEngine.
+Requires Qt 6 (Core, Gui, Qml, Quick, QuickControls2, Network, WebEngineQuick).
 
 ## Keys
 
@@ -62,9 +69,11 @@ Requires Qt 6 (Core, Gui, Qml, Quick, QuickControls2, Network). No WebEngine.
 src/OmarchyTheme.*   live palette + derived design tokens, file-watch + poll
 src/MailboxClient.*  QLocalSocket NDJSON client, callback-per-request, demo fallback
 src/MailModel.*      one box of message summaries; splits "Name <addr>" and dates
+src/PixelBlock.*     QWebEngineUrlRequestInterceptor: drops trackers, counts them
 qml/Main.qml         window, view state, all shortcuts
 qml/BucketView.qml   full-screen bucket, New/Seen split, keyboard highlight
 qml/ReadingView.qml  full-screen message, label-free headers
 qml/CommandLauncher.qml  numbered quick switcher
+qml/AttachmentChip.qml   open / save one attachment via the daemon
 qml/MailRow.qml qml/Avatar.qml qml/Pill.qml qml/Kbd.qml qml/SectionLabel.qml
 ```

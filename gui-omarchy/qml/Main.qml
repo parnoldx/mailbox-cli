@@ -18,11 +18,11 @@ ApplicationWindow {
     Behavior on color { ColorAnimation { duration: Theme.anim } }
 
     readonly property var buckets: [
-        { key: "INBOX",       label: "Inbox",       glyph: "", blurb: "New for you, then everything you have seen" },
-        { key: "Feed",        label: "The Feed",    glyph: "", blurb: "Newsletters and things to read at leisure" },
-        { key: "Paper Trail", label: "Paper Trail", glyph: "", blurb: "Receipts, confirmations, invoices" },
-        { key: "Screener",    label: "The Screener",glyph: "", blurb: "New senders waiting on a decision" },
-        { key: "Aside",       label: "Set Aside",   glyph: "", blurb: "Pulled out to deal with later" }
+        { key: "INBOX",       label: "Inbox",       glyph: "\uf01c", blurb: "New for you, then everything you have seen" },
+        { key: "Feed",        label: "The Feed",    glyph: "\uf09e", blurb: "Newsletters and things to read at leisure" },
+        { key: "Paper Trail", label: "Paper Trail", glyph: "\uf0f6", blurb: "Receipts, confirmations, invoices" },
+        { key: "Screener",    label: "The Screener",glyph: "\uf0c0", blurb: "New senders waiting on a decision" },
+        { key: "Aside",       label: "Set Aside",   glyph: "\uf02e", blurb: "Pulled out to deal with later" }
     ]
 
     property int bucketIndex: 0
@@ -30,6 +30,7 @@ ApplicationWindow {
     property string openId: ""      // "" → bucket view, otherwise reading view
     property var openMsg: null
     property bool openLoading: false
+    property var openAttachments: []
 
     function currentKey() { return buckets[bucketIndex].key }
 
@@ -65,10 +66,16 @@ ApplicationWindow {
         win.openId = id
         win.openMsg = null
         win.openLoading = true
+        win.openAttachments = []
+        PixelBlock.reset()
         Mailbox.call(["message", "view"], { positional: id }, function (r) {
             win.openLoading = false
             if (win.openId !== id) return
             win.openMsg = (r.ok && r.data) ? r.data : null
+        })
+        Mailbox.call(["attachment", "list"], { positional: id }, function (r) {
+            if (win.openId !== id) return
+            win.openAttachments = (r.ok && r.data) ? r.data : []
         })
     }
 
@@ -76,10 +83,16 @@ ApplicationWindow {
 
     Component.onCompleted: {
         loadCounts(); loadBucket()
-        if (Qt.application.arguments.indexOf("--open-first") >= 0)
-            openFirstTimer.start()
+        var a = Qt.application.arguments
+        var oi = a.indexOf("--open")
+        if (oi >= 0 && oi + 1 < a.length) { demoOpenId = a[oi + 1]; openFirstTimer.start() }
+        else if (a.indexOf("--open-first") >= 0) openFirstTimer.start()
     }
-    Timer { id: openFirstTimer; interval: 900; onTriggered: bucketView.openHighlighted() }
+    property string demoOpenId: ""
+    Timer {
+        id: openFirstTimer; interval: 900
+        onTriggered: win.demoOpenId ? win.openMessage(win.demoOpenId) : bucketView.openHighlighted()
+    }
 
     Connections {
         target: Mailbox

@@ -1,4 +1,6 @@
 #include <QGuiApplication>
+#include <QtWebEngineQuick/QtWebEngineQuick>
+#include <QWebEngineProfile>
 #include <QFont>
 #include <QFontDatabase>
 #include <QIcon>
@@ -9,8 +11,10 @@
 #include "MailModel.hpp"
 #include "MailboxClient.hpp"
 #include "OmarchyTheme.hpp"
+#include "PixelBlock.hpp"
 
 int main(int argc, char *argv[]) {
+    QtWebEngineQuick::initialize();
     QGuiApplication app(argc, argv);
     app.setApplicationName("Mailbox");
     app.setApplicationDisplayName("Mailbox");
@@ -26,12 +30,16 @@ int main(int argc, char *argv[]) {
     MailboxClient client;
     MailModel listModel;
 
+    auto *pixelBlock = new PixelBlock(&app);
+    QWebEngineProfile::defaultProfile()->setUrlRequestInterceptor(pixelBlock);
+
     QQmlApplicationEngine engine;
     client.setJsEngine(&engine);
     QQmlContext *ctx = engine.rootContext();
     ctx->setContextProperty("Theme", &theme);
     ctx->setContextProperty("Mailbox", &client);
     ctx->setContextProperty("listModel", &listModel);
+    ctx->setContextProperty("PixelBlock", pixelBlock);
 
     QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreationFailed, &app,

@@ -6,13 +6,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Network)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Network WebEngineQuick)
 
 qt_add_executable(mailbox-omarchy
     src/main.cpp
     src/OmarchyTheme.hpp src/OmarchyTheme.cpp
     src/MailboxClient.hpp src/MailboxClient.cpp
     src/MailModel.hpp src/MailModel.cpp
+    src/PixelBlock.hpp src/PixelBlock.cpp
 )
 
 qt_add_resources(mailbox-omarchy "qml"
@@ -27,8 +28,9 @@ qt_add_resources(mailbox-omarchy "qml"
         qml/Avatar.qml
         qml/Pill.qml
         qml/Kbd.qml
+        qml/AttachmentChip.qml
 )
 
 target_include_directories(mailbox-omarchy PRIVATE src)
 target_link_libraries(mailbox-omarchy PRIVATE
-    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Network)
+    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Network Qt6::WebEngineQuick)

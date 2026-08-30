@@ -858,6 +858,10 @@ type message struct {
 	MessageKey string   `json:"message_key"`
 	Body       string   `json:"body"`
 	BodyFormat string   `json:"body_format"` // "plain" | "markdown" | "none"
+	// BodyHTML is the raw HTML part, untouched, for a client that renders it
+	// itself (a desktop reading pane). Empty when the message had no HTML part.
+	// The text `Body` above stays the canonical read (ADR-0003); this is extra.
+	BodyHTML   string   `json:"body_html,omitempty"`
 	BodyState  string   `json:"body_state"`
 	Placements []string `json:"placements"`
 }
@@ -869,6 +873,7 @@ func viewMessage(a *Account, folder string, r mirror.Row, places []mirror.Placem
 		From: r.From, To: r.To, Subject: r.Subject, Seen: r.Seen(),
 		Flags: r.Placement.Flags, Size: r.Placement.Size, MessageKey: r.Message.Key,
 		Body: body, BodyFormat: format, BodyState: r.BodyState,
+		BodyHTML: r.Message.TextHTML,
 	}
 	if !r.Message.Date.IsZero() {
 		m.Date = r.Message.Date.Format(time.RFC3339)

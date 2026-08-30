@@ -33,6 +33,10 @@ public:
     // call(["box","view"], {positional:"Inbox"}, function(reply){ reply.ok, reply.data, ... })
     Q_INVOKABLE void call(const QStringList &cmd, const QVariantMap &args, const QJSValue &callback);
 
+    // Absolute directories the attachment code writes into.
+    Q_INVOKABLE QString downloadDir() const;
+    Q_INVOKABLE QString cacheDir() const;
+
 signals:
     void onlineChanged();
     void mirrorChanged();

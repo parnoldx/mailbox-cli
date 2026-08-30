@@ -130,7 +130,7 @@ Item {
                 topPadding: 60
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: ""
+                    text: "\uf0e0"
                     font.family: Theme.fontFamily
                     font.pixelSize: 34
                     color: Theme.hairline
@@ -174,23 +174,12 @@ Item {
         }
     }
 
-    Row {
-        anchors { left: parent.left; bottom: parent.bottom; margins: 20 }
-        spacing: 8
-        opacity: 0.75
-        Rectangle {
-            width: 7; height: 7; radius: 4
-            anchors.verticalCenter: parent.verticalCenter
-            color: Mailbox.online ? Theme.green : Theme.yellow
-            Behavior on color { ColorAnimation { duration: Theme.anim } }
-        }
-        Text {
-            anchors.verticalCenter: parent.verticalCenter
-            text: (Mailbox.online ? "daemon" : "demo") + "  ·  " + Theme.name
-            font.family: Theme.fontFamily
-            font.pixelSize: 11
-            color: Theme.textDim
-            Behavior on color { ColorAnimation { duration: Theme.anim } }
-        }
+    // Connection status: just the dot.
+    Rectangle {
+        anchors { left: parent.left; bottom: parent.bottom; margins: 22 }
+        width: 8; height: 8; radius: 4
+        opacity: 0.85
+        color: Mailbox.online ? Theme.green : Theme.yellow
+        Behavior on color { ColorAnimation { duration: Theme.anim } }
     }
 }
