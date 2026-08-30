@@ -76,10 +76,16 @@ ApplicationWindow {
         Mailbox.call(["attachment", "list"], { positional: id }, function (r) {
             if (win.openId !== id) return
             win.openAttachments = (r.ok && r.data) ? r.data : []
+            if (win._demoQl && win.openAttachments.length > 0) {
+                win._demoQl = false
+                win.openQuickLook(win.openAttachments[0])
+            }
         })
     }
 
     function back() { win.openId = ""; win.openMsg = null }
+
+    function openQuickLook(att) { quickLook.openFor(att) }
 
     Component.onCompleted: {
         loadCounts(); loadBucket()
@@ -89,6 +95,7 @@ ApplicationWindow {
         else if (a.indexOf("--open-first") >= 0) openFirstTimer.start()
     }
     property string demoOpenId: ""
+    property bool _demoQl: Qt.application.arguments.indexOf("--ql") >= 0
     Timer {
         id: openFirstTimer; interval: 900
         onTriggered: win.demoOpenId ? win.openMessage(win.demoOpenId) : bucketView.openHighlighted()
@@ -104,7 +111,8 @@ ApplicationWindow {
     Shortcut {
         sequence: "Escape"
         onActivated: {
-            if (launcher.opened) launcher.close()
+            if (quickLook.opened) quickLook.close()
+            else if (launcher.opened) launcher.close()
             else if (win.openId) win.back()
         }
     }
@@ -145,6 +153,11 @@ ApplicationWindow {
 
     CommandLauncher {
         id: launcher
+        anchors.fill: parent
+    }
+
+    QuickLook {
+        id: quickLook
         anchors.fill: parent
     }
 }

@@ -20,10 +20,13 @@ itself the instant you switch Omarchy themes.
   so `omarchy theme set "Gruvbox"` morphs the whole window — dark or light — with
   no restart. Font is JetBrainsMono Nerd Font, radii/hairlines/pills match the
   rest of the desktop.
-- **Real data.** Talks NDJSON to the daemon on `$XDG_RUNTIME_DIR/mailbox.sock`
+- **Quick Look.** Clicking an attachment fetches it via `attachment save` to a
+  cache dir and previews it in-app: PDFs page-rendered (`QtQuick.Pdf`), images
+  and text inline, everything else with an "open externally" fallback. Esc / Q /
+  click-away dismiss; the toolbar keeps "open externally" and "save as".
+- **Real data.** NDJSON to the daemon on `$XDG_RUNTIME_DIR/mailbox.sock`
   (`box list`, `box view`, `message view`, `attachment list`, `attachment save`).
-  If the daemon is down it falls back to a small canned set; a green dot bottom-
-  left means connected, amber means demo data.
+  Offline it falls back to a small canned set; green dot = connected, amber = demo.
 
 ## Daemon dependency
 
@@ -47,10 +50,11 @@ destroys any inode-level watch on `colors.toml`, so `OmarchyTheme`:
 cmake -B build -G Ninja
 cmake --build build
 ./build/mailbox-omarchy            # normal
-./build/mailbox-omarchy --open-first   # auto-open the first message (for demos/screenshots)
+./build/mailbox-omarchy --open <id>    # open straight into a message (demo/screenshot)
+./build/mailbox-omarchy --open <id> --ql   # ...and pop Quick Look on its first attachment
 ```
 
-Requires Qt 6 (Core, Gui, Qml, Quick, QuickControls2, Network, WebEngineQuick).
+Requires Qt 6 (Core, Gui, Qml, Quick, QuickControls2, Network, WebEngineQuick, PdfQuick, QuickDialogs2).
 
 ## Keys
 
@@ -74,6 +78,7 @@ qml/Main.qml         window, view state, all shortcuts
 qml/BucketView.qml   full-screen bucket, New/Seen split, keyboard highlight
 qml/ReadingView.qml  full-screen message, label-free headers
 qml/CommandLauncher.qml  numbered quick switcher
-qml/AttachmentChip.qml   open / save one attachment via the daemon
+qml/AttachmentChip.qml   one attachment: click = Quick Look, floppy = Save as
+qml/QuickLook.qml        in-app preview overlay (PDF pages, image, text)
 qml/MailRow.qml qml/Avatar.qml qml/Pill.qml qml/Kbd.qml qml/SectionLabel.qml
 ```

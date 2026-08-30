@@ -1,11 +1,12 @@
 import QtQuick
+import QtQuick.Dialogs
 
-// A clickable attachment card. The body opens the file with the desktop default
-// app; the tray icon saves a copy to ~/Downloads.
+// An attachment card. The body opens an in-app Quick Look preview; the tray icon
+// pops a "Save as…" dialog and lets the daemon write the file where you choose.
 Rectangle {
     id: root
     property var att: ({})
-    property string status: ""     // "", "busy", or a short done message
+    property string status: ""
 
     implicitWidth: Math.min(360, row.implicitWidth + 68)
     implicitHeight: 52
@@ -32,28 +33,21 @@ Rectangle {
         if (n < 1048576) return (n / 1024).toFixed(0) + " KB"
         return (n / 1048576).toFixed(1) + " MB"
     }
-
-    function fetch(dir, thenOpen) {
-        if (root.status === "busy") return
-        root.status = "busy"
-        Mailbox.call(["attachment", "save"], { positional: root.att.id, output: dir, force: true }, function (r) {
-            if (r.ok && r.data && r.data.path) {
-                if (thenOpen) Qt.openUrlExternally("file://" + r.data.path)
-                root.status = thenOpen ? "" : "Saved to Downloads"
-            } else {
-                root.status = (r.error && r.error.length) ? r.error : "Could not fetch"
-            }
-            doneTimer.restart()
-        })
+    function localPath(url) { return decodeURIComponent(String(url).replace(/^file:\/\//, "")) }
+    function fileUrl(p) {
+        var parts = String(p || "").split("/")
+        for (var i = 0; i < parts.length; i++) parts[i] = encodeURIComponent(parts[i])
+        return "file://" + parts.join("/")
     }
-    Timer { id: doneTimer; interval: 2600; onTriggered: if (root.status !== "busy") root.status = "" }
+
+    Timer { id: doneTimer; interval: 2600; onTriggered: root.status = "" }
 
     MouseArea {
         id: bodyArea
         anchors { left: parent.left; top: parent.top; bottom: parent.bottom; right: saveBtn.left }
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: root.fetch(Mailbox.cacheDir(), true)
+        onClicked: win.openQuickLook(root.att)
     }
 
     Row {
@@ -75,8 +69,7 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             spacing: 2
             Text {
-                text: (root.status && root.status !== "busy") ? root.status
-                    : (root.att.filename || "attachment")
+                text: (root.status && root.status !== "busy") ? root.status : (root.att.filename || "attachment")
                 elide: Text.ElideMiddle
                 width: Math.min(210, implicitWidth)
                 font.family: Theme.fontFamily
@@ -85,7 +78,7 @@ Rectangle {
                 Behavior on color { ColorAnimation { duration: Theme.anim } }
             }
             Text {
-                text: root.status === "busy" ? "fetching…" : root.humanSize(root.att.size)
+                text: root.status === "busy" ? "saving…" : root.humanSize(root.att.size)
                 font.family: Theme.fontFamily
                 font.pixelSize: 10
                 color: Theme.textDim
@@ -113,7 +106,23 @@ Rectangle {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: root.fetch(Mailbox.downloadDir(), false)
+            onClicked: saveDialog.open()
+        }
+    }
+
+    FileDialog {
+        id: saveDialog
+        fileMode: FileDialog.SaveFile
+        currentFolder: root.fileUrl(Mailbox.downloadDir())
+        selectedFile: root.fileUrl(Mailbox.downloadDir() + "/" + (root.att.filename || "attachment"))
+        onAccepted: {
+            root.status = "busy"
+            Mailbox.call(["attachment", "save"],
+                         { positional: root.att.id, output: root.localPath(selectedFile), force: true },
+                         function (r) {
+                root.status = (r.ok && r.data) ? "Saved" : ((r.error && r.error.length) ? r.error : "Save failed")
+                doneTimer.restart()
+            })
         }
     }
 }
