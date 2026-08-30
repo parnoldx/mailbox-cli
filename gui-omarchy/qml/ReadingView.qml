@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Window
 import QtWebEngine
 
 Item {
@@ -179,6 +180,41 @@ Item {
         function onOpenAttachmentsChanged() { root.reloadHtml() }
     }
     Connections { target: Theme; function onChanged() { root.renderHtml() } }
+
+    // A WebEngineView keeps a stale GPU surface across a Wayland unmap/map
+    // (switch workspace away and back) and paints black until its content
+    // repaints — which is why a scroll brings it back. When the window is
+    // hidden we raise an opaque cover the colour of the sheet, and when it
+    // comes back we nudge the page a pixel and back, then drop the cover a
+    // frame later. The user never sees the black interim, just the sheet.
+    property bool webCovered: false
+    Timer {
+        id: webRepaint
+        interval: 50
+        onTriggered: {
+            web.update()
+            if (root.htmlMode && root.webLoaded)
+                web.runJavaScript("window.scrollBy(0,1);window.scrollBy(0,-1);1",
+                                  function () { webUncover.restart() })
+            else
+                webUncover.restart()
+        }
+    }
+    Timer { id: webUncover; interval: 32; onTriggered: root.webCovered = false }
+    Connections {
+        target: win
+        enabled: root.htmlMode
+        function onVisibilityChanged() {
+            if (win.visibility === Window.Hidden || win.visibility === Window.Minimized)
+                root.webCovered = true
+            else
+                webRepaint.restart()
+        }
+        function onActiveChanged() {
+            if (win.active) webRepaint.restart()
+            else root.webCovered = true
+        }
+    }
 
     // ---- Header (does not scroll) -------------------------------------------
     Column {
@@ -446,6 +482,17 @@ Item {
                 root.flushCids()
             }
         }
+    }
+
+    // Opaque cover over the web view for the brief window between a Wayland
+    // remap and the page repainting, so that gap reads as the sheet, not black.
+    Rectangle {
+        parent: sheet
+        anchors.fill: parent
+        anchors.margins: 1
+        z: 1
+        visible: root.webCovered && root.htmlMode && !win.openLoading
+        color: sheet.color
     }
 
     // Plain / Markdown mail: native rich text.
