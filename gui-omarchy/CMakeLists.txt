@@ -21,6 +21,10 @@ qt_add_resources(mailbox-omarchy "qml"
     FILES
         qml/Main.qml
         qml/BucketView.qml
+        qml/FeedView.qml
+        qml/FeedCard.qml
+        qml/FeedArticle.qml
+        qml/FeedDivider.qml
         qml/ReadingView.qml
         qml/CommandLauncher.qml
         qml/MailRow.qml

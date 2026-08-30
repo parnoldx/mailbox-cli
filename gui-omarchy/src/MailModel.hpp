@@ -17,6 +17,7 @@ public:
         FromAddrRole,
         SubjectRole,
         DateRole,
+        DateRawRole,
         SeenRole,
     };
 
@@ -35,7 +36,7 @@ signals:
 
 private:
     struct Row {
-        QString id, fromName, fromAddr, subject, date;
+        QString id, fromName, fromAddr, subject, date, dateRaw;
         bool seen = false;
     };
     QList<Row> m_rows;

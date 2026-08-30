@@ -7,6 +7,7 @@
 #include <QDateTime>
 #include <QProcessEnvironment>
 #include <QDir>
+#include <QFile>
 #include <QStandardPaths>
 #include <QTimer>
 
@@ -128,6 +129,48 @@ QString MailboxClient::cacheDir() const {
     return d;
 }
 
+// ---- tiny persisted key/value store -------------------------------------
+
+static QString statePath() {
+    QString d = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+    if (d.isEmpty())
+        d = QDir::homePath() + "/.config/Mailbox";
+    QDir().mkpath(d);
+    return d + "/state.json";
+}
+
+void MailboxClient::loadState() {
+    if (m_stateLoaded)
+        return;
+    m_stateLoaded = true;
+    QFile f(statePath());
+    if (!f.open(QIODevice::ReadOnly))
+        return;
+    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+    if (doc.isObject())
+        m_state = doc.object().toVariantMap();
+}
+
+void MailboxClient::saveState() const {
+    QFile f(statePath());
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        return;
+    f.write(QJsonDocument(QJsonObject::fromVariantMap(m_state)).toJson(QJsonDocument::Indented));
+}
+
+QString MailboxClient::stateGet(const QString &key, const QString &fallback) {
+    loadState();
+    return m_state.value(key, fallback).toString();
+}
+
+void MailboxClient::stateSet(const QString &key, const QString &value) {
+    loadState();
+    if (m_state.value(key).toString() == value)
+        return;
+    m_state.insert(key, value);
+    saveState();
+}
+
 // ---- offline demo answers -------------------------------------------------
 
 static QVariantMap msg(const QString &id, const QString &date, const QString &from,
@@ -155,8 +198,12 @@ void MailboxClient::answerOffline(const QString &id, const QStringList &cmd, con
         const QString box = args.value("positional").toString();
         QVariantList d;
         if (box == "Feed") {
-            d << msg("Feed:2455", "2026-08-28 21:37", "News Digest <no-reply@example.com>", "NEWSLETTER", true)
-              << msg("Feed:2347", "2026-08-12 11:15", "Wellness Letter <newsletter@example.net>", "This week's letter", true);
+            d << msg("Feed:2455", "2026-08-29 21:37", "News Digest <no-reply@example.com>", "This week in tech", true)
+              << msg("Feed:2453", "2026-08-29 08:02", "Analysis Weekly <feed@example.com>", "A weekly roundup", true)
+              << msg("Feed:2447", "2026-08-27 17:44", "Dev Digest <mail@example.com>", "Issue #42: this week", true)
+              << msg("Feed:2431", "2026-08-24 06:10", "Wellness Letter <newsletter@example.net>", "This week's letter", true)
+              << msg("Feed:2402", "2026-08-19 12:15", "Tech Podcast <podcast@example.com>", "A weekly episode", true)
+              << msg("Feed:2347", "2026-08-12 11:15", "Tech News <newsletter@example.com>", "Weekly roundup", true);
         } else if (box == "Paper Trail") {
             d << msg("Paper Trail:3250", "2026-02-27 05:21", "Acme Support <no-reply@example.com>", "Registration confirmation", true)
               << msg("Paper Trail:2506", "2026-01-04 20:50", "Online Shop <dsar-request@example.com>", "Your data request", true)
@@ -170,18 +217,24 @@ void MailboxClient::answerOffline(const QString &id, const QStringList &cmd, con
         }
         reply["data"] = d;
     } else if (verb == "message view") {
+        const QString mid = args.value("positional").toString();
+        // Give each Feed item its own body so the offline demo shows real
+        // previews and a real expand, not the same paragraph six times.
+        static const QHash<QString, QString> feedBodies{};
+        const QString body = feedBodies.value(
+            mid,
+            "The daemon is offline, so this is a canned message. Start it with:\n"
+            "  ./bin/mailbox daemon\n\n"
+            "and the real Mirror shows up here — headers, bodies and all.");
         reply["data"] = QVariantMap{
-            {"id", args.value("positional")},
-            {"from", "Max Mustermann <max@example.org>"},
+            {"id", mid},
+            {"from", "Newsletter <feed@example.com>"},
             {"to", "Max Mustermann <max@example.org>"},
-            {"subject", "Plan"},
+            {"subject", "(demo)"},
             {"date", "2026-08-25T06:29:35Z"},
             {"seen", true},
-            {"body", "Luck Is Preparation Meeting Opportunity\n\n"
-                     "“Luck is what happens when preparation meets opportunity.”\n\n"
-                     "The daemon is offline, so this is a canned message. Start it with:\n"
-                     "  ./bin/mailbox daemon\n\n"
-                     "and the real Mirror shows up here — headers, bodies and all."}};
+            {"body_format", "plain"},
+            {"body", body}};
     } else if (verb == "attachment list") {
         QString mid = args.value("positional").toString();
         if (mid.contains("36635"))

@@ -41,6 +41,7 @@ QVariant MailModel::data(const QModelIndex &index, int role) const {
     case FromAddrRole: return r.fromAddr;
     case SubjectRole: return r.subject;
     case DateRole: return r.date;
+    case DateRawRole: return r.dateRaw;
     case SeenRole: return r.seen;
     }
     return {};
@@ -49,7 +50,8 @@ QVariant MailModel::data(const QModelIndex &index, int role) const {
 QHash<int, QByteArray> MailModel::roleNames() const {
     return {
         {IdRole, "msgId"},   {FromNameRole, "fromName"}, {FromAddrRole, "fromAddr"},
-        {SubjectRole, "subject"}, {DateRole, "date"},    {SeenRole, "seen"},
+        {SubjectRole, "subject"}, {DateRole, "date"},    {DateRawRole, "dateRaw"},
+        {SeenRole, "seen"},
     };
 }
 
@@ -63,7 +65,8 @@ void MailModel::setRows(const QVariantList &rows) {
         r.subject = m.value("subject").toString().trimmed();
         if (r.subject.isEmpty())
             r.subject = "(no subject)";
-        r.date = shortDate(m.value("date").toString());
+        r.dateRaw = m.value("date").toString();
+        r.date = shortDate(r.dateRaw);
         r.seen = m.value("seen").toBool();
         splitFrom(m.value("from").toString(), r.fromName, r.fromAddr);
         m_rows.push_back(r);
@@ -77,5 +80,6 @@ QVariantMap MailModel::get(int i) const {
         return {};
     const Row &r = m_rows.at(i);
     return {{"id", r.id}, {"fromName", r.fromName}, {"fromAddr", r.fromAddr},
-            {"subject", r.subject}, {"date", r.date}, {"seen", r.seen}};
+            {"subject", r.subject}, {"date", r.date}, {"dateRaw", r.dateRaw},
+            {"seen", r.seen}};
 }

@@ -11,6 +11,14 @@ itself the instant you switch Omarchy themes.
   bucket (Inbox split into *New for you* / *Previously seen*, plus The Feed,
   Paper Trail, The Screener, Set Aside), and a full-screen reading view with
   label-free headers and a big subject headline.
+- **The Feed reads like a feed.** The Feed does not hand off to the reader — it
+  is one chronological column of cards, each with the sender, the subject and the
+  first few lines of the body. `Return` (or a click) expands a card to its whole
+  text in place; `Return` again, `Show less` or `Esc` collapses it. A rule across
+  the column marks where you got to last time: everything above it arrived since,
+  everything below has been seen. How far you scroll, and anything you expand, is
+  remembered between runs in `$XDG_CONFIG_HOME/Mailbox/state.json` (`feed.mark`,
+  keyed by message date); `Mark all read` in the header jumps the rule to the top.
 - **Command launcher.** `Ctrl+K` (or `Ctrl+P`) opens a centred switcher with the
   search field already focused, destinations numbered 1–5, and live per-bucket
   counts. Type to filter, digits or arrows to pick.
@@ -78,19 +86,26 @@ Requires Qt 6 (Core, Gui, Qml, Quick, QuickControls2, Network, WebEngineQuick, P
 | `Ctrl+K` / `Ctrl+P` | open the command launcher  |
 | `1`–`5`        | jump straight to a bucket       |
 | `j` / `k` / arrows | move the row highlight       |
-| `Return` / `o` / `l` | open the highlighted message |
-| `Esc`          | close launcher, or leave a message |
+| `Return`       | open the message (in The Feed: expand / collapse the card) |
+| `o` / `l`      | open the highlighted message (works from The Feed too) |
+| `Esc`          | close launcher, leave a message, or collapse Feed cards |
 | `Ctrl+Q`       | quit                            |
+
+`--bucket <name>` (e.g. `--bucket feed`) starts on that bucket instead of Inbox.
 
 ## Layout
 
 ```
 src/OmarchyTheme.*   live palette + derived design tokens, file-watch + poll
-src/MailboxClient.*  QLocalSocket NDJSON client, callback-per-request, demo fallback
+src/MailboxClient.*  QLocalSocket NDJSON client, callback-per-request, demo fallback;
+                     tiny stateGet/stateSet JSON store for the Feed watermark
 src/MailModel.*      one box of message summaries; splits "Name <addr>" and dates
 src/PixelBlock.*     QWebEngineUrlRequestInterceptor: drops trackers, counts them
 qml/Main.qml         window, view state, all shortcuts
 qml/BucketView.qml   full-screen bucket, New/Seen split, keyboard highlight
+qml/FeedView.qml     The Feed as a scrolling column; the read watermark + prefetch
+qml/FeedCard.qml     one feed item: preview, expand-in-place, "Open full page"
+qml/FeedDivider.qml  the "you got to here last time" rule
 qml/ReadingView.qml  full-screen message, label-free headers
 qml/CommandLauncher.qml  numbered quick switcher
 qml/AttachmentChip.qml   one attachment: click = Quick Look, floppy = Save as

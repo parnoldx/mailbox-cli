@@ -88,8 +88,15 @@ ApplicationWindow {
     function openQuickLook(att) { quickLook.openFor(att) }
 
     Component.onCompleted: {
-        loadCounts(); loadBucket()
         var a = Qt.application.arguments
+        var bi = a.indexOf("--bucket")
+        if (bi >= 0 && bi + 1 < a.length) {
+            var want = a[bi + 1].toLowerCase()
+            for (var k = 0; k < buckets.length; k++)
+                if (buckets[k].key.toLowerCase() === want || buckets[k].label.toLowerCase().indexOf(want) >= 0)
+                    bucketIndex = k
+        }
+        loadCounts(); loadBucket()
         var oi = a.indexOf("--open")
         if (oi >= 0 && oi + 1 < a.length) { demoOpenId = a[oi + 1]; openFirstTimer.start() }
         else if (a.indexOf("--open-first") >= 0) openFirstTimer.start()
@@ -107,6 +114,10 @@ ApplicationWindow {
         function onPushReceived(e, a, b) { win.loadCounts(); win.loadBucket() }
     }
 
+    // The Feed gets its own scroll-and-expand view; every other bucket is a list.
+    readonly property bool feedActive: !win.openId && !launcher.opened && currentKey() === "Feed"
+    function navView() { return feedActive ? feedView : bucketView }
+
     Shortcut { sequences: ["Ctrl+K", "Ctrl+P"]; onActivated: launcher.toggle() }
     Shortcut {
         sequence: "Escape"
@@ -114,6 +125,7 @@ ApplicationWindow {
             if (quickLook.opened) quickLook.close()
             else if (launcher.opened) launcher.close()
             else if (win.openId) win.back()
+            else if (win.feedActive && feedView.anyOpen()) feedView.collapseAll()
         }
     }
     // Number keys switch buckets straight from anywhere.
@@ -122,9 +134,16 @@ ApplicationWindow {
     Shortcut { sequence: "3"; onActivated: win.switchTo(2) }
     Shortcut { sequence: "4"; onActivated: win.switchTo(3) }
     Shortcut { sequence: "5"; onActivated: win.switchTo(4) }
-    Shortcut { sequences: ["j", "Down"]; enabled: !win.openId && !launcher.opened; onActivated: bucketView.move(1) }
-    Shortcut { sequences: ["k", "Up"]; enabled: !win.openId && !launcher.opened; onActivated: bucketView.move(-1) }
-    Shortcut { sequences: ["Return", "Enter", "o", "l"]; enabled: !win.openId && !launcher.opened; onActivated: bucketView.openHighlighted() }
+    Shortcut { sequences: ["j", "Down"]; enabled: !win.openId && !launcher.opened; onActivated: win.navView().move(1) }
+    Shortcut { sequences: ["k", "Up"]; enabled: !win.openId && !launcher.opened; onActivated: win.navView().move(-1) }
+    Shortcut {
+        sequences: ["Return", "Enter"]; enabled: !win.openId && !launcher.opened
+        onActivated: win.navView().openHighlighted()
+    }
+    Shortcut {
+        sequences: ["o", "l"]; enabled: !win.openId && !launcher.opened
+        onActivated: win.feedActive ? feedView.openFull() : bucketView.openHighlighted()
+    }
     Shortcut { sequence: "Ctrl+Q"; onActivated: Qt.quit() }
 
     // Explicit opaque backdrop so the look does not depend on the window's
@@ -138,7 +157,15 @@ ApplicationWindow {
     BucketView {
         id: bucketView
         anchors.fill: parent
-        opacity: win.openId ? 0 : 1
+        opacity: (win.openId || win.currentKey() === "Feed") ? 0 : 1
+        visible: opacity > 0.01
+        Behavior on opacity { NumberAnimation { duration: Theme.anim; easing.type: Easing.OutCubic } }
+    }
+
+    FeedView {
+        id: feedView
+        anchors.fill: parent
+        opacity: (!win.openId && win.currentKey() === "Feed") ? 1 : 0
         visible: opacity > 0.01
         Behavior on opacity { NumberAnimation { duration: Theme.anim; easing.type: Easing.OutCubic } }
     }

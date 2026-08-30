@@ -37,6 +37,12 @@ public:
     Q_INVOKABLE QString downloadDir() const;
     Q_INVOKABLE QString cacheDir() const;
 
+    // A tiny string key/value store the UI uses to remember things the daemon
+    // does not track — currently only how far down The Feed the reader has got.
+    // Persisted as JSON under $XDG_CONFIG_HOME/Mailbox/state.json.
+    Q_INVOKABLE QString stateGet(const QString &key, const QString &fallback = {});
+    Q_INVOKABLE void stateSet(const QString &key, const QString &value);
+
 signals:
     void onlineChanged();
     void mirrorChanged();
@@ -44,6 +50,8 @@ signals:
 
 private:
     void connectSocket();
+    void loadState();
+    void saveState() const;
     void flushBuffer();
     void dispatch(const QVariantMap &obj);
     void answerOffline(const QString &id, const QStringList &cmd, const QVariantMap &args);
@@ -58,4 +66,7 @@ private:
     bool m_behind{false};
     int m_seq{0};
     QHash<QString, QJSValue> m_pending;
+
+    QVariantMap m_state;
+    bool m_stateLoaded{false};
 };
