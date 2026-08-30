@@ -197,7 +197,7 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 		}
 		r, err := d.Mirror.Row(acct.Name, folder, uid)
 		if errors.Is(err, mirror.ErrNotFound) {
-			resp.Code, resp.Error = "not_found", fmt.Sprintf("no message %s in the mirror", id)
+			resp.Code, resp.Error = "not_found", noSuchMessage(id)
 			return resp
 		}
 		if err != nil {
@@ -261,7 +261,7 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 		}
 		r, err := d.Mirror.Row(acct.Name, folder, uid)
 		if errors.Is(err, mirror.ErrNotFound) {
-			resp.Code, resp.Error = "not_found", fmt.Sprintf("no message %s in the mirror", id)
+			resp.Code, resp.Error = "not_found", noSuchMessage(id)
 			return resp
 		}
 		if err != nil {
@@ -334,8 +334,7 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 	case "seen", "unseen":
 		acct, refs, err := d.refs(req)
 		if err != nil {
-			resp.Code, resp.Error = "usage", err.Error()
-			return resp
+			return refsFail(resp, err)
 		}
 		results, err := acct.Writer.SetSeen(ctx, refs, req.Cmd[0] == "seen")
 		return d.wrote(acct, resp, results, err)
@@ -343,8 +342,7 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 	case "move", "trash", "spam":
 		acct, refs, err := d.refs(req)
 		if err != nil {
-			resp.Code, resp.Error = "usage", err.Error()
-			return resp
+			return refsFail(resp, err)
 		}
 		dest := "Trash"
 		if req.Cmd[0] == "spam" {
@@ -367,6 +365,15 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 			// this is not it.
 			_, box := splitAccount(to, d.accountNames())
 			dest = resolveBox(box, acct.Mirrored)
+		}
+		if req.Cmd[0] == "trash" {
+			// A binned message should count as unread for nobody. Set \Seen
+			// now, while the uid we hold is still the message's — after the
+			// move it has a new one in Trash, which the Mirror never sees.
+			if _, err := acct.Writer.SetSeen(ctx, refs, true); err != nil {
+				resp.Code, resp.Error = "api", err.Error()
+				return resp
+			}
 		}
 		results, err := acct.Writer.Move(ctx, refs, dest)
 		return d.wrote(acct, resp, results, err)
@@ -437,12 +444,41 @@ func (d *Daemon) partsOf(a *Account, folder string, uid uint32) ([]mirror.Part, 
 	return d.Mirror.Parts(r.Message.ID)
 }
 
+// idNotFound is a refs() error for an id that resolved to a real Box and uid but
+// matched no Message. It carries the id as the caller typed it so every write
+// command answers the same way the read commands do.
+type idNotFound struct{ id string }
+
+func (e idNotFound) Error() string { return noSuchMessage(e.id) }
+
+// noSuchMessage is what every command says for an id that parsed but matches no
+// Message: the id as the caller typed it, then the reason it is usually gone —
+// it was moved or expunged between the listing that printed it and now. It does
+// not mention the Mirror; from the outside there is only "the mail", and the
+// id is stale whether or not a sync is pending.
+func noSuchMessage(id string) string {
+	return fmt.Sprintf("%s: no such message — moved or deleted since it was listed", id)
+}
+
+// refsFail answers a refs() error. An id that named nothing in the Mirror is
+// not_found — it was most likely expunged — and everything else is a usage
+// mistake in what the caller typed.
+func refsFail(resp Response, err error) Response {
+	var nf idNotFound
+	if errors.As(err, &nf) {
+		resp.Code, resp.Error = "not_found", err.Error()
+		return resp
+	}
+	resp.Code, resp.Error = "usage", err.Error()
+	return resp
+}
+
 // fail turns a Mirror read error into the right reply. An id the Mirror does
 // not hold is not_found rather than a failure: it may have been expunged, and
 // the Mirror may be Behind.
 func fail(resp Response, id string, err error) Response {
 	if errors.Is(err, mirror.ErrNotFound) {
-		resp.Code, resp.Error = "not_found", fmt.Sprintf("no message %s in the mirror", id)
+		resp.Code, resp.Error = "not_found", noSuchMessage(id)
 		return resp
 	}
 	resp.Code, resp.Error = "api", err.Error()
@@ -579,6 +615,15 @@ func (d *Daemon) refs(req Request) (*Account, []mailsync.Ref, error) {
 	for _, id := range ids {
 		a, folder, uid, err := d.resolveID(id)
 		if err != nil {
+			return nil, nil, err
+		}
+		// An id that parses but names nothing in the Mirror is the common
+		// case — it was expunged since the listing that printed it. Catch it
+		// here so the reply says so, rather than after a pointless server
+		// round trip that fails with a folder-shaped "INBOX: not found".
+		if _, err := d.Mirror.Row(a.Name, folder, uid); errors.Is(err, mirror.ErrNotFound) {
+			return nil, nil, idNotFound{id}
+		} else if err != nil {
 			return nil, nil, err
 		}
 		if acct == nil {

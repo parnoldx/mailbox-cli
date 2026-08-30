@@ -451,7 +451,7 @@ func (d *Daemon) senders(targets []string) ([]string, error) {
 			}
 			r, err := d.Mirror.Row(acct.Name, folder, uid)
 			if errors.Is(err, mirror.ErrNotFound) {
-				return nil, fmt.Errorf("no message %s in the mirror", t)
+				return nil, errors.New(noSuchMessage(t))
 			}
 			if err != nil {
 				return nil, err
@@ -498,8 +498,7 @@ func (d *Daemon) screenerRefs(a *Account, box, address string) ([]mailsync.Ref, 
 func (d *Daemon) handleAside(ctx context.Context, req Request, resp Response) Response {
 	acct, refs, err := d.refs(req)
 	if err != nil {
-		resp.Code, resp.Error = "usage", err.Error()
-		return resp
+		return refsFail(resp, err)
 	}
 	want := routing.BoxAside
 	if len(req.Cmd) > 1 && req.Cmd[1] == "done" {

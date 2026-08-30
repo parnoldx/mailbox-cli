@@ -97,8 +97,7 @@ func (d *Daemon) handleLabel(ctx context.Context, req Request, resp Response) Re
 func (d *Daemon) applyLabel(ctx context.Context, name string, add bool, req Request, resp Response) Response {
 	acct, refs, err := d.refs(req)
 	if err != nil {
-		resp.Code, resp.Error = "usage", err.Error()
-		return resp
+		return refsFail(resp, err)
 	}
 	if add {
 		// Applying a label is also how one comes to exist, so the name is

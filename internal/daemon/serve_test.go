@@ -265,6 +265,47 @@ func TestTrashLeavesTheMirror(t *testing.T) {
 	}
 }
 
+// A binned message should not sit in anyone's unread count, so trash forces
+// \Seen on the way out even when the message arrived unread.
+func TestTrashMarksItRead(t *testing.T) {
+	d := seed(t)
+	f := fakeOf(d)
+	if flags := f.Folder("INBOX/Screener").Msgs[0].Flags; hasFlag(flags, `\Seen`) {
+		t.Fatalf("seed message already \\Seen: %v", flags)
+	}
+	if got := write(t, d, []string{"trash"}, map[string]any{"positional": []any{"Screener:42"}}); got[0].Box != "Trash" {
+		t.Fatalf("trash returned %+v", got)
+	}
+	moved := f.Folder("Trash").Msgs
+	if len(moved) != 1 || !hasFlag(moved[0].Flags, `\Seen`) {
+		t.Fatalf("trashed message is not \\Seen: %+v", moved)
+	}
+}
+
+// An id that named nothing in the Mirror is caught before the server is
+// touched, and the reply matches what the read commands say for the same id
+// rather than a folder-shaped "INBOX: not found" from the IMAP layer.
+func TestTrashOfAnUnknownIDIsNotFound(t *testing.T) {
+	d := seed(t)
+	resp := d.handle(context.Background(), Request{ID: "1", Cmd: []string{"trash"}, Args: map[string]any{"positional": []any{"99999"}}})
+	if resp.OK || resp.Code != "not_found" {
+		t.Fatalf("resp = %+v", resp)
+	}
+	if resp.Error != "99999: no such message — moved or deleted since it was listed" {
+		t.Fatalf("error = %q", resp.Error)
+	}
+}
+
+// The same guard covers the flag writes, and it names the offending id even
+// when an earlier id in the same command was fine.
+func TestSeenOfAnUnknownIDNamesThatID(t *testing.T) {
+	d := seed(t)
+	resp := d.handle(context.Background(), Request{ID: "1", Cmd: []string{"seen"}, Args: map[string]any{"positional": []any{"7", "99999"}}})
+	if resp.OK || resp.Code != "not_found" || resp.Error != "99999: no such message — moved or deleted since it was listed" {
+		t.Fatalf("resp = %+v", resp)
+	}
+}
+
 func TestMoveWithoutADestinationIsAUsageError(t *testing.T) {
 	d := seed(t)
 	resp := d.handle(context.Background(), Request{ID: "1", Cmd: []string{"move"}, Args: map[string]any{"positional": []any{"7"}}})

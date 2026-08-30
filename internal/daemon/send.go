@@ -74,7 +74,7 @@ func (d *Daemon) handleReply(ctx context.Context, req Request, resp Response) Re
 	}
 	parent, err := d.Mirror.Row(acct.Name, folder, uid)
 	if errors.Is(err, mirror.ErrNotFound) {
-		resp.Code, resp.Error = "not_found", fmt.Sprintf("no message %s in the mirror", id)
+		resp.Code, resp.Error = "not_found", noSuchMessage(id)
 		return resp
 	}
 	if err != nil {
@@ -479,7 +479,7 @@ func (d *Daemon) handleForward(ctx context.Context, req Request, resp Response) 
 	}
 	original, err := d.Mirror.Row(acct.Name, folder, uid)
 	if errors.Is(err, mirror.ErrNotFound) {
-		resp.Code, resp.Error = "not_found", fmt.Sprintf("no message %s in the mirror", id)
+		resp.Code, resp.Error = "not_found", noSuchMessage(id)
 		return resp
 	}
 	if err != nil {
