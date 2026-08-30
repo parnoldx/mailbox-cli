@@ -1,0 +1,197 @@
+package cli
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"text/tabwriter"
+
+	"mailbox/internal/daemon"
+)
+
+// runCompose writes a mail and sends it, or files it in drafts. Everything the
+// Daemon needs is on the command line or on stdin: this is a CLI an agent
+// drives, so there is no editor and no prompt.
+func runCompose(in *input, stdout, stderr io.Writer) int {
+	to := in.List("to")
+	if len(to) == 0 {
+		fmt.Fprint(stderr, "compose needs a recipient: --to ADDR\n")
+		return ExitUsage
+	}
+	if in.Str("subject") == "" {
+		fmt.Fprint(stderr, "compose needs a --subject\n")
+		return ExitUsage
+	}
+	text, code := bodyText(in.Str("body"), stderr)
+	if code != ExitOK {
+		return code
+	}
+	paths, code := attachments(in.List("attach"), stderr)
+	if code != ExitOK {
+		return code
+	}
+	// A draft is not a send and does not go through the outbox: it is an
+	// append to the drafts box, which is what `draft edit` does too.
+	cmd, render := []string{"send"}, printSent
+	if in.Bool("draft") {
+		cmd, render = []string{"draft", "save"}, printDraftSaved
+	}
+	return request(daemon.Request{
+		ID: "1", Cmd: cmd,
+		Args: map[string]any{
+			"to": to, "cc": in.List("cc"), "bcc": in.List("bcc"),
+			"subject": in.Str("subject"), "body": text, "attach": paths,
+			"account": in.Str("account"),
+		},
+	}, in.JSON(), render, stdout, stderr)
+}
+
+// runReply answers a Message. The recipients and the References come from the
+// Daemon's copy of the parent, so a caller never assembles a thread by hand.
+func runReply(in *input, stdout, stderr io.Writer) int {
+	text, code := bodyText(in.Str("body"), stderr)
+	if code != ExitOK {
+		return code
+	}
+	paths, code := attachments(in.List("attach"), stderr)
+	if code != ExitOK {
+		return code
+	}
+	// The daemon builds the reply either way: who to answer and what thread it
+	// belongs to come from the parent, so --draft changes where it lands and
+	// nothing else.
+	render := printSent
+	if in.Bool("draft") {
+		render = printDraftSaved
+	}
+	return request(daemon.Request{
+		ID: "1", Cmd: []string{"reply"},
+		Args: map[string]any{
+			"positional": in.First(), "all": in.Bool("all"),
+			"to": in.List("to"), "cc": in.List("cc"),
+			"subject": in.Str("subject"), "body": text, "attach": paths,
+			"draft": in.Bool("draft"),
+		},
+	}, in.JSON(), render, stdout, stderr)
+}
+
+// outboxVerb shows the queue, or moves one mail in it.
+func outboxVerb(verb string) func(*input, io.Writer, io.Writer) int {
+	return func(in *input, stdout, stderr io.Writer) int {
+		render := printOutbox
+		if verb != "list" {
+			render = printSent
+		}
+		return request(daemon.Request{
+			ID: "1", Cmd: []string{"outbox", verb},
+			Args: map[string]any{"positional": in.First()},
+		}, in.JSON(), render, stdout, stderr)
+	}
+}
+
+// bodyText takes the body from --body, or from stdin when it is piped in. A
+// mail whose text came from a heredoc is the ordinary case for an agent.
+func bodyText(body string, stderr io.Writer) (string, int) {
+	if body != "" && body != "-" {
+		return body, ExitOK
+	}
+	info, err := os.Stdin.Stat()
+	if err == nil && info.Mode()&os.ModeCharDevice != 0 && body != "-" {
+		// A terminal, and no --body: there is nothing to send and nothing to
+		// wait for. Waiting on a tty here would just look like a hang.
+		fmt.Fprint(stderr, "no body: pass --body TEXT, or pipe the text in\n")
+		return "", ExitUsage
+	}
+	text, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		fmt.Fprintf(stderr, "read body: %v\n", err)
+		return "", ExitAPI
+	}
+	return string(text), ExitOK
+}
+
+// attachments resolves each path the way `attachment save` resolves --output:
+// the Daemon reads the file, so the path has to mean the same thing there as it
+// does in the caller's shell.
+func attachments(paths []string, stderr io.Writer) ([]string, int) {
+	out := make([]string, 0, len(paths))
+	for _, p := range paths {
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			fmt.Fprintf(stderr, "cannot resolve %s: %v\n", p, err)
+			return nil, ExitAPI
+		}
+		if _, err := os.Stat(abs); err != nil {
+			fmt.Fprintf(stderr, "cannot attach %s: %v\n", p, err)
+			return nil, ExitUsage
+		}
+		out = append(out, abs)
+	}
+	return out, ExitOK
+}
+
+// repeated is a flag that may be given more than once.
+type repeated []string
+
+func (r *repeated) String() string { return strings.Join(*r, ", ") }
+
+func (r *repeated) Set(v string) error {
+	*r = append(*r, v)
+	return nil
+}
+
+// printSent says what happened to the mail, in two facts: it went, and where
+// the copy of it is.
+func printSent(stdout, stderr io.Writer, resp daemon.Response) {
+	m, ok := resp.Data.(map[string]any)
+	if !ok {
+		enc := json.NewEncoder(stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(resp.Data)
+		return
+	}
+	if state := str(m["state"]); state == "cancelled" {
+		fmt.Fprintf(stdout, "cancelled #%v\n", m["id"])
+		return
+	}
+	fmt.Fprintf(stdout, "sent to %s\n", strings.Join(strs(asAny(m["recipients"])), ", "))
+	if id := str(m["id"]); id != "" {
+		fmt.Fprintf(stdout, "filed as %s\n", id)
+	} else {
+		fmt.Fprintln(stderr, "notice: the copy is not filed yet — the daemon will retry it")
+	}
+}
+
+func printOutbox(stdout, stderr io.Writer, resp daemon.Response) {
+	rows, ok := rowsOf(resp.Data)
+	if !ok {
+		enc := json.NewEncoder(stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(resp.Data)
+		return
+	}
+	if len(rows) == 0 {
+		fmt.Fprintln(stderr, "the outbox is empty")
+		return
+	}
+	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
+	for _, r := range rows {
+		m, ok := r.(map[string]any)
+		if !ok {
+			continue
+		}
+		where := str(m["placement"])
+		if where == "" {
+			where = strings.Join(strs(asAny(m["recipients"])), ", ")
+		}
+		fmt.Fprintf(tw, "#%v\t%v\t%v\t%v\t%v\n", m["id"], m["state"], m["created"],
+			truncate(str(m["subject"]), 40), truncate(where, 40))
+		if e := str(m["error"]); e != "" {
+			fmt.Fprintf(tw, "\t\t\t%s\n", truncate(strings.ReplaceAll(e, "\n", " "), 72))
+		}
+	}
+	_ = tw.Flush()
+}

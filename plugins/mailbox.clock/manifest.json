@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "mailbox.clock",
+  "name": "Mailbox Clock",
+  "version": "1.7.0",
+  "author": "Omarchy",
+  "description": "Date/time label with a calendar popup, natural-language event/task add with a colour-coded entry screen, and a next-event reminder on the clock. Reads and writes through the mailbox daemon.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Mailbox Clock",
+    "description": "Date/time label with a calendar popup",
+    "category": "Time",
+    "allowMultiple": false
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.clock"
+  }
+}

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+node --test "$root/tests/model.test.js"
+node --test "$root/tests/mailbox.test.js"
+node --test "$root/tests/panel-static.test.js"
+"$root/tests/suggest.test.sh"

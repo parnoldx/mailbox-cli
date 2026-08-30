@@ -1,0 +1,58 @@
+mailbox — mail, calendars, todos and contacts
+
+USAGE
+  mailbox <command> [flags]
+
+MAIL
+  box           The mail in a box
+  message       One message, read whole
+  thread        A whole conversation
+  search        Search every box
+  compose       Write and send a mail
+  reply         Answer, in its thread
+  forward       Send a message on
+  draft         Mail written but not sent
+  outbox        What is queued to go out
+  attachment    The files a message carries
+
+ORGANIZE
+  screener      Senders waiting for a decision
+  route         Where a sender's mail goes
+  aside         The read-later pile
+  label         Labels on mail
+  move          Move mail to another box
+  seen          Mark mail read
+  unseen        Mark mail unread
+  trash         Move mail to Trash
+  spam          Move mail to Junk
+
+CALENDAR & TASKS & CONTACTS
+  agenda        What is on
+  calendar      The calendars and task lists
+  event         One entry, and when it repeats
+  todo          The task lists
+  habit         The daily practices
+  contact       The address books
+
+SYSTEM
+  status        What the mirror holds
+  daemon        Run the daemon in the foreground
+  setup         Set up this machine
+  doctor        Find what is not working
+  sieve         Scripts on the server
+  commands      Machine command index
+  version       Installed version
+
+HELP TOPICS
+  ids           How mail and entries are named
+  exit-codes    What an exit status means
+  environment   The variables that are read
+  architecture  How a command is answered
+
+FLAGS
+  --json        print the response envelope
+
+Ids are [account/]box:uid — 36722, Screener:342, gmx/INBOX:412.
+
+  mailbox <command> --help   one command
+  mailbox help <topic>       a topic above
