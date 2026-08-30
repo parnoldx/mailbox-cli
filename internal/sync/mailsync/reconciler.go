@@ -358,7 +358,7 @@ func partsOf(b Body) []mirror.Part {
 	for _, p := range b.Parts {
 		out = append(out, mirror.Part{
 			Path: p.Path, MIMEType: p.MIMEType, Filename: p.Filename,
-			Disposition: p.Disposition, Size: p.Size,
+			Disposition: p.Disposition, Size: p.Size, ContentID: p.ContentID,
 		})
 	}
 	return out

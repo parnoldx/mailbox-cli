@@ -7,6 +7,59 @@ Item {
 
     readonly property bool htmlMode: !!(win.openMsg && win.openMsg.body_html && win.openMsg.body_html.length > 0)
 
+    // Dark mail. -1 = follow the Omarchy theme, 0 = force the mail's own colours,
+    // 1 = force the dark treatment. Reset to -1 whenever a new message opens.
+    property int darkOverride: -1
+    readonly property bool applyDark: root.htmlMode
+        && (darkOverride === -1 ? Theme.dark : darkOverride === 1)
+    // Vendored Dark Reader engine, injected from C++ as a plain string.
+    function drJs() { return (typeof DarkReaderJs === "string") ? DarkReaderJs : "" }
+
+    // Inline images. An HTML body refers to them as <img src="cid:ID">; the
+    // bytes live in an `inline` part the daemon only fetches when named. We pull
+    // each one with `attachment bytes` and, once the page is up, point the <img>
+    // at a data: URI from JavaScript — a data: URI per image is fine in the live
+    // DOM, but the whole set at once would blow loadHtml's 2 MB argument cap.
+    // cidMap is keyed by Content-ID; cidMsg is the message it was built for.
+    property var cidMap: ({})
+    property string cidMsg: ""
+    property bool webLoaded: false
+
+    function msgId() { return win.openMsg ? String(win.openMsg.id || "") : "" }
+
+    // The inline parts this body actually references and we have not fetched.
+    function inlineNeeds() {
+        var out = []
+        if (!root.htmlMode) return out
+        var html = win.openMsg.body_html
+        var atts = win.openAttachments || []
+        for (var i = 0; i < atts.length; i++) {
+            var a = atts[i]
+            var cid = String(a.content_id || "")
+            if (!cid || a.disposition !== "inline") continue
+            if (String(a.mime_type || "").indexOf("image") !== 0) continue
+            if (root.cidMap[cid] !== undefined) continue
+            if (html.indexOf("cid:" + cid) < 0) continue
+            out.push({ id: a.id, cid: cid })
+        }
+        return out
+    }
+
+    // Point every <img src="cid:CID"> at its data: URI, in the live DOM.
+    function patchCid(cid, uri) {
+        if (!root.webLoaded) return
+        var js =
+          "(function(){var c=" + JSON.stringify("cid:" + cid) + ",u=" + JSON.stringify(uri) + ";" +
+          "var n=document.getElementsByTagName('img');" +
+          "for(var i=0;i<n.length;i++){if(n[i].getAttribute('src')===c)n[i].src=u;}})();"
+        web.runJavaScript(js)
+    }
+
+    function flushCids() {
+        for (var cid in root.cidMap)
+            root.patchCid(cid, root.cidMap[cid])
+    }
+
     function fromName(s) {
         if (!s) return ""
         var m = s.match(/^\s*"?(.*?)"?\s*<([^>]+)>\s*$/)
@@ -29,18 +82,23 @@ Item {
         return b.trim() || "(this message has no text part yet)"
     }
 
-    // Wrap the message HTML in a stylesheet built from the live Omarchy palette,
-    // so a newsletter lands on the same background as the rest of the app and
-    // retints when the theme changes.
+    // Wrap the message HTML in a stylesheet built from the live Omarchy palette.
+    // By default we render the mail as its author designed it on a clean white
+    // sheet; on a dark Omarchy theme (or when the reader forces it) we also
+    // inline the Dark Reader engine, which analyses the mail's real styles and
+    // images and re-tints them onto the app's own background.
     function themedHtml() {
         if (!root.htmlMode) return ""
-        // Render the mail as its author designed it, on a clean sheet — the way
-        // every desktop mail client does. We only stop it scrolling sideways:
-        // clamp every box to the viewport and let fixed-width tables collapse.
+        var dark = root.applyDark
+        var pageBg = dark ? String(Theme.background) : "#ffffff"
+        var pageFg = dark ? String(Theme.foreground) : "#1b1b1b"
+        var sbThumb = dark ? String(Theme.selection) : "#c9c9c9"
+        // Clamp every box to the viewport and let fixed-width tables collapse so
+        // the mail never scrolls sideways.
         var css =
           "html{overflow-x:hidden !important;max-width:100% !important;}" +
           "*{max-width:100% !important;box-sizing:border-box !important;}" +
-          "body{margin:0;padding:22px;background:#ffffff;color:#1b1b1b;" +
+          "body{margin:0;padding:22px;background:" + pageBg + ";color:" + pageFg + ";" +
           "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;" +
           "font-size:14px;line-height:1.6;overflow-x:hidden !important;" +
           "word-wrap:break-word;overflow-wrap:break-word;}" +
@@ -51,20 +109,76 @@ Item {
           "a{word-break:break-word;}" +
           "::-webkit-scrollbar{width:9px;}" +
           "::-webkit-scrollbar:horizontal{height:0 !important;display:none !important;}" +
-          "::-webkit-scrollbar-thumb{background:#c9c9c9;border-radius:5px;}"
-        return "<!DOCTYPE html><html><head><meta charset='utf-8'>" +
-               "<meta name='viewport' content='width=device-width, initial-scale=1'>" +
-               "<meta name='color-scheme' content='light'>" +
-               "<style>" + css + "</style></head><body>" + win.openMsg.body_html + "</body></html>"
+          "::-webkit-scrollbar-thumb{background:" + sbThumb + ";border-radius:5px;}"
+
+        var head =
+          "<!DOCTYPE html><html><head><meta charset='utf-8'>" +
+          "<meta name='viewport' content='width=device-width, initial-scale=1'>" +
+          "<meta name='color-scheme' content='" + (dark ? "dark" : "light") + "'>" +
+          "<style>" + css + "</style></head>"
+
+        var tail = ""
+        if (dark) {
+            var lib = root.drJs()
+            if (lib.length > 0) {
+                var opts = JSON.stringify({
+                    mode: 1,
+                    brightness: 100,
+                    contrast: 90,
+                    sepia: 0,
+                    darkSchemeBackgroundColor: String(Theme.background),
+                    darkSchemeTextColor: String(Theme.foreground),
+                    selectionColor: String(Theme.selection)
+                })
+                tail =
+                  "<scr" + "ipt>" + lib + "</scr" + "ipt>" +
+                  "<scr" + "ipt>try{DarkReader.enable(" + opts + ");}" +
+                  "catch(e){console.warn('DarkReader:',e);}</scr" + "ipt>"
+            }
+        }
+
+        return head + "<body>" + win.openMsg.body_html + tail + "</body></html>"
     }
 
+    function renderHtml() {
+        if (!root.htmlMode) return
+        root.webLoaded = false
+        web.loadHtml(root.themedHtml(), "about:blank")
+    }
+
+    // Render the mail now, then fetch every inline image it references and drop
+    // each one into the DOM as it lands.
     function reloadHtml() {
-        if (root.htmlMode) web.loadHtml(root.themedHtml(), "about:blank")
+        if (!root.htmlMode) return
+        if (root.cidMsg !== root.msgId()) {
+            root.cidMap = ({})
+            root.cidMsg = root.msgId()
+        }
+        root.renderHtml()
+        var token = root.msgId()
+        root.inlineNeeds().forEach(function (need) {
+            Mailbox.call(["attachment", "bytes"], { positional: need.id }, function (r) {
+                if (root.msgId() !== token) return
+                if (r && r.ok && r.data && r.data.base64) {
+                    var uri = "data:" + (r.data.mime_type || "image/png") + ";base64," + r.data.base64
+                    root.cidMap[need.cid] = uri
+                    root.patchCid(need.cid, uri)
+                }
+            })
+        })
     }
 
     onHtmlModeChanged: reloadHtml()
-    Connections { target: win; function onOpenMsgChanged() { root.reloadHtml() } }
-    Connections { target: Theme; function onChanged() { root.reloadHtml() } }
+    onApplyDarkChanged: renderHtml()
+    Connections {
+        target: win
+        function onOpenMsgChanged() {
+            root.darkOverride = -1
+            root.reloadHtml()
+        }
+        function onOpenAttachmentsChanged() { root.reloadHtml() }
+    }
+    Connections { target: Theme; function onChanged() { root.renderHtml() } }
 
     // ---- Header (does not scroll) -------------------------------------------
     Column {
@@ -132,6 +246,39 @@ Item {
                     }
                 }
             }
+
+            // Dark-mail toggle: flips this message between the Dark Reader
+            // treatment and its original colours.
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: root.htmlMode
+                width: dmRow.implicitWidth + 18
+                height: 20
+                radius: 10
+                color: dmHover.hovered ? Theme.cardHover : Theme.selection
+                Behavior on color { ColorAnimation { duration: Theme.anim } }
+                Row {
+                    id: dmRow
+                    anchors.centerIn: parent
+                    spacing: 5
+                    Text {
+                        text: root.applyDark ? "" : ""
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 10
+                        color: Theme.textDim
+                        Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    }
+                    Text {
+                        text: root.applyDark ? "dark mail" : "original colours"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 10
+                        color: Theme.textDim
+                        Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    }
+                }
+                HoverHandler { id: dmHover }
+                TapHandler { onTapped: root.darkOverride = root.applyDark ? 0 : 1 }
+            }
         }
 
         Text {
@@ -178,13 +325,67 @@ Item {
             }
         }
 
-        Flow {
+        // Attachments. When every part is an inline image — something the body
+        // refers to rather than a real enclosure — collapse the cards behind a
+        // small toggle so a picture-heavy newsletter doesn't open under a wall
+        // of chips.
+        Column {
+            id: attachBlock
             width: parent.width
             spacing: 10
             visible: win.openAttachments.length > 0
-            Repeater {
-                model: win.openAttachments
-                AttachmentChip { att: modelData }
+
+            readonly property bool allInline: {
+                if (win.openAttachments.length === 0) return false
+                for (var i = 0; i < win.openAttachments.length; i++) {
+                    var a = win.openAttachments[i]
+                    if (a.disposition !== "inline") return false
+                    if (String(a.mime_type || "").indexOf("image") !== 0) return false
+                }
+                return true
+            }
+            property bool expanded: false
+            onAllInlineChanged: expanded = false
+
+            Rectangle {
+                visible: attachBlock.allInline
+                width: exRow.implicitWidth + 20
+                height: 24
+                radius: 12
+                color: exHover.hovered ? Theme.cardHover : Theme.selection
+                Behavior on color { ColorAnimation { duration: Theme.anim } }
+                Row {
+                    id: exRow
+                    anchors.centerIn: parent
+                    spacing: 6
+                    Text {
+                        text: attachBlock.expanded ? "" : ""
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 9
+                        color: Theme.textDim
+                        Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    }
+                    Text {
+                        text: win.openAttachments.length
+                              + (win.openAttachments.length === 1 ? " inline image" : " inline images")
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 10
+                        color: Theme.textDim
+                        Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    }
+                }
+                HoverHandler { id: exHover }
+                TapHandler { onTapped: attachBlock.expanded = !attachBlock.expanded }
+            }
+
+            Flow {
+                width: parent.width
+                spacing: 10
+                visible: !attachBlock.allInline || attachBlock.expanded
+                Repeater {
+                    model: win.openAttachments
+                    AttachmentChip { att: modelData }
+                }
             }
         }
 
@@ -205,8 +406,9 @@ Item {
     }
 
     // ---- Body ------------------------------------------------------------
-    // HTML mail: a real WebEngine render of the mail as authored, on a white
-    // sheet inset from the themed chrome. De-tracked by PixelBlock.
+    // HTML mail: a real WebEngine render inset from the themed chrome. Rendered
+    // on a white sheet as authored, or re-tinted by Dark Reader onto the app's
+    // own background when applyDark. De-tracked by PixelBlock.
     Rectangle {
         id: sheet
         anchors { top: header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
@@ -216,10 +418,11 @@ Item {
         anchors.bottomMargin: 22
         visible: root.htmlMode && !win.openLoading
         radius: Theme.radiusSmall
-        color: "#ffffff"
+        color: root.applyDark ? Theme.background : "#ffffff"
         border.width: 1
         border.color: Theme.hairline
         clip: true
+        Behavior on color { ColorAnimation { duration: Theme.anim } }
         Behavior on border.color { ColorAnimation { duration: Theme.anim } }
     }
 
@@ -229,7 +432,7 @@ Item {
         anchors.fill: parent
         anchors.margins: 1
         visible: root.htmlMode && !win.openLoading
-        backgroundColor: "#ffffff"
+        backgroundColor: root.applyDark ? Theme.background : "#ffffff"
         onNavigationRequested: function (req) {
             if (req.navigationType === WebEngineNavigationRequest.LinkClickedNavigation) {
                 Qt.openUrlExternally(req.url)
@@ -237,6 +440,12 @@ Item {
             }
         }
         onNewWindowRequested: function (req) { Qt.openUrlExternally(req.requestedUrl) }
+        onLoadingChanged: function (req) {
+            if (req.status === WebEngineView.LoadSucceededStatus) {
+                root.webLoaded = true
+                root.flushCids()
+            }
+        }
     }
 
     // Plain / Markdown mail: native rich text.

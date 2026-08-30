@@ -56,6 +56,10 @@ type PartInfo struct {
 	Filename    string
 	Disposition string // "attachment", "inline", or empty
 	Size        int64
+	// ContentID is the part's Content-ID with the angle brackets stripped, so
+	// an HTML body's <img src="cid:..."> can be matched to it. Empty when the
+	// part carried none.
+	ContentID string
 }
 
 // FlagUpdate is one message whose flags changed since a modseq.

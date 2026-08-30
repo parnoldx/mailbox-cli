@@ -76,6 +76,9 @@ type Part struct {
 	Filename    string
 	Disposition string // "attachment", "inline", or empty
 	Size        int64
+	// ContentID is the part's Content-ID without angle brackets, so an HTML
+	// body's <img src="cid:..."> can be resolved to it. Empty when none.
+	ContentID string
 }
 
 // Name is what to call this Part on disk. A part with no filename still has to

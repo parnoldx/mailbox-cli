@@ -226,12 +226,13 @@ func (t *Tx) PutParts(messageID int64, parts []Part) error {
 	}
 	for _, p := range parts {
 		if _, err := t.tx.Exec(`
-			INSERT INTO parts (message_id, path, mime_type, filename, disposition, size)
-			VALUES (?, ?, ?, ?, ?, ?)
+			INSERT INTO parts (message_id, path, mime_type, filename, disposition, size, content_id)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT (message_id, path) DO UPDATE SET
 			  mime_type = excluded.mime_type, filename = excluded.filename,
-			  disposition = excluded.disposition, size = excluded.size`,
-			messageID, p.Path, p.MIMEType, p.Filename, p.Disposition, p.Size); err != nil {
+			  disposition = excluded.disposition, size = excluded.size,
+			  content_id = excluded.content_id`,
+			messageID, p.Path, p.MIMEType, p.Filename, p.Disposition, p.Size, p.ContentID); err != nil {
 			return err
 		}
 	}

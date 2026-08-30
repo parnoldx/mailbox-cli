@@ -194,6 +194,9 @@ void MailboxClient::answerOffline(const QString &id, const QStringList &cmd, con
     } else if (verb == "attachment save") {
         reply["ok"] = false;
         reply["error"] = "offline: start the daemon to save attachments";
+    } else if (verb == "attachment bytes") {
+        reply["ok"] = false;
+        reply["error"] = "offline: start the daemon to load inline images";
     } else if (verb == "status") {
         reply["data"] = QVariantList{QVariantMap{{"account", "primary"}, {"count", 3}}};
     } else {

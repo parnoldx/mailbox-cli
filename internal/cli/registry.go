@@ -394,6 +394,14 @@ func tree(l Locals) []*Command {
 					},
 					Run: runAttachmentSave,
 				},
+				{
+					Name: "bytes", Short: "Fetch one small part as base64", Needs: true,
+					Long: "For a reading pane inlining the images an HTML body refers to. " +
+						"Capped well below attachment save, which streams a real file to disk.",
+					Usage:    []string{"mailbox attachment bytes ID[:INDEX]"},
+					Examples: []string{"mailbox attachment bytes 36722:2"},
+					Run:      runAttachmentBytes,
+				},
 			},
 		},
 

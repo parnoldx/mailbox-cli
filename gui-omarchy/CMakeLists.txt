@@ -30,6 +30,7 @@ qt_add_resources(mailbox-omarchy "qml"
         qml/Kbd.qml
         qml/AttachmentChip.qml
         qml/QuickLook.qml
+        qml/vendor/darkreader.js
 )
 
 target_include_directories(mailbox-omarchy PRIVATE src)

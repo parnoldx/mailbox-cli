@@ -3,6 +3,7 @@ package daemon
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -250,6 +251,43 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 			return resp
 		}
 		resp.OK, resp.Data = true, saved
+		return resp
+
+	case "attachment bytes":
+		id, _ := req.Args["positional"].(string)
+		acct, folder, uid, index, err := d.resolveAttachmentID(id)
+		if err != nil {
+			resp.Code, resp.Error = "usage", err.Error()
+			return resp
+		}
+		parts, err := d.partsOf(acct, folder, uid)
+		if err != nil {
+			return fail(resp, id, err)
+		}
+		part, err := pick(acct, folder, uid, parts, index)
+		if err != nil {
+			resp.Code, resp.Error = "usage", err.Error()
+			return resp
+		}
+		if part.Size > maxInlineBytes {
+			resp.Code, resp.Error = "usage", fmt.Sprintf(
+				"%s is %d bytes; use `attachment save` for anything over %d",
+				part.Name(), part.Size, int64(maxInlineBytes))
+			return resp
+		}
+		if acct.Reconciler == nil {
+			resp.Code, resp.Error = "api", "this daemon cannot fetch: no server connection"
+			return resp
+		}
+		body, err := acct.Reconciler.Driver.FetchPart(ctx, folder, uid, part.Path)
+		if err != nil {
+			resp.Code, resp.Error = "api", err.Error()
+			return resp
+		}
+		resp.OK, resp.Data = true, inlineBytes{
+			Filename: part.Name(), MIMEType: part.MIMEType, Size: len(body),
+			ContentID: part.ContentID, Base64: base64.StdEncoding.EncodeToString(body),
+		}
 		return resp
 
 	case "thread view":
@@ -561,6 +599,9 @@ type attachment struct {
 	MIMEType    string `json:"mime_type"`
 	Disposition string `json:"disposition"`
 	Size        int64  `json:"size"`
+	// ContentID lets a reading pane match an inline part to an <img src="cid:">
+	// in the HTML body. Empty for a plain enclosure.
+	ContentID string `json:"content_id,omitempty"`
 }
 
 func viewParts(a *Account, folder string, uid uint32, parts []mirror.Part) []attachment {
@@ -569,10 +610,25 @@ func viewParts(a *Account, folder string, uid uint32, parts []mirror.Part) []att
 		out = append(out, attachment{
 			ID: attachmentID(a, folder, uid, i+1), Index: i + 1,
 			Filename: p.Name(), MIMEType: p.MIMEType,
-			Disposition: p.Disposition, Size: p.Size,
+			Disposition: p.Disposition, Size: p.Size, ContentID: p.ContentID,
 		})
 	}
 	return out
+}
+
+// maxInlineBytes caps `attachment bytes`. Inline images a body refers to are
+// logos and banners; anything larger is a real enclosure and belongs in
+// `attachment save`, which streams to disk instead of base64 down the socket.
+const maxInlineBytes = 10 << 20
+
+// inlineBytes is what `attachment bytes` returns: one part decoded and
+// base64-wrapped, small enough to inline into an HTML document.
+type inlineBytes struct {
+	Filename  string `json:"filename"`
+	MIMEType  string `json:"mime_type"`
+	Size      int    `json:"size"`
+	ContentID string `json:"content_id,omitempty"`
+	Base64    string `json:"base64"`
 }
 
 // parseAttachmentID reads [box:]uid[:index]. The index is optional because a

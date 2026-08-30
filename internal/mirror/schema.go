@@ -2,7 +2,7 @@ package mirror
 
 // schemaVersion is bumped whenever the schema below changes. On a mismatch the
 // Mirror file is deleted and rebuilt rather than migrated (ADR-0013).
-const schemaVersion = 10
+const schemaVersion = 11
 
 const schema = `
 CREATE TABLE meta (
@@ -79,6 +79,9 @@ CREATE TABLE parts (
   filename    TEXT    NOT NULL DEFAULT '',
   disposition TEXT    NOT NULL DEFAULT '',
   size        INTEGER NOT NULL DEFAULT 0,
+  -- Content-ID without angle brackets, so an HTML body's cid: image src can be
+  -- resolved to the part that carries the bytes.
+  content_id  TEXT    NOT NULL DEFAULT '',
   PRIMARY KEY (message_id, path)
 );
 

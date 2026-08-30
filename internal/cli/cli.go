@@ -93,6 +93,31 @@ func runAttachmentSave(in *input, stdout, stderr io.Writer) int {
 	}, in.JSON(), printSaved, stdout, stderr)
 }
 
+// runAttachmentBytes fetches one small part and prints the daemon's reply as
+// JSON — it exists for a reading pane inlining cid: images, not for a terminal.
+func runAttachmentBytes(in *input, stdout, stderr io.Writer) int {
+	return request(daemon.Request{
+		ID: "1", Cmd: []string{"attachment", "bytes"},
+		Args: map[string]any{"positional": in.First()},
+	}, in.JSON(), printInlineBytes, stdout, stderr)
+}
+
+func printInlineBytes(stdout, stderr io.Writer, resp daemon.Response) {
+	m, ok := resp.Data.(map[string]any)
+	if !ok {
+		enc := json.NewEncoder(stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(resp.Data)
+		return
+	}
+	size := ""
+	if n, ok := m["size"].(float64); ok {
+		size = " (" + humanBytes(int64(n)) + ")"
+	}
+	fmt.Fprintf(stdout, "%s\t%s%s\n", str(m["filename"]), str(m["mime_type"]), size)
+	fmt.Fprintln(stdout, str(m["base64"]))
+}
+
 func printAttachments(stdout, stderr io.Writer, resp daemon.Response) {
 	rows, ok := rowsOf(resp.Data)
 	if !ok {

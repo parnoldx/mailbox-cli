@@ -24,14 +24,29 @@ itself the instant you switch Omarchy themes.
   cache dir and previews it in-app: PDFs page-rendered (`QtQuick.Pdf`), images
   and text inline, everything else with an "open externally" fallback. Esc / Q /
   click-away dismiss; the toolbar keeps "open externally" and "save as".
+- **Dark mail.** On a dark Omarchy theme the reading view inlines a vendored
+  [Dark Reader](https://github.com/darkreader/darkreader) engine
+  (`qml/vendor/darkreader.js`) and calls `DarkReader.enable()` with the live
+  palette, so a white newsletter lands on the app's own background with photos
+  and logos intact. A header chip flips the current message back to its original
+  colours; light themes never touch the mail.
+- **Inline images.** `<img src="cid:…">` parts are pulled with `attachment
+  bytes` and swapped for `data:` URIs before the page renders. When every
+  attachment is one of these inline images, the cards collapse behind a small
+  `N inline images` toggle instead of a wall of chips.
 - **Real data.** NDJSON to the daemon on `$XDG_RUNTIME_DIR/mailbox.sock`
-  (`box list`, `box view`, `message view`, `attachment list`, `attachment save`).
-  Offline it falls back to a small canned set; green dot = connected, amber = demo.
+  (`box list`, `box view`, `message view`, `attachment list`, `attachment save`,
+  `attachment bytes`). Offline it falls back to a small canned set; green dot =
+  connected, amber = demo.
 
 ## Daemon dependency
 
-This build expects `message view` to return `body_html` (added to
-`internal/daemon/serve.go`). Rebuild and restart the daemon after pulling:
+This build expects `message view` to return `body_html`, `attachment list` to
+carry a `content_id` per part, and an `attachment bytes ID[:INDEX]` verb that
+returns one small inline part base64-wrapped (all in `internal/daemon/serve.go`).
+The Mirror schema is bumped to 11 for the `content_id` column, so the first
+restart **rebuilds the Mirror and resyncs** (ADR-0013). Rebuild and restart the
+daemon after pulling:
 `go build -o bin/mailbox ./cmd/mailbox && systemctl --user restart mailbox`.
 
 ## Why watching the theme is fiddly

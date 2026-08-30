@@ -1,6 +1,7 @@
 #include <QGuiApplication>
 #include <QtWebEngineQuick/QtWebEngineQuick>
 #include <QWebEngineProfile>
+#include <QFile>
 #include <QFont>
 #include <QFontDatabase>
 #include <QIcon>
@@ -40,6 +41,13 @@ int main(int argc, char *argv[]) {
     ctx->setContextProperty("Mailbox", &client);
     ctx->setContextProperty("listModel", &listModel);
     ctx->setContextProperty("PixelBlock", pixelBlock);
+
+    // The vendored Dark Reader engine, handed to QML as a string so ReadingView
+    // can inline it into the HTML-mail document it builds for WebEngine.
+    QString darkReaderJs;
+    if (QFile f(":/qml/vendor/darkreader.js"); f.open(QIODevice::ReadOnly | QIODevice::Text))
+        darkReaderJs = QString::fromUtf8(f.readAll());
+    ctx->setContextProperty("DarkReaderJs", darkReaderJs);
 
     QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreationFailed, &app,

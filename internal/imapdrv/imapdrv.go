@@ -660,6 +660,7 @@ func attachmentParts(bs imap.BodyStructure) []mailsync.PartInfo {
 			Filename:    filename,
 			Disposition: disp,
 			Size:        int64(sp.Size),
+			ContentID:   strings.Trim(sp.ID, "<>"),
 		})
 		return true
 	})

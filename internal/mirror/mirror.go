@@ -232,7 +232,7 @@ func joinIDs(ids []string) string { return strings.Join(ids, " ") }
 // Parts returns what a Message carries, in the order the MIME tree lists it.
 func (m *Mirror) Parts(messageID int64) ([]Part, error) {
 	rows, err := m.db.Query(`
-		SELECT path, mime_type, filename, disposition, size
+		SELECT path, mime_type, filename, disposition, size, content_id
 		  FROM parts WHERE message_id = ? ORDER BY path`, messageID)
 	if err != nil {
 		return nil, err
@@ -241,7 +241,7 @@ func (m *Mirror) Parts(messageID int64) ([]Part, error) {
 	var out []Part
 	for rows.Next() {
 		p := Part{MessageID: messageID}
-		if err := rows.Scan(&p.Path, &p.MIMEType, &p.Filename, &p.Disposition, &p.Size); err != nil {
+		if err := rows.Scan(&p.Path, &p.MIMEType, &p.Filename, &p.Disposition, &p.Size, &p.ContentID); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
