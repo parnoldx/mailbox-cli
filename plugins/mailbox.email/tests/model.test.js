@@ -1,0 +1,129 @@
+const test = require("node:test")
+const assert = require("node:assert/strict")
+const Model = require("../Model.js")
+
+test("cleanSenderName extracts clean names or emails", () => {
+  assert.equal(Model.cleanSenderName('"Alice Smith" <alice@example.com>'), "Alice Smith")
+  assert.equal(Model.cleanSenderName("Bob <bob@example.com>"), "Bob")
+  assert.equal(Model.cleanSenderName("<support@company.com>"), "support")
+  assert.equal(Model.cleanSenderName("dev@project.org"), "dev")
+  assert.equal(Model.cleanSenderName("John Doe"), "John Doe")
+  assert.equal(Model.cleanSenderName(""), "")
+})
+
+test("cleanAddress extracts valid email addresses", () => {
+  assert.equal(Model.cleanAddress('"Alice Smith" <alice@example.com>'), "alice@example.com")
+  assert.equal(Model.cleanAddress("<bob@example.com>"), "bob@example.com")
+  assert.equal(Model.cleanAddress("carol@example.com"), "carol@example.com")
+  assert.equal(Model.cleanAddress(""), "")
+})
+
+test("extractInitials generates 1-2 character uppercase initials", () => {
+  assert.equal(Model.extractInitials("Alice Smith <alice@example.com>"), "AS")
+  assert.equal(Model.extractInitials("Alice <alice@example.com>"), "AL")
+  assert.equal(Model.extractInitials("A <a@example.com>"), "A")
+  assert.equal(Model.extractInitials("support@company.com"), "SU")
+  assert.equal(Model.extractInitials("john.doe@test.com"), "JD")
+  assert.equal(Model.extractInitials(""), "?")
+})
+
+test("avatarColorIndex hashes deterministically within bounds", () => {
+  const idx1 = Model.avatarColorIndex("alice@example.com", 8)
+  const idx2 = Model.avatarColorIndex("alice@example.com", 8)
+  assert.equal(idx1, idx2)
+  assert.ok(idx1 >= 0 && idx1 < 8)
+
+  const idx3 = Model.avatarColorIndex("bob@example.com", 8)
+  assert.ok(idx3 >= 0 && idx3 < 8)
+})
+
+test("formatRelativeTime formats timestamps correctly", () => {
+  const now = 1756560000000 // Fixed epoch for testing
+  assert.equal(Model.formatRelativeTime(now - 10000, now), "just now")
+  assert.equal(Model.formatRelativeTime(now - 5 * 60 * 1000, now), "5m ago")
+  assert.equal(Model.formatRelativeTime(now - 45 * 60 * 1000, now), "45m ago")
+})
+
+test("filterMessages filters by account and seen status", () => {
+  const msgs = [
+    { id: "1", account: "primary", seen: false, subject: "M1" },
+    { id: "2", account: "primary", seen: true, subject: "M2" },
+    { id: "3", account: "work", seen: false, subject: "M3" },
+    { id: "4", account: "work", seen: true, subject: "M4" }
+  ]
+
+  const unreadAll = Model.filterMessages(msgs, "", "unread")
+  assert.deepEqual(unreadAll.map(m => m.id), ["1", "3"])
+
+  const prevAll = Model.filterMessages(msgs, "", "previous")
+  assert.deepEqual(prevAll.map(m => m.id), ["2", "4"])
+
+  const unreadWork = Model.filterMessages(msgs, "work", "unread")
+  assert.deepEqual(unreadWork.map(m => m.id), ["3"])
+})
+
+test("screenerCards shapes daemon screener response into display cards", () => {
+  const raw = [
+    {
+      address: "newsletter@sub.com",
+      name: "Weekly Digest",
+      count: 3,
+      unread: 3,
+      newest: "2026-08-30 14:00",
+      subject: "Issue #42",
+      id: "Screener:101"
+    }
+  ]
+
+  const cards = Model.screenerCards(raw, 8)
+  assert.equal(cards.length, 1)
+  assert.equal(cards[0].name, "Weekly Digest")
+  assert.equal(cards[0].address, "newsletter@sub.com")
+  assert.equal(cards[0].count, 3)
+  assert.equal(cards[0].initials, "WD")
+  assert.ok(cards[0].colorIndex >= 0 && cards[0].colorIndex < 8)
+})
+
+test("requestToArgs maps UI actions to daemon socket command format", () => {
+  assert.deepEqual(
+    Model.requestToArgs({ kind: "seen", id: "123", seen: true }),
+    { cmd: ["seen"], args: { positional: "123" } }
+  )
+
+  assert.deepEqual(
+    Model.requestToArgs({ kind: "seen", id: "123", seen: false }),
+    { cmd: ["unseen"], args: { positional: "123" } }
+  )
+
+  assert.deepEqual(
+    Model.requestToArgs({ kind: "aside", id: "123" }),
+    { cmd: ["aside"], args: { positional: "123" } }
+  )
+
+  assert.deepEqual(
+    Model.requestToArgs({ kind: "aside_done", id: "123" }),
+    { cmd: ["aside", "done"], args: { positional: "123" } }
+  )
+
+  assert.deepEqual(
+    Model.requestToArgs({ kind: "route", target: "alice@example.com", to: "inbox" }),
+    { cmd: ["route"], args: { positional: "alice@example.com", to: "inbox" } }
+  )
+
+  assert.deepEqual(
+    Model.requestToArgs({ kind: "route", target: "spam@bad.com", to: "block" }),
+    { cmd: ["route"], args: { positional: "spam@bad.com", to: "block" } }
+  )
+})
+
+test("buildOpenCommand properly interpolates message IDs", () => {
+  assert.equal(
+    Model.buildOpenCommand("default", "123"),
+    "omarchy-launch-floating-terminal-with-presentation mailbox message view '123'"
+  )
+
+  assert.equal(
+    Model.buildOpenCommand("mailbox message view %id", "INBOX:456"),
+    "mailbox message view 'INBOX:456'"
+  )
+})

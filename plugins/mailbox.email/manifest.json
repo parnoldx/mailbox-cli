@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "mailbox.email",
+  "name": "Mailbox",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Unread email and screening for the Omarchy bar, live over the mailbox daemon's unix socket.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Mailbox Email",
+    "description": "Email notifications and screening in the bar",
+    "category": "Utility",
+    "allowMultiple": false
+  }
+}
