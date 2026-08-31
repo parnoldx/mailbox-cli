@@ -137,7 +137,20 @@ func printDecisions(stdout, stderr io.Writer, resp daemon.Response) {
 // move and not a route: the Routing decides about senders, and what to read
 // later is decided one mail at a time.
 func asideVerb(done bool) func(*input, io.Writer, io.Writer) int {
-	cmd := []string{"aside"}
+	return pileVerb("aside", done)
+}
+
+// replyLaterVerb puts mail in the reply-later pile, and takes it back out. Like
+// aside it is a move and not a route: "I owe this a reply" is decided one mail
+// at a time.
+func replyLaterVerb(done bool) func(*input, io.Writer, io.Writer) int {
+	return pileVerb("reply-later", done)
+}
+
+// pileVerb is the shared body of the hand-tended piles: a Move into the named
+// pile, or — with `done` — back out to the Inbox.
+func pileVerb(name string, done bool) func(*input, io.Writer, io.Writer) int {
+	cmd := []string{name}
 	if done {
 		cmd = append(cmd, "done")
 	}

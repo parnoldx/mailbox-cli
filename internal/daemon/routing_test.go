@@ -69,10 +69,10 @@ func (f *fakeSieve) PutScript(ctx context.Context, name, content string, activat
 }
 
 // screenerBoxes is the Primary Account's set: the Screener and the three Boxes
-// a decision can send mail to, plus the read-later pile.
+// a decision can send mail to, plus the two hand-tended piles.
 var screenerBoxes = []string{
 	"INBOX", routing.BoxScreener, routing.BoxFeed, routing.BoxPaperTrail,
-	routing.BoxBlock, routing.BoxAside,
+	routing.BoxBlock, routing.BoxAside, routing.BoxReplyLater,
 }
 
 // seedScreener builds a Primary Account with mail from three senders waiting in
@@ -428,6 +428,34 @@ func TestAsideIsAPileAndNotARoute(t *testing.T) {
 	returned := back.Data.([]change)
 	if len(returned) != 1 || strings.Contains(returned[0].NewID, "/") {
 		t.Fatalf("aside done gave %+v, want it back in the inbox", returned)
+	}
+}
+
+// Reply Later is the second hand-tended pile: not a Destination, and moved one
+// mail at a time the same way Aside is.
+func TestReplyLaterIsAPileAndNotARoute(t *testing.T) {
+	d, sieve := seedScreener(t)
+	resp := ask(t, d, []string{"route"}, map[string]any{"positional": []any{"news@example.com"}, "to": "reply later"})
+	if resp.OK {
+		t.Fatal("reply later was accepted as a routing destination")
+	}
+	if !strings.Contains(resp.Error, "mailbox reply-later") {
+		t.Errorf("the error does not say what to do instead: %s", resp.Error)
+	}
+	if sieve.puts != 0 {
+		t.Error("the script was written anyway")
+	}
+
+	// The verb that does exist moves one mail there and back.
+	resp = mustAsk(t, d, []string{"reply-later"}, map[string]any{"positional": []any{routing.BoxScreener + ":10"}})
+	moved := resp.Data.([]change)
+	if len(moved) != 1 || !strings.HasPrefix(moved[0].NewID, "Reply Later:") {
+		t.Fatalf("reply-later gave %+v", moved)
+	}
+	back := mustAsk(t, d, []string{"reply-later", "done"}, map[string]any{"positional": []any{moved[0].NewID}})
+	returned := back.Data.([]change)
+	if len(returned) != 1 || strings.Contains(returned[0].NewID, "/") {
+		t.Fatalf("reply-later done gave %+v, want it back in the inbox", returned)
 	}
 }
 

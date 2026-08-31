@@ -30,6 +30,9 @@ int main(int argc, char *argv[]) {
     OmarchyTheme theme;
     MailboxClient client;
     MailModel listModel;
+    // The two hand-tended piles shown as stacks along the bottom of the Inbox.
+    MailModel asideModel;
+    MailModel replyLaterModel;
 
     auto *pixelBlock = new PixelBlock(&app);
     QWebEngineProfile::defaultProfile()->setUrlRequestInterceptor(pixelBlock);
@@ -40,6 +43,8 @@ int main(int argc, char *argv[]) {
     ctx->setContextProperty("Theme", &theme);
     ctx->setContextProperty("Mailbox", &client);
     ctx->setContextProperty("listModel", &listModel);
+    ctx->setContextProperty("asideModel", &asideModel);
+    ctx->setContextProperty("replyLaterModel", &replyLaterModel);
     ctx->setContextProperty("PixelBlock", pixelBlock);
 
     // The vendored Dark Reader engine, handed to QML as a string so ReadingView

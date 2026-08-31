@@ -22,7 +22,8 @@ ApplicationWindow {
         { key: "Feed",        label: "The Feed",    glyph: "\uf09e", blurb: "Newsletters and things to read at leisure" },
         { key: "Paper Trail", label: "Paper Trail", glyph: "\uf0f6", blurb: "Receipts, confirmations, invoices" },
         { key: "Screener",    label: "The Screener",glyph: "\uf0c0", blurb: "New senders waiting on a decision" },
-        { key: "Aside",       label: "Set Aside",   glyph: "\uf02e", blurb: "Pulled out to deal with later" }
+        { key: "Aside",       label: "Set Aside",   glyph: "\uf02e", blurb: "Pulled out to deal with later" },
+        { key: "Reply Later", label: "Reply Later", glyph: "\uf112", blurb: "Mail you owe a reply" }
     ]
 
     property int bucketIndex: 0
@@ -64,6 +65,22 @@ ApplicationWindow {
             win.refreshBucket()
         })
     }
+    // Put the open message into one of the bottom-stack piles: leave the reader,
+    // fire the move, then refresh the list, the counts and the stacks behind it.
+    // `pile` is "aside" or "reply-later"; `label` is what the flash says.
+    function pileCurrent(pile, label) {
+        if (!win.openMsg) return
+        var id = win.openMsg.id
+        win.back()
+        Mailbox.call([pile], { positional: id }, function (r) {
+            win.flash(r && r.ok ? label : (label + " failed"))
+            win.loadCounts()
+            win.refreshBucket()
+            win.refreshStacks()
+        })
+    }
+    function setAsideCurrent() { pileCurrent("aside", "Set aside") }
+    function replyLaterCurrent() { pileCurrent("reply-later", "Reply later") }
     // Called by ComposerView when Send is pressed: close the view now, hand the
     // payload to the toast, which fires the real call after the grace period.
     function beginSend(payload) {
@@ -100,10 +117,23 @@ ApplicationWindow {
         })
     }
 
+    // The two hand-tended piles shown as stacks along the bottom of the Inbox.
+    // Kept fresh alongside the Inbox list and after anything that moves mail in
+    // or out of them.
+    function refreshStacks() {
+        Mailbox.call(["box", "view"], { positional: "Reply Later", limit: 12 }, function (r) {
+            replyLaterModel.setRows(r.ok && r.data ? r.data : [])
+        })
+        Mailbox.call(["box", "view"], { positional: "Aside", limit: 12 }, function (r) {
+            asideModel.setRows(r.ok && r.data ? r.data : [])
+        })
+    }
+
     function loadBucket() {
         win.openId = ""
         win.openMsg = null
         refreshBucket()
+        refreshStacks()
     }
 
     function switchTo(i) {
@@ -206,11 +236,12 @@ ApplicationWindow {
             // socket coming up just after --open raised it).
             if (win.openId) win.refreshBucket()
             else win.loadBucket()
+            win.refreshStacks()
             if (Mailbox.online) win.flushPendingOpen()
         }
-        // A background change (new mail, a flag flipped) refreshes the list and
-        // counts but must not close the reader out from under you.
-        function onPushReceived(e, a, b) { win.loadCounts(); win.refreshBucket() }
+        // A background change (new mail, a flag flipped) refreshes the list, the
+        // counts and the bottom stacks but must not close the reader.
+        function onPushReceived(e, a, b) { win.loadCounts(); win.refreshBucket(); win.refreshStacks() }
     }
 
     // The Feed gets its own scroll-and-expand view; every other bucket is a list.
@@ -236,11 +267,12 @@ ApplicationWindow {
     }
     // Number keys switch buckets straight from anywhere (but not mid-compose).
     // No key for the Screener: it is reached only from the Inbox button. The
-    // rest keep their order, so Set Aside moves up to 4.
+    // rest keep their order, so Set Aside is 4 and Reply Later 5.
     Shortcut { sequence: "1"; enabled: !win.composeOpen; onActivated: win.switchToKey("INBOX") }
     Shortcut { sequence: "2"; enabled: !win.composeOpen; onActivated: win.switchToKey("Feed") }
     Shortcut { sequence: "3"; enabled: !win.composeOpen; onActivated: win.switchToKey("Paper Trail") }
     Shortcut { sequence: "4"; enabled: !win.composeOpen; onActivated: win.switchToKey("Aside") }
+    Shortcut { sequence: "5"; enabled: !win.composeOpen; onActivated: win.switchToKey("Reply Later") }
     Shortcut { sequences: ["j", "Down"]; enabled: !win.openId && !launcher.opened && !win.composeOpen; onActivated: win.navView().move(1) }
     Shortcut { sequences: ["k", "Up"]; enabled: !win.openId && !launcher.opened && !win.composeOpen; onActivated: win.navView().move(-1) }
     Shortcut {
@@ -255,6 +287,16 @@ ApplicationWindow {
     Shortcut {
         sequences: ["t", "Delete"]; enabled: !!win.openId && !launcher.opened && !win.composeOpen && !quickLook.opened
         onActivated: win.trashCurrent()
+    }
+    // Triage the message you are reading into a bottom-stack pile: A = set aside,
+    // R = reply later. Both drop you back to the list, like Trash.
+    Shortcut {
+        sequence: "a"; enabled: !!win.openId && !launcher.opened && !win.composeOpen && !quickLook.opened
+        onActivated: win.setAsideCurrent()
+    }
+    Shortcut {
+        sequence: "r"; enabled: !!win.openId && !launcher.opened && !win.composeOpen && !quickLook.opened
+        onActivated: win.replyLaterCurrent()
     }
     Shortcut {
         sequences: ["Ctrl+Return", "Ctrl+Enter"]

@@ -952,15 +952,35 @@ func (d *Driver) Watch(ctx context.Context, folder string, events chan<- mailsyn
 	if err != nil {
 		return fmt.Errorf("idle: %w", err)
 	}
-	defer func() {
-		_ = idle.Close()
-		_ = idle.Wait()
-	}()
+	defer func() { _ = idle.Close() }()
 
+	// IDLE ends on its own when the connection underneath it dies: a suspend,
+	// a NAT timeout, a server restart. Nothing else here would notice. The
+	// fetch connections redial when a command fails, but a watcher sends no
+	// commands, so without this the goroutine parks on a dead socket forever
+	// and the Box silently drops back to the poll. Waiting is the goroutine's
+	// alone — a second Wait from the deferred close would race it.
+	ended := make(chan error, 1)
+	go func() { ended <- idle.Wait() }()
+
+	return watchLoop(ctx, notify, ended, events)
+}
+
+// watchLoop turns nudges into Events until ctx is done or IDLE ends. It is
+// separate from Watch because everything above it needs a server and this does
+// not.
+func watchLoop(ctx context.Context, notify <-chan struct{}, ended <-chan error, events chan<- mailsync.Event) error {
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case err := <-ended:
+			// A clean end is still an end: the caller must redial either way,
+			// so there is no case here that returns nil.
+			if err == nil {
+				err = errors.New("connection closed")
+			}
+			return fmt.Errorf("idle ended: %w", err)
 		case <-notify:
 			select {
 			case events <- mailsync.Event{Kind: mailsync.EventChanged}:

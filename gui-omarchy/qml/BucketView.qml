@@ -41,7 +41,7 @@ Item {
     Flickable {
         anchors.fill: parent
         contentWidth: width
-        contentHeight: col.implicitHeight + 120
+        contentHeight: col.implicitHeight + 120 + (bottomStacks.visible ? bottomStacks.height + 16 : 0)
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
@@ -177,10 +177,19 @@ Item {
         onClicked: win.switchToKey("Screener")
     }
 
+    // The two hand-tended piles, fanned along the bottom of the Inbox.
+    BottomStacks {
+        id: bottomStacks
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+    }
+
     Row {
         anchors { right: parent.right; bottom: parent.bottom; margins: 20 }
         spacing: 10
-        opacity: 0.75
+        // Step out of the way when the stacks are up — they share this edge.
+        opacity: bottomStacks.visible ? 0 : 0.75
+        visible: opacity > 0.01
+        Behavior on opacity { NumberAnimation { duration: Theme.anim } }
         Kbd { text: "J" }
         Kbd { text: "K" }
         Text {

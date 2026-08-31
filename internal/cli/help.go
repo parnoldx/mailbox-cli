@@ -37,9 +37,9 @@ account, so 36722 and INBOX:36722 name the same message.
   gmx/INBOX:412  INBOX on the secondary account named gmx
 
 A box under the inbox is named without it: Screener, Feed, Aside,
-"Paper Trail", Screener/Block. Everything else is named outright: Archive,
-Drafts, Sent, Junk. Case does not matter; the space in the paper trail
-does. "mailbox box list" is the whole list.
+"Paper Trail", "Reply Later", Screener/Block. Everything else is named
+outright: Archive, Drafts, Sent, Junk. Case does not matter; the spaces in
+the paper trail and reply later do. "mailbox box list" is the whole list.
 
 An attachment is a message id and an index: 36722:1. Events, todos, habits
 and contacts carry ids of their own. Copy an id out of a listing rather

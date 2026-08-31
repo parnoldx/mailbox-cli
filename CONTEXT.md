@@ -91,6 +91,13 @@ moved back; the Routing never fills it, because "read this later" is a decision
 about a Message and not about who sent it.
 _Avoid_: snooze, star, later, set-aside (as a verb)
 
+**Reply Later**:
+Box `INBOX/Reply Later` — the name has a space in it. The pile of Messages you
+owe a reply. Like the Aside pile, mail is moved there one at a time and moved
+back, and the Routing never fills it: "I owe this a reply" is a decision about a
+Message, not about who sent it.
+_Avoid_: snooze, follow-up, todo, reply-later (as a verb)
+
 **Message**:
 One email, identified by its RFC822 Message-ID within an Account. Survives being
 moved between Boxes.

@@ -117,6 +117,8 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 		return d.handleRoute(ctx, req, resp)
 	case "aside":
 		return d.handleAside(ctx, req, resp)
+	case "reply-later":
+		return d.handleReplyLater(ctx, req, resp)
 	case "sieve":
 		return d.handleSieve(ctx, req, resp)
 	case "label":
@@ -738,7 +740,7 @@ func (d *Daemon) wrote(a *Account, resp Response, results []mailsync.Result, err
 // are matched on the short name, so `Feed` finds `INBOX/Feed` wherever the
 // server keeps it.
 var routingOrder = []string{
-	"INBOX", "Feed", "Paper Trail", "Screener", "Aside", "Sent", "Drafts", "Junk",
+	"INBOX", "Feed", "Paper Trail", "Screener", "Aside", "Reply Later", "Sent", "Drafts", "Junk",
 }
 
 // listedBoxes is which Boxes a listing shows. By default the ones above and

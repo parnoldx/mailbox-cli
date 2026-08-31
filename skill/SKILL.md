@@ -41,6 +41,7 @@ and each help text carries the reason the command works the way it does.
 | write a new one | `mailbox compose --to a@b.de --subject "..." --body "..."` |
 | decide about a sender | `mailbox screener`, then `mailbox route set ID --to feed` |
 | keep one for later | `mailbox aside add 36722` |
+| flag one you owe a reply | `mailbox reply-later add 36722` |
 | file it | `mailbox move 36722 --to Archive/Immo` |
 | flag it, bin it | `mailbox seen 36722`, `mailbox trash 36722`, `mailbox spam 36722` |
 | get a file out | `mailbox attachment list 36722`, then `mailbox attachment save 36722:1` |

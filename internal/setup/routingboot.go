@@ -21,6 +21,7 @@ var RoutingBoxes = []string{
 	routing.BoxFeed,
 	routing.BoxPaperTrail,
 	routing.BoxAside,
+	routing.BoxReplyLater,
 	routing.BoxBlock,
 }
 

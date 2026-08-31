@@ -136,6 +136,7 @@ mailbox route set sender@domain --to inbox       # Route sender to Inbox
 mailbox route set sender@domain --to papertrail  # Route sender to Paper Trail
 mailbox route set sender@domain --to block       # Block sender at server level
 mailbox aside add 36722            # Put a message into the read-later pile
+mailbox reply-later add 36722      # Put a message into the reply-later pile
 mailbox move 36722 --to Archive    # Move message to a box
 mailbox seen 36722                 # Mark message as read
 mailbox unseen 36722               # Mark message as unread

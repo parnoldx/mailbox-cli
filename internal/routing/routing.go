@@ -23,15 +23,16 @@ import (
 const ScriptName = "logic"
 
 // The Boxes on the Primary Account. Feed, Paper Trail and Block are where the
-// Routing files mail; Aside is a Box mail is put in one at a time and never
-// routed into, because "read this later" is a decision about a mail rather than
-// about the sender it came from.
+// Routing files mail; Aside and Reply Later are piles mail is put in one at a
+// time and never routed into, because "read this later" and "I owe a reply" are
+// decisions about a mail rather than about the sender it came from.
 const (
 	BoxInbox      = "INBOX"
 	BoxFeed       = "INBOX/Feed"
 	BoxPaperTrail = "INBOX/Paper Trail"
 	BoxScreener   = "INBOX/Screener"
 	BoxAside      = "INBOX/Aside"
+	BoxReplyLater = "INBOX/Reply Later"
 	BoxBlock      = "INBOX/Screener/Block"
 )
 
@@ -117,9 +118,10 @@ func (d Destination) Pile() string {
 	return s.lands
 }
 
-// ParseDestination reads what a caller typed. Aside is refused by name rather
-// than by falling through to "unknown": it is a real Box on this account and
-// the caller who typed it wants a real thing that is not this one.
+// ParseDestination reads what a caller typed. Aside and Reply Later are refused
+// by name rather than by falling through to "unknown": they are real Boxes on
+// this account and the caller who typed one wants a real thing that is not a
+// routing decision.
 func ParseDestination(word string) (Destination, error) {
 	w := strings.ToLower(strings.TrimSpace(word))
 	switch w {
@@ -129,6 +131,8 @@ func ParseDestination(word string) (Destination, error) {
 		return None, nil
 	case "aside":
 		return "", fmt.Errorf("aside is a pile, not a route: put one mail there with `mailbox aside ID`")
+	case "reply later", "reply-later", "replylater":
+		return "", fmt.Errorf("reply later is a pile, not a route: put one mail there with `mailbox reply-later add ID`")
 	}
 	for _, s := range order {
 		for _, a := range s.aliases {

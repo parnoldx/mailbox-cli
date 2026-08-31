@@ -210,6 +210,12 @@ void MailboxClient::answerOffline(const QString &id, const QStringList &cmd, con
               << msg("Paper Trail:2957", "2025-05-06 07:05", "Widgets Support <support@example.com>", "Re: Question about the manual", true);
         } else if (box == "Screener") {
             d << msg("Screener:1", "2026-08-30 09:12", "Acme Hosting <billing@example.com>", "Your invoice INV-1000 is ready", false);
+        } else if (box == "Aside") {
+            d << msg("Aside:1", "2026-08-28 14:03", "Max Mustermann <max@example.org>", "Uhu", true)
+              << msg("Aside:2", "2026-08-26 09:41", "Widgets Support <support@example.com>", "Re: Question about the manual", true);
+        } else if (box == "Reply Later") {
+            d << msg("Reply Later:1", "2026-08-29 18:22", "Max Mustermann <max@example.org>", "Hi", false)
+              << msg("Reply Later:2", "2026-08-27 11:07", "Clinic <no-reply@example.com>", "Your appointment is confirmed", true);
         } else {
             d << msg("36731", "2026-08-25 06:29", "Max Mustermann <max@example.org>", "Plan", false)
               << msg("36732", "2026-08-24 06:31", "Clinic <no-reply@example.com>", "Your appointment is confirmed", false)

@@ -250,7 +250,7 @@ func TestNothingTalksToAServerOnceTheConfigExists(t *testing.T) {
 		t.Fatal("the routing was never set up")
 	}
 	// The Boxes a fresh account has not got, and no naming choices.
-	if len(srv.booted.Created) != 3 {
+	if len(srv.booted.Created) != 4 {
 		t.Fatalf("created %v", srv.booted.Created)
 	}
 }

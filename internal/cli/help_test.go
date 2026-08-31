@@ -237,7 +237,7 @@ func TestBareInvocationIsTheOverviewOnStdout(t *testing.T) {
 // A bare group name teaches the group. It never guesses at a default, because
 // `mailbox todo` listing todos teaches nothing about add, done or drop.
 func TestBareGroupIsItsIndex(t *testing.T) {
-	for _, name := range []string{"todo", "habit", "contact", "outbox", "route", "aside", "box"} {
+	for _, name := range []string{"todo", "habit", "contact", "outbox", "route", "aside", "reply-later", "box"} {
 		out, _, code := run(t, name)
 		if code != ExitOK {
 			t.Errorf("%s: exit %d", name, code)

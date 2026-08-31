@@ -375,6 +375,45 @@ Item {
                 }
             }
 
+            // Triage into a bottom-stack pile: Reply later (key R) or Set aside
+            // (key A). Both drop back to the list, then fire the move.
+            Repeater {
+                model: [
+                    { glyph: "", label: "Reply later", fn: "replyLaterCurrent" },
+                    { glyph: "", label: "Set aside",   fn: "setAsideCurrent" }
+                ]
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: !!win.openMsg
+                    width: plRow.implicitWidth + 18
+                    height: 20
+                    radius: 10
+                    color: plHover.hovered ? Theme.cardHover : Theme.selection
+                    Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    Row {
+                        id: plRow
+                        anchors.centerIn: parent
+                        spacing: 5
+                        Text {
+                            text: modelData.glyph
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 10
+                            color: plHover.hovered ? Theme.accent : Theme.textDim
+                            Behavior on color { ColorAnimation { duration: Theme.anim } }
+                        }
+                        Text {
+                            text: modelData.label
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 10
+                            color: Theme.textDim
+                            Behavior on color { ColorAnimation { duration: Theme.anim } }
+                        }
+                    }
+                    HoverHandler { id: plHover; cursorShape: Qt.PointingHandCursor }
+                    TapHandler { onTapped: win[modelData.fn]() }
+                }
+            }
+
             // Trash — the reading view's one destructive action. Drops back to
             // the list, then fires the daemon call. (Key: T.)
             Rectangle {

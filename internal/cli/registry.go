@@ -156,10 +156,10 @@ func tree(l Locals) []*Command {
 				Name: "list", Short: "The boxes, and how full",
 				Usage: []string{"mailbox box list [--archive] [--unread]"},
 				Long: "The boxes mail moves through, in that order: inbox, feed, paper " +
-					"trail, screener, aside, sent, drafts, junk. Everything else — the " +
-					"archive tree, and the block pile under the screener — is behind " +
-					"--archive. Driven by what is held rather than by what has mail in " +
-					"it, so an empty box is a row saying so.",
+					"trail, screener, aside, reply later, sent, drafts, junk. Everything " +
+					"else — the archive tree, and the block pile under the screener — is " +
+					"behind --archive. Driven by what is held rather than by what has mail " +
+					"in it, so an empty box is a row saying so.",
 				Flags: []Flag{
 					{Name: "archive", Kind: KindBool, Desc: "every box, not only the ones mail moves through"},
 					{Name: "unread", Kind: KindBool, Desc: "only boxes with something unread"},
@@ -472,6 +472,25 @@ func tree(l Locals) []*Command {
 					Name: "done", Short: "Take mail back out", Needs: true,
 					Usage: []string{"mailbox aside done ID..."},
 					Run:   asideVerb(true),
+				},
+			},
+		},
+		{
+			Name: "reply-later", Section: SectionOrganize, Short: "The reply-later pile",
+			Long: "Reply Later is decided one mail at a time, never per sender: the " +
+				"routing decides about senders, and \"I owe this a reply\" is about a " +
+				"message. Read the pile with `mailbox box view \"Reply Later\"`.",
+			Sub: []*Command{
+				{
+					Name: "add", Short: "Put mail in the reply-later pile", Needs: true,
+					Usage:    []string{"mailbox reply-later add ID..."},
+					Examples: []string{"mailbox reply-later add 36722", "mailbox reply-later add 36722 36723"},
+					Run:      replyLaterVerb(false),
+				},
+				{
+					Name: "done", Short: "Take mail back out", Needs: true,
+					Usage: []string{"mailbox reply-later done ID..."},
+					Run:   replyLaterVerb(true),
 				},
 			},
 		},

@@ -48,7 +48,7 @@ func TestAFreshAccountGetsTheBoxesAndAnEmptyScript(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(b.Created) != 5 {
+	if len(b.Created) != 6 {
 		t.Fatalf("created %v", b.Created)
 	}
 	// The names are the ones `mailbox route` files into. A Screener under
@@ -114,7 +114,7 @@ func TestAnActiveScriptThatDoesNotReachOursIsReportedNotFixed(t *testing.T) {
 
 func TestMissingBoxesIgnoresCase(t *testing.T) {
 	got := MissingBoxes([]string{"inbox/screener", "INBOX/FEED", "INBOX/Paper Trail"})
-	if len(got) != 2 || !strings.Contains(strings.Join(got, " "), "Aside") {
+	if len(got) != 3 || !strings.Contains(strings.Join(got, " "), "Aside") {
 		t.Fatalf("missing = %v", got)
 	}
 }

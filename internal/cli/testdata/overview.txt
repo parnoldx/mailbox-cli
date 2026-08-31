@@ -19,6 +19,7 @@ ORGANIZE
   screener      Senders waiting for a decision
   route         Where a sender's mail goes
   aside         The read-later pile
+  reply-later   The reply-later pile
   label         Labels on mail
   move          Move mail to another box
   seen          Mark mail read

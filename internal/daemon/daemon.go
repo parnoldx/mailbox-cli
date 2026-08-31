@@ -297,8 +297,13 @@ func (d *Daemon) watch(ctx context.Context, a *Account, folder string) {
 			d.logf("watch %s/%s: %v (retrying)", a.Name, folder, err)
 			select {
 			case <-ctx.Done():
+				return
 			case <-time.After(5 * time.Second):
 			}
+			// Whatever the server said while the watcher was down was said to
+			// nobody. The poll would find it within the minute, but the whole
+			// point of watching this Box is not to wait that long.
+			d.kickAccount(a, "watch resumed")
 		}
 	}
 }

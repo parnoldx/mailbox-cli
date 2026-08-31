@@ -33,6 +33,8 @@ qt_add_resources(mailbox-omarchy "qml"
         qml/AppButton.qml
         qml/SendUndoToast.qml
         qml/MailRow.qml
+        qml/BottomStacks.qml
+        qml/PileStack.qml
         qml/SectionLabel.qml
         qml/Avatar.qml
         qml/Pill.qml

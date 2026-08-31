@@ -492,15 +492,29 @@ func (d *Daemon) screenerRefs(a *Account, box, address string) ([]mailsync.Ref, 
 }
 
 // handleAside moves mail into the read-later pile, and back out of it. Aside is
-// the one Box on the Primary Account that the Routing never fills: "read this
-// later" is a decision about one mail, and a sender whose every mail should be
-// read later is a Feed.
+// a Box on the Primary Account that the Routing never fills: "read this later"
+// is a decision about one mail, and a sender whose every mail should be read
+// later is a Feed.
 func (d *Daemon) handleAside(ctx context.Context, req Request, resp Response) Response {
+	return d.movePile(ctx, req, resp, routing.BoxAside)
+}
+
+// handleReplyLater moves mail into the reply-later pile, and back out of it.
+// Like Aside it is never filled by the Routing: "I owe this a reply" is a
+// decision about one mail, not about its sender.
+func (d *Daemon) handleReplyLater(ctx context.Context, req Request, resp Response) Response {
+	return d.movePile(ctx, req, resp, routing.BoxReplyLater)
+}
+
+// movePile puts mail into one of the hand-tended piles, or — with a `done`
+// sub-verb — takes it back out to the Inbox. Both piles behave the same way;
+// only the Box they land in differs.
+func (d *Daemon) movePile(ctx context.Context, req Request, resp Response, pileBox string) Response {
 	acct, refs, err := d.refs(req)
 	if err != nil {
 		return refsFail(resp, err)
 	}
-	want := routing.BoxAside
+	want := pileBox
 	if len(req.Cmd) > 1 && req.Cmd[1] == "done" {
 		want = routing.BoxInbox
 	}

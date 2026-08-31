@@ -190,6 +190,23 @@ func TestAsideIsRefusedByName(t *testing.T) {
 	}
 }
 
+func TestReplyLaterIsRefusedByName(t *testing.T) {
+	for _, word := range []string{"reply later", "reply-later", "Reply Later"} {
+		err := parseDestErr(word)
+		if err == nil {
+			t.Fatalf("%q was accepted as a routing destination", word)
+		}
+		if !strings.Contains(err.Error(), "mailbox reply-later") {
+			t.Errorf("the error does not say what to do instead: %v", err)
+		}
+	}
+}
+
+func parseDestErr(word string) error {
+	_, err := ParseDestination(word)
+	return err
+}
+
 func TestAddressOfReadsAFromHeader(t *testing.T) {
 	for _, tc := range []struct{ in, want string }{
 		{"bob@example.com", "bob@example.com"},
