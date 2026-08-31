@@ -384,6 +384,10 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 		if err != nil {
 			return refsFail(resp, err)
 		}
+		if refs, err = d.threaded(acct.Name, refs); err != nil {
+			resp.Code, resp.Error = "api", err.Error()
+			return resp
+		}
 		dest := "Trash"
 		if req.Cmd[0] == "spam" {
 			// Junk is the provider's, not ours: this files mail where the
@@ -697,6 +701,35 @@ func (d *Daemon) refs(req Request) (*Account, []mailsync.Ref, error) {
 	return acct, refs, nil
 }
 
+// threaded expands refs to every Placement of each Message's Thread. A
+// grouped listing shows a conversation as one row, so trashing, moving or
+// marking spam the id it gives acts on the whole conversation rather than just
+// the one Message that happened to be shown (ADR-0008: a Thread is one thing,
+// wherever its Messages sit). Deduped, because two refs can expand into the
+// same Thread.
+func (d *Daemon) threaded(account string, refs []mailsync.Ref) ([]mailsync.Ref, error) {
+	seen := map[mailsync.Ref]bool{}
+	out := make([]mailsync.Ref, 0, len(refs))
+	for _, ref := range refs {
+		row, err := d.Mirror.Row(account, ref.Folder, ref.UID)
+		if err != nil {
+			return nil, err
+		}
+		members, err := d.Mirror.Thread(account, row.ThreadID)
+		if err != nil {
+			return nil, err
+		}
+		for _, m := range members {
+			r := mailsync.Ref{Folder: m.Placement.Folder, UID: m.Placement.UID}
+			if !seen[r] {
+				seen[r] = true
+				out = append(out, r)
+			}
+		}
+	}
+	return out, nil
+}
+
 // wrote finishes a write command: it reports what the server acked and tells
 // every listener which Boxes moved. A move the server could not place — no
 // UIDPLUS — also asks for a cycle, because only a cycle can find it.
@@ -887,6 +920,12 @@ type row struct {
 	Subject string `json:"subject"`
 	Seen    bool   `json:"seen"`
 	Body    string `json:"body_state"`
+	// Count is how many Messages of this Thread have a Placement in the Box
+	// being listed. It is omitted for a Message on its own, the way a mail
+	// client only badges a conversation once there is one — read the whole
+	// thing with `mailbox thread` on this row's own id (ADR-0008: any Message
+	// in a Thread names it).
+	Count int `json:"count,omitempty"`
 }
 
 // formatMessageID is the id a caller hands back to message view. The Inbox is
@@ -976,18 +1015,37 @@ func viewHits(a *Account, hits []mirror.Hit) []hit {
 	return out
 }
 
+// viewRows collapses a Box listing to one row per Thread, the way a mail
+// client groups a conversation rather than repeating it — Rows comes back
+// newest first, so the first Message of a Thread encountered is the one
+// shown, and the ones behind it only add to its Count and its unread state.
+// A Thread is scoped to this Box: a reply filed in Sent does not add to an
+// Inbox row's Count, because it was never in this listing to begin with.
 func viewRows(a *Account, folder string, rows []mirror.Row) []row {
 	out := make([]row, 0, len(rows))
+	index := map[int64]int{} // Message.ThreadID -> its row's index in out
 	for _, r := range rows {
-		id := a.messageID(folder, r.UID)
+		if i, ok := index[r.ThreadID]; ok {
+			out[i].Count++
+			if !r.Seen() {
+				out[i].Seen = false
+			}
+			continue
+		}
 		date := ""
 		if !r.Message.Date.IsZero() {
 			date = r.Message.Date.Format("2006-01-02 15:04")
 		}
+		index[r.ThreadID] = len(out)
 		out = append(out, row{
-			ID: id, UID: r.UID, Date: date, From: r.From,
-			Subject: r.Subject, Seen: r.Seen(), Body: r.BodyState,
+			ID: a.messageID(folder, r.UID), UID: r.UID, Date: date, From: r.From,
+			Subject: r.Subject, Seen: r.Seen(), Body: r.BodyState, Count: 1,
 		})
+	}
+	for i := range out {
+		if out[i].Count <= 1 {
+			out[i].Count = 0 // omitempty: no badge for a Message on its own
+		}
 	}
 	return out
 }

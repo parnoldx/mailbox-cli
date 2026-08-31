@@ -242,8 +242,10 @@ func TestWriteAcceptsIdsFromSeveralBoxes(t *testing.T) {
 
 func TestMoveReportsTheNewID(t *testing.T) {
 	d := seed(t)
+	// "7" is threaded with the reply the seed put in INBOX/Sent (ADR-0008), so
+	// moving the conversation moves both (see (*Daemon).threaded).
 	got := write(t, d, []string{"move"}, map[string]any{"positional": []any{"7"}, "to": "archive"})
-	if len(got) != 1 || got[0].Box != "Archive" || got[0].NewID == "" {
+	if len(got) != 2 || got[0].Box != "Archive" || got[0].NewID == "" || got[1].Box != "Archive" {
 		t.Fatalf("move returned %+v", got)
 	}
 	if _, err := d.Mirror.Row("primary", "INBOX", 7); !errors.Is(err, mirror.ErrNotFound) {
@@ -605,13 +607,15 @@ func TestBoxListLeavesTheBlockPileOutUnlessAsked(t *testing.T) {
 // blocks the sender: that decision is the routing's.
 func TestSpamMovesToJunkAndNotToTrash(t *testing.T) {
 	d := seed(t)
+	// "7" is threaded with the reply the seed put in INBOX/Sent, so spamming
+	// the conversation spams both.
 	resp := mustAsk(t, d, []string{"spam"}, map[string]any{"positional": []any{"7"}})
 	got := resp.Data.([]change)
-	if len(got) != 1 || !got[0].Moved {
+	if len(got) != 2 || !got[0].Moved || !got[1].Moved {
 		t.Fatalf("spam gave %+v", got)
 	}
-	if got[0].Box != "Junk" {
-		t.Errorf("spam filed into %q, want Junk", got[0].Box)
+	if got[0].Box != "Junk" || got[1].Box != "Junk" {
+		t.Errorf("spam filed into %q/%q, want Junk/Junk", got[0].Box, got[1].Box)
 	}
 }
 

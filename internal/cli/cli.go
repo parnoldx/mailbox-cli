@@ -497,7 +497,11 @@ func printTable(stdout, stderr io.Writer, resp daemon.Response) {
 		if seen, _ := m["seen"].(bool); !seen {
 			mark = "*"
 		}
-		fmt.Fprintf(tw, "%s\t%v\t%v\t%v\t%v\n", mark, m["id"], m["date"], truncate(str(m["from"]), 28), str(m["subject"]))
+		subject := str(m["subject"])
+		if count, _ := m["count"].(float64); count > 1 {
+			subject = fmt.Sprintf("%s (%d)", subject, int(count))
+		}
+		fmt.Fprintf(tw, "%s\t%v\t%v\t%v\t%v\n", mark, m["id"], m["date"], truncate(str(m["from"]), 28), subject)
 	}
 	_ = tw.Flush()
 	behindNotice(stderr, resp)

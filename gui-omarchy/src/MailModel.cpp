@@ -43,6 +43,7 @@ QVariant MailModel::data(const QModelIndex &index, int role) const {
     case DateRole: return r.date;
     case DateRawRole: return r.dateRaw;
     case SeenRole: return r.seen;
+    case CountRole: return r.count;
     }
     return {};
 }
@@ -51,7 +52,7 @@ QHash<int, QByteArray> MailModel::roleNames() const {
     return {
         {IdRole, "msgId"},   {FromNameRole, "fromName"}, {FromAddrRole, "fromAddr"},
         {SubjectRole, "subject"}, {DateRole, "date"},    {DateRawRole, "dateRaw"},
-        {SeenRole, "seen"},
+        {SeenRole, "seen"},  {CountRole, "count"},
     };
 }
 

@@ -1,10 +1,13 @@
 import QtQuick
 import QtQuick.Controls.Basic
 
-// The five-second grace period. Send closes the composer at once; this banner
-// counts down with a draining bar and an Undo. If the body mentioned an
-// attachment and none was attached it says so. On timeout it makes the real
-// `send`/`reply` call and reports the result briefly.
+// The five-second grace period — but only when there is something worth
+// pausing for: the body mentions an attachment and none was actually
+// attached (warnAttachment). Every other send has nothing to catch, so it
+// goes out the instant Send is pressed, with just a brief result toast.
+// Send always closes the composer at once either way; on timeout (or
+// immediately, for the instant case) this makes the real `send`/`reply` call
+// and reports the result briefly.
 Item {
     id: root
     property var pending: null          // { cmd, args, label, warnAttachment, form }
@@ -17,6 +20,7 @@ Item {
     function start(p) {
         root.pending = p
         root.resultText = ""
+        if (!p.warnAttachment) { root.fire(); return }
         root.phase = "counting"
         bar.width = barTrack.width
         barAnim.restart()

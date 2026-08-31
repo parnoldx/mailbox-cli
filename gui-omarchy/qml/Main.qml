@@ -29,9 +29,22 @@ ApplicationWindow {
     property int bucketIndex: 0
     property var counts: ({})
     property string openId: ""      // "" → bucket view, otherwise reading view
+    // openMsg is always the newest Message of openThread — the one thread-level
+    // actions (Reply, Trash, the subject line) name. It never changes as the
+    // accordion below it expands and collapses; that is what expandedIds is for.
     property var openMsg: null
+    // Every Message of openMsg's Thread, oldest first — a Message on its own
+    // comes back as a one-element Thread, so this is always what backs the
+    // reader.
+    property var openThread: []
     property bool openLoading: false
-    property var openAttachments: []
+    // Which Messages of openThread are expanded, keyed by id, and each one's
+    // attachments once fetched — both keyed rather than single-valued because
+    // several can be open in the accordion at once.
+    property var expandedIds: ({})
+    property var attachmentsById: ({})
+    function isExpanded(id) { return !!win.expandedIds[id] }
+    function attachmentsFor(id) { return win.attachmentsById[id] || [] }
 
     property bool composeOpen: false   // the compose view sits above everything else
 
@@ -147,37 +160,104 @@ ApplicationWindow {
             if (buckets[i].key === k) { switchTo(i); return }
     }
 
+    // `thread view` reads the whole conversation the id belongs to, oldest
+    // first — a Message on its own comes back as a one-element Thread, so this
+    // is the one call the reader ever needs to open anything. Opens with the
+    // newest Message expanded, plus any Message still unread — everything
+    // already read starts collapsed.
     function openMessage(id) {
         win.openId = id
         win.openMsg = null
+        win.openThread = []
+        win.expandedIds = {}
+        win.attachmentsById = {}
         win.openLoading = true
-        win.openAttachments = []
         PixelBlock.reset()
-        Mailbox.call(["message", "view"], { positional: id }, function (r) {
+        Mailbox.call(["thread", "view"], { positional: id }, function (r) {
             win.openLoading = false
             if (win.openId !== id) return
-            win.openMsg = (r.ok && r.data) ? r.data : null
-            // Opening a message is what marks it read. `message view` does not
-            // touch the flag, so do it here — once, and only if it was unread —
-            // then refresh the counts and the row behind the reader.
-            if (win.openMsg && win.openMsg.seen === false) {
-                Mailbox.call(["seen"], { positional: id }, function () {
-                    win.loadCounts()
-                    win.refreshBucket()
-                })
+            var thread = (r.ok && r.data) ? r.data : []
+            // Bad id, or the message vanished (trashed elsewhere, a stale deep
+            // link) between the click and the reply — don't leave the reader
+            // sitting on a blank window. Bounce to the Inbox and say why, the
+            // same way trashCurrent() reports its outcome.
+            if (thread.length === 0) {
+                win.back()
+                win.switchToKey("INBOX")
+                win.flash("Couldn't find that message")
+                return
             }
-        })
-        Mailbox.call(["attachment", "list"], { positional: id }, function (r) {
-            if (win.openId !== id) return
-            win.openAttachments = (r.ok && r.data) ? r.data : []
-            if (win._demoQl && win.openAttachments.length > 0) {
-                win._demoQl = false
-                win.openQuickLook(win.openAttachments[0])
-            }
+            win.openThread = thread
+            win.openMsg = thread.length ? thread[thread.length - 1] : null
+            var open = {}
+            for (var i = 0; i < thread.length; i++)
+                if (i === thread.length - 1 || thread[i].seen === false) open[thread[i].id] = true
+            win.expandedIds = open
+            // The id that opened it is not always the newest — a search hit or
+            // a deep link can name any Message of the conversation — that one
+            // gets the QuickLook demo treatment (--ql) if it carries an image.
+            for (var eid in open) win._loadExpanded(eid, eid === id)
         })
     }
 
-    function back() { win.openId = ""; win.openMsg = null }
+    // Fetches attachments (once) and marks read a Message that just became
+    // expanded — what opening used to do for the single message, now done per
+    // accordion row instead of once for the whole reader.
+    function _loadExpanded(id, allowQuickLookDemo) {
+        var msg = null
+        for (var i = 0; i < win.openThread.length; i++)
+            if (win.openThread[i].id === id) { msg = win.openThread[i]; break }
+        if (!msg) return
+        if (win.attachmentsById[id] === undefined) {
+            Mailbox.call(["attachment", "list"], { positional: id }, function (r) {
+                var list = (r.ok && r.data) ? r.data : []
+                var m = Object.assign({}, win.attachmentsById)
+                m[id] = list
+                win.attachmentsById = m
+                if (allowQuickLookDemo && win._demoQl && list.length > 0) {
+                    win._demoQl = false
+                    win.openQuickLook(list[0])
+                }
+            })
+        }
+        if (msg.seen === false) {
+            Mailbox.call(["seen"], { positional: id }, function () {
+                win.loadCounts()
+                win.refreshBucket()
+            })
+        }
+    }
+
+    // What a click on an accordion row does: expand it in place if collapsed,
+    // collapse it if already open. Nothing else in the Thread is disturbed.
+    function toggleExpanded(id) {
+        var m = Object.assign({}, win.expandedIds)
+        if (m[id]) {
+            delete m[id]
+            win.expandedIds = m
+            return
+        }
+        m[id] = true
+        win.expandedIds = m
+        win._loadExpanded(id, false)
+    }
+
+    // The up/down icon: expand or collapse every Message of the open Thread
+    // at once.
+    function setAllExpanded(state) {
+        if (!state) { win.expandedIds = {}; return }
+        var m = {}
+        for (var i = 0; i < win.openThread.length; i++) {
+            m[win.openThread[i].id] = true
+            win._loadExpanded(win.openThread[i].id, false)
+        }
+        win.expandedIds = m
+    }
+
+    function back() {
+        win.openId = ""; win.openMsg = null; win.openThread = []
+        win.expandedIds = {}; win.attachmentsById = {}
+    }
 
     function openQuickLook(att) { quickLook.openFor(att) }
 
@@ -190,7 +270,8 @@ ApplicationWindow {
         win.openId = id
         win.openMsg = null
         win.openLoading = true
-        win.openAttachments = []
+        win.expandedIds = {}
+        win.attachmentsById = {}
         if (Mailbox.online) { win.openMessage(id); return }
         win.pendingOpenId = id
         openWaitTimer.restart()
@@ -371,13 +452,15 @@ ApplicationWindow {
         anchors.fill: parent
     }
 
-    // Small transient confirmation ("Draft saved", …).
+    // Small transient confirmation ("Draft saved", …). Lives at the top —
+    // the bottom is the Reply Later / Set Aside stacks' turf on the Inbox,
+    // and this used to land right on top of them.
     Rectangle {
         id: flashLabel
         property alias text: flashText.text
         property bool shown: false
         anchors.horizontalCenter: parent.horizontalCenter
-        y: shown ? parent.height - height - 28 : parent.height + 8
+        y: shown ? 28 : -height - 8
         Behavior on y { NumberAnimation { duration: Theme.anim; easing.type: Easing.OutCubic } }
         width: flashText.implicitWidth + 32
         height: 34
@@ -385,7 +468,7 @@ ApplicationWindow {
         color: Theme.railBg
         border.width: 1
         border.color: Theme.hairline
-        visible: y < parent.height
+        visible: y > -height
         Behavior on color { ColorAnimation { duration: Theme.anim } }
         Behavior on border.color { ColorAnimation { duration: Theme.anim } }
         Text {
