@@ -47,3 +47,9 @@ qt_add_resources(mailbox-omarchy "qml"
 target_include_directories(mailbox-omarchy PRIVATE src)
 target_link_libraries(mailbox-omarchy PRIVATE
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Network Qt6::WebEngineQuick Qt6::PdfQuick Qt6::QuickDialogs2)
+
+# `cmake --install build --prefix ~/.local` drops the binary on PATH as
+# `mailbox-omarchy` — the name the mailbox.email notification widget shells out
+# to by default when you click a message.
+include(GNUInstallDirs)
+install(TARGETS mailbox-omarchy RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

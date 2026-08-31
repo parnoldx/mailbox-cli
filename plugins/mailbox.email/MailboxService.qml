@@ -14,7 +14,6 @@ Item {
   property var settings: ({})
   readonly property bool notify: settings && settings.notify !== undefined ? settings.notify : false
   readonly property bool sound: settings && settings.sound !== undefined ? settings.sound : true
-  readonly property string openCommandTemplate: settings && settings.openCommand ? settings.openCommand : "default"
 
   readonly property string socketPath: {
     var explicit = Quickshell.env("MAILBOX_SOCKET")

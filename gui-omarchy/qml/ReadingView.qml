@@ -181,38 +181,62 @@ Item {
     }
     Connections { target: Theme; function onChanged() { root.renderHtml() } }
 
-    // A WebEngineView keeps a stale GPU surface across a Wayland unmap/map
-    // (switch workspace away and back) and paints black until its content
-    // repaints — which is why a scroll brings it back. When the window is
-    // hidden we raise an opaque cover the colour of the sheet, and when it
-    // comes back we nudge the page a pixel and back, then drop the cover a
-    // frame later. The user never sees the black interim, just the sheet.
+    // QtWebEngine keeps a stale GPU surface across a Wayland unmap/map (switch
+    // workspace away and back) and paints it black until something forces a
+    // fresh frame. web.update() and a JS scroll do not; a 1px geometry change
+    // does. On the way out we raise an opaque sheet-coloured cover; on the way
+    // back we flip the view's visibility once and oscillate its width by a
+    // pixel over a few frames under the cover, then drop it. Same fix as
+    // FeedArticle — the user only ever sees the sheet, for ~80ms.
     property bool webCovered: false
+    property bool webShown: true
+    property bool webNudge: false
+    property bool webDirty: false
+
+    function repaintCycle() {
+        webCovered = true
+        webShown = false
+        webPulse.count = 0
+        webPulse.restart()
+    }
     Timer {
-        id: webRepaint
-        interval: 50
+        id: webPulse
+        interval: 16; repeat: true
+        property int count: 0
         onTriggered: {
+            root.webShown = true
+            root.webNudge = (count % 2 === 0)
             web.update()
-            if (root.htmlMode && root.webLoaded)
-                web.runJavaScript("window.scrollBy(0,1);window.scrollBy(0,-1);1",
-                                  function () { webUncover.restart() })
-            else
-                webUncover.restart()
+            if (++count >= 4) { stop(); root.webCovered = false }
         }
     }
-    Timer { id: webUncover; interval: 32; onTriggered: root.webCovered = false }
+    // Width oscillation with no cover: used when the window only regained focus
+    // (never unmapped), so at worst a sub-frame repaint, not a sheet flash.
+    Timer {
+        id: webHeal
+        interval: 16; repeat: true
+        property int count: 0
+        onRunningChanged: if (running) count = 0
+        onTriggered: {
+            root.webNudge = (count % 2 === 0)
+            web.update()
+            if (++count >= 4) { stop(); root.webNudge = false }
+        }
+    }
     Connections {
         target: win
         enabled: root.htmlMode
         function onVisibilityChanged() {
-            if (win.visibility === Window.Hidden || win.visibility === Window.Minimized)
-                root.webCovered = true
-            else
-                webRepaint.restart()
+            var hidden = win.visibility === Window.Hidden || win.visibility === Window.Minimized
+            if (hidden) { root.webCovered = true; root.webDirty = true }
+            else if (root.webDirty) { root.webDirty = false; root.repaintCycle() }
         }
         function onActiveChanged() {
-            if (win.active) webRepaint.restart()
-            else root.webCovered = true
+            // A focus change — the pointer moving to another window — does not
+            // unmap the Wayland surface, so don't cover: that would blank the
+            // reader every time focus wanders. Only force a few fresh frames on
+            // the way back, in case the surface went stale anyway.
+            if (win.active && !root.webDirty) webHeal.restart()
         }
     }
 
@@ -349,6 +373,39 @@ Item {
                     HoverHandler { id: rpHover; cursorShape: Qt.PointingHandCursor }
                     TapHandler { onTapped: win.startReply(modelData.all) }
                 }
+            }
+
+            // Trash — the reading view's one destructive action. Drops back to
+            // the list, then fires the daemon call. (Key: T.)
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: !!win.openMsg
+                width: trRow.implicitWidth + 18
+                height: 20
+                radius: 10
+                color: trHover.hovered ? Theme.red : Theme.selection
+                Behavior on color { ColorAnimation { duration: Theme.anim } }
+                Row {
+                    id: trRow
+                    anchors.centerIn: parent
+                    spacing: 5
+                    Text {
+                        text: ""
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 10
+                        color: trHover.hovered ? "#ffffff" : Theme.textDim
+                        Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    }
+                    Text {
+                        text: "Trash"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 10
+                        color: trHover.hovered ? "#ffffff" : Theme.textDim
+                        Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    }
+                }
+                HoverHandler { id: trHover; cursorShape: Qt.PointingHandCursor }
+                TapHandler { onTapped: win.trashCurrent() }
             }
         }
 
@@ -502,7 +559,11 @@ Item {
         parent: sheet
         anchors.fill: parent
         anchors.margins: 1
-        visible: root.htmlMode && !win.openLoading && !win.composeOpen
+        // The 1px right-margin oscillation on webNudge is what actually clears a
+        // stale black surface after a Wayland unmap — a geometry change forces a
+        // fresh frame where web.update() and a JS scroll do not.
+        anchors.rightMargin: 1 + (root.webNudge ? 1 : 0)
+        visible: root.webShown && root.htmlMode && !win.openLoading && !win.composeOpen
         backgroundColor: root.applyDark ? Theme.background : "#ffffff"
         onNavigationRequested: function (req) {
             if (req.navigationType === WebEngineNavigationRequest.LinkClickedNavigation) {

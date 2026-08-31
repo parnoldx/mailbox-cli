@@ -84,13 +84,19 @@ destroys any inode-level watch on `colors.toml`, so `OmarchyTheme`:
 ## Build & run
 
 ```sh
-cmake -B build -G Ninja
-cmake --build build
-./build/mailbox-omarchy            # normal
-./build/mailbox-omarchy --open <id>    # open straight into a message (demo/screenshot)
-./build/mailbox-omarchy --open <id> --ql   # ...and pop Quick Look on its first attachment
-./build/mailbox-omarchy --compose     # open straight into the composer (demo/screenshot)
+make                # configure + build -> ./build/mailbox-omarchy
+make run            # build, then run it
+make run ARGS='--open <id>'        # ...straight into a message (demo/screenshot)
+make run ARGS='--open <id> --ql'   # ...and pop Quick Look on its first attachment
+make run ARGS='--compose'          # ...straight into the composer
+make test           # build + parse-check every QML file
+make install        # -> ~/.local/bin/mailbox-omarchy (on PATH; PREFIX overrides)
 ```
+
+The notification widget (`plugins/mailbox.email`) shells out to `mailbox-omarchy`
+by name when you click a message, so `make install` is what wires the two
+together. Under the hood it is CMake + Ninja (`cmake -B build -G Ninja`); the
+Makefile just records the flags.
 
 Requires Qt 6 (Core, Gui, Qml, Quick, QuickControls2, Network, WebEngineQuick, PdfQuick, QuickDialogs2).
 

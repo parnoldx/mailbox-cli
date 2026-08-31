@@ -116,14 +116,9 @@ test("requestToArgs maps UI actions to daemon socket command format", () => {
   )
 })
 
-test("buildOpenCommand properly interpolates message IDs", () => {
-  assert.equal(
-    Model.buildOpenCommand("default", "123"),
-    "omarchy-launch-floating-terminal-with-presentation mailbox message view '123'"
-  )
-
-  assert.equal(
-    Model.buildOpenCommand("mailbox message view %id", "INBOX:456"),
-    "mailbox message view 'INBOX:456'"
-  )
+test("buildOpenCommand always opens the desktop client, id shell-quoted", () => {
+  assert.equal(Model.buildOpenCommand("123"), "mailbox-omarchy --open '123'")
+  assert.equal(Model.buildOpenCommand("INBOX:456"), "mailbox-omarchy --open 'INBOX:456'")
+  assert.equal(Model.buildOpenCommand("a'b"), "mailbox-omarchy --open 'a'\\''b'")
+  assert.equal(Model.buildOpenCommand(""), "mailbox-omarchy --open ''")
 })

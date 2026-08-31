@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
-import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "Model.js" as Model
@@ -127,6 +126,10 @@ Panel {
       else entry[key] = values[key]
     }
     root.settings = entry
+    // Push the merged entry back to the bar widget too, so the live service
+    // (bound to the widget's settings, not the panel's) picks up the change
+    // without waiting for a shell reload. Matches the first-party plugins.
+    if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
     if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function") {
       root.bar.shell.updateEntryInline(root.moduleName, entry)
     }
@@ -135,18 +138,15 @@ Panel {
   function openMail(item) {
     if (!item) return
     service.setSeen(item.id, true)
-    var cmd = Model.buildOpenCommand(service.openCommandTemplate, item.id)
+    var cmd = Model.buildOpenCommand(item.id)
     if (root.bar && typeof root.bar.run === "function") {
       root.bar.run(cmd)
     } else {
-      openProc.command = ["bash", "-c", cmd]
-      openProc.running = true
+      // Detached login shell: survives the panel closing on the next line and
+      // gets the same PATH (~/.local/bin) the desktop client is installed to.
+      Quickshell.execDetached(["bash", "-lc", cmd])
     }
     root.close()
-  }
-
-  Process {
-    id: openProc
   }
 
   function moveSelection(delta) {
@@ -509,35 +509,6 @@ Panel {
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
                   font.bold: true
-                }
-
-                // Open emails in
-                Column {
-                  width: parent.width
-                  spacing: Style.space(4)
-
-                  Text {
-                    text: "Open emails in"
-                    color: root.foreground
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.bodySmall
-                  }
-
-                  TextField {
-                    id: openCmdInput
-                    width: parent.width
-                    text: service.openCommandTemplate
-                    placeholderText: "omarchy-launch-floating-terminal-with-presentation mailbox message view %id"
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.bodySmall
-                    color: root.foreground
-                    background: Rectangle {
-                      color: Color.popups.background
-                      radius: Style.space(4)
-                      border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.2)
-                    }
-                    onEditingFinished: root.persistSettings({ openCommand: text.trim() })
-                  }
                 }
 
                 // Hide bar icon toggle

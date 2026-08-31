@@ -51,6 +51,19 @@ ApplicationWindow {
         })
         win.composeOpen = true
     }
+    // Trash the open message: fire the daemon call, leave the reader, and
+    // refresh the list and counts behind it. The reading view's one
+    // destructive action.
+    function trashCurrent() {
+        if (!win.openMsg) return
+        var id = win.openMsg.id
+        win.back()
+        Mailbox.call(["trash"], { positional: id }, function (r) {
+            win.flash(r && r.ok ? "Moved to Trash" : "Trash failed")
+            win.loadCounts()
+            win.refreshBucket()
+        })
+    }
     // Called by ComposerView when Send is pressed: close the view now, hand the
     // payload to the toast, which fires the real call after the grace period.
     function beginSend(payload) {
@@ -138,6 +151,29 @@ ApplicationWindow {
 
     function openQuickLook(att) { quickLook.openFor(att) }
 
+    // `--open <id>`: raise the reader shell immediately so the bucket never
+    // flashes behind it, then load the message the moment the daemon socket is
+    // up (onlineChanged) — or after a short grace, so an offline start still
+    // lands on the canned demo instead of hanging on "opening…".
+    property string pendingOpenId: ""
+    function openWhenReady(id) {
+        win.openId = id
+        win.openMsg = null
+        win.openLoading = true
+        win.openAttachments = []
+        if (Mailbox.online) { win.openMessage(id); return }
+        win.pendingOpenId = id
+        openWaitTimer.restart()
+    }
+    function flushPendingOpen() {
+        if (!win.pendingOpenId) return
+        var id = win.pendingOpenId
+        win.pendingOpenId = ""
+        openWaitTimer.stop()
+        win.openMessage(id)
+    }
+    Timer { id: openWaitTimer; interval: 1500; onTriggered: win.flushPendingOpen() }
+
     Component.onCompleted: {
         var a = Qt.application.arguments
         var bi = a.indexOf("--bucket")
@@ -149,21 +185,29 @@ ApplicationWindow {
         }
         loadCounts(); loadBucket()
         var oi = a.indexOf("--open")
-        if (oi >= 0 && oi + 1 < a.length) { demoOpenId = a[oi + 1]; openFirstTimer.start() }
+        if (oi >= 0 && oi + 1 < a.length) openWhenReady(a[oi + 1])
         else if (a.indexOf("--open-first") >= 0) openFirstTimer.start()
         if (a.indexOf("--compose") >= 0) composeTimer.start()
     }
     Timer { id: composeTimer; interval: 700; onTriggered: win.startCompose() }
-    property string demoOpenId: ""
     property bool _demoQl: Qt.application.arguments.indexOf("--ql") >= 0
+    // --open-first (demo/screenshot): open whatever row lands highlighted once
+    // the first bucket load has settled.
     Timer {
         id: openFirstTimer; interval: 900
-        onTriggered: win.demoOpenId ? win.openMessage(win.demoOpenId) : bucketView.openHighlighted()
+        onTriggered: bucketView.openHighlighted()
     }
 
     Connections {
         target: Mailbox
-        function onOnlineChanged() { win.loadCounts(); win.loadBucket() }
+        function onOnlineChanged() {
+            win.loadCounts()
+            // Don't reset the reader if one is open (reconnect mid-read, or the
+            // socket coming up just after --open raised it).
+            if (win.openId) win.refreshBucket()
+            else win.loadBucket()
+            if (Mailbox.online) win.flushPendingOpen()
+        }
         // A background change (new mail, a flag flipped) refreshes the list and
         // counts but must not close the reader out from under you.
         function onPushReceived(e, a, b) { win.loadCounts(); win.refreshBucket() }
@@ -206,6 +250,11 @@ ApplicationWindow {
     Shortcut {
         sequences: ["o", "l"]; enabled: !win.openId && !launcher.opened && !win.composeOpen
         onActivated: win.feedActive ? feedView.openFull() : bucketView.openHighlighted()
+    }
+    // Trash the message you are reading. Matches the widget's T = trash.
+    Shortcut {
+        sequences: ["t", "Delete"]; enabled: !!win.openId && !launcher.opened && !win.composeOpen && !quickLook.opened
+        onActivated: win.trashCurrent()
     }
     Shortcut {
         sequences: ["Ctrl+Return", "Ctrl+Enter"]

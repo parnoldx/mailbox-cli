@@ -20,6 +20,10 @@ A Quickshell bar widget and dropdown panel for Omarchy, powered directly by the 
   - 1-click action buttons on hover/selection:
     - **In "New for you"**: `󰄬` Mark read, `󰔛` Set aside, `󰆴` Move to Trash.
     - **In "Previously seen"**: `󰔛` Set aside, `󰆴` Move to Trash.
+- **Opens in the desktop client**: Clicking a message (or <kbd>Enter</kbd>) hands
+  it to the mailbox desktop client — `mailbox-omarchy --open <id>`. That is the
+  only mail client we ship, so it is the only target; there is no setting.
+
 - **In-Panel Screening**:
   - Dedicated screener tab listing pending senders waiting for routing decisions.
   - One-click screening actions on each sender card:
@@ -47,7 +51,7 @@ A Quickshell bar widget and dropdown panel for Omarchy, powered directly by the 
 | <kbd>,</kbd> (comma) | Global | Toggle Settings view |
 | <kbd>Escape</kbd> | Global | Close panel or exit settings |
 | <kbd>j</kbd> / <kbd>k</kbd> / <kbd>↑</kbd> / <kbd>↓</kbd> | List | Navigate messages / screener cards |
-| <kbd>Enter</kbd> / <kbd>Space</kbd> | List | Open selected email |
+| <kbd>Enter</kbd> / <kbd>Space</kbd> | List | Open selected email (in the mailbox desktop client) |
 | <kbd>T</kbd> | List / Screener | **Move to Trash** |
 | <kbd>A</kbd> | Mail List | **Set aside** (read later pile) |
 | <kbd>M</kbd> | Mail List | **Toggle read / unread** |

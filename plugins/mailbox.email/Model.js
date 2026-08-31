@@ -247,19 +247,11 @@ function shellQuote(value) {
   return "'" + String(value || "").replace(/'/g, "'\\''") + "'"
 }
 
-function buildOpenCommand(template, messageId) {
-  var id = String(messageId || "").trim()
-  var tmpl = String(template || "").trim()
-  if (!tmpl || tmpl === "terminal" || tmpl === "default") {
-    return "omarchy-launch-floating-terminal-with-presentation mailbox message view " + shellQuote(id)
-  }
-  if (tmpl.indexOf("%id") !== -1) {
-    return tmpl.replace(/%id/g, shellQuote(id))
-  }
-  if (tmpl.indexOf("$ID") !== -1) {
-    return tmpl.replace(/\$ID/g, shellQuote(id))
-  }
-  return tmpl + " " + shellQuote(id)
+// Clicking a mail in the notification widget always opens it in the mailbox
+// desktop client (gui-omarchy, binary `mailbox-omarchy`). There is no override:
+// this is the only client we ship, so it is the only target.
+function buildOpenCommand(messageId) {
+  return "mailbox-omarchy --open " + shellQuote(String(messageId || "").trim())
 }
 
 if (typeof module !== "undefined" && module.exports) {
