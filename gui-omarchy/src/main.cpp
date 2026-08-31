@@ -13,6 +13,7 @@
 #include "MailboxClient.hpp"
 #include "OmarchyTheme.hpp"
 #include "PixelBlock.hpp"
+#include "SurfaceWatcher.hpp"
 
 int main(int argc, char *argv[]) {
     QtWebEngineQuick::initialize();
@@ -37,6 +38,8 @@ int main(int argc, char *argv[]) {
     auto *pixelBlock = new PixelBlock(&app);
     QWebEngineProfile::defaultProfile()->setUrlRequestInterceptor(pixelBlock);
 
+    SurfaceWatcher surfaceWatcher;
+
     QQmlApplicationEngine engine;
     client.setJsEngine(&engine);
     QQmlContext *ctx = engine.rootContext();
@@ -46,6 +49,7 @@ int main(int argc, char *argv[]) {
     ctx->setContextProperty("asideModel", &asideModel);
     ctx->setContextProperty("replyLaterModel", &replyLaterModel);
     ctx->setContextProperty("PixelBlock", pixelBlock);
+    ctx->setContextProperty("SurfaceWatcher", &surfaceWatcher);
 
     // The vendored Dark Reader engine, handed to QML as a string so ReadingView
     // can inline it into the HTML-mail document it builds for WebEngine.

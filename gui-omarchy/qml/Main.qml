@@ -61,7 +61,11 @@ ApplicationWindow {
             id: win.openMsg.id,
             all: !!all,
             from: win.openMsg.from || "",
-            subject: win.openMsg.subject || ""
+            subject: win.openMsg.subject || "",
+            // The parent's own words, for the quote block the composer keeps
+            // folded below the editor and appends on send.
+            date: win.openMsg.date || "",
+            quote: win.openMsg.body || ""
         })
         win.composeOpen = true
     }
@@ -286,6 +290,10 @@ ApplicationWindow {
     Timer { id: openWaitTimer; interval: 1500; onTriggered: win.flushPendingOpen() }
 
     Component.onCompleted: {
+        // Let the web-hosting views know when our Wayland surface is unmapped
+        // and remapped (a workspace switch) so they can repaint the stale black
+        // GPU surface QtWebEngine leaves behind.
+        SurfaceWatcher.attach(win)
         var a = Qt.application.arguments
         var bi = a.indexOf("--bucket")
         if (bi >= 0 && bi + 1 < a.length) {

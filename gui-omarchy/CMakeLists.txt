@@ -14,6 +14,7 @@ qt_add_executable(mailbox-omarchy
     src/MailboxClient.hpp src/MailboxClient.cpp
     src/MailModel.hpp src/MailModel.cpp
     src/PixelBlock.hpp src/PixelBlock.cpp
+    src/SurfaceWatcher.hpp src/SurfaceWatcher.cpp
 )
 
 qt_add_resources(mailbox-omarchy "qml"
@@ -22,9 +23,6 @@ qt_add_resources(mailbox-omarchy "qml"
         qml/Main.qml
         qml/BucketView.qml
         qml/FeedView.qml
-        qml/FeedCard.qml
-        qml/FeedArticle.qml
-        qml/FeedDivider.qml
         qml/ReadingView.qml
         qml/CommandLauncher.qml
         qml/ComposerView.qml
@@ -43,6 +41,7 @@ qt_add_resources(mailbox-omarchy "qml"
         qml/AttachmentChip.qml
         qml/QuickLook.qml
         qml/vendor/darkreader.js
+        qml/vendor/feed.html
         qml/vendor/lexxy.js
         qml/vendor/lexxy.css
 )

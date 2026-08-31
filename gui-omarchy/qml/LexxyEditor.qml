@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 import QtWebEngine
 
 // The compose body editor: Basecamp's Lexxy (github.com/basecamp/lexxy) running
@@ -72,18 +73,33 @@ Item {
         web.runJavaScript("(function(){var e=document.getElementById('ed');return e?(e.value||''):'';})()",
                           function (v) { cb(v || "") })
     }
-    function setHtml(html) {
+    function setHtml(html, atStart) {
         pendingHtml = html || ""
+        pendingFocusStart = !!atStart
         if (root.loaded) root._applyPending()
     }
     property string pendingHtml: ""
+    property bool pendingFocusStart: false
     function _applyPending() {
         web.runJavaScript("(function(){var e=document.getElementById('ed');if(e)e.value=" +
                           root._js(root.pendingHtml) + ";})()")
+        if (root.pendingFocusStart) {
+            root.pendingFocusStart = false
+            root.focusStart()
+        }
     }
     function clear() { setHtml("") }
     function focusEditor() {
         web.runJavaScript("(function(){var e=document.getElementById('ed');if(e)e.focus();})()")
+    }
+    // Focus with the caret at the very start of the document rather than the
+    // end — what a reply wants, so you type above the quoted parent. Lexxy is
+    // Lexical underneath; its editor takes focus({defaultSelection:'rootStart'}).
+    function focusStart() {
+        web.runJavaScript(
+            "(function(){var e=document.getElementById('ed');if(!e)return;" +
+            "try{e.editor.focus(null,{defaultSelection:'rootStart'});return;}catch(x){}" +
+            "if(e.focus)e.focus();})()")
     }
 
     onVisibleChanged: if (visible && !root.loaded) reload()
@@ -103,6 +119,10 @@ Item {
     WebEngineView {
         id: web
         anchors.fill: parent
+        // The 1px width oscillation on _nudge is what actually clears a stale
+        // black surface after a Wayland unmap; web.update() alone does not.
+        anchors.rightMargin: root._nudge ? 1 : 0
+        visible: root._webShown
         backgroundColor: "transparent"
         onNavigationRequested: function (req) {
             if (req.navigationType === WebEngineNavigationRequest.LinkClickedNavigation) {
@@ -123,17 +143,58 @@ Item {
         }
     }
 
-    // Cover the web view while the window is unmapped so a stale GPU surface
-    // never flashes black (the trick ReadingView uses for the mail view).
+    // QtWebEngine paints a stale black surface after a Wayland unmap (a
+    // workspace switch away and back). A plain focus change to another window
+    // does NOT unmap the surface, so covering the editor on every !win.active
+    // just blanks it whenever focus wanders — wrong when the mailbox window is
+    // still on screen (tiled beside another, on a second monitor). So: cover
+    // only when the window is genuinely hidden or minimised, and on the way
+    // back force a few fresh frames by flipping the view's visibility once and
+    // oscillating its width by a pixel. On a bare refocus, oscillate only —
+    // no cover. (Same mechanism as FeedArticle / ThreadMessage.)
+    property bool _nudge: false
+    property bool _webShown: true
     property bool covered: false
+    property bool _dirty: false
+
+    function _repaintCycle() {
+        covered = true; _webShown = false
+        pulse.count = 0; pulse.restart()
+    }
+    Timer {
+        id: pulse
+        interval: 16; repeat: true
+        property int count: 0
+        onTriggered: {
+            root._webShown = true
+            root._nudge = (count % 2 === 0)
+            web.update()
+            if (++count >= 4) { stop(); root.covered = false }
+        }
+    }
+    Connections {
+        target: win
+        function onVisibilityChanged() {
+            var hidden = win.visibility === Window.Hidden || win.visibility === Window.Minimized
+            if (hidden) { root.covered = true; root._dirty = true }
+            else if (root._dirty) { root._dirty = false; root._repaintCycle() }
+        }
+    }
+    // A workspace switch unmaps the Wayland surface without changing focus or
+    // Window.visibility. SurfaceWatcher turns the platform expose events into
+    // obscured()/revealed(); the mouse merely leaving the window fires none of
+    // these, so a bare focus change never triggers the repaint.
+    Connections {
+        target: SurfaceWatcher
+        function onObscured() { root.covered = true; root._dirty = true }
+        function onRevealed() {
+            if (root._dirty) { root._dirty = false; root._repaintCycle() }
+        }
+    }
+
     Rectangle {
         anchors.fill: parent
         visible: root.covered
         color: Theme.cardBg
-    }
-    Timer { id: uncover; interval: 60; onTriggered: { web.update(); root.covered = false } }
-    Connections {
-        target: win
-        function onActiveChanged() { if (win.active) uncover.restart(); else root.covered = true }
     }
 }

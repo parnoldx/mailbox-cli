@@ -1,35 +1,39 @@
 import QtQuick
-import QtQuick.Controls.Basic
+import QtQuick.Window
+import QtWebEngine
 
-// The Feed as a feed. Instead of a list that hands off to a full-screen reader,
-// every item is a card in one chronological column: sender, subject and a few
-// lines of the body, with a "Read more" that expands the whole text in place
-// and collapses again. A divider marks where the reader got to last time —
-// everything above it arrived since; below it has been seen. How far down the
-// column you scroll (and anything you expand) is remembered between sessions in
-// Mailbox.stateGet/Set("feed.mark"), keyed by the message date.
+// The Feed as a feed — one chronological column of cards (sender, subject, a few
+// lines of the body) with a "Read more" that expands the whole article in place,
+// and a rule marking where the reader got to last time. How far down you scroll
+// and anything you expand is remembered in Mailbox.stateGet/Set("feed.mark"),
+// keyed by message date.
+//
+// The whole column is ONE HTML document in ONE WebEngineView (qml/vendor/feed.html).
+// The old design gave every card its own WebEngineView, and each one swallowed
+// the wheel so the surrounding QML Flickable never scrolled over article content.
+// Now there is a single scroll surface. This file keeps all the data work —
+// listModel -> rows, body prefetch, watermark persistence — and drives the page
+// through __set*()/__state(); the page sends discrete actions back as `feed:`
+// URLs caught in onNavigationRequested.
 Item {
     id: root
 
     // Only do work while The Feed is the visible bucket: the shared listModel
-    // also carries Inbox, Screener and the rest, and we must not prefetch their
-    // bodies or partition their rows.
+    // also carries Inbox, Screener and the rest.
     readonly property bool active: win.currentKey() === "Feed"
 
     property var rows: []            // newest-first, straight off listModel
     property int newCount: 0         // rows[0 .. newCount) arrived since last visit
     property string mark: ""         // the "yyyy-MM-dd HH:mm" watermark at load
     property string pendingMark: ""  // advanced as the reader scrolls / expands
-    property int hi: -1              // keyboard highlight into rows
+    property int hi: -1              // keyboard highlight, kept in step with the page
+    property bool _anyOpen: false    // any card expanded — refreshed by the poll
+    property bool _ready: false      // feed.html has loaded and __set*() exist
 
-    // id -> { snippet, body, fmt, html, hasAtt } once `message view` has answered,
-    // or null while the request is in flight.
+    // id -> { html, text } once `message view` has answered.
     property var bodies: ({})
-    property var openIds: ({})       // id -> true for the cards currently expanded
 
     // -- body prefetch, a few requests in flight at a time ------------------
-    // QML only notifies a `var` change on a *new* reference, so every mutation
-    // rebuilds the object before assigning it back.
     property var _queue: []
     property var _requested: ({})
     property int _inflight: 0
@@ -47,13 +51,11 @@ Item {
                 root._inflight--
                 if (r && r.ok && r.data) {
                     var d = r.data
+                    var rec = { html: d.body_html || "", text: d.body || "" }
                     var nb = Object.assign({}, root.bodies)
-                    nb[d.id] = {
-                        body: d.body || "",
-                        fmt: d.body_format || "plain",
-                        html: d.body_html || ""
-                    }
+                    nb[d.id] = rec
                     root.bodies = nb
+                    root._pushBody(d.id, rec)
                 }
                 root._pump()
             })
@@ -74,8 +76,9 @@ Item {
     }
     function markAllRead() {
         if (rows.length > 0) markUpTo(rows[0].dateRaw)
-        root._persist()
+        _persist()
         newCount = 0
+        _pushData()
     }
 
     function reload() {
@@ -91,7 +94,9 @@ Item {
         newCount = n
         rows = rs
         hi = rs.length > 0 ? 0 : -1
-        openIds = ({})
+        _anyOpen = false
+        _pushData()
+        for (i = 0; i < rs.length; i++) needBody(rs[i].id)
     }
 
     onActiveChanged: {
@@ -105,212 +110,204 @@ Item {
         target: listModel
         function onChanged() { root.reload() }
     }
-
-    // -- keyboard --------------------------------------------------------
-    function move(d) {
-        if (rows.length === 0) return
-        hi = Math.max(0, Math.min(rows.length - 1, (hi < 0 ? 0 : hi) + d))
-        flick.ensureVisible(hi)
-    }
-    function toggle(id) {
-        var o = Object.assign({}, openIds)
-        if (o[id]) {
-            delete o[id]
-        } else {
-            o[id] = true
-            for (var i = 0; i < rows.length; i++)
-                if (rows[i].id === id) markUpTo(rows[i].dateRaw)
+    Connections {
+        target: Theme
+        function onChanged() {
+            if (root._ready)
+                root._js("__setTheme(" + JSON.stringify(root._themeObj()) + ")")
         }
-        openIds = o
     }
-    function openHighlighted() {
-        if (hi >= 0 && hi < rows.length) toggle(rows[hi].id)
+
+    // -- QML -> page --------------------------------------------------------
+    function _themeObj() {
+        return {
+            dark: Theme.dark,
+            bg: "" + Theme.windowBg,
+            fg: "" + Theme.textPrimary,
+            dim: "" + Theme.textDim,
+            accent: "" + Theme.accent,
+            card: "" + Theme.cardBg,
+            cardHover: "" + Theme.cardHover,
+            hairline: "" + Theme.hairline,
+            sel: "" + Theme.selection,
+            green: "" + Theme.green,
+            sheet: "" + (Theme.dark ? Theme.background : "#ffffff"),
+            radius: Theme.radiusSmall
+        }
     }
-    function openFull() {
-        if (hi >= 0 && hi < rows.length) win.openMessage(rows[hi].id)
+    function _initials(s) {
+        if (!s) return "?"
+        var parts = s.trim().split(/\s+/)
+        if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase()
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
     }
-    function anyOpen() { return Object.keys(openIds).length > 0 }
-    function collapseAll() { openIds = ({}) }
+    function _dataObj() {
+        var out = []
+        for (var i = 0; i < rows.length; i++) {
+            var r = rows[i]
+            var seed = (r.fromAddr && r.fromAddr.length) ? r.fromAddr : (r.fromName || "")
+            out.push({
+                id: r.id,
+                fromName: r.fromName || "",
+                fromAddr: r.fromAddr || "",
+                initials: _initials(r.fromName || r.fromAddr || ""),
+                subject: r.subject || "",
+                date: r.date || "",
+                dateRaw: r.dateRaw || "",
+                avatarColor: "" + Theme.avatarColor(seed)
+            })
+        }
+        return {
+            rows: out,
+            newCount: newCount,
+            header: {
+                glyph: win.buckets[win.bucketIndex].glyph,
+                title: "The Feed",
+                status: newCount > 0
+                    ? (newCount + (newCount === 1 ? " new item since your last visit"
+                                                  : " new items since your last visit"))
+                    : "Nothing new — you are caught up"
+            }
+        }
+    }
+    function _js(s, cb) { if (webLoader.item) webLoader.item.runJavaScript(s, cb || function () {}) }
+    function _pushData() { if (_ready) _js("__setData(" + JSON.stringify(_dataObj()) + ")") }
+    function _pushBody(id, rec) {
+        if (_ready) _js("__setBody(" + JSON.stringify(id) + "," + JSON.stringify(rec) + ")")
+    }
+
+    // -- public API used by Main.qml -------------------------------------
+    function move(d) { if (_ready) _js("__move(" + d + ")") }
+    function openHighlighted() { if (_ready) _js("__toggleHi()") }
+    function openFull() { if (_ready) _js("__openFullHi()") }
+    function anyOpen() { return _anyOpen }
+    function collapseAll() {
+        _anyOpen = false
+        if (_ready) _js("__collapseAll()")
+    }
 
     // Opaque floor. Main cross-fades this view against BucketView; without a
-    // solid background the outgoing bucket header shows through the fade for a
-    // few frames. With it, the Feed covers the bucket the instant it is shown.
+    // solid background the outgoing bucket header shows through for a few frames.
     Rectangle {
         anchors.fill: parent
         color: Theme.windowBg
         Behavior on color { ColorAnimation { duration: Theme.anim } }
     }
 
-    Flickable {
-        id: flick
+    // The feed page. Wrapped in a Loader so a Wayland remap (a workspace switch
+    // away and back) that leaves QtWebEngine painting a black surface can be
+    // shaken off by tearing the whole view down and rebuilding it — the only
+    // thing that reliably works. State is round-tripped through the page.
+    Loader {
+        id: webLoader
+        width: parent.width
+        height: parent.height
+        active: !root._reviving
+        sourceComponent: WebEngineView {
+            backgroundColor: Theme.windowBg
+            url: "qrc:/qml/vendor/feed.html"
+
+            onLoadingChanged: function (req) {
+                if (req.status !== WebEngineView.LoadSucceededStatus) return
+                root._ready = true
+                root._js("__setDrLib(" + JSON.stringify(
+                    (typeof DarkReaderJs === "string") ? DarkReaderJs : "") + ")")
+                root._js("__setTheme(" + JSON.stringify(root._themeObj()) + ")")
+                root._pushData()
+                for (var id in root.bodies) root._pushBody(id, root.bodies[id])
+                if (root._pendingRestore) {
+                    root._js("__restore(" + JSON.stringify(root._pendingRestore) + ")")
+                    root._pendingRestore = null
+                    uncoverTimer.restart()
+                } else {
+                    root._covered = false
+                }
+            }
+
+            onNavigationRequested: function (req) {
+                var u = "" + req.url
+                if (u.indexOf("feed:") === 0) {
+                    req.action = WebEngineNavigationRequest.IgnoreRequest
+                    if (u.indexOf("feed:openfull/") === 0)
+                        win.openMessage(decodeURIComponent(u.substring(14)))
+                    else if (u === "feed:markall")
+                        root.markAllRead()
+                    else if (u.indexOf("feed:mark/") === 0)
+                        root.markUpTo(decodeURIComponent(u.substring(10)))
+                    return
+                }
+                if (req.navigationType === WebEngineNavigationRequest.LinkClickedNavigation) {
+                    Qt.openUrlExternally(req.url)
+                    req.action = WebEngineNavigationRequest.IgnoreRequest
+                }
+            }
+            onNewWindowRequested: function (req) { Qt.openUrlExternally(req.requestedUrl) }
+        }
+    }
+
+    // Read the page's expand/scroll state back for Main.qml's Esc handler
+    // (anyOpen must answer synchronously) and to persist the scroll watermark.
+    Timer {
+        interval: 400; repeat: true
+        running: root.active && root._ready && !root._reviving
+        onTriggered: root._js("__state()", function (s) {
+            if (!s) return
+            root._anyOpen = !!s.anyOpen
+            if (s.mark) root.markUpTo(s.mark)
+            if (typeof s.hi === "number" && s.hi >= 0) root.hi = s.hi
+        })
+    }
+
+    // --- QtWebEngine leaves a black GPU surface behind after its Wayland
+    // surface is unmapped and remapped (a Hyprland workspace switch). Neither
+    // Window.visibility nor expose events move on a workspace switch — the only
+    // hint is the window losing focus for more than a moment. On the way back,
+    // snapshot the page, rebuild the WebEngineView and put the page back.
+    property bool _reviving: false
+    property bool _covered: false
+    property bool _dirty: false
+    property var _pendingRestore: null
+
+    readonly property var _win: Window.window
+
+    function _repaintCycle() {
+        if (!_ready || !webLoader.item) { _covered = false; return }
+        _covered = true
+        _js("__state()", function (s) {
+            root._pendingRestore = s || null
+            root._ready = false
+            root._reviving = true
+            reviveTimer.restart()
+        })
+    }
+    Timer { id: reviveTimer; interval: 60; onTriggered: root._reviving = false }
+    Timer { id: uncoverTimer; interval: 200; onTriggered: root._covered = false }
+
+    Connections {
+        target: root._win
+        enabled: root._win !== null
+        function onVisibilityChanged() {
+            var hidden = root._win.visibility === Window.Hidden
+                      || root._win.visibility === Window.Minimized
+            if (hidden) { root._covered = true; root._dirty = true }
+            else if (root._dirty) { root._dirty = false; root._repaintCycle() }
+        }
+    }
+    // Only a real unmap (workspace switch -> platform expose event, or a
+    // minimize) rebuilds the view. The mouse leaving the window drops focus but
+    // fires none of these, so it never triggers the ~0.5s reload.
+    Connections {
+        target: SurfaceWatcher
+        function onObscured() { root._covered = true; root._dirty = true }
+        function onRevealed() {
+            if (root._dirty) { root._dirty = false; root._repaintCycle() }
+        }
+    }
+    Rectangle {
         anchors.fill: parent
-        contentWidth: width
-        contentHeight: col.implicitHeight + 140
-        clip: true
-        boundsBehavior: Flickable.StopAtBounds
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-
-        // Best-effort "scroll it into view": card tops are one row height apart
-        // is not true once things expand, so just nudge if the highlight sits
-        // outside the viewport.
-        function ensureVisible(i) {
-            var item = repeater.itemAt(i)
-            if (!item) return
-            var top = item.mapToItem(contentItem, 0, 0).y
-            var bot = top + item.height
-            if (top < contentY + 8) contentY = Math.max(0, top - 8)
-            else if (bot > contentY + height - 8) contentY = bot - height + 8
-        }
-
-        Column {
-            id: col
-            // Same measure as BucketView, so the header lines up pixel-for-pixel
-            // with every other bucket while the two views cross-fade.
-            x: Math.max(40, (parent.width - 880) / 2)
-            width: Math.min(880, parent.width - 80)
-            topPadding: 56
-            spacing: 6
-
-            // Header — the same shape as every other bucket (see BucketView):
-            // the bucket glyph, its name, and a status line under it. Keeping it
-            // identical means switching in and out of the Feed never swaps one
-            // header design for another mid-fade.
-            Item {
-                width: parent.width
-                height: hdr.implicitHeight
-
-                Row {
-                    id: hdr
-                    anchors.left: parent.left
-                    anchors.right: markBtn.visible ? markBtn.left : parent.right
-                    anchors.rightMargin: 14
-                    spacing: 14
-
-                    Text {
-                        text: win.buckets[win.bucketIndex].glyph
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 30
-                        color: Theme.accent
-                        Behavior on color { ColorAnimation { duration: Theme.anim } }
-                    }
-                    Column {
-                        width: parent.width - 44
-                        spacing: 4
-                        Text {
-                            text: "The Feed"
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 30
-                            font.weight: Font.Bold
-                            color: Theme.textPrimary
-                            Behavior on color { ColorAnimation { duration: Theme.anim } }
-                        }
-                        Text {
-                            text: root.newCount > 0
-                                  ? root.newCount + (root.newCount === 1 ? " new item since your last visit"
-                                                                         : " new items since your last visit")
-                                  : "Nothing new — you are caught up"
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 12
-                            color: Theme.textDim
-                            Behavior on color { ColorAnimation { duration: Theme.anim } }
-                        }
-                    }
-                }
-
-                Rectangle {
-                    id: markBtn
-                    anchors.right: parent.right
-                    anchors.verticalCenter: hdr.verticalCenter
-                    visible: root.newCount > 0
-                    width: markRow.implicitWidth + 22
-                    height: 28
-                    radius: 14
-                    color: markHover.hovered ? Theme.cardHover : Theme.selection
-                    Behavior on color { ColorAnimation { duration: Theme.anim } }
-                    Row {
-                        id: markRow
-                        anchors.centerIn: parent
-                        spacing: 6
-                        Text {
-                            text: ""
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 10
-                            color: Theme.green
-                            Behavior on color { ColorAnimation { duration: Theme.anim } }
-                        }
-                        Text {
-                            text: "Mark all read"
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 11
-                            color: Theme.textDim
-                            Behavior on color { ColorAnimation { duration: Theme.anim } }
-                        }
-                    }
-                    HoverHandler { id: markHover }
-                    TapHandler { onTapped: root.markAllRead() }
-                }
-            }
-
-            // The gap BucketView leaves between its header and its first row.
-            Item { width: 1; height: 28 }
-
-            // The cards keep a 680 reading measure, centred in the window like
-            // before, while the header above still spans the wider bucket
-            // column so it lines up with every other bucket.
-            Column {
-                id: list
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: Math.min(680, col.width)
-                spacing: 6
-
-                Repeater {
-                    id: repeater
-                    model: root.active ? root.rows : []
-                    FeedCard {
-                        width: list.width
-                        controller: root
-                        scroller: flick
-                        row: modelData
-                        isNew: index < root.newCount
-                        highlighted: root.hi === index
-                        expanded: !!root.openIds[modelData.id]
-                        showDividerBelow: root.newCount > 0 && root.newCount < root.rows.length
-                                          && index === root.newCount - 1
-                    }
-                }
-
-                // When everything is already read the divider has nothing above it;
-                // still show it so the column has a "caught up" cap.
-                FeedDivider {
-                    width: parent.width
-                    visible: root.active && root.newCount === 0 && root.rows.length > 0
-                    label: "You are all caught up"
-                }
-
-                Column {
-                    width: parent.width
-                    spacing: 10
-                    topPadding: 70
-                    visible: root.active && root.rows.length === 0
-                    Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: ""
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 32
-                        color: Theme.hairline
-                        Behavior on color { ColorAnimation { duration: Theme.anim } }
-                    }
-                    Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: "The Feed is empty"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 12
-                        color: Theme.textDim
-                        Behavior on color { ColorAnimation { duration: Theme.anim } }
-                    }
-                }
-            }
-        }
+        z: 100
+        visible: root._covered
+        color: Theme.windowBg
     }
 
     // Hints, mirroring BucketView's corner furniture.

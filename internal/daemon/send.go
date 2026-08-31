@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"html"
 	"path/filepath"
 	"strings"
 	"time"
@@ -149,75 +148,7 @@ func (d *Daemon) answer(a *Account, draft *compose.Draft, parent mirror.Message,
 		chain = parent.InReplyTo
 	}
 	draft.References = append(append([]string(nil), chain...), parent.Key)
-
-	// Quote the parent under whatever the caller wrote — top-posted, the way
-	// every mail client does it — so the reply carries its own context on a
-	// client with no conversation view. Skipped when the caller already
-	// included the block (a GUI that showed the quote to the user for
-	// trimming): quoteMarker in the HTML is how that is recognised.
-	if !strings.Contains(draft.BodyHTML, quoteMarker) {
-		draft.Body = replyBody(draft.Body, parent)
-		draft.BodyHTML = replyBodyHTML(draft.BodyHTML, parent)
-	}
 	return nil
-}
-
-// quoteMarker tags answer()'s quoted-parent <div> so the same reply, sent
-// again from a GUI that already rendered the quote, is not quoted twice.
-const quoteMarker = "data-mailbox-quote"
-
-// replyAttribution is the "On <date>, <who> wrote:" line that sits above a
-// quoted parent.
-func replyAttribution(m mirror.Message) string {
-	who := strings.TrimSpace(m.From)
-	if who == "" {
-		who = "the sender"
-	}
-	return fmt.Sprintf("On %s, %s wrote:", m.Date.Local().Format("Mon, 2 Jan 2006 at 15:04"), who)
-}
-
-// parentPlain is the parent's text, falling back to a flattened copy of its
-// HTML when it never had a text/plain part.
-func parentPlain(m mirror.Message) string {
-	if strings.TrimSpace(m.TextPlain) != "" {
-		return m.TextPlain
-	}
-	if strings.TrimSpace(m.TextHTML) != "" {
-		return htmlmd.HTMLToMarkdown(m.TextHTML)
-	}
-	return ""
-}
-
-// replyBody is the text/plain half: the caller's note, then the parent with
-// every line "> "-quoted under an attribution line.
-func replyBody(note string, m mirror.Message) string {
-	var b strings.Builder
-	if note = strings.TrimRight(note, "\n"); note != "" {
-		b.WriteString(note)
-		b.WriteString("\n\n")
-	}
-	b.WriteString(replyAttribution(m))
-	b.WriteString("\n")
-	for _, line := range strings.Split(strings.TrimRight(parentPlain(m), "\n"), "\n") {
-		b.WriteString("> ")
-		b.WriteString(line)
-		b.WriteString("\n")
-	}
-	return b.String()
-}
-
-// replyBodyHTML is the text/html half: the caller's HTML, then the same
-// attribution line and the parent wrapped in a <blockquote> a client can fold.
-func replyBodyHTML(note string, m mirror.Message) string {
-	inner := strings.TrimSpace(m.TextHTML)
-	if inner == "" {
-		inner = "<pre style=\"white-space:pre-wrap\">" +
-			html.EscapeString(strings.TrimRight(m.TextPlain, "\n")) + "</pre>"
-	}
-	return note +
-		"<div " + quoteMarker + "><br><div>" + html.EscapeString(replyAttribution(m)) + "</div>" +
-		"<blockquote type=\"cite\" style=\"margin:0 0 0 .8ex;border-left:2px solid #ccc;padding-left:1ex\">" +
-		inner + "</blockquote></div>"
 }
 
 // replySubject prefixes Re: exactly once. "Re: Re: Re:" is somebody's client

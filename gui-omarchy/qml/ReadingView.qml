@@ -41,7 +41,7 @@ Item {
                 Behavior on color { ColorAnimation { duration: Theme.anim } }
                 Text {
                     anchors.centerIn: parent
-                    text: ""
+                    text: "\uf060"
                     font.family: Theme.fontFamily
                     font.pixelSize: 13
                     color: Theme.textDim
@@ -75,7 +75,7 @@ Item {
                     anchors.centerIn: parent
                     spacing: 5
                     Text {
-                        text: ""
+                        text: "\uf00c"
                         font.family: Theme.fontFamily
                         font.pixelSize: 10
                         color: Theme.green
@@ -105,7 +105,7 @@ Item {
                     anchors.centerIn: parent
                     spacing: 5
                     Text {
-                        text: root.allExpanded() ? "" : ""
+                        text: root.allExpanded() ? "\uf077" : "\uf078"
                         font.family: Theme.fontFamily
                         font.pixelSize: 10
                         color: Theme.textDim
@@ -140,7 +140,7 @@ Item {
                         anchors.centerIn: parent
                         spacing: 5
                         Text {
-                            text: modelData.all ? "" : ""
+                            text: modelData.all ? "\uf122" : "\uf112"
                             font.family: Theme.fontFamily
                             font.pixelSize: 10
                             color: rpHover.hovered ? Theme.accent : Theme.textDim
@@ -163,8 +163,8 @@ Item {
             // (key A). Both drop back to the list, then fire the move.
             Repeater {
                 model: [
-                    { glyph: "", label: "Reply later", fn: "replyLaterCurrent" },
-                    { glyph: "", label: "Set aside",   fn: "setAsideCurrent" }
+                    { glyph: "\uf017", label: "Reply later", fn: "replyLaterCurrent" },
+                    { glyph: "\uf02e", label: "Set aside",   fn: "setAsideCurrent" }
                 ]
                 Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
@@ -213,7 +213,7 @@ Item {
                     anchors.centerIn: parent
                     spacing: 5
                     Text {
-                        text: ""
+                        text: "\uf1f8"
                         font.family: Theme.fontFamily
                         font.pixelSize: 10
                         color: trHover.hovered ? "#ffffff" : Theme.textDim

@@ -4,22 +4,19 @@ import QtQuick.Controls.Basic
 // The five-second grace period — but only when there is something worth
 // pausing for: the body mentions an attachment and none was actually
 // attached (warnAttachment). Every other send has nothing to catch, so it
-// goes out the instant Send is pressed, with just a brief result toast.
-// Send always closes the composer at once either way; on timeout (or
-// immediately, for the instant case) this makes the real `send`/`reply` call
-// and reports the result briefly.
+// skips the toast entirely and goes out at once, with just a "Sent" flash.
+// Send always closes the composer immediately. When the countdown runs out
+// (or is never shown) this makes the real `send`/`reply` call; the result is
+// reported through win.flash(), not here.
 Item {
     id: root
     property var pending: null          // { cmd, args, label, warnAttachment, form }
-    property string phase: ""           // "" | counting | result
-    property string resultText: ""
-    property bool resultOk: true
+    property string phase: ""           // "" | counting
 
     visible: phase !== ""
 
     function start(p) {
         root.pending = p
-        root.resultText = ""
         if (!p.warnAttachment) { root.fire(); return }
         root.phase = "counting"
         bar.width = barTrack.width
@@ -29,11 +26,10 @@ Item {
     function fire() {
         if (!root.pending) return
         var p = root.pending
-        root.phase = "result"
+        countdown.stop(); barAnim.stop()
+        root.phase = ""; root.pending = null
         Mailbox.call(p.cmd, p.args, function (r) {
-            root.resultOk = !!r.ok
-            root.resultText = r.ok ? "Sent" : ((r.error && r.error.length) ? r.error : "Send failed")
-            hideTimer.restart()
+            win.flash(r.ok ? "Sent" : ((r.error && r.error.length) ? r.error : "Send failed"))
         })
     }
     function undo() {
@@ -44,23 +40,22 @@ Item {
     }
 
     Timer { id: countdown; interval: 5000; onTriggered: root.fire() }
-    Timer { id: hideTimer; interval: 2200; onTriggered: { root.phase = ""; root.pending = null } }
 
     Rectangle {
         id: card
         anchors.horizontalCenter: parent.horizontalCenter
         width: Math.min(520, parent.width - 64)
         height: col.implicitHeight + 22
-        y: root.phase !== "" ? parent.height - height - 28 : parent.height + 8
+        // Drops down from the top, same edge as the "Draft saved" flash — the
+        // bottom is the Reply Later / Set Aside stacks' turf on the Inbox.
+        y: root.phase !== "" ? 28 : -height - 8
         Behavior on y { NumberAnimation { duration: Theme.anim; easing.type: Easing.OutCubic } }
         radius: Theme.radius
         color: Theme.railBg
         border.width: 1
-        border.color: warn ? Theme.yellow : Theme.hairline
+        border.color: Theme.yellow
         Behavior on color { ColorAnimation { duration: Theme.anim } }
         Behavior on border.color { ColorAnimation { duration: Theme.anim } }
-
-        readonly property bool warn: root.phase === "counting" && root.pending && root.pending.warnAttachment
 
         Column {
             id: col
@@ -79,19 +74,14 @@ Item {
                     Text {
                         width: parent.width
                         elide: Text.ElideRight
-                        text: root.phase === "result"
-                              ? root.resultText
-                              : (root.pending ? root.pending.label : "")
+                        text: root.pending ? root.pending.label : ""
                         font.family: Theme.fontFamily
                         font.pixelSize: 12
                         font.weight: Font.DemiBold
-                        color: root.phase === "result"
-                               ? (root.resultOk ? Theme.green : Theme.red)
-                               : Theme.textPrimary
+                        color: Theme.textPrimary
                         Behavior on color { ColorAnimation { duration: Theme.anim } }
                     }
                     Text {
-                        visible: card.warn
                         width: parent.width
                         wrapMode: Text.Wrap
                         text: "You mentioned an attachment, but none is attached."
@@ -105,10 +95,9 @@ Item {
                 AppButton {
                     id: undoBtn
                     anchors.verticalCenter: parent.verticalCenter
-                    visible: root.phase === "counting"
                     kind: "ghost"
-                    glyph: "\uf0e2"
-                    text: card.warn ? "Undo to attach" : "Undo"
+                    glyph: ""
+                    text: "Undo to attach"
                     onClicked: root.undo()
                 }
             }
@@ -116,7 +105,6 @@ Item {
             // Draining progress bar.
             Rectangle {
                 id: barTrack
-                visible: root.phase === "counting"
                 width: parent.width - 24
                 height: 3
                 radius: 2
@@ -126,7 +114,7 @@ Item {
                     id: bar
                     height: parent.height
                     radius: 2
-                    color: card.warn ? Theme.yellow : Theme.accent
+                    color: Theme.yellow
                     Behavior on color { ColorAnimation { duration: Theme.anim } }
                 }
                 NumberAnimation { id: barAnim; target: bar; property: "width"; to: 0; duration: 5000; easing.type: Easing.Linear }

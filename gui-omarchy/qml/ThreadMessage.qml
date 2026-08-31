@@ -181,39 +181,50 @@ Item {
     onAttachmentsChanged: reloadHtml()
     Connections { target: Theme; function onChanged() { root.renderHtml() } }
 
-    // Same Wayland-stale-GPU-surface workaround the single-message view had —
-    // see FeedArticle/the old ReadingView for the full story. Only relevant
-    // while this instance actually holds a live WebEngineView.
+    // --- QtWebEngine leaves a black GPU surface behind once its Wayland surface
+    // has been unmapped and remapped (a Hyprland workspace switch away and
+    // back). Nudging geometry / flipping visibility does not reliably bring it
+    // back; tearing the WebEngineView down and building a fresh one does. So on
+    // the way back from anything that may have unmapped us, save the reading
+    // position, recreate the view, and restore the scroll under an opaque cover.
     property bool webCovered: false
-    property bool webShown: true
-    property bool webNudge: false
     property bool webDirty: false
+    property bool reviving: false
+    property real savedScroll: 0
+
     function repaintCycle() {
-        webCovered = true; webShown = false
-        webPulse.count = 0; webPulse.restart()
-    }
-    Timer {
-        id: webPulse
-        interval: 16; repeat: true
-        property int count: 0
-        onTriggered: {
-            root.webShown = true
-            root.webNudge = (count % 2 === 0)
-            if (webLoader.item) webLoader.item.update()
-            if (++count >= 4) { stop(); root.webCovered = false }
+        if (!root.htmlMode) return
+        webCovered = true
+        if (webLoader.item) {
+            webLoader.item.runJavaScript("window.scrollY || 0", function (y) {
+                root.savedScroll = y || 0
+                root._recreate()
+            })
+        } else {
+            root._recreate()
         }
     }
+    function _recreate() { root.reviving = true; reviveTimer.restart() }
     Timer {
-        id: webHeal
-        interval: 16; repeat: true
-        property int count: 0
-        onRunningChanged: if (running) count = 0
+        id: reviveTimer
+        interval: 60
         onTriggered: {
-            root.webNudge = (count % 2 === 0)
-            if (webLoader.item) webLoader.item.update()
-            if (++count >= 4) { stop(); root.webNudge = false }
+            root.reviving = false
+            if (!root.htmlMode) root.webCovered = false
         }
     }
+
+    function restoreScroll() {
+        var y = root.savedScroll
+        root.savedScroll = 0
+        if (y > 1 && webLoader.item)
+            webLoader.item.runJavaScript(
+                "(function(){var n=0,iv=setInterval(function(){window.scrollTo(0," + y +
+                ");if(++n>16)clearInterval(iv);},60);})()")
+        uncoverTimer.restart()
+    }
+    Timer { id: uncoverTimer; interval: 220; onTriggered: root.webCovered = false }
+
     Connections {
         target: win
         enabled: root.htmlMode
@@ -222,8 +233,17 @@ Item {
             if (hidden) { root.webCovered = true; root.webDirty = true }
             else if (root.webDirty) { root.webDirty = false; root.repaintCycle() }
         }
-        function onActiveChanged() {
-            if (win.active && !root.webDirty) webHeal.restart()
+    }
+    // A workspace switch unmaps the Wayland surface without changing focus or
+    // Window.visibility. SurfaceWatcher turns the platform expose events into
+    // obscured()/revealed(); a plain focus change — the mouse just leaving the
+    // window — does NOT fire these, so it never triggers the rebuild.
+    Connections {
+        target: SurfaceWatcher
+        enabled: root.htmlMode
+        function onObscured() { root.webCovered = true; root.webDirty = true }
+        function onRevealed() {
+            if (root.webDirty) { root.webDirty = false; root.repaintCycle() }
         }
     }
 
@@ -438,7 +458,9 @@ Item {
                     id: webLoader
                     anchors.fill: parent
                     anchors.margins: 1
-                    active: root.htmlMode
+                    // `reviving` blips false to tear the view down and rebuild a
+                    // fresh one after a Wayland remap.
+                    active: root.htmlMode && !root.reviving
                     onLoaded: root.renderHtml()
                     sourceComponent: WebEngineView {
                         backgroundColor: root.applyDark ? Theme.background : "#ffffff"
@@ -453,6 +475,7 @@ Item {
                             if (req.status === WebEngineView.LoadSucceededStatus) {
                                 root.webLoaded = true
                                 root.flushCids()
+                                if (root.webCovered) root.restoreScroll()
                             }
                         }
                     }

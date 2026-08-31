@@ -215,43 +215,6 @@ func TestReplyAnswersTheSenderInTheSameThread(t *testing.T) {
 	}
 }
 
-// A reply keeps the caller's text at the top and quotes the parent under an
-// attribution line, so it still reads on a client with no conversation view.
-func TestReplyQuotesTheParentUnderTheAnswer(t *testing.T) {
-	d, _ := seedSend(t)
-	resp := d.handle(context.Background(), Request{ID: "1", Cmd: []string{"reply"}, Args: map[string]any{
-		"positional": "7", "body": "schon überwiesen",
-	}})
-	if !resp.OK {
-		t.Fatalf("reply: %s (%s)", resp.Error, resp.Code)
-	}
-	body := filedCopy(t, d, resp.Data.(sent).UID).Plain
-	if !strings.HasPrefix(strings.TrimSpace(body), "schon überwiesen") {
-		t.Errorf("the answer is not at the top:\n%s", body)
-	}
-	for _, want := range []string{"billing@example.com", "wrote:", "> the text"} {
-		if !strings.Contains(body, want) {
-			t.Errorf("the quoted parent is missing %q:\n%s", want, body)
-		}
-	}
-}
-
-// A caller that already assembled the quote block (a GUI that showed it for
-// trimming) marks it, and answer() leaves that alone rather than quote twice.
-func TestReplyDoesNotDoubleQuoteAMarkedBody(t *testing.T) {
-	d, _ := seedSend(t)
-	resp := d.handle(context.Background(), Request{ID: "1", Cmd: []string{"reply"}, Args: map[string]any{
-		"positional": "7", "body": "kurz",
-		"body_html": "<p>kurz</p><div data-mailbox-quote>already quoted</div>",
-	}})
-	if !resp.OK {
-		t.Fatalf("reply: %s (%s)", resp.Error, resp.Code)
-	}
-	if body := filedCopy(t, d, resp.Data.(sent).UID).Plain; strings.Contains(body, "> the text") {
-		t.Errorf("answer() quoted a body that already carried the block:\n%s", body)
-	}
-}
-
 func TestReplyAllCopiesEveryoneExceptUs(t *testing.T) {
 	d, _ := seedSend(t)
 	// A mail addressed to us and a colleague, copying the boss.

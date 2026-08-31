@@ -157,6 +157,7 @@ Item {
     // the Inbox \u2014 writing a new mail is an Inbox action, not something you do
     // from Paper Trail or Set Aside.
     AppButton {
+        id: composeBtn
         anchors { right: parent.right; top: parent.top; margins: 24 }
         visible: root.isInbox
         kind: "primary"
@@ -165,13 +166,13 @@ Item {
         onClicked: win.startCompose()
     }
 
-    // The Screener lives here: a button, top-left of the Inbox, shown only when
+    // The Screener lives here: a button just left of Compose, shown only when
     // senders are actually waiting. It is the one way in \u2014 there is no bucket
     // key or launcher entry for it \u2014 and `screener` decisions send you back.
     AppButton {
-        anchors { left: parent.left; top: parent.top; margins: 24 }
+        anchors { right: composeBtn.left; rightMargin: 10; verticalCenter: composeBtn.verticalCenter }
         visible: root.isInbox && root.screenerWaiting > 0
-        kind: "ghost"
+        kind: "soft"
         glyph: "\uf0c0"
         text: "Screener \u00b7 " + root.screenerWaiting
         onClicked: win.switchToKey("Screener")

@@ -29,6 +29,30 @@ Item {
     function _base(p) { var s = String(p).split("/"); return s[s.length - 1] || p }
     function _localPath(url) { return decodeURIComponent(String(url).replace(/^file:\/\/\//, "/")) }
     function _stripTags(html) { return String(html || "").replace(/<[^>]*>/g, " ") }
+    function _esc(s) {
+        return String(s === undefined || s === null ? "" : s)
+            .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    }
+
+    // "On 3 Sep 2026 at 14:03, Jamie Roe <…> wrote:" — the line above the quote.
+    function _attribution(from, iso) {
+        var who = String(from || "").trim() || "the sender"
+        var d = new Date(iso)
+        var when = isNaN(d.getTime()) ? "" : Qt.formatDateTime(d, "d MMM yyyy 'at' HH:mm")
+        return when ? ("On " + when + ", " + who + " wrote:") : (who + " wrote:")
+    }
+    // The reply's starting document: an empty line for the answer, then the
+    // attribution and the parent's text in a real <blockquote>. Lexxy is
+    // Lexical underneath and imports <blockquote> as a first-class node, so
+    // this is just editor content the user can trim — nothing is stitched on
+    // at send time.
+    function _replyDoc(quote, attribution) {
+        var paras = String(quote || "").replace(/\r\n?/g, "\n").split(/\n{2,}/)
+            .map(function (p) { return "<p>" + p.split("\n").map(root._esc).join("<br>") + "</p>" })
+            .join("")
+        if (paras.length === 0) paras = "<p></p>"
+        return "<p><br></p><p>" + root._esc(attribution) + "</p><blockquote>" + paras + "</blockquote>"
+    }
 
     function resetForm() {
         root.mode = "new"; root.replyId = ""; root.replyAll = false
@@ -44,7 +68,7 @@ Item {
         Qt.callLater(function () { toPills.focusInput() })
     }
 
-    // ctx: { id, all, from, subject }
+    // ctx: { id, all, from, subject, date, quote }
     function openReply(ctx) {
         resetForm()
         root.mode = "reply"
@@ -56,7 +80,13 @@ Item {
         if (m) toPills.addRecipient(m[1], m[2])
         else if (ctx.from) toPills.addRecipient("", ctx.from)
         subjectField.text = /^re:/i.test(root.baseSubject) ? root.baseSubject : ("Re: " + root.baseSubject)
-        Qt.callLater(function () { lexxy.focusEditor() })
+        // Seed the editor with an empty first line and the quoted parent, and
+        // land the caret above it (atStart) so the reply is written on top.
+        var quote = String(ctx.quote || "").trim()
+        if (quote.length > 0)
+            lexxy.setHtml(root._replyDoc(quote, root._attribution(ctx.from || "", ctx.date || "")), true)
+        else
+            Qt.callLater(function () { lexxy.focusStart() })
     }
 
     function addAttachment(path) {
@@ -77,8 +107,11 @@ Item {
     readonly property bool canSend: toPills.recipients.length > 0
 
     function _mentionsAttachment(html) {
+        // Only what the user actually wrote — the quoted parent may well say
+        // "see attached" about a file that was never on this reply.
+        var own = String(html || "").replace(/<blockquote[\s\S]*?<\/blockquote>/gi, " ")
         var re = /\b(attached|attachment|attachments|attaching|enclosed|anbei|angeh[aä]ngt|anliegend|beigef[uü]gt)\b/i
-        return re.test(root._stripTags(html)) && root.attachments.length === 0
+        return re.test(root._stripTags(own)) && root.attachments.length === 0
     }
 
     function collectArgs(forDraft, html) {
