@@ -10,6 +10,7 @@ import (
 	compose "mailbox/internal/message"
 	"mailbox/internal/mirror"
 	"mailbox/internal/outbox"
+	"mailbox/internal/routing"
 	"mailbox/internal/sync/davsync"
 	"mailbox/internal/sync/mailsync"
 )
@@ -337,6 +338,50 @@ func (d *Daemon) cycle(ctx context.Context, a *Account, reason string) {
 			continue
 		}
 		d.push(Push{Event: "mail.changed", Account: a.Name, Box: folder})
+	}
+	// A reply that lands in a conversation half-filed in Aside or Reply Later
+	// pulls the filed half back to the Inbox: the piles are decided one mail at
+	// a time, but a live thread is not something to keep hidden (matches how
+	// the Inbox row badges the whole thread).
+	if a.Primary {
+		for _, out := range outcomes {
+			if out.Action == mailsync.ActionIncremental {
+				d.reclaimPiled(ctx, a, out.NewThreads)
+			}
+		}
+	}
+}
+
+// reclaimPiled moves every Aside and Reply Later Message of the named Threads
+// back to the Inbox. It is called with the Threads a cycle just added mail to,
+// so an untouched pile is left alone.
+func (d *Daemon) reclaimPiled(ctx context.Context, a *Account, threadIDs []int64) {
+	if len(threadIDs) == 0 {
+		return
+	}
+	var refs []mailsync.Ref
+	for _, tid := range threadIDs {
+		members, err := d.Mirror.Thread(a.Name, tid)
+		if err != nil {
+			d.logf("reclaim thread %d: %v", tid, err)
+			continue
+		}
+		for _, m := range members {
+			switch m.Placement.Folder {
+			case routing.BoxAside, routing.BoxReplyLater:
+				refs = append(refs, mailsync.Ref{Folder: m.Placement.Folder, UID: m.Placement.UID})
+			}
+		}
+	}
+	if len(refs) == 0 {
+		return
+	}
+	if _, err := a.Writer.Move(ctx, refs, routing.BoxInbox); err != nil {
+		d.logf("reclaim to inbox: %v", err)
+		return
+	}
+	for _, box := range []string{routing.BoxAside, routing.BoxReplyLater, routing.BoxInbox} {
+		d.push(Push{Event: "mail.changed", Account: a.Name, Box: box})
 	}
 }
 

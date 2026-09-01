@@ -458,9 +458,11 @@ func tree(l Locals) []*Command {
 		},
 		{
 			Name: "aside", Section: SectionOrganize, Short: "The read-later pile",
-			Long: "Aside is decided one mail at a time, never per sender: the routing " +
-				"decides about senders, and \"read this later\" is about a message. " +
-				"Read the pile with `mailbox box view Aside`.",
+			Long: "Aside is decided one conversation at a time, never per sender: the " +
+				"routing decides about senders, and \"read this later\" is about a " +
+				"thread. Setting one message aside takes the rest of its thread with " +
+				"it; a reply arriving pulls the thread back. Read the pile with " +
+				"`mailbox box view Aside`.",
 			Sub: []*Command{
 				{
 					Name: "add", Short: "Put mail aside", Needs: true,
@@ -477,9 +479,11 @@ func tree(l Locals) []*Command {
 		},
 		{
 			Name: "reply-later", Section: SectionOrganize, Short: "The reply-later pile",
-			Long: "Reply Later is decided one mail at a time, never per sender: the " +
-				"routing decides about senders, and \"I owe this a reply\" is about a " +
-				"message. Read the pile with `mailbox box view \"Reply Later\"`.",
+			Long: "Reply Later is decided one conversation at a time, never per sender: " +
+				"the routing decides about senders, and \"I owe this a reply\" is about " +
+				"a thread. It takes and releases a whole thread at once; answering it, " +
+				"or a reply arriving, pulls the thread back. Read the pile with " +
+				"`mailbox box view \"Reply Later\"`.",
 			Sub: []*Command{
 				{
 					Name: "add", Short: "Put mail in the reply-later pile", Needs: true,

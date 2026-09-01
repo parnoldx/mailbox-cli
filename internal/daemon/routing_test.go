@@ -484,3 +484,196 @@ fileinto "INBOX/Screener";`
 		t.Errorf("after the first write the script says %v", l.All())
 	}
 }
+
+// A reply landing in a conversation whose other messages the user set aside
+// pulls those back to the Inbox: Aside is decided one mail at a time, but a
+// live thread is not something to keep half-hidden.
+func TestAReplyPullsAThreadOutOfAside(t *testing.T) {
+	d, _ := seedScreener(t)
+	f := fakeOf(d)
+	a := d.primaryAccount()
+	ctx := context.Background()
+
+	// The opener of a conversation, sitting in Aside.
+	opener := f.Deliver(routing.BoxAside, "deal@example.com", "Angebot", "das Angebot")
+	opener.From = "sales@example.com"
+	opener.Date = time.Date(2026, 8, 29, 9, 0, 0, 0, time.UTC)
+	if _, err := a.Reconciler.SyncAll(ctx, a.Mirrored); err != nil {
+		t.Fatal(err)
+	}
+	if rows := boxView(t, d, "Aside"); len(rows) != 1 {
+		t.Fatalf("Aside holds %d, want 1", len(rows))
+	}
+
+	// A reply to it arrives in the Inbox.
+	reply := f.Deliver("INBOX", "reply@example.com", "Re: Angebot", "ja, gerne")
+	reply.From = "sales@example.com"
+	reply.Date = time.Date(2026, 8, 29, 10, 0, 0, 0, time.UTC)
+	reply.Reply(opener)
+
+	d.cycle(ctx, a, "test")
+
+	if rows := boxView(t, d, "Aside"); len(rows) != 0 {
+		t.Fatalf("Aside still holds %d after the reply, want 0", len(rows))
+	}
+	inbox := boxView(t, d, "inbox")
+	var thread *row
+	for i := range inbox {
+		if strings.Contains(inbox[i].Subject, "Angebot") {
+			thread = &inbox[i]
+		}
+	}
+	if thread == nil {
+		t.Fatalf("the conversation is not in the inbox: %+v", inbox)
+	}
+	if thread.Count != 2 {
+		t.Errorf("inbox thread count = %d, want 2", thread.Count)
+	}
+}
+
+// A pile the reply's thread does not touch is left where it is: reclaiming is
+// per-conversation, not a sweep of the whole pile.
+func TestAReplyLeavesUnrelatedAsideMailAlone(t *testing.T) {
+	d, _ := seedScreener(t)
+	f := fakeOf(d)
+	a := d.primaryAccount()
+	ctx := context.Background()
+
+	kept := f.Deliver(routing.BoxAside, "later@example.com", "Zum Lesen", "irgendwann")
+	kept.Date = time.Date(2026, 8, 29, 8, 0, 0, 0, time.UTC)
+	if _, err := a.Reconciler.SyncAll(ctx, a.Mirrored); err != nil {
+		t.Fatal(err)
+	}
+
+	reply := f.Deliver("INBOX", "fresh@example.com", "Neu", "hallo")
+	reply.Date = time.Date(2026, 8, 29, 11, 0, 0, 0, time.UTC)
+
+	d.cycle(ctx, a, "test")
+
+	if rows := boxView(t, d, "Aside"); len(rows) != 1 {
+		t.Fatalf("Aside holds %d, want the unrelated mail left alone", len(rows))
+	}
+}
+
+// A pile is a decision about a conversation: setting one Message of a Thread
+// aside takes the whole Thread with it, so the Inbox and the pile never show
+// two halves of the same conversation. `aside done` brings all of it back.
+func TestAsideMovesTheWholeThread(t *testing.T) {
+	d, _ := seedScreener(t)
+	f := fakeOf(d)
+	a := d.primaryAccount()
+	ctx := context.Background()
+
+	first := f.Deliver("INBOX", "q1@example.com", "Angebot", "erste Mail")
+	first.Date = time.Date(2026, 8, 29, 9, 0, 0, 0, time.UTC)
+	second := f.Deliver("INBOX", "q2@example.com", "Re: Angebot", "zweite Mail")
+	second.Date = time.Date(2026, 8, 29, 10, 0, 0, 0, time.UTC)
+	second.Reply(first)
+	if _, err := a.Reconciler.SyncAll(ctx, a.Mirrored); err != nil {
+		t.Fatal(err)
+	}
+
+	inbox := boxView(t, d, "inbox")
+	if len(inbox) != 1 || inbox[0].Count != 2 {
+		t.Fatalf("inbox = %+v, want one row of two", inbox)
+	}
+
+	// Aside the collapsed row: both Messages of the Thread should move.
+	moved := mustAsk(t, d, []string{"aside"},
+		map[string]any{"positional": inbox[0].ID}).Data.([]change)
+	if len(moved) != 2 {
+		t.Fatalf("aside moved %d messages, want the whole thread of 2: %+v", len(moved), moved)
+	}
+	for _, c := range moved {
+		if !strings.HasPrefix(c.NewID, "Aside:") {
+			t.Errorf("moved to %q, want Aside", c.NewID)
+		}
+	}
+	if rows := boxView(t, d, "inbox"); len(rows) != 0 {
+		t.Fatalf("inbox still holds %+v after the thread was set aside", rows)
+	}
+	aside := boxView(t, d, "Aside")
+	if len(aside) != 1 || aside[0].Count != 2 {
+		t.Fatalf("Aside = %+v, want the thread of two", aside)
+	}
+
+	// done takes the whole thread back.
+	mustAsk(t, d, []string{"aside", "done"}, map[string]any{"positional": aside[0].ID})
+	if rows := boxView(t, d, "Aside"); len(rows) != 0 {
+		t.Fatalf("Aside still holds %+v after done", rows)
+	}
+	back := boxView(t, d, "inbox")
+	if len(back) != 1 || back[0].Count != 2 {
+		t.Fatalf("inbox = %+v after done, want the thread of two back", back)
+	}
+}
+
+// Setting a Message aside does not disturb the parts of its conversation that
+// live outside the Inbox — a copy in Sent stays in Sent.
+func TestAsideLeavesTheSentCopyAlone(t *testing.T) {
+	d, _ := seedScreener(t)
+	f := fakeOf(d)
+	f.AddFolder("INBOX/Sent")
+	a := d.primaryAccount()
+	a.Mirrored = append(a.Mirrored, "INBOX/Sent")
+	d.Mirrored = a.Mirrored
+	d.Writer.Mirrored = a.Mirrored
+	ctx := context.Background()
+
+	got := f.Deliver("INBOX", "p1@example.com", "Angebot", "ihre Anfrage")
+	got.Date = time.Date(2026, 8, 29, 9, 0, 0, 0, time.UTC)
+	mine := f.Deliver("INBOX/Sent", "p2@example.com", "Re: Angebot", "meine Antwort")
+	mine.Date = time.Date(2026, 8, 29, 10, 0, 0, 0, time.UTC)
+	mine.Reply(got)
+	if _, err := a.Reconciler.SyncAll(ctx, a.Mirrored); err != nil {
+		t.Fatal(err)
+	}
+
+	moved := mustAsk(t, d, []string{"aside"},
+		map[string]any{"positional": "1"}).Data.([]change)
+	if len(moved) != 1 || !strings.HasPrefix(moved[0].NewID, "Aside:") {
+		t.Fatalf("aside moved %+v, want only the inbox message", moved)
+	}
+	if rows := boxView(t, d, "Sent"); len(rows) != 1 {
+		t.Fatalf("Sent = %+v, want the copy untouched", rows)
+	}
+}
+
+// Setting a conversation aside has to survive the sync cycle that follows. The
+// move is write-through: Writer.Move renumbers the messages into Aside and
+// updates the Mirror, and the next cycle re-observes those uids as new to the
+// folder. That re-observation is the daemon's own write coming back, not a
+// fresh reply, and must not trigger the reclaim that pulls a set-aside thread
+// to the Inbox — otherwise `aside` never sticks.
+func TestAsideSurvivesTheNextSync(t *testing.T) {
+	d, _ := seedScreener(t)
+	f := fakeOf(d)
+	a := d.primaryAccount()
+	ctx := context.Background()
+
+	m := f.Deliver("INBOX", "sales@example.com", "Angebot", "das Angebot")
+	m.Date = time.Date(2026, 8, 29, 9, 0, 0, 0, time.UTC)
+	if _, err := a.Reconciler.SyncAll(ctx, a.Mirrored); err != nil {
+		t.Fatal(err)
+	}
+
+	inbox := boxView(t, d, "inbox")
+	if len(inbox) != 1 {
+		t.Fatalf("inbox = %+v, want the one delivered mail", inbox)
+	}
+	mustAsk(t, d, []string{"aside"}, map[string]any{"positional": inbox[0].ID})
+	if rows := boxView(t, d, "Aside"); len(rows) != 1 {
+		t.Fatalf("Aside = %+v right after the move, want 1", rows)
+	}
+
+	// A plain cycle with no new mail. Before the fix, the reconciler counted the
+	// moved message as fresh thread activity and reclaimPiled undid the aside.
+	d.cycle(ctx, a, "test")
+
+	if rows := boxView(t, d, "Aside"); len(rows) != 1 {
+		t.Fatalf("Aside = %+v after a sync, want the mail left where it was set", rows)
+	}
+	if rows := boxView(t, d, "inbox"); len(rows) != 0 {
+		t.Fatalf("inbox = %+v after a sync, want it empty — the aside was undone", rows)
+	}
+}

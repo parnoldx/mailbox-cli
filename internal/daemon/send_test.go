@@ -8,10 +8,12 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	compose "mailbox/internal/message"
 	"mailbox/internal/mirror"
 	"mailbox/internal/outbox"
+	"mailbox/internal/routing"
 	"mailbox/internal/sync/mailsync"
 )
 
@@ -212,6 +214,62 @@ func TestReplyAnswersTheSenderInTheSameThread(t *testing.T) {
 	}
 	if len(rows) < 2 || subjects[len(subjects)-1] != "Re: Rechnung" {
 		t.Fatalf("thread = %v", subjects)
+	}
+}
+
+// Answering a Message that is in the Reply Later pile takes its whole thread
+// back to the Inbox: the reply is the thing that was owed, and a conversation
+// that has been answered is not one that is still waiting.
+func TestReplyingToAPiledMessagePullsTheThreadBackToTheInbox(t *testing.T) {
+	d, _ := seedSend(t)
+	f := fakeOf(d)
+	f.AddFolder(routing.BoxReplyLater)
+	d.Mirrored = append(d.Mirrored, routing.BoxReplyLater)
+	d.Writer.Mirrored = d.Mirrored
+
+	// A Message the user has moved into Reply Later, mirrored and on the server.
+	tx, err := d.Mirror.Begin("primary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, _, err := tx.UpsertMessage(mirror.Message{
+		Key: "owed@example.com", Subject: "Angebot", From: "sales@example.com",
+		Date: time.Date(2026, 8, 29, 9, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.SetBody(pid, "das Angebot\n", "", "das Angebot"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.PutPlacement(mirror.Placement{Folder: routing.BoxReplyLater, UID: 1, MessageID: pid}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	f.Deliver(routing.BoxReplyLater, "owed@example.com", "Angebot", "das Angebot\n").
+		From = "sales@example.com"
+
+	resp := d.handle(context.Background(), Request{ID: "1", Cmd: []string{"reply"}, Args: map[string]any{
+		"positional": "Reply Later:1", "body": "ja, gerne",
+	}})
+	if !resp.OK {
+		t.Fatalf("reply: %s (%s)", resp.Error, resp.Code)
+	}
+
+	if rows := boxView(t, d, "Reply Later"); len(rows) != 0 {
+		t.Fatalf("Reply Later still holds %d after the answer, want 0", len(rows))
+	}
+	inbox := boxView(t, d, "inbox")
+	var found bool
+	for _, r := range inbox {
+		if strings.Contains(r.Subject, "Angebot") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the answered conversation is not back in the inbox: %+v", inbox)
 	}
 }
 

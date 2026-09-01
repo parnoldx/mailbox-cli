@@ -135,14 +135,15 @@ func printDecisions(stdout, stderr io.Writer, resp daemon.Response) {
 
 // asideVerb puts mail in the read-later pile, and takes it back out. It is a
 // move and not a route: the Routing decides about senders, and what to read
-// later is decided one mail at a time.
+// later is decided one conversation at a time — the daemon moves the whole
+// thread of the id it is given.
 func asideVerb(done bool) func(*input, io.Writer, io.Writer) int {
 	return pileVerb("aside", done)
 }
 
 // replyLaterVerb puts mail in the reply-later pile, and takes it back out. Like
-// aside it is a move and not a route: "I owe this a reply" is decided one mail
-// at a time.
+// aside it is a move and not a route: "I owe this a reply" is decided one
+// conversation at a time, and the whole thread moves with the id.
 func replyLaterVerb(done bool) func(*input, io.Writer, io.Writer) int {
 	return pileVerb("reply-later", done)
 }

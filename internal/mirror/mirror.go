@@ -282,6 +282,51 @@ func (m *Mirror) Thread(account string, threadID int64) ([]Row, error) {
 	return out, rows.Err()
 }
 
+// ThreadSizes counts each named Thread whole: every distinct Message that has a
+// Placement, wherever it sits — the number a reader shows, so a listing can
+// badge a conversation with its real size and not just the part of it that is
+// in the Box being listed. Ids of 0 (a Message that is its own Thread) are
+// skipped, and a Thread with one Message is left out of the result.
+func (m *Mirror) ThreadSizes(account string, threadIDs []int64) (map[int64]int, error) {
+	out := map[int64]int{}
+	var ids []int64
+	seen := map[int64]bool{}
+	for _, id := range threadIDs {
+		if id != 0 && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	args := make([]any, 0, len(ids)+1)
+	args = append(args, account)
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	q := `SELECT m.thread_id, count(DISTINCT m.id)
+	        FROM messages m JOIN placements p ON p.message_id = m.id
+	       WHERE m.account = ? AND m.thread_id IN (?` + strings.Repeat(",?", len(ids)-1) + `)
+	       GROUP BY m.thread_id`
+	rows, err := m.db.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var n int
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, err
+		}
+		if n > 1 {
+			out[id] = n
+		}
+	}
+	return out, rows.Err()
+}
+
 // BoxCount is one folder's share of the Mirror.
 type BoxCount struct {
 	Folder string

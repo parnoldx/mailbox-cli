@@ -509,6 +509,12 @@ func (d *Daemon) handleReplyLater(ctx context.Context, req Request, resp Respons
 // movePile puts mail into one of the hand-tended piles, or — with a `done`
 // sub-verb — takes it back out to the Inbox. Both piles behave the same way;
 // only the Box they land in differs.
+//
+// A pile is a decision about a conversation, not one Message (the user thinks
+// in HEY's terms: the thread is set aside, or owed a reply). So the id given is
+// expanded to its whole Thread and every one of its Messages in the Inbox or
+// the other pile moves with it — otherwise half the thread shows in the Inbox
+// and half in the pile.
 func (d *Daemon) movePile(ctx context.Context, req Request, resp Response, pileBox string) Response {
 	acct, refs, err := d.refs(req)
 	if err != nil {
@@ -521,6 +527,19 @@ func (d *Daemon) movePile(ctx context.Context, req Request, resp Response, pileB
 	dest, ok := d.boxNamed(acct, want)
 	if !ok {
 		resp.Code, resp.Error = "usage", fmt.Sprintf("this account has no %q box", want)
+		return resp
+	}
+	// Sweep the whole Thread out of everywhere it could be shown alongside the
+	// destination — the Inbox and both piles — minus the destination itself,
+	// which Writer.Move refuses as a no-op move.
+	var from []string
+	for _, b := range []string{routing.BoxInbox, routing.BoxAside, routing.BoxReplyLater} {
+		if !strings.EqualFold(b, dest) {
+			from = append(from, b)
+		}
+	}
+	if refs, err = d.threadedWithin(acct.Name, refs, from...); err != nil {
+		resp.Code, resp.Error = "api", err.Error()
 		return resp
 	}
 	results, err := acct.Writer.Move(ctx, refs, dest)

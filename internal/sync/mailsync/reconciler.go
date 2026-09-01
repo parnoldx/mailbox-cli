@@ -32,6 +32,12 @@ type Outcome struct {
 	// Remapped counts messages a resync recognised from a previous incarnation
 	// of the folder and therefore did not refetch the body of.
 	Remapped int
+	// NewThreads is the Thread id of every conversation this cycle added a
+	// Message to. It is only filled on an incremental cycle — a resync places
+	// the whole folder and every Thread would look new — and it is what lets
+	// the Daemon pull a set-aside conversation back to the Inbox when a reply
+	// lands in it.
+	NewThreads []int64
 }
 
 // Resume redoes any folder whose intent was written but never cleared, which
@@ -261,6 +267,37 @@ func (r *Reconciler) incremental(ctx context.Context, folder string, local mirro
 		return out, err
 	}
 	out.NewMessages = len(envs)
+
+	// Which conversations just grew. A uid the server counts as new but the
+	// Mirror already holds a Placement for is the write-through path's own move
+	// landing back through sync: Writer.Move commits the new Placement before
+	// this cycle ever runs, so re-observing it is not fresh activity and must
+	// not pull a set-aside conversation back to the Inbox. UIDs() reads
+	// committed state, so it sees the pre-cycle Placements and not the ones
+	// place() just wrote into this transaction.
+	had, err := r.Mirror.UIDs(r.Account, folder)
+	if err != nil {
+		return out, err
+	}
+	known := make(map[uint32]bool, len(had))
+	for _, u := range had {
+		known[u] = true
+	}
+	seenThread := map[int64]bool{}
+	for uid, id := range ids {
+		if known[uid] {
+			continue
+		}
+		tid, err := tx.ThreadOf(id)
+		if err != nil {
+			return out, err
+		}
+		if tid != 0 && !seenThread[tid] {
+			seenThread[tid] = true
+			out.NewThreads = append(out.NewThreads, tid)
+		}
+	}
+	sort.Slice(out.NewThreads, func(i, j int) bool { return out.NewThreads[i] < out.NewThreads[j] })
 
 	if err := r.fetchBodies(ctx, tx, folder, wantBodies, ids, &out); err != nil {
 		return out, err

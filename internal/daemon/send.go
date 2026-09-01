@@ -105,7 +105,17 @@ func (d *Daemon) handleReply(ctx context.Context, req Request, resp Response) Re
 		}
 		return d.saveDraft(ctx, acct, box, draft, resp)
 	}
-	return d.deliver(ctx, acct, draft, resp)
+	resp = d.deliver(ctx, acct, draft, resp)
+	// Answering a Message is the end of owing it a reply, so its thread does
+	// not belong in a pile any more: pull the conversation's Reply Later and
+	// Aside Messages back to the Inbox, the same as an incoming reply would
+	// (CONTEXT.md). Only once the mail has actually gone — a queued send has
+	// not been answered yet, and the cycle that drains it reclaims the thread
+	// when the Sent copy lands.
+	if resp.OK && acct.Primary {
+		d.reclaimPiled(ctx, acct, []int64{parent.Message.ThreadID})
+	}
+	return resp
 }
 
 // answer fills a draft in as a reply to a Message.

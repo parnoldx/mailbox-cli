@@ -203,6 +203,18 @@ func (t *Tx) thread(id int64, m Message) error {
 	return err
 }
 
+// ThreadOf reports which Thread a Message was filed into — the id of the oldest
+// Message known to be in the conversation. Zero means the Mirror does not hold
+// the Message.
+func (t *Tx) ThreadOf(id int64) (int64, error) {
+	var tid int64
+	err := t.tx.QueryRow(`SELECT thread_id FROM messages WHERE id = ?`, id).Scan(&tid)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	return tid, err
+}
+
 // SetBody stores a Message's text and marks it mirrored. indexed is the text
 // Search should match on — the plain part, or the HTML rendered down to text.
 // It is passed in rather than derived here because the Mirror stores what it is

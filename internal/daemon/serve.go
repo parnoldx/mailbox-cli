@@ -188,7 +188,7 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 			resp.Code, resp.Error = "api", err.Error()
 			return resp
 		}
-		resp.OK, resp.Data = true, viewRows(acct, folder, rows)
+		resp.OK, resp.Data = true, viewRows(acct, folder, rows, d.threadSizesFor(acct.Name, rows))
 		return resp
 
 	case "message view":
@@ -730,6 +730,40 @@ func (d *Daemon) threaded(account string, refs []mailsync.Ref) ([]mailsync.Ref, 
 	return out, nil
 }
 
+// threadedWithin keeps the refs it was given and adds each one's Thread
+// siblings that sit in one of `boxes`. It is threaded() narrowed to a set of
+// Boxes, plus the guarantee that an explicitly named Message always moves: so
+// `aside ID` moves ID wherever it is, and also sweeps the rest of its
+// conversation out of the Inbox and the other pile — but not its Sent copies
+// or a sibling still in the Screener.
+func (d *Daemon) threadedWithin(account string, refs []mailsync.Ref, boxes ...string) ([]mailsync.Ref, error) {
+	all, err := d.threaded(account, refs)
+	if err != nil {
+		return nil, err
+	}
+	keep := map[string]bool{}
+	for _, b := range boxes {
+		keep[b] = true
+	}
+	seen := map[mailsync.Ref]bool{}
+	out := make([]mailsync.Ref, 0, len(all))
+	add := func(r mailsync.Ref) {
+		if !seen[r] {
+			seen[r] = true
+			out = append(out, r)
+		}
+	}
+	for _, r := range refs {
+		add(r)
+	}
+	for _, r := range all {
+		if keep[r.Folder] {
+			add(r)
+		}
+	}
+	return out, nil
+}
+
 // wrote finishes a write command: it reports what the server acked and tells
 // every listener which Boxes moved. A move the server could not place — no
 // UIDPLUS — also asks for a cycle, because only a cycle can find it.
@@ -920,11 +954,12 @@ type row struct {
 	Subject string `json:"subject"`
 	Seen    bool   `json:"seen"`
 	Body    string `json:"body_state"`
-	// Count is how many Messages of this Thread have a Placement in the Box
-	// being listed. It is omitted for a Message on its own, the way a mail
-	// client only badges a conversation once there is one — read the whole
-	// thing with `mailbox thread` on this row's own id (ADR-0008: any Message
-	// in a Thread names it).
+	// Count is how many Messages are in this Thread in all — wherever they
+	// sit, the same number the reader shows, not just the part of the Thread
+	// in the Box being listed. It is omitted for a Message on its own, the way
+	// a mail client only badges a conversation once there is one — read the
+	// whole thing with `mailbox thread` on this row's own id (ADR-0008: any
+	// Message in a Thread names it).
 	Count int `json:"count,omitempty"`
 }
 
@@ -1006,7 +1041,7 @@ type hit struct {
 func viewHits(a *Account, hits []mirror.Hit) []hit {
 	out := make([]hit, 0, len(hits))
 	for _, h := range hits {
-		r := viewRows(a, h.Placement.Folder, []mirror.Row{h.Row})[0]
+		r := viewRows(a, h.Placement.Folder, []mirror.Row{h.Row}, nil)[0]
 		out = append(out, hit{
 			row: r, Box: h.Placement.Folder,
 			Snippet: terminal.SanitizeLine(h.Snippet),
@@ -1018,12 +1053,16 @@ func viewHits(a *Account, hits []mirror.Hit) []hit {
 // viewRows collapses a Box listing to one row per Thread, the way a mail
 // client groups a conversation rather than repeating it — Rows comes back
 // newest first, so the first Message of a Thread encountered is the one
-// shown, and the ones behind it only add to its Count and its unread state.
-// A Thread is scoped to this Box: a reply filed in Sent does not add to an
-// Inbox row's Count, because it was never in this listing to begin with.
-func viewRows(a *Account, folder string, rows []mirror.Row) []row {
+// shown, and the ones behind it only add to its unread state.
+//
+// The Count badge is the whole conversation's size, from threadSizes — the
+// same number the reader shows — not just the part of the Thread that is in
+// this Box. threadSizes may be nil, in which case the badge falls back to the
+// count within the listing.
+func viewRows(a *Account, folder string, rows []mirror.Row, threadSizes map[int64]int) []row {
 	out := make([]row, 0, len(rows))
 	index := map[int64]int{} // Message.ThreadID -> its row's index in out
+	threadOf := make([]int64, 0, len(rows))
 	for _, r := range rows {
 		if i, ok := index[r.ThreadID]; ok {
 			out[i].Count++
@@ -1037,15 +1076,34 @@ func viewRows(a *Account, folder string, rows []mirror.Row) []row {
 			date = r.Message.Date.Format("2006-01-02 15:04")
 		}
 		index[r.ThreadID] = len(out)
+		threadOf = append(threadOf, r.ThreadID)
 		out = append(out, row{
 			ID: a.messageID(folder, r.UID), UID: r.UID, Date: date, From: r.From,
 			Subject: r.Subject, Seen: r.Seen(), Body: r.BodyState, Count: 1,
 		})
 	}
 	for i := range out {
+		if sz := threadSizes[threadOf[i]]; sz > out[i].Count {
+			out[i].Count = sz
+		}
 		if out[i].Count <= 1 {
 			out[i].Count = 0 // omitempty: no badge for a Message on its own
 		}
 	}
 	return out
+}
+
+// threadSizesFor is the whole-conversation size of every Thread in a listing,
+// keyed by Thread id, for viewRows to badge each row with.
+func (d *Daemon) threadSizesFor(account string, rows []mirror.Row) map[int64]int {
+	ids := make([]int64, 0, len(rows))
+	for _, r := range rows {
+		ids = append(ids, r.ThreadID)
+	}
+	sizes, err := d.Mirror.ThreadSizes(account, ids)
+	if err != nil {
+		d.logf("thread sizes for %s: %v", account, err)
+		return nil
+	}
+	return sizes
 }

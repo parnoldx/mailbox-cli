@@ -93,6 +93,27 @@ func TestBoxViewMarksAThreadUnreadIfAnyMessageIs(t *testing.T) {
 	}
 }
 
+// The Count badge is the whole conversation's size — the number the reader
+// shows — even when only part of the Thread sits in the Box being listed.
+func TestBoxViewCountsTheWholeThreadNotJustThisBox(t *testing.T) {
+	d := seed(t)
+	// The Rechnung thread: billing@ in INBOX:7, plus a reply of ours filed in
+	// INBOX/Sent. Only one of the two Messages is in the Inbox.
+	var found bool
+	for _, r := range boxView(t, d, "inbox") {
+		if r.Subject != "Rechnung" {
+			continue
+		}
+		found = true
+		if r.Count != 2 {
+			t.Errorf("count = %d, want 2 (the reply filed in Sent counts too)", r.Count)
+		}
+	}
+	if !found {
+		t.Fatal("no Rechnung row in the inbox listing")
+	}
+}
+
 // A Message on its own carries no Count: only a conversation gets a badge.
 func TestBoxViewOmitsCountForALoneMessage(t *testing.T) {
 	d := threadedBox(t)
