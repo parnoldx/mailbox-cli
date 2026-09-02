@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import "MailFormat.js" as Fmt
 
 // A tokenised recipient field: one pill per address, an inline input that
 // autocompletes against the address book (`contact search`), and Backspace on an
@@ -31,9 +32,8 @@ Item {
         for (var i = 0; i < parts.length; i++) {
             var t = parts[i].trim()
             if (!t) continue
-            var m = t.match(/^"?(.*?)"?\s*<([^>]+)>$/)
-            if (m) root.addRecipient(m[1], m[2])
-            else root.addRecipient("", t)
+            var a = Fmt.parseAddress(t)
+            root.addRecipient(a.name, a.addr)
         }
     }
     function removeAt(i) {

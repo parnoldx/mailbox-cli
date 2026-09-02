@@ -28,11 +28,9 @@ Item {
     // keeps one for its list.
     property var rows: []
     function rebuild() {
-        var out = []
-        for (var i = 0; i < searchModel.count; i++) out.push(searchModel.get(i))
-        root.rows = out
-        if (out.length === 0) root.active = -1
-        else if (root.active < 0 || root.active >= out.length) root.active = 0
+        root.rows = searchModel.rows
+        if (root.rows.length === 0) root.active = -1
+        else if (root.active < 0 || root.active >= root.rows.length) root.active = 0
     }
     Connections { target: searchModel; function onChanged() { root.rebuild() } }
 

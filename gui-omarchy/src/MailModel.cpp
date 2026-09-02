@@ -77,11 +77,22 @@ void MailModel::setRows(const QVariantList &rows) {
     emit changed();
 }
 
-QVariantMap MailModel::get(int i) const {
-    if (i < 0 || i >= m_rows.size())
-        return {};
-    const Row &r = m_rows.at(i);
+QVariantMap MailModel::rowMap(const Row &r) {
     return {{"id", r.id}, {"fromName", r.fromName}, {"fromAddr", r.fromAddr},
             {"subject", r.subject}, {"date", r.date}, {"dateRaw", r.dateRaw},
             {"seen", r.seen}, {"count", r.count}};
+}
+
+QVariantMap MailModel::get(int i) const {
+    if (i < 0 || i >= m_rows.size())
+        return {};
+    return rowMap(m_rows.at(i));
+}
+
+QVariantList MailModel::rows() const {
+    QVariantList out;
+    out.reserve(m_rows.size());
+    for (const Row &r : m_rows)
+        out.push_back(rowMap(r));
+    return out;
 }

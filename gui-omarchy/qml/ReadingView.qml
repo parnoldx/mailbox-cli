@@ -1,5 +1,7 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import "MailFormat.js" as Fmt
+import "Triage.js" as Triage
 
 // The reader: a fixed toolbar plus subject, then every Message of the open
 // Thread stacked in one scrolling accordion (ThreadMessage.qml) — collapsed
@@ -8,19 +10,54 @@ import QtQuick.Controls.Basic
 Item {
     id: root
 
-    // A thread has one subject; the Re:/Fwd:/AW: a client stacks onto every
-    // reply is per-message noise, so strip a leading run of them for the
-    // heading. The raw subject on each Message is untouched.
-    function threadSubject(s) {
-        return String(s || "").replace(
-            /^\s*(?:(?:re|aw|fwd|fw|wg|antw)(?:\[\d+\])?\s*:\s*)+/i, "").trim()
-    }
-
     function allExpanded() {
         if (win.openThread.length === 0) return false
         for (var i = 0; i < win.openThread.length; i++)
             if (!win.isExpanded(win.openThread[i].id)) return false
         return true
+    }
+
+    // The toolbar chips, in order. Reply/Forward/pile chips show only outside
+    // the Screener; the Screener swaps in its own decision chips; Trash is
+    // always last. Re-evaluated whenever anything it reads changes.
+    readonly property var toolbarChips: {
+        void win.openMsg; void win.inScreener; void win.openThread
+        void win.expandedIds; void PixelBlock.blocked
+        var m = !!win.openMsg, scr = win.inScreener, out = []
+        if (PixelBlock.blocked > 0)
+            out.push({ act: "", interactive: false, glyph: "", glyphColor: Theme.green,
+                       label: PixelBlock.blocked + (PixelBlock.blocked === 1 ? " tracker blocked" : " trackers blocked") })
+        if (win.openThread.length > 1)
+            out.push({ act: "toggle-all",
+                       glyph: root.allExpanded() ? "" : "",
+                       label: root.allExpanded() ? "Collapse all" : "Expand all" })
+        if (m && !scr) {
+            out.push({ act: "reply",       glyph: "", label: "Reply",       accentGlyph: true })
+            out.push({ act: "reply-all",   glyph: "", label: "Reply all",   accentGlyph: true })
+            out.push({ act: "forward",     glyph: "", label: "Forward",     accentGlyph: true })
+            out.push({ act: "reply-later", glyph: "", label: "Reply later", accentGlyph: true })
+            out.push({ act: "set-aside",   glyph: "", label: "Set aside",   accentGlyph: true })
+        }
+        if (m && scr) {
+            out.push({ act: "route-inbox",   glyph: "", label: "Inbox", accentGlyph: true })
+            out.push({ act: "route-block",   glyph: "", label: "Block", danger: true })
+            out.push({ act: "screener-move", glyph: "", label: "Move",  accentGlyph: true })
+        }
+        if (m) out.push({ act: "trash", glyph: "", label: "Trash", danger: true })
+        return out
+    }
+
+    function fireChip(act, chipItem) {
+        var id = win.openMsg ? win.openMsg.id : ""
+        if (act === "toggle-all") win.setAllExpanded(!root.allExpanded())
+        else if (act === "reply") win.startReply(false)
+        else if (act === "reply-all") win.startReply(true)
+        else if (act === "forward") win.startForward()
+        else if (act === "screener-move") scMoveMenu.popup(chipItem, 0, chipItem.height + 4)
+        else if (act === "route-inbox") Triage.dispatch(win, "inbox", id)
+        else if (act === "route-block") Triage.dispatch(win, "block", id)
+        else if (act === "set-aside") Triage.dispatch(win, "aside", id)
+        else Triage.dispatch(win, act, id)   // reply-later | trash
     }
 
     // ---- Toolbar (does not scroll) ----------------------------------------
@@ -60,267 +97,24 @@ Item {
             }
             Kbd { anchors.verticalCenter: parent.verticalCenter; text: "Esc" }
 
-            // Trackers blocked across every Message rendered since this Thread
-            // opened — a per-message count would just be noise at this scale.
-            Rectangle {
-                anchors.verticalCenter: parent.verticalCenter
-                visible: PixelBlock.blocked > 0
-                width: badge.implicitWidth + 18
-                height: 20
-                radius: 10
-                color: Theme.selection
-                Behavior on color { ColorAnimation { duration: Theme.anim } }
-                Row {
-                    id: badge
-                    anchors.centerIn: parent
-                    spacing: 5
-                    Text {
-                        text: "\uf00c"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 10
-                        color: Theme.green
-                        Behavior on color { ColorAnimation { duration: Theme.anim } }
-                    }
-                    Text {
-                        text: PixelBlock.blocked + (PixelBlock.blocked === 1 ? " tracker blocked" : " trackers blocked")
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 10
-                        color: Theme.textDim
-                        Behavior on color { ColorAnimation { duration: Theme.anim } }
-                    }
-                }
-            }
-
-            // Expand or collapse every Message of the Thread at once.
-            Rectangle {
-                anchors.verticalCenter: parent.verticalCenter
-                visible: win.openThread.length > 1
-                width: exAllRow.implicitWidth + 18
-                height: 20
-                radius: 10
-                color: exAllHover.hovered ? Theme.cardHover : Theme.selection
-                Behavior on color { ColorAnimation { duration: Theme.anim } }
-                Row {
-                    id: exAllRow
-                    anchors.centerIn: parent
-                    spacing: 5
-                    Text {
-                        text: root.allExpanded() ? "\uf077" : "\uf078"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 10
-                        color: Theme.textDim
-                        Behavior on color { ColorAnimation { duration: Theme.anim } }
-                    }
-                    Text {
-                        text: root.allExpanded() ? "Collapse all" : "Expand all"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 10
-                        color: Theme.textDim
-                        Behavior on color { ColorAnimation { duration: Theme.anim } }
-                    }
-                }
-                HoverHandler { id: exAllHover; cursorShape: Qt.PointingHandCursor }
-                TapHandler { onTapped: win.setAllExpanded(!root.allExpanded()) }
-            }
-
-            // Reply / Reply all — always to the newest Message, the way a
-            // reply within a thread view names the latest word in it. Hidden in
-            // the Screener: a sender is screened in before they are answered.
+            // Every triage / reply / expand affordance is a Chip; the set and
+            // the dispatch live in toolbarChips / fireChip above.
             Repeater {
-                model: [ { label: "Reply", all: false }, { label: "Reply all", all: true } ]
-                Rectangle {
+                model: root.toolbarChips
+                Chip {
                     anchors.verticalCenter: parent.verticalCenter
-                    visible: !!win.openMsg && !win.inScreener
-                    width: rpRow.implicitWidth + 18
-                    height: 20
-                    radius: 10
-                    color: rpHover.hovered ? Theme.cardHover : Theme.selection
-                    Behavior on color { ColorAnimation { duration: Theme.anim } }
-                    Row {
-                        id: rpRow
-                        anchors.centerIn: parent
-                        spacing: 5
-                        Text {
-                            text: modelData.all ? "\uf122" : "\uf112"
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 10
-                            color: rpHover.hovered ? Theme.accent : Theme.textDim
-                            Behavior on color { ColorAnimation { duration: Theme.anim } }
-                        }
-                        Text {
-                            text: modelData.label
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 10
-                            color: Theme.textDim
-                            Behavior on color { ColorAnimation { duration: Theme.anim } }
-                        }
-                    }
-                    HoverHandler { id: rpHover; cursorShape: Qt.PointingHandCursor }
-                    TapHandler { onTapped: win.startReply(modelData.all) }
-                }
-            }
-
-            // Forward — send the open Message on to somebody else. Next to
-            // Reply, hidden in the Screener like the reply actions.
-            Rectangle {
-                anchors.verticalCenter: parent.verticalCenter
-                visible: !!win.openMsg && !win.inScreener
-                width: fwRow.implicitWidth + 18
-                height: 20
-                radius: 10
-                color: fwHover.hovered ? Theme.cardHover : Theme.selection
-                Behavior on color { ColorAnimation { duration: Theme.anim } }
-                Row {
-                    id: fwRow
-                    anchors.centerIn: parent
-                    spacing: 5
-                    Text {
-                        text: ""
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 10
-                        color: fwHover.hovered ? Theme.accent : Theme.textDim
-                        Behavior on color { ColorAnimation { duration: Theme.anim } }
-                    }
-                    Text {
-                        text: "Forward"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 10
-                        color: Theme.textDim
-                        Behavior on color { ColorAnimation { duration: Theme.anim } }
-                    }
-                }
-                HoverHandler { id: fwHover; cursorShape: Qt.PointingHandCursor }
-                TapHandler { onTapped: win.startForward() }
-            }
-
-            // Triage into a bottom-stack pile: Reply later (key R) or Set aside
-            // (key A). Both drop back to the list, then fire the move. Both are
-            // hidden in the Screener: nothing is owed a reply before its sender
-            // is screened in, and Set aside moves there behind the Move chip.
-            Repeater {
-                model: [
-                    { glyph: "\uf017", label: "Reply later", fn: "replyLaterCurrent" },
-                    { glyph: "\uf02e", label: "Set aside",   fn: "setAsideCurrent" }
-                ]
-                Rectangle {
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: !!win.openMsg && !win.inScreener
-                    width: plRow.implicitWidth + 18
-                    height: 20
-                    radius: 10
-                    color: plHover.hovered ? Theme.cardHover : Theme.selection
-                    Behavior on color { ColorAnimation { duration: Theme.anim } }
-                    Row {
-                        id: plRow
-                        anchors.centerIn: parent
-                        spacing: 5
-                        Text {
-                            text: modelData.glyph
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 10
-                            color: plHover.hovered ? Theme.accent : Theme.textDim
-                            Behavior on color { ColorAnimation { duration: Theme.anim } }
-                        }
-                        Text {
-                            text: modelData.label
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 10
-                            color: Theme.textDim
-                            Behavior on color { ColorAnimation { duration: Theme.anim } }
-                        }
-                    }
-                    HoverHandler { id: plHover; cursorShape: Qt.PointingHandCursor }
-                    TapHandler { onTapped: win[modelData.fn]() }
-                }
-            }
-
-            // Screener triage — a decision about the sender, shown in place
-            // of the reply/pile chips while reading a Screener message. I lets
-            // the sender into the Inbox, B blocks them, Move opens the rest
-            // (Feed / Paper Trail / Set aside). Both act on the sender and drop
-            // back to the list.
-            Repeater {
-                model: [
-                    { glyph: "\uf01c", label: "Inbox", act: "inbox" },
-                    { glyph: "\uf05e", label: "Block", act: "block" },
-                    { glyph: "\uf0b2", label: "Move",  act: "move" }
-                ]
-                Rectangle {
-                    id: scChip
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: !!win.openMsg && win.inScreener
-                    width: scRow.implicitWidth + 18
-                    height: 20
-                    radius: 10
-                    readonly property bool danger: modelData.act === "block"
-                    color: scHover.hovered ? (danger ? Theme.red : Theme.cardHover) : Theme.selection
-                    Behavior on color { ColorAnimation { duration: Theme.anim } }
-                    Row {
-                        id: scRow
-                        anchors.centerIn: parent
-                        spacing: 5
-                        Text {
-                            text: modelData.glyph
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 10
-                            color: scChip.danger && scHover.hovered ? "#ffffff"
-                                 : scHover.hovered ? Theme.accent : Theme.textDim
-                            Behavior on color { ColorAnimation { duration: Theme.anim } }
-                        }
-                        Text {
-                            text: modelData.label
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 10
-                            color: scChip.danger && scHover.hovered ? "#ffffff" : Theme.textDim
-                            Behavior on color { ColorAnimation { duration: Theme.anim } }
-                        }
-                    }
-                    HoverHandler { id: scHover; cursorShape: Qt.PointingHandCursor }
-                    TapHandler {
-                        onTapped: {
-                            if (modelData.act === "move") scMoveMenu.popup(scChip, 0, scChip.height + 4)
-                            else if (modelData.act === "inbox") win.routeCurrent("inbox", "Let into Inbox")
-                            else win.routeCurrent("block", "Blocked")
-                        }
-                    }
+                    glyph: modelData.glyph
+                    label: modelData.label
+                    interactive: modelData.interactive === undefined ? true : modelData.interactive
+                    danger: !!modelData.danger
+                    accentGlyph: !!modelData.accentGlyph
+                    glyphColor: modelData.glyphColor === undefined ? Theme.textDim : modelData.glyphColor
+                    onClicked: root.fireChip(modelData.act, this)
                 }
             }
             ScreenerMoveMenu {
                 id: scMoveMenu
                 targetId: win.openMsg ? win.openMsg.id : ""
-            }
-
-            // Trash — acts on the whole Thread server-side (any id in it
-            // does), not just the newest Message. Drops back to the list.
-            Rectangle {
-                anchors.verticalCenter: parent.verticalCenter
-                visible: !!win.openMsg
-                width: trRow.implicitWidth + 18
-                height: 20
-                radius: 10
-                color: trHover.hovered ? Theme.red : Theme.selection
-                Behavior on color { ColorAnimation { duration: Theme.anim } }
-                Row {
-                    id: trRow
-                    anchors.centerIn: parent
-                    spacing: 5
-                    Text {
-                        text: "\uf1f8"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 10
-                        color: trHover.hovered ? "#ffffff" : Theme.textDim
-                        Behavior on color { ColorAnimation { duration: Theme.anim } }
-                    }
-                    Text {
-                        text: "Trash"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 10
-                        color: trHover.hovered ? "#ffffff" : Theme.textDim
-                        Behavior on color { ColorAnimation { duration: Theme.anim } }
-                    }
-                }
-                HoverHandler { id: trHover; cursorShape: Qt.PointingHandCursor }
-                TapHandler { onTapped: win.trashCurrent() }
             }
         }
 
@@ -334,7 +128,7 @@ Item {
             Text {
                 id: subjectText
                 width: parent.width - (threadCount.visible ? threadCount.width + parent.spacing : 0)
-                text: win.openMsg ? (root.threadSubject(win.openMsg.subject) || win.openMsg.subject || "(no subject)") : ""
+                text: win.openMsg ? (Fmt.stripSubjectPrefixes(win.openMsg.subject) || win.openMsg.subject || "(no subject)") : ""
                 wrapMode: Text.Wrap
                 maximumLineCount: 3
                 elide: Text.ElideRight

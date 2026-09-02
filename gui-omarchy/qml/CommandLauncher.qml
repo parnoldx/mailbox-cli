@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import "Triage.js" as Triage
 
 // The HEY quick switcher: search focused immediately, numbered destinations,
 // arrow keys or digits to pick. Below the destinations, when there is a
@@ -185,16 +186,10 @@ Item {
         var id = win.actionTargetId()
         root.close()
         if (!id) return
-        if (a.id === "reply-now") win.openMsg ? win.startReply(false) : win.openThenReply(id)
-        else if (a.id === "route-inbox") win.routeId("inbox", "Let into Inbox", id)
-        else if (a.id === "route-block") win.routeId("block", "Blocked", id)
-        else if (a.id === "route-feed") win.routeId("feed", "Moved to Feed", id)
-        else if (a.id === "route-paper") win.routeId("paper", "Moved to Paper Trail", id)
-        else if (a.id === "aside") win.pileId("aside", "Set aside", id)
-        else if (a.id === "aside-done") win.pileId("aside", "Moved to Inbox", id, true)
-        else if (a.id === "reply-later") win.pileId("reply-later", "Reply later", id)
-        else if (a.id === "rl-done") win.pileId("reply-later", "Moved to Inbox", id, true)
-        else if (a.id === "trash") win.trashId(id)
+        // The launcher prefixes its route actions "route-"; Triage keys them by
+        // the bare destination.
+        var tid = a.id.indexOf("route-") === 0 ? a.id.substring(6) : a.id
+        Triage.dispatch(win, tid, id)
     }
     function total() {
         if (pane === "archive") return archRows.length

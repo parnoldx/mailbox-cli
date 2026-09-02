@@ -11,14 +11,9 @@ Row {
     property string glyph: ""
 
     readonly property int shown: Math.min(3, model ? model.count : 0)
-    // Newest is model row 0; children painted later sit on top, so walk the
-    // shown rows back-to-front to leave the newest card flush at the front.
-    property var cards: (model ? model.count : 0, buildCards())
-    function buildCards() {
-        var a = []
-        for (var i = shown - 1; i >= 0; i--) a.push(model.get(i))
-        return a
-    }
+    // Newest is model row 0; children painted later sit on top, so hand the
+    // Repeater the shown rows oldest-first (newest last, flush at the front).
+    readonly property var cards: model ? model.rows.slice(0, shown).reverse() : []
 
     visible: shown > 0
     spacing: 8

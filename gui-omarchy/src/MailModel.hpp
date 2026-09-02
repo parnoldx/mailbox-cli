@@ -9,6 +9,10 @@
 class MailModel : public QAbstractListModel {
     Q_OBJECT
     Q_PROPERTY(int count READ rowCountProp NOTIFY changed)
+    // Every row as a plain {id, fromName, …} map, for the views that keep a
+    // JS-array mirror of the model (BucketView's new/seen split, the search
+    // list, the Feed, the bottom stacks) instead of re-walking count/get(i).
+    Q_PROPERTY(QVariantList rows READ rows NOTIFY changed)
 
 public:
     enum Role {
@@ -29,6 +33,7 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     int rowCountProp() const { return m_rows.size(); }
+    QVariantList rows() const;
     Q_INVOKABLE void setRows(const QVariantList &rows);
     Q_INVOKABLE QVariantMap get(int i) const;
 
@@ -44,5 +49,6 @@ private:
         // listing to one row per Thread; this is just its badge).
         int count = 0;
     };
+    static QVariantMap rowMap(const Row &r);
     QList<Row> m_rows;
 };

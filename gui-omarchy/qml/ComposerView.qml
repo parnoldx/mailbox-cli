@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Dialogs
+import "MailFormat.js" as Fmt
 
 // Full-screen compose, in the shape of the reading view: a fixed header, a fixed
 // action bar, and the form between them. Handles a fresh message, a reply, a
@@ -33,7 +34,7 @@ Item {
         return (r.name && r.name.length > 0) ? ('"' + r.name + '" <' + r.email + '>') : r.email
     }
     function _base(p) { var s = String(p).split("/"); return s[s.length - 1] || p }
-    function _localPath(url) { return decodeURIComponent(String(url).replace(/^file:\/\/\//, "/")) }
+    function _localPath(url) { return Fmt.localPath(url) }
     function _stripTags(html) { return String(html || "").replace(/<[^>]*>/g, " ") }
     function _esc(s) {
         return String(s === undefined || s === null ? "" : s)
@@ -83,9 +84,10 @@ Item {
         root.replyAll = !!ctx.all
         root.replyFrom = ctx.from || ""
         root.baseSubject = ctx.subject || ""
-        var m = String(ctx.from || "").match(/^"?(.*?)"?\s*<([^>]+)>$/)
-        if (m) toPills.addRecipient(m[1], m[2])
-        else if (ctx.from) toPills.addRecipient("", ctx.from)
+        if (ctx.from) {
+            var a = Fmt.parseAddress(ctx.from)
+            toPills.addRecipient(a.name, a.addr)
+        }
         subjectField.text = /^re:/i.test(root.baseSubject) ? root.baseSubject : ("Re: " + root.baseSubject)
         // Seed the editor with an empty first line and the quoted parent, and
         // land the caret above it (atStart) so the reply is written on top.
@@ -136,9 +138,8 @@ Item {
         for (var i = 0; i < parts.length; i++) {
             var s = parts[i].trim()
             if (!s) continue
-            var m = s.match(/^"?(.*?)"?\s*<([^>]+)>$/)
-            if (m) pills.addRecipient(m[1], m[2])
-            else pills.addRecipient("", s)
+            var a = Fmt.parseAddress(s)
+            pills.addRecipient(a.name, a.addr)
         }
     }
 
@@ -249,7 +250,7 @@ Item {
             var cmd = root.mode === "draft" ? ["draft", "edit"] : ["draft", "save"]
             Mailbox.call(cmd, root.collectArgs(true, html), function (r) {
                 if (r.ok && r.data && r.data.id) root.draftId = r.data.id
-                win.flash(r.ok ? "Draft saved" : (r.error && r.error.length ? r.error : "Could not save draft"))
+                win.flash(r.ok ? "Draft saved" : Fmt.errText(r, "Could not save draft"))
                 if (r.ok) win.refreshDrafts()
             })
             root.requestClose()
@@ -261,7 +262,7 @@ Item {
     function doDiscardDraft() {
         if (root.mode === "draft" && root.draftId) {
             Mailbox.call(["draft", "delete"], { positional: root.draftId }, function (r) {
-                win.flash(r.ok ? "Draft discarded" : (r.error && r.error.length ? r.error : "Could not discard draft"))
+                win.flash(r.ok ? "Draft discarded" : Fmt.errText(r, "Could not discard draft"))
                 if (r.ok) win.refreshDrafts()
             })
         }

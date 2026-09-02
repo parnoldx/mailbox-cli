@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Window
 import QtWebEngine
+import "MailFormat.js" as Fmt
 
 // The Feed as a feed — one chronological column of cards (sender, subject, a few
 // lines of the body) with a "Read more" that expands the whole article in place,
@@ -104,13 +105,11 @@ Item {
 
     function reload() {
         if (!active) return
-        var rs = []
-        for (var i = 0; i < listModel.count; i++)
-            rs.push(listModel.get(i))
+        var rs = listModel.rows
         mark = Mailbox.stateGet("feed.mark", "")
         pendingMark = mark
         var n = 0
-        for (i = 0; i < rs.length; i++)
+        for (var i = 0; i < rs.length; i++)
             if ((rs[i].dateRaw || "") > mark) n++
         newCount = n
         rows = rs
@@ -156,12 +155,6 @@ Item {
             radius: Theme.radiusSmall
         }
     }
-    function _initials(s) {
-        if (!s) return "?"
-        var parts = s.trim().split(/\s+/)
-        if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase()
-        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-    }
     function _dataObj() {
         var out = []
         for (var i = 0; i < rows.length; i++) {
@@ -171,7 +164,7 @@ Item {
                 id: r.id,
                 fromName: r.fromName || "",
                 fromAddr: r.fromAddr || "",
-                initials: _initials(r.fromName || r.fromAddr || ""),
+                initials: Fmt.initials(r.fromName || r.fromAddr || ""),
                 subject: r.subject || "",
                 date: r.date || "",
                 dateRaw: r.dateRaw || "",
@@ -293,10 +286,7 @@ Item {
     // snapshot the page, rebuild the WebEngineView and put the page back.
     property bool _reviving: false
     property bool _covered: false
-    property bool _dirty: false
     property var _pendingRestore: null
-
-    readonly property var _win: Window.window
 
     function _repaintCycle() {
         if (!_ready || !webLoader.item) { _covered = false; return }
@@ -311,25 +301,12 @@ Item {
     Timer { id: reviveTimer; interval: 60; onTriggered: root._reviving = false }
     Timer { id: uncoverTimer; interval: 200; onTriggered: root._covered = false }
 
-    Connections {
-        target: root._win
-        enabled: root._win !== null
-        function onVisibilityChanged() {
-            var hidden = root._win.visibility === Window.Hidden
-                      || root._win.visibility === Window.Minimized
-            if (hidden) { root._covered = true; root._dirty = true }
-            else if (root._dirty) { root._dirty = false; root._repaintCycle() }
-        }
-    }
-    // Only a real unmap (workspace switch -> platform expose event, or a
-    // minimize) rebuilds the view. The mouse leaving the window drops focus but
-    // fires none of these, so it never triggers the ~0.5s reload.
-    Connections {
-        target: SurfaceWatcher
-        function onObscured() { root._covered = true; root._dirty = true }
-        function onRevealed() {
-            if (root._dirty) { root._dirty = false; root._repaintCycle() }
-        }
+    // Window hidden/minimised, or a bare workspace switch (SurfaceWatcher) —
+    // cover up, then snapshot + rebuild the page on the way back.
+    WebRevive {
+        window: Window.window
+        onObscured: root._covered = true
+        onNeedsRepaint: root._repaintCycle()
     }
     Rectangle {
         anchors.fill: parent

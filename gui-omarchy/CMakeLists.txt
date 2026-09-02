@@ -11,7 +11,7 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Network W
 qt_add_executable(mailbox-omarchy
     src/main.cpp
     src/OmarchyTheme.hpp src/OmarchyTheme.cpp
-    src/MailboxClient.hpp src/MailboxClient.cpp
+    src/MailboxClient.hpp src/MailboxClient.cpp src/MailboxClient_offline.cpp
     src/MailModel.hpp src/MailModel.cpp
     src/PixelBlock.hpp src/PixelBlock.cpp
     src/SurfaceWatcher.hpp src/SurfaceWatcher.cpp
@@ -31,15 +31,20 @@ qt_add_resources(mailbox-omarchy "qml"
         qml/ComposerView.qml
         qml/LexxyEditor.qml
         qml/RecipientPills.qml
+        qml/MailFormat.js
+        qml/Triage.js
         qml/AppButton.qml
         qml/SendUndoToast.qml
+        qml/FlashToast.qml
         qml/MailRow.qml
         qml/ThreadMessage.qml
+        qml/WebRevive.qml
         qml/BottomStacks.qml
         qml/PileStack.qml
         qml/SectionLabel.qml
         qml/Avatar.qml
         qml/Pill.qml
+        qml/Chip.qml
         qml/Kbd.qml
         qml/AttachmentChip.qml
         qml/QuickLook.qml

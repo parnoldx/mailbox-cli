@@ -1,4 +1,5 @@
 import QtQuick
+import "MailFormat.js" as Fmt
 
 Item {
     id: root
@@ -15,14 +16,6 @@ Item {
     property bool showDelete: false
     signal deleteClicked()
     height: 78
-
-    // A conversation has one subject; the Re:/Fwd:/AW: a client stacks onto
-    // every reply is per-message noise. Strip a leading run of them for the
-    // row — the raw subject is still what a reply quotes and sends.
-    function threadSubject(s) {
-        return String(s || "").replace(
-            /^\s*(?:(?:re|aw|fwd|fw|wg|antw)(?:\[\d+\])?\s*:\s*)+/i, "").trim()
-    }
 
     Rectangle {
         anchors.fill: parent
@@ -74,7 +67,7 @@ Item {
         }
         Text {
             width: parent.width
-            text: root.threadSubject(root.row.subject) || root.row.subject || ""
+            text: Fmt.stripSubjectPrefixes(root.row.subject) || root.row.subject || ""
             elide: Text.ElideRight
             font.family: Theme.fontFamily
             font.pixelSize: 14

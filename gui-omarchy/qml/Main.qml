@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Window
+import "Triage.js" as Triage
 
 // HEY-style single view: one full-screen bucket at a time, a full-screen reading
 // view, and a numbered Command Launcher (press H or Ctrl+K) to jump between
@@ -226,14 +227,7 @@ ApplicationWindow {
         composer.restore(form)
         win.composeOpen = true
     }
-    function flash(text) {
-        flashLabel.text = text
-        flashLabel.shown = true
-        // A daemon error is longer and worth a longer read than a one-word
-        // confirmation ("Set aside", "Draft saved").
-        flashTimer.interval = /failed/.test(text) ? 5000 : 2200
-        flashTimer.restart()
-    }
+    function flash(text) { flashToast.show(text) }
 
     function loadCounts() {
         Mailbox.call(["box", "list"], {}, function (r) {
@@ -490,7 +484,28 @@ ApplicationWindow {
     readonly property bool feedActive: !win.openId && !launcher.opened && currentKey() === "Feed"
     function navView() { return feedActive ? feedView : bucketView }
 
-    Shortcut { sequences: ["Ctrl+K", "Ctrl+P"]; enabled: !win.composeOpen && !searchView.opened; onActivated: launcher.toggle() }
+    // ---- keyboard-gate state --------------------------------------------
+    // These name the four situations the shortcuts below actually care about,
+    // so each Shortcut reads one boolean instead of re-spelling the same
+    // four-or-five-term guard (and drifting: some used to check quickLook,
+    // some didn't).
+    //
+    // anyOverlay      — a full-screen overlay is up and should eat plain keys.
+    // bucketKeys      — bucket/number switching: off only mid-compose or with
+    //                   the search field focused (both take raw text).
+    // navKeys         — list navigation (j/k/o/Return): a list is on screen.
+    // readerKeys      — reader triage (t/a/r/i/b): a reader is on screen.
+    // _rowActionable  — row triage: a list row is highlighted and actionable.
+    readonly property bool anyOverlay: composeOpen || searchView.opened
+                                     || launcher.opened || quickLook.opened
+    readonly property bool bucketKeys: !composeOpen && !searchView.opened
+    readonly property bool navKeys: !openId && !anyOverlay
+    readonly property bool readerKeys: !!openId && !anyOverlay
+    readonly property bool _rowActionable:
+        !openId && !anyOverlay && !feedActive
+        && !isDraftsBucket() && bucketView.currentRowId() !== ""
+
+    Shortcut { sequences: ["Ctrl+K", "Ctrl+P"]; enabled: win.bucketKeys; onActivated: launcher.toggle() }
     Shortcut {
         sequence: "Escape"
         onActivated: {
@@ -505,97 +520,95 @@ ApplicationWindow {
     // Compose a new message. Reply is driven from the reading view.
     Shortcut {
         sequences: ["c", "Ctrl+N"]
-        enabled: !win.composeOpen && !launcher.opened && !searchView.opened && !quickLook.opened
+        enabled: !win.anyOverlay
         onActivated: win.startCompose()
     }
     // Open the search overlay from anywhere but a compose or a modal. Disabled
     // once it is open so a "/" typed into its own field is text, not a toggle.
     Shortcut {
         sequences: ["/", "Ctrl+F"]
-        enabled: !win.composeOpen && !launcher.opened && !quickLook.opened && !searchView.opened
+        enabled: !win.anyOverlay
         onActivated: searchView.open()
     }
     // Number keys switch buckets straight from anywhere (but not mid-compose).
     // No key for the Screener: it is reached only from the Inbox button. The
     // rest keep their order: Set Aside 4, Reply Later 5, Drafts 6, Sent 7.
-    Shortcut { sequence: "1"; enabled: !win.composeOpen && !searchView.opened; onActivated: win.switchToKey("INBOX") }
-    Shortcut { sequence: "2"; enabled: !win.composeOpen && !searchView.opened; onActivated: win.switchToKey("Feed") }
-    Shortcut { sequence: "3"; enabled: !win.composeOpen && !searchView.opened; onActivated: win.switchToKey("Paper Trail") }
-    Shortcut { sequence: "4"; enabled: !win.composeOpen && !searchView.opened; onActivated: win.switchToKey("Aside") }
-    Shortcut { sequence: "5"; enabled: !win.composeOpen && !searchView.opened; onActivated: win.switchToKey("Reply Later") }
-    Shortcut { sequence: "6"; enabled: !win.composeOpen && !searchView.opened; onActivated: win.switchToKey("Drafts") }
-    Shortcut { sequence: "7"; enabled: !win.composeOpen && !searchView.opened; onActivated: win.switchToKey("Sent") }
-    Shortcut { sequences: ["j", "Down"]; enabled: !win.openId && !launcher.opened && !searchView.opened && !win.composeOpen; onActivated: win.navView().move(1) }
-    Shortcut { sequences: ["k", "Up"]; enabled: !win.openId && !launcher.opened && !searchView.opened && !win.composeOpen; onActivated: win.navView().move(-1) }
+    Shortcut { sequence: "1"; enabled: win.bucketKeys; onActivated: win.switchToKey("INBOX") }
+    Shortcut { sequence: "2"; enabled: win.bucketKeys; onActivated: win.switchToKey("Feed") }
+    Shortcut { sequence: "3"; enabled: win.bucketKeys; onActivated: win.switchToKey("Paper Trail") }
+    Shortcut { sequence: "4"; enabled: win.bucketKeys; onActivated: win.switchToKey("Aside") }
+    Shortcut { sequence: "5"; enabled: win.bucketKeys; onActivated: win.switchToKey("Reply Later") }
+    Shortcut { sequence: "6"; enabled: win.bucketKeys; onActivated: win.switchToKey("Drafts") }
+    Shortcut { sequence: "7"; enabled: win.bucketKeys; onActivated: win.switchToKey("Sent") }
+    Shortcut { sequences: ["j", "Down"]; enabled: win.navKeys; onActivated: win.navView().move(1) }
+    Shortcut { sequences: ["k", "Up"]; enabled: win.navKeys; onActivated: win.navView().move(-1) }
     Shortcut {
-        sequences: ["Return", "Enter"]; enabled: !win.openId && !launcher.opened && !searchView.opened && !win.composeOpen
+        sequences: ["Return", "Enter"]; enabled: win.navKeys
         onActivated: win.navView().openHighlighted()
     }
     Shortcut {
-        sequences: ["o", "l"]; enabled: !win.openId && !launcher.opened && !searchView.opened && !win.composeOpen
+        sequences: ["o", "l"]; enabled: win.navKeys
         onActivated: win.feedActive ? feedView.openFull() : bucketView.openHighlighted()
     }
     // Trash the message you are reading. Matches the widget's T = trash.
     Shortcut {
-        sequences: ["t", "Delete"]; enabled: !!win.openId && !launcher.opened && !searchView.opened && !win.composeOpen && !quickLook.opened
+        sequences: ["t", "Delete"]; enabled: win.readerKeys
         onActivated: win.trashCurrent()
     }
     // Triage the message you are reading into a bottom-stack pile: A = set aside,
     // R = reply later. Both drop you back to the list, like Trash. R is off in
     // the Screener — nothing is owed a reply until its sender is screened in.
     Shortcut {
-        sequence: "a"; enabled: !!win.openId && !launcher.opened && !searchView.opened && !win.composeOpen && !quickLook.opened
+        sequence: "a"; enabled: win.readerKeys
         onActivated: win.setAsideCurrent()
     }
     Shortcut {
-        sequence: "r"; enabled: !!win.openId && !win.inScreener && !launcher.opened && !searchView.opened && !win.composeOpen && !quickLook.opened
+        sequence: "r"; enabled: win.readerKeys && !win.inScreener
         onActivated: win.replyLaterCurrent()
     }
     // Screener decisions on the message you are reading: I = let the sender
     // into the Inbox, B = block them. Both act on the sender and drop you back.
     Shortcut {
-        sequence: "i"; enabled: !!win.openId && win.inScreener && !launcher.opened && !searchView.opened && !win.composeOpen && !quickLook.opened
+        sequence: "i"; enabled: win.readerKeys && win.inScreener
         onActivated: win.routeCurrent("inbox", "Let into Inbox")
     }
     Shortcut {
-        sequence: "b"; enabled: !!win.openId && win.inScreener && !launcher.opened && !searchView.opened && !win.composeOpen && !quickLook.opened
+        sequence: "b"; enabled: win.readerKeys && win.inScreener
         onActivated: win.routeCurrent("block", "Blocked")
     }
     // The same triage keys on the highlighted row of a list bucket — the Feed
     // is a web view and has no row to act on. T = trash, A = set aside,
     // R = reply later, all on the whole Thread the row stands for.
-    readonly property bool _rowActionable:
-        !win.openId && !launcher.opened && !searchView.opened && !win.composeOpen && !quickLook.opened
-        && !win.feedActive && !win.isDraftsBucket() && bucketView.currentRowId() !== ""
+    //
     // T on a Drafts row deletes it outright — a draft is not routed, set aside
     // or trashed to Trash, so it does not go through _rowActionable.
     Shortcut {
         sequences: ["t", "Delete"]
-        enabled: !win.openId && !launcher.opened && !searchView.opened && !win.composeOpen && !quickLook.opened
-                 && win.isDraftsBucket() && bucketView.currentRowId() !== ""
+        enabled: !win.openId && !win.anyOverlay && win.isDraftsBucket()
+                 && bucketView.currentRowId() !== ""
         onActivated: win.deleteDraft(bucketView.currentRowId())
     }
     Shortcut {
         sequences: ["t", "Delete"]; enabled: win._rowActionable
-        onActivated: win.trashId(bucketView.currentRowId())
+        onActivated: Triage.dispatch(win, "trash", bucketView.currentRowId())
     }
     Shortcut {
         sequence: "a"; enabled: win._rowActionable
-        onActivated: win.pileId("aside", "Set aside", bucketView.currentRowId())
+        onActivated: Triage.dispatch(win, "aside", bucketView.currentRowId())
     }
     Shortcut {
         sequence: "r"; enabled: win._rowActionable && !win.inScreener
-        onActivated: win.pileId("reply-later", "Reply later", bucketView.currentRowId())
+        onActivated: Triage.dispatch(win, "reply-later", bucketView.currentRowId())
     }
     // Screener decisions on the highlighted row: I = let the sender in,
     // B = block them — the same two one-tap primaries the row menu carries.
     Shortcut {
         sequence: "i"; enabled: win._rowActionable && win.inScreener
-        onActivated: win.routeId("inbox", "Let into Inbox", bucketView.currentRowId())
+        onActivated: Triage.dispatch(win, "inbox", bucketView.currentRowId())
     }
     Shortcut {
         sequence: "b"; enabled: win._rowActionable && win.inScreener
-        onActivated: win.routeId("block", "Blocked", bucketView.currentRowId())
+        onActivated: Triage.dispatch(win, "block", bucketView.currentRowId())
     }
     Shortcut {
         sequences: ["Ctrl+Return", "Ctrl+Enter"]
@@ -675,41 +688,8 @@ ApplicationWindow {
         anchors.fill: parent
     }
 
-    // Small transient confirmation ("Draft saved", …). Lives at the top —
-    // the bottom is the Reply Later / Set Aside stacks' turf on the Inbox,
-    // and this used to land right on top of them.
-    Rectangle {
-        id: flashLabel
-        property alias text: flashText.text
-        property bool shown: false
-        anchors.horizontalCenter: parent.horizontalCenter
-        y: shown ? 28 : -height - 8
-        Behavior on y { NumberAnimation { duration: Theme.anim; easing.type: Easing.OutCubic } }
-        // A short confirmation keeps the tight pill; a long daemon error wraps
-        // into a card up to most of the window's width rather than running off
-        // both edges.
-        width: Math.min(win.width - 64, flashText.implicitWidth + 32)
-        height: Math.max(34, flashText.implicitHeight + 16)
-        radius: Theme.radius
-        color: Theme.railBg
-        border.width: 1
-        border.color: Theme.hairline
-        visible: y > -height
-        Behavior on color { ColorAnimation { duration: Theme.anim } }
-        Behavior on border.color { ColorAnimation { duration: Theme.anim } }
-        Text {
-            id: flashText
-            anchors.centerIn: parent
-            width: flashLabel.width - 32
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.Wrap
-            maximumLineCount: 4
-            elide: Text.ElideRight
-            font.family: Theme.fontFamily
-            font.pixelSize: 12
-            color: Theme.textPrimary
-            Behavior on color { ColorAnimation { duration: Theme.anim } }
-        }
-        Timer { id: flashTimer; interval: 2200; onTriggered: flashLabel.shown = false }
+    FlashToast {
+        id: flashToast
+        anchors.fill: parent
     }
 }

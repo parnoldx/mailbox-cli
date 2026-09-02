@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Dialogs
+import "MailFormat.js" as Fmt
 
 // An attachment card. The body opens an in-app Quick Look preview; the tray icon
 // pops a "Save as…" dialog and lets the daemon write the file where you choose.
@@ -33,12 +34,8 @@ Rectangle {
         if (n < 1048576) return (n / 1024).toFixed(0) + " KB"
         return (n / 1048576).toFixed(1) + " MB"
     }
-    function localPath(url) { return decodeURIComponent(String(url).replace(/^file:\/\//, "")) }
-    function fileUrl(p) {
-        var parts = String(p || "").split("/")
-        for (var i = 0; i < parts.length; i++) parts[i] = encodeURIComponent(parts[i])
-        return "file://" + parts.join("/")
-    }
+    function localPath(url) { return Fmt.localPath(url) }
+    function fileUrl(p) { return Fmt.fileUrl(p) }
 
     Timer { id: doneTimer; interval: 2600; onTriggered: root.status = "" }
 
@@ -120,7 +117,7 @@ Rectangle {
             Mailbox.call(["attachment", "save"],
                          { positional: root.att.id, output: root.localPath(selectedFile), force: true },
                          function (r) {
-                root.status = (r.ok && r.data) ? "Saved" : ((r.error && r.error.length) ? r.error : "Save failed")
+                root.status = (r.ok && r.data) ? "Saved" : Fmt.errText(r, "Save failed")
                 doneTimer.restart()
             })
         }

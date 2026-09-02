@@ -171,7 +171,6 @@ Item {
     property bool _nudge: false
     property bool _webShown: true
     property bool covered: false
-    property bool _dirty: false
 
     function _repaintCycle() {
         covered = true; _webShown = false
@@ -188,24 +187,12 @@ Item {
             if (++count >= 4) { stop(); root.covered = false }
         }
     }
-    Connections {
-        target: win
-        function onVisibilityChanged() {
-            var hidden = win.visibility === Window.Hidden || win.visibility === Window.Minimized
-            if (hidden) { root.covered = true; root._dirty = true }
-            else if (root._dirty) { root._dirty = false; root._repaintCycle() }
-        }
-    }
-    // A workspace switch unmaps the Wayland surface without changing focus or
-    // Window.visibility. SurfaceWatcher turns the platform expose events into
-    // obscured()/revealed(); the mouse merely leaving the window fires none of
-    // these, so a bare focus change never triggers the repaint.
-    Connections {
-        target: SurfaceWatcher
-        function onObscured() { root.covered = true; root._dirty = true }
-        function onRevealed() {
-            if (root._dirty) { root._dirty = false; root._repaintCycle() }
-        }
+    // Window hidden/minimised, or a bare workspace switch (SurfaceWatcher) —
+    // cover the editor, then force fresh frames on the way back.
+    WebRevive {
+        window: Window.window
+        onObscured: root.covered = true
+        onNeedsRepaint: root._repaintCycle()
     }
 
     Rectangle {

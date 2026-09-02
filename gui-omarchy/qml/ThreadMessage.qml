@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Window
 import QtWebEngine
+import "MailFormat.js" as Fmt
 
 // One Message in an open Thread's accordion: a collapsed one-line row by
 // default (avatar, name, date, a snippet), expanding in place to the same
@@ -88,16 +89,8 @@ Item {
     property var cidMap: ({})
     property bool webLoaded: false
 
-    function fromName(s) {
-        if (!s) return ""
-        var m = s.match(/^\s*"?(.*?)"?\s*<([^>]+)>\s*$/)
-        return m ? (m[1].trim() || m[2]) : s
-    }
-    function fromAddr(s) {
-        if (!s) return ""
-        var m = s.match(/<([^>]+)>/)
-        return m ? m[1] : s
-    }
+    function fromName(s) { return Fmt.displayName(s) }
+    function fromAddr(s) { return Fmt.address(s) }
     function niceDate(s) {
         var d = new Date(s)
         return isNaN(d.getTime()) ? (s || "") : Qt.formatDateTime(d, "d MMM yyyy · HH:mm")
@@ -245,7 +238,6 @@ Item {
     // the way back from anything that may have unmapped us, save the reading
     // position, recreate the view, and restore the scroll under an opaque cover.
     property bool webCovered: false
-    property bool webDirty: false
     property bool reviving: false
     property real savedScroll: 0
 
@@ -282,26 +274,13 @@ Item {
     }
     Timer { id: uncoverTimer; interval: 220; onTriggered: root.webCovered = false }
 
-    Connections {
-        target: win
-        enabled: root.htmlMode
-        function onVisibilityChanged() {
-            var hidden = win.visibility === Window.Hidden || win.visibility === Window.Minimized
-            if (hidden) { root.webCovered = true; root.webDirty = true }
-            else if (root.webDirty) { root.webDirty = false; root.repaintCycle() }
-        }
-    }
-    // A workspace switch unmaps the Wayland surface without changing focus or
-    // Window.visibility. SurfaceWatcher turns the platform expose events into
-    // obscured()/revealed(); a plain focus change — the mouse just leaving the
-    // window — does NOT fire these, so it never triggers the rebuild.
-    Connections {
-        target: SurfaceWatcher
-        enabled: root.htmlMode
-        function onObscured() { root.webCovered = true; root.webDirty = true }
-        function onRevealed() {
-            if (root.webDirty) { root.webDirty = false; root.repaintCycle() }
-        }
+    // Window hidden/minimised, or a bare workspace switch (SurfaceWatcher) —
+    // cover up, and rebuild the view on the way back.
+    WebRevive {
+        window: Window.window
+        active: root.htmlMode
+        onObscured: root.webCovered = true
+        onNeedsRepaint: root.repaintCycle()
     }
 
     Column {

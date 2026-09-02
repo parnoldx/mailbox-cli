@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import "Triage.js" as Triage
 
 // The "Move" step of a Screener decision — the destinations that are not
 // one-tap primaries. Block and "let into the Inbox" are the two things you do
@@ -58,16 +59,16 @@ Menu {
     Dest {
         text: "Feed"
         glyph: ""
-        onTriggered: win.routeId("feed", "Moved to Feed", menu.targetId)
+        onTriggered: Triage.dispatch(win, "feed", menu.targetId)
     }
     Dest {
         text: "Paper Trail"
         glyph: ""
-        onTriggered: win.routeId("paper", "Moved to Paper Trail", menu.targetId)
+        onTriggered: Triage.dispatch(win, "paper", menu.targetId)
     }
     Dest {
         text: "Set aside"
         glyph: ""
-        onTriggered: win.pileId("aside", "Set aside", menu.targetId)
+        onTriggered: Triage.dispatch(win, "aside", menu.targetId)
     }
 }

@@ -11,17 +11,11 @@ Item {
     readonly property int screenerWaiting:
         (win.counts["Screener"] && win.counts["Screener"].count) || 0
 
-    function rowsWhere(seen) {
-        var out = []
-        for (var i = 0; i < listModel.count; i++) {
-            var r = listModel.get(i)
-            if (r.seen === seen) out.push(r)
-        }
-        return out
-    }
-    property var newRows: (listModel.count, rowsWhere(false))
-    property var seenRows: (listModel.count, rowsWhere(true))
-    property var flatRows: newRows.concat(seenRows)
+    // The bucket split, straight off the model's `rows` mirror (which re-emits
+    // on every setRows).
+    readonly property var newRows: listModel.rows.filter(function (r) { return r.seen === false })
+    readonly property var seenRows: listModel.rows.filter(function (r) { return r.seen === true })
+    readonly property var flatRows: newRows.concat(seenRows)
     property int hi: -1
 
     function move(d) {

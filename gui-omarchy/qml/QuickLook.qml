@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Pdf
 import QtQuick.Dialogs
+import "MailFormat.js" as Fmt
 
 // In-app file preview in the spirit of macOS Quick Look / omarchy-quick-look:
 // the attachment opens here, rendered, not handed off. Esc or Q dismisses; the
@@ -21,14 +22,8 @@ Item {
         || mime.indexOf("json") >= 0 || mime.indexOf("xml") >= 0
         || mime.indexOf("javascript") >= 0 || mime.indexOf("csv") >= 0
 
-    function fileUrl(p) {
-        var parts = String(p || "").split("/")
-        for (var i = 0; i < parts.length; i++) parts[i] = encodeURIComponent(parts[i])
-        return "file://" + parts.join("/")
-    }
-    function localPath(url) {
-        return decodeURIComponent(String(url).replace(/^file:\/\//, ""))
-    }
+    function fileUrl(p) { return Fmt.fileUrl(p) }
+    function localPath(url) { return Fmt.localPath(url) }
 
     // Called from an attachment chip. Fetch to the cache dir, then show.
     function openFor(attachment) {
@@ -46,7 +41,7 @@ Item {
                 root.path = r.data.path
                 textLoad.restart()
             } else {
-                root.status = (r.error && r.error.length) ? r.error : "Could not fetch this file"
+                root.status = Fmt.errText(r, "Could not fetch this file")
             }
         })
     }
@@ -248,7 +243,7 @@ Item {
             Mailbox.call(["attachment", "save"],
                          { positional: root.att.id, output: root.localPath(selectedFile), force: true },
                          function (r) {
-                if (!(r.ok && r.data)) root.status = (r.error && r.error.length) ? r.error : "Save failed"
+                if (!(r.ok && r.data)) root.status = Fmt.errText(r, "Save failed")
             })
         }
     }

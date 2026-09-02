@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import "MailFormat.js" as Fmt
 
 // The five-second grace period — but only when there is something worth
 // pausing for: the body mentions an attachment and none was actually
@@ -29,7 +30,7 @@ Item {
         countdown.stop(); barAnim.stop()
         root.phase = ""; root.pending = null
         Mailbox.call(p.cmd, p.args, function (r) {
-            win.flash(r.ok ? "Sent" : ((r.error && r.error.length) ? r.error : "Send failed"))
+            win.flash(r.ok ? "Sent" : Fmt.errText(r, "Send failed"))
         })
     }
     function undo() {

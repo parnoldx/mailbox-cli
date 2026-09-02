@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import "Triage.js" as Triage
 
 // The triage menu every row in a list bucket gets on right-click. In an
 // ordinary bucket it is the same four moves the reading-view toolbar and the
@@ -72,13 +73,13 @@ Menu {
     Action {
         text: "Open"
         glyph: ""
-        onTriggered: win.openMessage(menu.row.id)
+        onTriggered: Triage.dispatch(win, "open", menu.row.id)
     }
     Action {
         text: "Reply now"
         glyph: ""
         visible: !menu.inScreener
-        onTriggered: win.openThenReply(menu.row.id)
+        onTriggered: Triage.dispatch(win, "reply-now", menu.row.id)
     }
 
     Rule {}
@@ -88,32 +89,32 @@ Menu {
         text: "Let into Inbox"
         glyph: ""
         visible: menu.inScreener
-        onTriggered: win.routeId("inbox", "Let into Inbox", menu.row.id)
+        onTriggered: Triage.dispatch(win, "inbox", menu.row.id)
     }
     Action {
         text: "Block"
         glyph: ""
         danger: true
         visible: menu.inScreener
-        onTriggered: win.routeId("block", "Blocked", menu.row.id)
+        onTriggered: Triage.dispatch(win, "block", menu.row.id)
     }
     Action {
         text: "Move to Feed"
         glyph: ""
         visible: menu.inScreener
-        onTriggered: win.routeId("feed", "Moved to Feed", menu.row.id)
+        onTriggered: Triage.dispatch(win, "feed", menu.row.id)
     }
     Action {
         text: "Move to Paper Trail"
         glyph: ""
         visible: menu.inScreener
-        onTriggered: win.routeId("paper", "Moved to Paper Trail", menu.row.id)
+        onTriggered: Triage.dispatch(win, "paper", menu.row.id)
     }
     Action {
         text: "Move to Set aside"
         glyph: ""
         visible: menu.inScreener
-        onTriggered: win.pileId("aside", "Set aside", menu.row.id)
+        onTriggered: Triage.dispatch(win, "aside", menu.row.id)
     }
 
     // ---- Ordinary bucket: a move of this Thread --------------------------
@@ -121,20 +122,19 @@ Menu {
         text: "Move to Inbox"
         glyph: ""
         visible: menu.inAside || menu.inReplyLater
-        onTriggered: win.pileId(menu.inAside ? "aside" : "reply-later",
-                                "Moved to Inbox", menu.row.id, true)
+        onTriggered: Triage.dispatch(win, menu.inAside ? "aside-done" : "rl-done", menu.row.id)
     }
     Action {
         text: "Reply later"
         glyph: ""
         visible: !menu.inScreener && !menu.inReplyLater
-        onTriggered: win.pileId("reply-later", "Reply later", menu.row.id)
+        onTriggered: Triage.dispatch(win, "reply-later", menu.row.id)
     }
     Action {
         text: "Set aside"
         glyph: ""
         visible: !menu.inScreener && !menu.inAside
-        onTriggered: win.pileId("aside", "Set aside", menu.row.id)
+        onTriggered: Triage.dispatch(win, "aside", menu.row.id)
     }
 
     Rule {}
@@ -143,6 +143,6 @@ Menu {
         text: "Trash"
         glyph: ""
         danger: true
-        onTriggered: win.trashId(menu.row.id)
+        onTriggered: Triage.dispatch(win, "trash", menu.row.id)
     }
 }

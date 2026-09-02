@@ -1,4 +1,5 @@
 import QtQuick
+import "MailFormat.js" as Fmt
 
 Rectangle {
     id: root
@@ -9,16 +10,9 @@ Rectangle {
     color: Theme.avatarColor(seed && seed.length ? seed : name)
     Behavior on color { ColorAnimation { duration: Theme.anim } }
 
-    function initials(s) {
-        if (!s) return "?"
-        var parts = s.trim().split(/\s+/)
-        if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase()
-        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-    }
-
     Text {
         anchors.centerIn: parent
-        text: root.initials(root.name)
+        text: Fmt.initials(root.name)
         font.family: Theme.fontFamily
         font.pixelSize: 12
         font.weight: Font.DemiBold
