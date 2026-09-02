@@ -4,6 +4,8 @@
 
 Instead of hitting IMAP, SMTP, CalDAV, CardDAV, and ManageSieve servers on every command, a single background daemon maintains a local SQLite **Mirror** of server state. Read commands are answered directly from the local mirror in milliseconds with zero network latency, while write operations synchronize with remote servers to guarantee consistency.
 
+![The mailbox CLI: box view, agenda, todo list, and compose](pictures/cli.png)
+
 ![Overview: the Qt desktop client, calendar and event bar widgets, and the mail notification panel — all backed by the same daemon](pictures/overview.png)
 
 ```
