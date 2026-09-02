@@ -123,7 +123,9 @@ mailbox attachment save 36722:1    # Save attachment to disk
 mailbox compose --to user@example.com --subject "Hello" --body "Message body"
 mailbox reply 36722 --body "Thanks for the update."
 mailbox forward 36722 --to colleague@example.com
-mailbox draft save --to user@example.com --subject "Draft" --body "Work in progress"
+mailbox compose --to user@example.com --subject "Draft" --body "WIP" --draft  # File in drafts instead of sending
+mailbox draft list                 # Mail written but not yet sent
+mailbox draft send 12              # Send a draft (optionally override --to/--subject/--body)
 mailbox outbox list                # View queue status and held messages
 mailbox outbox retry 1             # Retry a held outgoing message
 ```
@@ -133,7 +135,7 @@ mailbox outbox retry 1             # Retry a held outgoing message
 mailbox screener                   # List senders waiting for a routing decision
 mailbox route set sender@domain --to feed        # Route sender to Feed
 mailbox route set sender@domain --to inbox       # Route sender to Inbox
-mailbox route set sender@domain --to papertrail  # Route sender to Paper Trail
+mailbox route set sender@domain --to paper        # Route sender to Paper Trail
 mailbox route set sender@domain --to block       # Block sender at server level
 mailbox aside add 36722            # Put a message into the read-later pile
 mailbox reply-later add 36722      # Put a message into the reply-later pile
@@ -142,6 +144,9 @@ mailbox seen 36722                 # Mark message as read
 mailbox unseen 36722               # Mark message as unread
 mailbox trash 36722                # Move message to Trash
 mailbox spam 36722                 # Move message to Junk
+mailbox label add 36722 --to Rechnungen  # Put a label on a message
+mailbox label list                # Labels, and how much mail carries each
+mailbox label view Rechnungen     # Mail carrying a label
 ```
 
 ### Calendars, Todos, Habits & Contacts
@@ -193,7 +198,9 @@ Every command supports `--json`, returning a structured envelope:
 
 ### Skills & Plugins
 - **Agent Skill**: [`skill/SKILL.md`](file:///home/pa/Work/tries/2026-08-29-mailbox-cli/skill/SKILL.md) provides instruction mappings for AI coding assistants.
-- **Desktop Bar Plugin**: [`plugins/mailbox.clock/`](file:///home/pa/Work/tries/2026-08-29-mailbox-cli/plugins/mailbox.clock) provides an Omarchy / Quickshell calendar and reminder bar widget backed directly by the daemon socket.
+- **Calendar Bar Widget**: [`plugins/mailbox.clock/`](file:///home/pa/Work/tries/2026-08-29-mailbox-cli/plugins/mailbox.clock) — Omarchy / Quickshell calendar and reminder widget backed directly by the daemon socket.
+- **Mail Notification Widget**: [`plugins/mailbox.email/`](file:///home/pa/Work/tries/2026-08-29-mailbox-cli/plugins/mailbox.email) — Omarchy bar widget and dropdown panel for new-mail alerts and sender screening, also on the daemon socket.
+- **Desktop Client**: [`gui-omarchy/`](file:///home/pa/Work/tries/2026-08-29-mailbox-cli/gui-omarchy) — a HEY-style Qt desktop mail client that follows the live Omarchy theme.
 
 ---
 

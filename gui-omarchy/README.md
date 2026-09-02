@@ -1,16 +1,33 @@
 # mailbox-omarchy — a HEY-style desktop client that wears the Omarchy theme
 
-A second, deliberately small prototype of the `mailbox` Qt client (the first one
-lives in `../gui`). This one drops the three-pane layout for the HEY workflow —
-one full-screen view at a time plus a numbered command launcher — and it retints
-itself the instant you switch Omarchy themes.
+A deliberately small Qt client for `mailbox` — the only mail client this repo
+ships. It follows the HEY workflow — one full-screen view at a time plus a
+numbered command launcher, no three-pane layout — and it retints itself the
+instant you switch Omarchy themes.
 
 ## What it shows
 
 - **Single view, content first.** No sidebar, no message pane. A full-screen
   bucket (Inbox split into *New for you* / *Previously seen*, plus The Feed,
-  Paper Trail, The Screener, Set Aside), and a full-screen reading view with
-  label-free headers and a big subject headline.
+  Paper Trail, The Screener, Set Aside, Reply Later, Drafts, Sent), and a
+  full-screen reading view with label-free headers and a big subject headline.
+- **Threads are an accordion of equals.** Opening a message opens its whole
+  conversation (`thread view`): every message a collapsed one-line row, the
+  newest and anything unread expanded. `Return` on a row expands or collapses
+  it in place — several at once is fine — and the up/down icon in the header
+  toggles the lot. A one-message thread just looks like a single message.
+- **Set Aside and Reply Later ride the Inbox.** The two hand-tended piles show
+  as little fanned card stacks along the bottom of the Inbox (`BottomStacks` /
+  `PileStack`), so triaged-for-later mail stays in sight; tap a card to open
+  it, tap the pile's glyph to jump to that bucket in full.
+- **Search over every box.** `/` (or `Ctrl+F`) opens a full-screen ranked
+  full-text search answered entirely from the Mirror; a hit opens in the
+  reader. Open only — no triage from the results.
+- **Triage menu on every row.** Right-click a row in a list bucket for the same
+  four moves the reading-view toolbar offers, acting on the whole thread; in
+  the Screener it is instead a decision about the sender (let in / block /
+  Feed / Paper Trail / Set aside / Trash). The vocabulary is shared in
+  `Triage.js`.
 - **The Feed reads like a feed.** The Feed does not hand off to the reader — it
   is one chronological column of cards, each with the sender, the subject and the
   first few lines of the body. `Return` (or a click) expands a card to its whole
@@ -19,8 +36,10 @@ itself the instant you switch Omarchy themes.
   everything below has been seen. How far you scroll, and anything you expand, is
   remembered between runs in `$XDG_CONFIG_HOME/Mailbox/state.json` (`feed.mark`,
   keyed by message date); `Mark all read` in the header jumps the rule to the top.
+  The whole column is one HTML document in one `WebEngineView`
+  (`qml/vendor/feed.html`); `FeedView.qml` does the data work and drives the page.
 - **Command launcher.** `Ctrl+K` (or `Ctrl+P`) opens a centred switcher with the
-  search field already focused, destinations numbered 1–5, and live per-bucket
+  search field already focused, destinations numbered 1–7, and live per-bucket
   counts. Type to filter, digits or arrows to pick.
 - **Live Omarchy theming.** `OmarchyTheme` (C++) reads the active palette from
   `~/.local/state/omarchy/current/theme/colors.toml` and re-emits `changed()` the
@@ -57,9 +76,12 @@ itself the instant you switch Omarchy themes.
   it with everything intact. If the body says "attached" and nothing is, the
   banner says so. Drives `send` / `reply` / `draft save` on the daemon.
 - **Real data.** NDJSON to the daemon on `$XDG_RUNTIME_DIR/mailbox.sock`
-  (`box list`, `box view`, `message view`, `attachment list`, `attachment save`,
-  `attachment bytes`, `contact search`, `send`, `reply`, `draft save`). Offline
-  it falls back to a small canned set; green dot = connected, amber = demo.
+  (`box list`, `box view`, `message view`, `thread view`, `search`,
+  `attachment list`, `attachment save`, `attachment bytes`, `contact search`,
+  `send`, `reply`, `draft save` / `draft send`, plus the triage verbs
+  `move` / `seen` / `trash` / `route` / `aside` / `reply-later`). Offline it
+  falls back to a small canned set (`src/MailboxClient_offline.cpp`); green
+  dot = connected, amber = demo.
 
 ## Daemon dependency
 
@@ -105,13 +127,18 @@ Requires Qt 6 (Core, Gui, Qml, Quick, QuickControls2, Network, WebEngineQuick, P
 | key            | action                          |
 |----------------|---------------------------------|
 | `Ctrl+K` / `Ctrl+P` | open the command launcher  |
+| `/` / `Ctrl+F` | search all mail                 |
 | `c` / `Ctrl+N` | compose a new message           |
-| `1`–`5`        | jump straight to a bucket       |
+| `1`–`7`        | jump straight to a bucket       |
 | `j` / `k` / arrows | move the row highlight       |
-| `Return`       | open the message (in The Feed: expand / collapse the card) |
+| `Return`       | open the message (in The Feed, or a thread's accordion: expand / collapse) |
 | `o` / `l`      | open the highlighted message (works from The Feed too) |
+| right-click    | triage menu on a list row (sender decision in the Screener) |
+| `t` / `Del`    | move to Trash (highlighted row or open thread) |
+| `a`            | set aside                       |
+| `r`            | reply (Screener: `i` let in, `b` block) |
 | `Ctrl+Return`  | send (in the composer)          |
-| `Esc`          | close launcher, leave a message, collapse Feed cards, or close the composer |
+| `Esc`          | close launcher or search, leave a message, collapse Feed cards, or close the composer |
 | `Ctrl+Q`       | quit                            |
 
 `--bucket <name>` (e.g. `--bucket feed`) starts on that bucket instead of Inbox.
@@ -120,25 +147,40 @@ Requires Qt 6 (Core, Gui, Qml, Quick, QuickControls2, Network, WebEngineQuick, P
 
 ```
 src/OmarchyTheme.*   live palette + derived design tokens, file-watch + poll
-src/MailboxClient.*  QLocalSocket NDJSON client, callback-per-request, demo fallback;
+src/MailboxClient.*  QLocalSocket NDJSON client, callback-per-request;
                      tiny stateGet/stateSet JSON store for the Feed watermark
+src/MailboxClient_offline.cpp  the canned answers used when the socket is down (demo mode)
 src/MailModel.*      one box of message summaries; splits "Name <addr>" and dates
 src/PixelBlock.*     QWebEngineUrlRequestInterceptor: drops trackers, counts them
-qml/Main.qml         window, view state, all shortcuts
+src/SurfaceWatcher.* filters platform expose events off the top window so a WebEngine
+                     host can tell a Wayland workspace switch unmapped its surface
+
+qml/Main.qml         window, view state, all shortcuts, the thread/pile/route/move helpers
 qml/BucketView.qml   full-screen bucket, New/Seen split, keyboard highlight
-qml/FeedView.qml     The Feed as a scrolling column; the read watermark + prefetch
-qml/FeedCard.qml     one feed item: preview, expand-in-place, "Open full page"
-qml/FeedDivider.qml  the "you got to here last time" rule
-qml/ReadingView.qml  full-screen message, label-free headers; Reply / Reply all
-qml/CommandLauncher.qml  numbered quick switcher
+qml/BottomStacks.qml Reply Later + Set Aside as fanned card stacks along the Inbox bottom
+qml/PileStack.qml    one such pile: a glyph plus up to three stacked cards
+qml/FeedView.qml     The Feed's data half — rows, body prefetch, watermark; drives feed.html
+qml/ReadingView.qml  full-screen thread: header, toolbar, the accordion
+qml/ThreadMessage.qml  one message in the accordion: collapsed row <-> full HTML/text render
+qml/SearchView.qml   full-screen Mirror full-text search; a hit opens in the reader
+qml/CommandLauncher.qml  numbered quick switcher: bucket destinations + context actions
+qml/RowActions.qml   right-click triage menu for a list row (ordinary vs Screener)
+qml/ScreenerMoveMenu.qml  the "Move to…" step of a Screener decision, shared by RowActions + toolbar
+qml/Triage.js        the shared triage vocabulary: dispatch(win, id, target) + label(id)
 qml/ComposerView.qml     full-screen compose (new + reply), attachment tray, action bar
 qml/LexxyEditor.qml      Lexxy (basecamp/lexxy) in a WebEngineView; getHtml/setHtml bridge, palette retint
 qml/RecipientPills.qml   tokenised recipient field with contact-search autocomplete (overlay Popup)
+qml/WebRevive.qml        shared half of the "WebEngine left a black GPU surface" workaround; repaint() on return
 qml/AppButton.qml        primary / ghost / danger button
+qml/Chip.qml             the small pill used across the toolbar and accordion (badge / danger / accent-glyph)
 qml/SendUndoToast.qml    five-second delayed-send banner with Undo + forgotten-attachment warning
-qml/vendor/lexxy.{js,css}  Lexxy build (rollup, self-contained: Lexical + deps), MIT — see LICENSE.lexxy
+qml/FlashToast.qml       transient top-edge confirmation / daemon-error toast; show(text)
 qml/AttachmentChip.qml   one attachment: click = Quick Look, floppy = Save as
 qml/QuickLook.qml        in-app preview overlay (PDF pages, image, text)
+qml/MailFormat.js        shared pure string helpers (initials, subject stripping, address + file-url parsing)
+qml/vendor/feed.html       the Feed's one HTML document (a single scroll surface)
+qml/vendor/lexxy.{js,css}  Lexxy build (rollup, self-contained: Lexical + deps), MIT — see LICENSE.lexxy
+qml/vendor/darkreader.js   vendored Dark Reader engine for dark-theme mail — see LICENSE.darkreader
 qml/MailRow.qml qml/Avatar.qml qml/Pill.qml qml/Kbd.qml qml/SectionLabel.qml
 ```
 

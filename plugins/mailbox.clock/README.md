@@ -45,22 +45,21 @@ A request that goes out while the socket is down fails on the spot rather
 than queueing, and the service reconnects with a backoff when the daemon
 comes back. `mailbox doctor` says when the daemon is not running at all.
 
-## What is missing from the CLI
+## The CLI covers the whole entry pane
 
-The widget's surface covers what the daemon serves. The gaps are all on the
-write side, where the CLI has no flag for what the entry pane can say:
+Every field the entry pane collects has a daemon arg to carry it, so nothing
+is dropped on write:
 
-- **Todo due time and priority.** `todo add` takes a date only (`--due
-  DATE`), so a typed hour and the high/medium/low pill are dropped.
-- **Recurrence and alert minutes.** `event add` has no `--repeat` and no
-  reminder flag; those parts of the entry pane are dropped on write.
-- **A URL field of its own.** `event add` has no `--url`, so the Join
-  link is folded into `--notes`. On the read side the agenda now carries
-  the notes, which is where meeting links are usually written, so the
-  Join button finds them again.
+- **Todo due time and priority.** `todo add` takes `due` as a date *or* a
+  date and time, and a `priority` of high/medium/low.
+- **Recurrence and alert minutes.** `event add` / `event edit` take `repeat`
+  (a rule, or a keyword like `weekly` / `weekdays`) and `alarm` (minutes
+  before the start, one value or several).
+- **A URL of its own.** `event add` takes `url`, so the Join link is its own
+  field rather than folded into the notes.
 
-When the CLI grows those flags, the mapping lives in one place
-(`Model.requestToArgs`) and the widget follows.
+The request-to-arg mapping lives in one place (`Model.requestToArgs`); when a
+verb grows a field, that is the only file that changes.
 
 ## Not carried over from the Thunderbird version
 
