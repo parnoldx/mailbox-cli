@@ -11,7 +11,7 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Network W
 qt_add_executable(mailbox-gui
     src/main.cpp
     src/OmarchyTheme.hpp src/OmarchyTheme.cpp
-    src/MailboxClient.hpp src/MailboxClient.cpp src/MailboxClient_offline.cpp
+    src/MailboxClient.hpp src/MailboxClient.cpp
     src/MailModel.hpp src/MailModel.cpp
     src/PixelBlock.hpp src/PixelBlock.cpp
     src/SurfaceWatcher.hpp src/SurfaceWatcher.cpp

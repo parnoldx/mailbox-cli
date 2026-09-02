@@ -382,7 +382,7 @@ ApplicationWindow {
                 win._replyOnOpen = false
                 win.back()
                 win.switchToKey("INBOX")
-                win.flash("Couldn't find that message")
+                win.flash(r && r.ok === false && r.error ? r.error : "Couldn't find that message")
                 return
             }
             win.openThread = thread
@@ -463,8 +463,8 @@ ApplicationWindow {
 
     // `--open <id>`: raise the reader shell immediately so the bucket never
     // flashes behind it, then load the message the moment the daemon socket is
-    // up (onlineChanged) — or after a short grace, so an offline start still
-    // lands on the canned demo instead of hanging on "opening…".
+    // up (onlineChanged) — or after a short grace, so a start with no daemon
+    // still resolves (to the "not running" flash) instead of hanging on "opening…".
     property string pendingOpenId: ""
     function openWhenReady(id) {
         win.openId = id

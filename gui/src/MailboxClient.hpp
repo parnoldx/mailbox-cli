@@ -14,8 +14,8 @@ class QJSEngine;
 //   {"id":"7","cmd":["box","view"],"args":{"positional":"Inbox","limit":50}}
 // One response per line, carrying a `mirror` freshness block on every reply.
 //
-// If the daemon is not reachable the client answers from a small canned set so
-// the prototype still demos. `online` tells the UI which world it is in.
+// If the daemon is not reachable every call fails with an `error` and the
+// `online` property goes false (the UI shows an amber status dot).
 class MailboxClient : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool online READ online NOTIFY onlineChanged)
@@ -54,7 +54,6 @@ private:
     void saveState() const;
     void flushBuffer();
     void dispatch(const QVariantMap &obj);
-    void answerOffline(const QString &id, const QStringList &cmd, const QVariantMap &args);
     void deliver(const QString &id, const QVariantMap &reply);
 
     QJSEngine *m_engine{nullptr};

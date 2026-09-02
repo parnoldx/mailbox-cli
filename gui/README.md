@@ -79,9 +79,9 @@ instant you switch Omarchy themes.
   (`box list`, `box view`, `message view`, `thread view`, `search`,
   `attachment list`, `attachment save`, `attachment bytes`, `contact search`,
   `send`, `reply`, `draft save` / `draft send`, plus the triage verbs
-  `move` / `seen` / `trash` / `route` / `aside` / `reply-later`). Offline it
-  falls back to a small canned set (`src/MailboxClient_offline.cpp`); green
-  dot = connected, amber = demo.
+  `move` / `seen` / `trash` / `route` / `aside` / `reply-later`). With no
+  daemon on the socket every call fails with "the mailbox daemon is not
+  running"; green dot = connected, amber = no daemon.
 
 ## Daemon dependency
 
@@ -108,7 +108,7 @@ destroys any inode-level watch on `colors.toml`, so `OmarchyTheme`:
 ```sh
 make                # configure + build -> ./build/mailbox-gui
 make run            # build, then run it
-make run ARGS='--open <id>'        # ...straight into a message (demo/screenshot)
+make run ARGS='--open <id>'        # ...straight into a message
 make run ARGS='--open <id> --ql'   # ...and pop Quick Look on its first attachment
 make run ARGS='--compose'          # ...straight into the composer
 make run ARGS='mailto:a@b.com?subject=Hi'  # ...composer prefilled from a mailto: link
@@ -160,7 +160,6 @@ Requires Qt 6 (Core, Gui, Qml, Quick, QuickControls2, Network, WebEngineQuick, P
 src/OmarchyTheme.*   live palette + derived design tokens, file-watch + poll
 src/MailboxClient.*  QLocalSocket NDJSON client, callback-per-request;
                      tiny stateGet/stateSet JSON store for the Feed watermark
-src/MailboxClient_offline.cpp  the canned answers used when the socket is down (demo mode)
 src/MailModel.*      one box of message summaries; splits "Name <addr>" and dates
 src/PixelBlock.*     QWebEngineUrlRequestInterceptor: drops trackers, counts them
 src/SurfaceWatcher.* filters platform expose events off the top window so a WebEngine

@@ -10,6 +10,7 @@
 #include <QFile>
 #include <QStandardPaths>
 #include <QTimer>
+#include <QVariantList>
 
 MailboxClient::MailboxClient(QObject *parent) : QObject(parent) {
     m_sock = new QLocalSocket(this);
@@ -52,7 +53,16 @@ void MailboxClient::call(const QStringList &cmd, const QVariantMap &args, const 
         m_pending.insert(id, callback);
 
     if (!m_online) {
-        answerOffline(id, cmd, args);
+        // No daemon on the socket. Fail the call instead of inventing an
+        // answer; the callback path already surfaces `error`, and the status
+        // dot is amber. Start it with `mailbox daemon`.
+        const QVariantMap reply{
+            {"ok", false},
+            {"error", "the mailbox daemon is not running"},
+            {"data", QVariantList{}},
+            {"mirror", QVariantMap{{"connected", false}, {"behind", false}}},
+        };
+        QTimer::singleShot(0, this, [this, id, reply] { deliver(id, reply); });
         return;
     }
 
