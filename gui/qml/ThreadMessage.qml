@@ -62,10 +62,7 @@ Item {
             "return e?Math.ceil(e.getBoundingClientRect().height)+44:0;})()",
             function (h) { if (h && h > 0) root.htmlContentHeight = h })
     }
-    // Re-measure after DarkReader has re-tinted and inline images have landed,
-    // both of which change the page's natural height after first paint.
-    Timer { id: measureTimer; interval: 320; onTriggered: root.measureHtml() }
-    onWidthChanged: if (root.htmlMode) measureTimer.restart()
+    onWidthChanged: if (root.htmlMode) root.measureHtml()
 
     width: parent ? parent.width : 0
     height: col.implicitHeight
@@ -221,7 +218,6 @@ Item {
                     var uri = "data:" + (r.data.mime_type || "image/png") + ";base64," + r.data.base64
                     root.cidMap[need.cid] = uri
                     root.patchCid(need.cid, uri)
-                    measureTimer.restart()
                 }
             })
         })
@@ -501,6 +497,11 @@ Item {
                     onLoaded: root.renderHtml()
                     sourceComponent: WebEngineView {
                         backgroundColor: root.applyDark ? Theme.background : "#ffffff"
+                        // The page's rendered height moves after first paint —
+                        // inline images decode, DarkReader re-tints, a width
+                        // change reflows. This fires on each of those, so the
+                        // sheet resizes to real content without a guessed delay.
+                        onContentsSizeChanged: if (root.htmlMode) root.measureHtml()
                         onNavigationRequested: function (req) {
                             if (req.navigationType === WebEngineNavigationRequest.LinkClickedNavigation) {
                                 Qt.openUrlExternally(req.url)
@@ -513,7 +514,6 @@ Item {
                                 root.webLoaded = true
                                 root.flushCids()
                                 root.measureHtml()
-                                measureTimer.restart()
                                 // Also lifts the dark-mail anti-flash cover set
                                 // in renderHtml() (savedScroll 0 → just uncovers).
                                 if (root.webCovered) root.restoreScroll()

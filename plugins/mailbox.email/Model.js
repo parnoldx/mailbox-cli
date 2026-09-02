@@ -248,10 +248,10 @@ function shellQuote(value) {
 }
 
 // Clicking a mail in the notification widget always opens it in the mailbox
-// desktop client (gui-omarchy, binary `mailbox-omarchy`). There is no override:
+// desktop client (gui, binary `mailbox-gui`). There is no override:
 // this is the only client we ship, so it is the only target.
 function buildOpenCommand(messageId) {
-  return "mailbox-omarchy --open " + shellQuote(String(messageId || "").trim())
+  return "mailbox-gui --open " + shellQuote(String(messageId || "").trim())
 }
 
 if (typeof module !== "undefined" && module.exports) {

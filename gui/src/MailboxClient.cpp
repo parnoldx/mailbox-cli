@@ -122,7 +122,7 @@ QString MailboxClient::downloadDir() const {
 QString MailboxClient::cacheDir() const {
     QString d = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
     if (d.isEmpty())
-        d = QDir::homePath() + "/.cache/mailbox-omarchy";
+        d = QDir::homePath() + "/.cache/mailbox-gui";
     else
         d += "/attachments";
     QDir().mkpath(d);

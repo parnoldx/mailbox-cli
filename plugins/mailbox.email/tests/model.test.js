@@ -117,8 +117,8 @@ test("requestToArgs maps UI actions to daemon socket command format", () => {
 })
 
 test("buildOpenCommand always opens the desktop client, id shell-quoted", () => {
-  assert.equal(Model.buildOpenCommand("123"), "mailbox-omarchy --open '123'")
-  assert.equal(Model.buildOpenCommand("INBOX:456"), "mailbox-omarchy --open 'INBOX:456'")
-  assert.equal(Model.buildOpenCommand("a'b"), "mailbox-omarchy --open 'a'\\''b'")
-  assert.equal(Model.buildOpenCommand(""), "mailbox-omarchy --open ''")
+  assert.equal(Model.buildOpenCommand("123"), "mailbox-gui --open '123'")
+  assert.equal(Model.buildOpenCommand("INBOX:456"), "mailbox-gui --open 'INBOX:456'")
+  assert.equal(Model.buildOpenCommand("a'b"), "mailbox-gui --open 'a'\\''b'")
+  assert.equal(Model.buildOpenCommand(""), "mailbox-gui --open ''")
 })

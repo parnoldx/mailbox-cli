@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Mailbox
+GenericName=Email Client
+Comment=HEY-style mail client that follows the Omarchy theme
+Exec=mailbox-gui %u
+TryExec=mailbox-gui
+Icon=mailbox-gui
+Terminal=false
+Categories=Network;Email;
+MimeType=x-scheme-handler/mailto;
+Keywords=mail;email;inbox;mailbox;
+StartupNotify=true
+StartupWMClass=Mailbox

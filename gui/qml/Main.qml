@@ -53,7 +53,21 @@ ApplicationWindow {
     function isExpanded(id) { return !!win.expandedIds[id] }
     function attachmentsFor(id) { return win.attachmentsById[id] || [] }
 
-    property bool composeOpen: false   // the compose view sits above everything else
+    // A `mailto:` URI in argv, or "" — the desktop's mailto handler (see
+    // mailbox-gui.desktop) launches us with one of these.
+    readonly property string _mailtoArg: {
+        var a = Qt.application.arguments
+        for (var i = 0; i < a.length; i++)
+            if (/^mailto:/i.test(a[i])) return a[i]
+        return ""
+    }
+    // Were we launched straight into the composer (`--compose` or a mailto:
+    // link)? Used as the initial value of composeOpen so the compose view is
+    // opaque on the very first frame — no half-second of Inbox behind a fade.
+    readonly property bool _bootCompose: Qt.application.arguments.indexOf("--compose") >= 0
+                                         || _mailtoArg !== ""
+
+    property bool composeOpen: _bootCompose   // the compose view sits above everything else
 
     function currentKey() { return buckets[bucketIndex].key }
     // The Screener asks for a decision about a *sender*, not a read about a
@@ -87,6 +101,41 @@ ApplicationWindow {
         if (!win.openMsg) return
         composer.openForward({ id: win.openMsg.id, subject: win.openMsg.subject || "" })
         win.composeOpen = true
+    }
+    // A mailto: URI handed to us by the desktop — see mailbox-gui.desktop
+    // (MimeType=x-scheme-handler/mailto, Exec ends in %u). Opens the composer
+    // prefilled from the link.
+    function startMailto(uri) {
+        composer.openMailto(win._parseMailto(uri))
+        win.composeOpen = true
+    }
+    // RFC 6068: comma-separated recipients in the path, then a query of
+    // subject / body / cc / bcc (and an optional extra `to`). Every value is
+    // percent-encoded; a literal '+' is a plus, not a space, so we only
+    // decodeURIComponent and never touch '+'.
+    function _parseMailto(uri) {
+        var out = { to: "", cc: "", bcc: "", subject: "", body: "" }
+        var s = String(uri || "").replace(/^mailto:/i, "")
+        var qi = s.indexOf("?")
+        var path = qi >= 0 ? s.slice(0, qi) : s
+        var query = qi >= 0 ? s.slice(qi + 1) : ""
+        function dec(v) { try { return decodeURIComponent(v) } catch (e) { return v } }
+        var tos = []
+        if (path.length > 0) tos.push(dec(path))
+        var parts = query.length > 0 ? query.split("&") : []
+        for (var i = 0; i < parts.length; i++) {
+            var eq = parts[i].indexOf("=")
+            if (eq < 0) continue
+            var key = parts[i].slice(0, eq).toLowerCase()
+            var val = dec(parts[i].slice(eq + 1))
+            if (key === "to") tos.push(val)
+            else if (key === "cc") out.cc = val
+            else if (key === "bcc") out.bcc = val
+            else if (key === "subject") out.subject = val
+            else if (key === "body") out.body = val
+        }
+        out.to = tos.filter(function (t) { return t.length > 0 }).join(", ")
+        return out
     }
     // ---- drafts ---------------------------------------------------------
     // Re-open a draft in the composer. `draft show` carries the recipients,
@@ -452,17 +501,13 @@ ApplicationWindow {
         loadCounts(); loadBucket()
         var oi = a.indexOf("--open")
         if (oi >= 0 && oi + 1 < a.length) openWhenReady(a[oi + 1])
-        else if (a.indexOf("--open-first") >= 0) openFirstTimer.start()
-        if (a.indexOf("--compose") >= 0) composeTimer.start()
+        // composeOpen is already true from _bootCompose (the view is covering
+        // the Inbox from frame one); now fill it in. Deferred one tick so the
+        // recipient field and editor exist before we focus them.
+        if (win._mailtoArg !== "") Qt.callLater(win.startMailto, win._mailtoArg)
+        else if (a.indexOf("--compose") >= 0) Qt.callLater(win.startCompose)
     }
-    Timer { id: composeTimer; interval: 700; onTriggered: win.startCompose() }
     property bool _demoQl: Qt.application.arguments.indexOf("--ql") >= 0
-    // --open-first (demo/screenshot): open whatever row lands highlighted once
-    // the first bucket load has settled.
-    Timer {
-        id: openFirstTimer; interval: 900
-        onTriggered: bucketView.openHighlighted()
-    }
 
     Connections {
         target: Mailbox

@@ -171,6 +171,7 @@ Item {
             }
 
             Flickable {
+                id: imgFlick
                 anchors.fill: parent
                 visible: root.isImage && root.path !== ""
                 contentWidth: Math.max(width, img.width)
@@ -181,7 +182,7 @@ Item {
                     anchors.centerIn: parent
                     source: (root.isImage && root.path !== "") ? root.fileUrl(root.path) : ""
                     fillMode: Image.PreserveAspectFit
-                    width: Math.min(implicitWidth, parent.width - 40)
+                    width: Math.min(implicitWidth, imgFlick.width - 40)
                     height: implicitHeight * (width / Math.max(1, implicitWidth))
                     smooth: true
                     asynchronous: true

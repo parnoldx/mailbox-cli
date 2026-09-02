@@ -1,4 +1,4 @@
-# mailbox-omarchy — a HEY-style desktop client that wears the Omarchy theme
+# mailbox-gui — a HEY-style desktop client that wears the Omarchy theme
 
 A deliberately small Qt client for `mailbox` — the only mail client this repo
 ships. It follows the HEY workflow — one full-screen view at a time plus a
@@ -106,19 +106,30 @@ destroys any inode-level watch on `colors.toml`, so `OmarchyTheme`:
 ## Build & run
 
 ```sh
-make                # configure + build -> ./build/mailbox-omarchy
+make                # configure + build -> ./build/mailbox-gui
 make run            # build, then run it
 make run ARGS='--open <id>'        # ...straight into a message (demo/screenshot)
 make run ARGS='--open <id> --ql'   # ...and pop Quick Look on its first attachment
 make run ARGS='--compose'          # ...straight into the composer
+make run ARGS='mailto:a@b.com?subject=Hi'  # ...composer prefilled from a mailto: link
 make test           # build + parse-check every QML file
-make install        # -> ~/.local/bin/mailbox-omarchy (on PATH; PREFIX overrides)
+make install        # -> ~/.local/bin/mailbox-gui, .desktop entry, launcher icon
 ```
 
-The notification widget (`plugins/mailbox.email`) shells out to `mailbox-omarchy`
+The notification widget (`plugins/mailbox.email`) shells out to `mailbox-gui`
 by name when you click a message, so `make install` is what wires the two
-together. Under the hood it is CMake + Ninja (`cmake -B build -G Ninja`); the
-Makefile just records the flags.
+together. The same install drops `mailbox-gui.desktop` and a hicolor icon
+(`icons/mailbox-gui.svg`, dark squircle + cream envelope matching the bar
+widget's `MailIcon`) so the app shows up in the Omarchy launcher. Under the
+hood it is CMake + Ninja (`cmake -B build -G Ninja`); the Makefile just records
+the flags.
+
+`mailbox-gui.desktop` declares `x-scheme-handler/mailto`, so the client is
+offered as a `mailto:` opener as soon as it is installed; a `mailto:` argument
+(RFC 6068 — `to` in the path, then `?subject=`/`?body=`/`?cc=`/`?bcc=`) opens
+the composer prefilled. To make it the *default* handler, run `make
+register-mailto` from the repo root (kept separate — it changes a desktop-wide
+preference).
 
 Requires Qt 6 (Core, Gui, Qml, Quick, QuickControls2, Network, WebEngineQuick, PdfQuick, QuickDialogs2).
 
@@ -195,8 +206,8 @@ concatenated. To refresh against a new Lexxy:
 ```sh
 git clone --depth 1 https://github.com/basecamp/lexxy /tmp/lexxy
 cd /tmp/lexxy && npm install && npx rollup -c rollup.config.mjs
-cp app/assets/javascript/lexxy.min.js  <repo>/gui-omarchy/qml/vendor/lexxy.js
+cp app/assets/javascript/lexxy.min.js  <repo>/gui/qml/vendor/lexxy.js
 cat app/assets/stylesheets/lexxy-variables.css \
     app/assets/stylesheets/lexxy-editor.css \
-    app/assets/stylesheets/lexxy-content.css > <repo>/gui-omarchy/qml/vendor/lexxy.css
+    app/assets/stylesheets/lexxy-content.css > <repo>/gui/qml/vendor/lexxy.css
 ```

@@ -71,11 +71,17 @@ make build
 # Run unit tests
 make test
 
-# Install mailbox to ~/.local/bin/mailbox
+# Install the CLI to ~/.local/bin/mailbox
 make install
 
 # Install the agent skill to ~/.agents/skills and ~/.claude/skills
 make skill
+
+# Optional extras (each is opt-in):
+make install-gui       # the Qt desktop client -> ~/.local/bin/mailbox-gui + .desktop entry (needs Qt 6 + WebEngine)
+make install-plugins   # the Quickshell bar widgets -> ~/.config/omarchy/plugins/
+make install-all       # CLI + skill + GUI + widgets, all of the above
+make register-mailto   # make mailbox-gui the default handler for mailto: links (after install-gui)
 ```
 
 ### Initial Configuration
@@ -200,7 +206,7 @@ Every command supports `--json`, returning a structured envelope:
 - **Agent Skill**: [`skill/SKILL.md`](file:///home/pa/Work/tries/2026-08-29-mailbox-cli/skill/SKILL.md) provides instruction mappings for AI coding assistants.
 - **Calendar Bar Widget**: [`plugins/mailbox.clock/`](file:///home/pa/Work/tries/2026-08-29-mailbox-cli/plugins/mailbox.clock) — Omarchy / Quickshell calendar and reminder widget backed directly by the daemon socket.
 - **Mail Notification Widget**: [`plugins/mailbox.email/`](file:///home/pa/Work/tries/2026-08-29-mailbox-cli/plugins/mailbox.email) — Omarchy bar widget and dropdown panel for new-mail alerts and sender screening, also on the daemon socket.
-- **Desktop Client**: [`gui-omarchy/`](file:///home/pa/Work/tries/2026-08-29-mailbox-cli/gui-omarchy) — a HEY-style Qt desktop mail client that follows the live Omarchy theme.
+- **Desktop Client**: [`gui/`](file:///home/pa/Work/tries/2026-08-29-mailbox-cli/gui) — a HEY-style Qt desktop mail client that follows the live Omarchy theme.
 
 ---
 

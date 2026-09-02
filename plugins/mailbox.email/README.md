@@ -21,7 +21,7 @@ A Quickshell bar widget and dropdown panel for Omarchy, powered directly by the 
     - **In "New for you"**: `󰄬` Mark read, `󰔛` Set aside, `󰆴` Move to Trash.
     - **In "Previously seen"**: `󰔛` Set aside, `󰆴` Move to Trash.
 - **Opens in the desktop client**: Clicking a message (or <kbd>Enter</kbd>) hands
-  it to the mailbox desktop client — `mailbox-omarchy --open <id>`. That is the
+  it to the mailbox desktop client — `mailbox-gui --open <id>`. That is the
   only mail client we ship, so it is the only target; there is no setting.
 
 - **In-Panel Screening**:

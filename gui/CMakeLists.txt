@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(mailbox-omarchy LANGUAGES CXX)
+project(mailbox-gui LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -8,7 +8,7 @@ set(CMAKE_AUTORCC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Network WebEngineQuick PdfQuick QuickDialogs2)
 
-qt_add_executable(mailbox-omarchy
+qt_add_executable(mailbox-gui
     src/main.cpp
     src/OmarchyTheme.hpp src/OmarchyTheme.cpp
     src/MailboxClient.hpp src/MailboxClient.cpp src/MailboxClient_offline.cpp
@@ -17,7 +17,7 @@ qt_add_executable(mailbox-omarchy
     src/SurfaceWatcher.hpp src/SurfaceWatcher.cpp
 )
 
-qt_add_resources(mailbox-omarchy "qml"
+qt_add_resources(mailbox-gui "qml"
     PREFIX "/"
     FILES
         qml/Main.qml
@@ -52,14 +52,22 @@ qt_add_resources(mailbox-omarchy "qml"
         qml/vendor/feed.html
         qml/vendor/lexxy.js
         qml/vendor/lexxy.css
+        icons/mailbox-gui.svg
 )
 
-target_include_directories(mailbox-omarchy PRIVATE src)
-target_link_libraries(mailbox-omarchy PRIVATE
+target_include_directories(mailbox-gui PRIVATE src)
+target_link_libraries(mailbox-gui PRIVATE
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Network Qt6::WebEngineQuick Qt6::PdfQuick Qt6::QuickDialogs2)
 
 # `cmake --install build --prefix ~/.local` drops the binary on PATH as
-# `mailbox-omarchy` — the name the mailbox.email notification widget shells out
-# to by default when you click a message.
+# `mailbox-gui` — the name the mailbox.email notification widget shells out
+# to by default when you click a message — plus the .desktop entry and icon
+# so the launcher can find it.
 include(GNUInstallDirs)
-install(TARGETS mailbox-omarchy RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS mailbox-gui RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES share/applications/mailbox-gui.desktop
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications)
+install(FILES icons/mailbox-gui.svg
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps)
+install(FILES icons/mailbox-gui.png
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/256x256/apps)

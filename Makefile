@@ -9,6 +9,10 @@ SKILLS  ?= $(HOME)/.agents/skills
 CLAUDE  ?= $(HOME)/.claude/skills
 BIN     := bin/mailbox
 
+# Where the Quickshell bar widgets go. Not a $(PREFIX) thing: Omarchy loads
+# plugins from this fixed per-user directory, not from XDG data dirs.
+OMARCHY_PLUGINS ?= $(HOME)/.config/omarchy/plugins
+
 # What `mailbox version` reports. A binary built by hand says (devel) rather
 # than claiming a release it is not.
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo '(devel)')
@@ -18,7 +22,7 @@ LDFLAGS := -X 'mailbox/internal/cli.Version=$(VERSION)'
 LIVE ?= ./internal/sievedrv/
 
 .DEFAULT_GOAL := build
-.PHONY: build test live vet fmt install skill
+.PHONY: build test live vet fmt install install-gui install-plugins install-all register-mailto skill
 
 build:
 	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/mailbox
@@ -51,11 +55,45 @@ vet:
 fmt:
 	gofmt -w cmd internal
 
-# Installs to ~/.local/bin, which is on PATH. Note that this repo's own bin/ is
-# earlier on PATH than that, so `make build` is what changes which binary your
-# shell runs here; install is for having it outside this directory.
+# Installs the CLI to ~/.local/bin, which is on PATH. Note that this repo's own
+# bin/ is earlier on PATH than that, so `make build` is what changes which
+# binary your shell runs here; install is for having it outside this directory.
+#
+# This is the CLI on its own — the common case, and the only part that is pure
+# Go. The GUI (Qt 6 + WebEngine) and the Omarchy widgets are opt-in: see
+# `install-gui`, `install-plugins`, or `install-all` for the lot.
 install: build
 	install -Dm755 $(BIN) $(DESTDIR)$(PREFIX)/bin/mailbox
+
+# The desktop client. Delegates to gui/'s own CMake build, which also drops the
+# .desktop entry and the hicolor icon so `mailbox-gui` shows up in the launcher
+# and the mailbox.email widget can shell out to it by name. Needs Qt 6 with
+# WebEngineQuick, PdfQuick and QuickDialogs2 — that is why it is not in
+# `install`.
+install-gui:
+	$(MAKE) -C gui install PREFIX=$(PREFIX)
+
+# The Quickshell bar widgets (calendar + mail notifications). Omarchy reads
+# them straight from $(OMARCHY_PLUGINS). `cp -rT` writes the tree at exactly
+# that path — overwriting an earlier copy in place rather than nesting a
+# second one inside it the way a plain `cp -r` would on the second run — and
+# it never touches sibling plugins. Enable them afterwards with
+# `omarchy plugin enable mailbox.clock mailbox.email`.
+install-plugins:
+	mkdir -p $(OMARCHY_PLUGINS)
+	cp -rT plugins/mailbox.clock $(OMARCHY_PLUGINS)/mailbox.clock
+	cp -rT plugins/mailbox.email $(OMARCHY_PLUGINS)/mailbox.email
+
+# Everything this repo installs: CLI, agent skill, desktop client, widgets.
+install-all: install skill install-gui install-plugins
+
+# Make mailbox-gui the system's default handler for mailto: links. Kept out
+# of install-gui on purpose: that is a desktop-wide preference, not something
+# an install should seize. The .desktop already declares the capability
+# (MimeType=x-scheme-handler/mailto), so without this the client still shows
+# up as a choice — this just makes it the default. Needs install-gui first.
+register-mailto:
+	xdg-mime default mailbox-gui.desktop x-scheme-handler/mailto
 
 # Installs the agent skill. It is short by design: it carries what the binary
 # cannot say about itself and sends the agent to `mailbox help` for the command

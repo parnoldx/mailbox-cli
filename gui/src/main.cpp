@@ -5,6 +5,7 @@
 #include <QFont>
 #include <QFontDatabase>
 #include <QIcon>
+#include <QLoggingCategory>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
@@ -16,10 +17,21 @@
 #include "SurfaceWatcher.hpp"
 
 int main(int argc, char *argv[]) {
+    // QtWebEngine's Chromium already registers our app ID with the desktop
+    // portal, so Qt's QPA portal service then fails its own duplicate
+    // registration with a harmless "Connection already associated with an
+    // application ID" warning. Mute that category.
+    QLoggingCategory::setFilterRules(QStringLiteral("qt.qpa.services.warning=false"));
+
     QtWebEngineQuick::initialize();
     QGuiApplication app(argc, argv);
     app.setApplicationName("Mailbox");
     app.setApplicationDisplayName("Mailbox");
+    // Matches share/applications/mailbox-gui.desktop so Wayland app_id
+    // (and the launcher icon lookup) land on our .desktop file. Leave
+    // applicationName as "Mailbox" — AppConfigLocation is $XDG_CONFIG_HOME/Mailbox.
+    app.setDesktopFileName(QStringLiteral("mailbox-gui"));
+    app.setWindowIcon(QIcon(QStringLiteral(":/icons/mailbox-gui.svg")));
     QQuickStyle::setStyle("Basic");
 
     // Omarchy's own font. Fall back quietly if it is not installed.

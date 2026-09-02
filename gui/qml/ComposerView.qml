@@ -111,6 +111,27 @@ Item {
         Qt.callLater(function () { toPills.focusInput() })
     }
 
+    // ctx: { to, cc, bcc, subject, body } decoded from a mailto: URI by
+    // Main.startMailto. All plain text — the body becomes one paragraph with
+    // newlines as <br>. Caret lands in the To row when the link named no
+    // recipient, otherwise in the editor.
+    function openMailto(ctx) {
+        resetForm()
+        root.mode = "new"
+        root._fillRecipients(toPills, ctx.to || "")
+        if (String(ctx.cc || "").length > 0 || String(ctx.bcc || "").length > 0) {
+            root.showCc = true
+            root._fillRecipients(ccPills, ctx.cc || "")
+            root._fillRecipients(bccPills, ctx.bcc || "")
+        }
+        subjectField.text = ctx.subject || ""
+        var body = String(ctx.body || "")
+        if (body.length > 0)
+            lexxy.setHtml("<p>" + root._esc(body).replace(/\n/g, "<br>") + "</p>", true)
+        var haveTo = String(ctx.to || "").length > 0
+        Qt.callLater(function () { haveTo ? lexxy.focusStart() : toPills.focusInput() })
+    }
+
     // msg: a `message` object from `draft show` — id, to, subject, body_html,
     // body. Re-opens the draft with everything it last held; Save writes it
     // back in place (draft edit), Send takes it out of the pile (draft send).

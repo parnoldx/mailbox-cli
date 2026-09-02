@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Omarchy-family app icon: dark squircle, cream paper glyph.
+       Envelope proportions and the rounded V-flap follow plugins/mailbox.email/MailIcon.qml. -->
+  <rect width="512" height="512" rx="112" fill="#101010"/>
+  <rect x="80" y="124" width="352" height="264" rx="32" fill="#f5f1e8"/>
+  <path d="M108 160 L244 272 Q256 284 268 272 L404 160"
+        fill="none" stroke="#101010" stroke-width="26"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
