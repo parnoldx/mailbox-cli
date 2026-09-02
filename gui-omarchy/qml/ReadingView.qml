@@ -124,12 +124,13 @@ Item {
             }
 
             // Reply / Reply all — always to the newest Message, the way a
-            // reply within a thread view names the latest word in it.
+            // reply within a thread view names the latest word in it. Hidden in
+            // the Screener: a sender is screened in before they are answered.
             Repeater {
                 model: [ { label: "Reply", all: false }, { label: "Reply all", all: true } ]
                 Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
-                    visible: !!win.openMsg
+                    visible: !!win.openMsg && !win.inScreener
                     width: rpRow.implicitWidth + 18
                     height: 20
                     radius: 10
@@ -159,8 +160,43 @@ Item {
                 }
             }
 
+            // Forward — send the open Message on to somebody else. Next to
+            // Reply, hidden in the Screener like the reply actions.
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: !!win.openMsg && !win.inScreener
+                width: fwRow.implicitWidth + 18
+                height: 20
+                radius: 10
+                color: fwHover.hovered ? Theme.cardHover : Theme.selection
+                Behavior on color { ColorAnimation { duration: Theme.anim } }
+                Row {
+                    id: fwRow
+                    anchors.centerIn: parent
+                    spacing: 5
+                    Text {
+                        text: ""
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 10
+                        color: fwHover.hovered ? Theme.accent : Theme.textDim
+                        Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    }
+                    Text {
+                        text: "Forward"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 10
+                        color: Theme.textDim
+                        Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    }
+                }
+                HoverHandler { id: fwHover; cursorShape: Qt.PointingHandCursor }
+                TapHandler { onTapped: win.startForward() }
+            }
+
             // Triage into a bottom-stack pile: Reply later (key R) or Set aside
-            // (key A). Both drop back to the list, then fire the move.
+            // (key A). Both drop back to the list, then fire the move. Both are
+            // hidden in the Screener: nothing is owed a reply before its sender
+            // is screened in, and Set aside moves there behind the Move chip.
             Repeater {
                 model: [
                     { glyph: "\uf017", label: "Reply later", fn: "replyLaterCurrent" },
@@ -168,7 +204,7 @@ Item {
                 ]
                 Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
-                    visible: !!win.openMsg
+                    visible: !!win.openMsg && !win.inScreener
                     width: plRow.implicitWidth + 18
                     height: 20
                     radius: 10
@@ -196,6 +232,62 @@ Item {
                     HoverHandler { id: plHover; cursorShape: Qt.PointingHandCursor }
                     TapHandler { onTapped: win[modelData.fn]() }
                 }
+            }
+
+            // Screener triage — a decision about the sender, shown in place
+            // of the reply/pile chips while reading a Screener message. I lets
+            // the sender into the Inbox, B blocks them, Move opens the rest
+            // (Feed / Paper Trail / Set aside). Both act on the sender and drop
+            // back to the list.
+            Repeater {
+                model: [
+                    { glyph: "\uf01c", label: "Inbox", act: "inbox" },
+                    { glyph: "\uf05e", label: "Block", act: "block" },
+                    { glyph: "\uf0b2", label: "Move",  act: "move" }
+                ]
+                Rectangle {
+                    id: scChip
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: !!win.openMsg && win.inScreener
+                    width: scRow.implicitWidth + 18
+                    height: 20
+                    radius: 10
+                    readonly property bool danger: modelData.act === "block"
+                    color: scHover.hovered ? (danger ? Theme.red : Theme.cardHover) : Theme.selection
+                    Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    Row {
+                        id: scRow
+                        anchors.centerIn: parent
+                        spacing: 5
+                        Text {
+                            text: modelData.glyph
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 10
+                            color: scChip.danger && scHover.hovered ? "#ffffff"
+                                 : scHover.hovered ? Theme.accent : Theme.textDim
+                            Behavior on color { ColorAnimation { duration: Theme.anim } }
+                        }
+                        Text {
+                            text: modelData.label
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 10
+                            color: scChip.danger && scHover.hovered ? "#ffffff" : Theme.textDim
+                            Behavior on color { ColorAnimation { duration: Theme.anim } }
+                        }
+                    }
+                    HoverHandler { id: scHover; cursorShape: Qt.PointingHandCursor }
+                    TapHandler {
+                        onTapped: {
+                            if (modelData.act === "move") scMoveMenu.popup(scChip, 0, scChip.height + 4)
+                            else if (modelData.act === "inbox") win.routeCurrent("inbox", "Let into Inbox")
+                            else win.routeCurrent("block", "Blocked")
+                        }
+                    }
+                }
+            }
+            ScreenerMoveMenu {
+                id: scMoveMenu
+                targetId: win.openMsg ? win.openMsg.id : ""
             }
 
             // Trash — acts on the whole Thread server-side (any id in it
@@ -233,19 +325,44 @@ Item {
         }
 
         // The Thread's subject, shown once — individual Messages below carry
-        // their own sender and date, not another copy of this.
-        Text {
+        // their own sender and date, not another copy of this. The pill after
+        // it is the message count, the way the Inbox row that opened this
+        // badges the conversation (HEY's trick).
+        Row {
             width: parent.width
-            text: win.openMsg ? (root.threadSubject(win.openMsg.subject) || win.openMsg.subject || "(no subject)") : ""
-            wrapMode: Text.Wrap
-            maximumLineCount: 3
-            elide: Text.ElideRight
-            font.family: Theme.fontFamily
-            font.pixelSize: 25
-            font.weight: Font.Bold
-            lineHeight: 1.18
-            color: Theme.textPrimary
-            Behavior on color { ColorAnimation { duration: Theme.anim } }
+            spacing: 12
+            Text {
+                id: subjectText
+                width: parent.width - (threadCount.visible ? threadCount.width + parent.spacing : 0)
+                text: win.openMsg ? (root.threadSubject(win.openMsg.subject) || win.openMsg.subject || "(no subject)") : ""
+                wrapMode: Text.Wrap
+                maximumLineCount: 3
+                elide: Text.ElideRight
+                font.family: Theme.fontFamily
+                font.pixelSize: 25
+                font.weight: Font.Bold
+                lineHeight: 1.18
+                color: Theme.textPrimary
+                Behavior on color { ColorAnimation { duration: Theme.anim } }
+            }
+            Rectangle {
+                id: threadCount
+                visible: win.openThread.length > 1
+                anchors.verticalCenter: parent.verticalCenter
+                width: threadCountText.implicitWidth + 16; height: 22; radius: 11
+                color: Theme.selection
+                Behavior on color { ColorAnimation { duration: Theme.anim } }
+                Text {
+                    id: threadCountText
+                    anchors.centerIn: parent
+                    text: win.openThread.length
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12
+                    font.weight: Font.DemiBold
+                    color: Theme.textDim
+                    Behavior on color { ColorAnimation { duration: Theme.anim } }
+                }
+            }
         }
 
         Rectangle {
@@ -295,6 +412,7 @@ Item {
                     // instead of the fixed sheet size.
                     sole: win.openThread.length === 1
                     viewportHeight: reader.height
+                    scroller: reader
                 }
             }
         }

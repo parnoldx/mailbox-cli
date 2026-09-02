@@ -25,6 +25,9 @@ qt_add_resources(mailbox-omarchy "qml"
         qml/FeedView.qml
         qml/ReadingView.qml
         qml/CommandLauncher.qml
+        qml/SearchView.qml
+        qml/RowActions.qml
+        qml/ScreenerMoveMenu.qml
         qml/ComposerView.qml
         qml/LexxyEditor.qml
         qml/RecipientPills.qml

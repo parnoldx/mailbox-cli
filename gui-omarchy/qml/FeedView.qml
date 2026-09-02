@@ -36,6 +36,7 @@ Item {
     // -- body prefetch, a few requests in flight at a time ------------------
     property var _queue: []
     property var _requested: ({})
+    property var _retries: ({})
     property int _inflight: 0
     function needBody(id) {
         if (!active || _requested[id]) return
@@ -43,23 +44,43 @@ Item {
         _queue.push(id)
         _pump()
     }
+    // An open card whose body never arrived (a transient `message view` error)
+    // asks again from the __state() poll. Capped so a message that always
+    // errors doesn't spin forever.
+    function retryBody(id) {
+        if (!id || _requested[id]) return
+        var n = _retries[id] || 0
+        if (n >= 5) return
+        _retries[id] = n + 1
+        needBody(id)
+    }
     function _pump() {
         while (_inflight < 5 && _queue.length > 0) {
-            var id = _queue.shift()
             _inflight++
-            Mailbox.call(["message", "view"], { positional: id }, function (r) {
-                root._inflight--
-                if (r && r.ok && r.data) {
-                    var d = r.data
-                    var rec = { html: d.body_html || "", text: d.body || "" }
-                    var nb = Object.assign({}, root.bodies)
-                    nb[d.id] = rec
-                    root.bodies = nb
-                    root._pushBody(d.id, rec)
-                }
-                root._pump()
-            })
+            _fetchBody(_queue.shift())
         }
+    }
+    function _fetchBody(id) {
+        Mailbox.call(["message", "view"], { positional: id }, function (r) {
+            root._inflight--
+            if (r && r.ok && r.data) {
+                var d = r.data
+                var rec = { html: d.body_html || "", text: d.body || "" }
+                var nb = Object.assign({}, root.bodies)
+                nb[d.id] = rec
+                // The row id is a Thread id; `message view` may answer under a
+                // different canonical id. Key the body under both so the card,
+                // which only knows the row id, still finds it.
+                if (d.id !== id) nb[id] = rec
+                root.bodies = nb
+                root._pushBody(d.id, rec)
+                if (d.id !== id) root._pushBody(id, rec)
+            } else {
+                // Let retryBody() have another go.
+                delete root._requested[id]
+            }
+            root._pump()
+        })
     }
 
     // -- the read watermark ------------------------------------------------
@@ -163,10 +184,12 @@ Item {
             header: {
                 glyph: win.buckets[win.bucketIndex].glyph,
                 title: "The Feed",
+                // Only the useful half of the old status line survives: how
+                // much is new since the last visit. "Nothing new" was noise.
                 status: newCount > 0
                     ? (newCount + (newCount === 1 ? " new item since your last visit"
                                                   : " new items since your last visit"))
-                    : "Nothing new — you are caught up"
+                    : ""
             }
         }
     }
@@ -230,6 +253,8 @@ Item {
                     req.action = WebEngineNavigationRequest.IgnoreRequest
                     if (u.indexOf("feed:openfull/") === 0)
                         win.openMessage(decodeURIComponent(u.substring(14)))
+                    else if (u.indexOf("feed:trash/") === 0)
+                        win.trashId(decodeURIComponent(u.substring(11)))
                     else if (u === "feed:markall")
                         root.markAllRead()
                     else if (u.indexOf("feed:mark/") === 0)
@@ -255,6 +280,9 @@ Item {
             root._anyOpen = !!s.anyOpen
             if (s.mark) root.markUpTo(s.mark)
             if (typeof s.hi === "number" && s.hi >= 0) root.hi = s.hi
+            var op = s.open || []
+            for (var i = 0; i < op.length; i++)
+                if (!root.bodies[op[i]]) root.retryBody(op[i])
         })
     }
 
@@ -308,43 +336,6 @@ Item {
         z: 100
         visible: root._covered
         color: Theme.windowBg
-    }
-
-    // Hints, mirroring BucketView's corner furniture.
-    Row {
-        anchors { right: parent.right; bottom: parent.bottom; margins: 20 }
-        spacing: 10
-        opacity: 0.75
-        Kbd { text: "J" }
-        Kbd { text: "K" }
-        Text {
-            anchors.verticalCenter: parent.verticalCenter
-            text: "move"
-            font.family: Theme.fontFamily
-            font.pixelSize: 11
-            color: Theme.textDim
-            Behavior on color { ColorAnimation { duration: Theme.anim } }
-        }
-        Item { width: 8; height: 1 }
-        Kbd { text: "Return" }
-        Text {
-            anchors.verticalCenter: parent.verticalCenter
-            text: "expand"
-            font.family: Theme.fontFamily
-            font.pixelSize: 11
-            color: Theme.textDim
-            Behavior on color { ColorAnimation { duration: Theme.anim } }
-        }
-        Item { width: 8; height: 1 }
-        Kbd { text: "O" }
-        Text {
-            anchors.verticalCenter: parent.verticalCenter
-            text: "open"
-            font.family: Theme.fontFamily
-            font.pixelSize: 11
-            color: Theme.textDim
-            Behavior on color { ColorAnimation { duration: Theme.anim } }
-        }
     }
 
     Rectangle {

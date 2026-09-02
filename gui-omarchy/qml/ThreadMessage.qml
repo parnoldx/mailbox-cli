@@ -25,12 +25,46 @@ Item {
     // own content inside that.
     property bool sole: false
     property real viewportHeight: 0
+    // The reader's Flickable, so a wheel over a fully-visible mail can still
+    // scroll the accordion (QtWebEngine otherwise swallows the event).
+    property var scroller: null
     readonly property real fillHeight: Math.max(320,
         root.viewportHeight
             - senderRow.height
             - rule.height
             - body.spacing * 2
             - (attachBlock.visible ? attachBlock.height + body.spacing : 0))
+
+    // One of several expanded Messages sharing the accordion: the HTML sheet
+    // is sized to its own rendered content (measured out of the page after it
+    // loads) instead of a fixed 520, so a two-line reply is two lines tall and
+    // "Expand all" doesn't bury the rest under screens of blank sheet. A long
+    // mail is still capped just under the viewport and scrolls inside itself.
+    property real htmlContentHeight: 0
+    readonly property real maxSheet: Math.max(280, root.viewportHeight - 140)
+    readonly property real sheetHeight: {
+        if (!root.htmlMode) return 0
+        if (root.sole) return root.fillHeight
+        var h = root.htmlContentHeight > 0 ? root.htmlContentHeight + 4 : 260
+        return Math.min(root.maxSheet, Math.max(96, h))
+    }
+
+    function measureHtml() {
+        if (!root.htmlMode || !webLoader.item) return
+        // Measure the wrapper div, not document.scrollHeight: the latter is
+        // never smaller than the WebEngineView's own height, so once the sheet
+        // shrinks it reports the sheet height back and the box can't get any
+        // smaller. The in-flow div reports its true content extent. +44 for
+        // the body's 22px padding either side.
+        webLoader.item.runJavaScript(
+            "(function(){var e=document.getElementById('__mb');" +
+            "return e?Math.ceil(e.getBoundingClientRect().height)+44:0;})()",
+            function (h) { if (h && h > 0) root.htmlContentHeight = h })
+    }
+    // Re-measure after DarkReader has re-tinted and inline images have landed,
+    // both of which change the page's natural height after first paint.
+    Timer { id: measureTimer; interval: 320; onTriggered: root.measureHtml() }
+    onWidthChanged: if (root.htmlMode) measureTimer.restart()
 
     width: parent ? parent.width : 0
     height: col.implicitHeight
@@ -154,12 +188,34 @@ Item {
                   "catch(e){console.warn('DarkReader:',e);}</scr" + "ipt>"
             }
         }
-        return head + "<body>" + root.msg.body_html + tail + "</body></html>"
+        // Strip any <meta> the mail carried in its own <head>: this wrapper
+        // sets charset / viewport / color-scheme already, and newsletter HTML
+        // often ships `content="width=device-width; initial-scale=1"` whose
+        // ';' makes Chromium log a parse warning. Also drops http-equiv
+        // refresh redirects and stray CSP from the body.
+        var mail = String(root.msg.body_html).replace(/<meta\b[^>]*>/gi, "")
+        // DarkReader overrides colours through a stylesheet rule, which the
+        // cascade ranks below an inline `style="…!important"` on the element —
+        // so a mail that hard-codes a light `background:#fff !important` inline
+        // (e.g. the unbox.at catch-all banner) stays light. Drop !important
+        // from inline background/colour decls only so the invert can land.
+        if (dark)
+            mail = mail.replace(/\sstyle=(["'])([\s\S]*?)\1/gi, function (m, q, decls) {
+                return " style=" + q + decls.replace(
+                    /((?:^|;)\s*(?:background-color|background|color)\s*:[^;]*?)\s*!\s*important/gi,
+                    "$1") + q
+            })
+        return head + "<body><div id='__mb'>" + mail + "</div>" + tail + "</body></html>"
     }
 
     function renderHtml() {
         if (!root.htmlMode || !webLoader.item) return
         root.webLoaded = false
+        // A dark mail's own stylesheet paints white for a frame before the
+        // DarkReader invert lands. Drop the opaque (already-dark) cover over
+        // the sheet now; the load handler lifts it once the page is up and
+        // re-tinted, so the mail only ever appears dark.
+        if (root.applyDark) root.webCovered = true
         webLoader.item.loadHtml(root.themedHtml(), "about:blank")
     }
     function reloadHtml() {
@@ -172,6 +228,7 @@ Item {
                     var uri = "data:" + (r.data.mime_type || "image/png") + ";base64," + r.data.base64
                     root.cidMap[need.cid] = uri
                     root.patchCid(need.cid, uri)
+                    measureTimer.restart()
                 }
             })
         })
@@ -444,8 +501,9 @@ Item {
             Rectangle {
                 id: sheet
                 width: parent.width
-                height: root.htmlMode ? (root.sole ? root.fillHeight : 520) : 0
+                height: root.sheetHeight
                 visible: root.htmlMode
+                Behavior on height { NumberAnimation { duration: Theme.anim; easing.type: Easing.OutCubic } }
                 radius: Theme.radiusSmall
                 color: root.applyDark ? Theme.background : "#ffffff"
                 border.width: 1
@@ -475,7 +533,15 @@ Item {
                             if (req.status === WebEngineView.LoadSucceededStatus) {
                                 root.webLoaded = true
                                 root.flushCids()
+                                root.measureHtml()
+                                measureTimer.restart()
+                                // Also lifts the dark-mail anti-flash cover set
+                                // in renderHtml() (savedScroll 0 → just uncovers).
                                 if (root.webCovered) root.restoreScroll()
+                            } else if (req.status === WebEngineView.LoadFailedStatus) {
+                                // Never leave the mail stuck behind the cover.
+                                if (root.webCovered && !root.reviving && !root.webDirty)
+                                    root.webCovered = false
                             }
                         }
                     }
@@ -486,6 +552,31 @@ Item {
                     z: 1
                     visible: root.webCovered
                     color: sheet.color
+                }
+
+                // When the mail fits its sheet there is nothing to scroll
+                // inside the web view, yet QtWebEngine still eats the wheel.
+                // A transparent lid on top catches the wheel and drives the
+                // reader instead, so the accordion keeps scrolling under the
+                // pointer. `acceptedButtons: NoButton` lets clicks, link hits
+                // and text selection fall straight through to the web view.
+                // Disabled the moment the mail is tall enough to scroll itself.
+                MouseArea {
+                    anchors.fill: parent
+                    z: 2
+                    acceptedButtons: Qt.NoButton
+                    propagateComposedEvents: true
+                    enabled: !!root.scroller && root.htmlContentHeight > 0
+                             && root.htmlContentHeight <= root.sheetHeight + 1
+                    onWheel: function (wheel) {
+                        var f = root.scroller
+                        if (!f) { wheel.accepted = false; return }
+                        var max = Math.max(0, f.contentHeight - f.height)
+                        var dy = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y
+                                                          : wheel.pixelDelta.y
+                        f.contentY = Math.max(0, Math.min(max, f.contentY - dy))
+                        wheel.accepted = true
+                    }
                 }
             }
 

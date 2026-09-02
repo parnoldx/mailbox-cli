@@ -69,6 +69,7 @@ void MailModel::setRows(const QVariantList &rows) {
         r.dateRaw = m.value("date").toString();
         r.date = shortDate(r.dateRaw);
         r.seen = m.value("seen").toBool();
+        r.count = m.value("count").toInt();
         splitFrom(m.value("from").toString(), r.fromName, r.fromAddr);
         m_rows.push_back(r);
     }
@@ -82,5 +83,5 @@ QVariantMap MailModel::get(int i) const {
     const Row &r = m_rows.at(i);
     return {{"id", r.id}, {"fromName", r.fromName}, {"fromAddr", r.fromAddr},
             {"subject", r.subject}, {"date", r.date}, {"dateRaw", r.dateRaw},
-            {"seen", r.seen}};
+            {"seen", r.seen}, {"count", r.count}};
 }

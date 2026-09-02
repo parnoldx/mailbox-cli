@@ -88,7 +88,8 @@ Item {
 
         Text {
             width: 34
-            y: 8
+            height: 26
+            verticalAlignment: Text.AlignVCenter
             text: root.label
             font.family: Theme.fontFamily
             font.pixelSize: 12

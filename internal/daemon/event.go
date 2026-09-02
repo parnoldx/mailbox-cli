@@ -10,6 +10,7 @@ import (
 
 	"mailbox/internal/habit"
 	"mailbox/internal/mirror"
+	"mailbox/internal/sync/davsync"
 	"mailbox/internal/vcal"
 )
 
@@ -134,10 +135,13 @@ func (d *Daemon) writeEvent(ctx context.Context, col mirror.Collection, href, ra
 	return object, nil
 }
 
-// eventHref is where a new object goes. The UID names the file, which is what
-// every CalDAV server expects and what makes a re-PUT idempotent.
+// eventHref is where a new object goes. It defers to davsync.Href so a new
+// event is named by the same root-relative path the sync REPORT will report it
+// under: spelling it absolutely here (col.URL carries the scheme and host) made
+// the created row and the synced row miss each other on the (collection_id,
+// href) key and the Mirror kept both.
 func eventHref(col mirror.Collection, uid string) string {
-	return strings.TrimSuffix(col.URL, "/") + "/" + uid + ".ics"
+	return davsync.Href(col, uid)
 }
 
 // calendarFor picks which calendar a new event goes on. One calendar needs no

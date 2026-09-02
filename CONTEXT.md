@@ -86,16 +86,23 @@ found.
 _Avoid_: spam, junk (those are the provider's), blacklist
 
 **Aside**:
-Box `INBOX/Aside`, the read-later pile. Mail is moved there one at a time and
-moved back; the Routing never fills it, because "read this later" is a decision
-about a Message and not about who sent it.
+Box `INBOX/Aside`, the read-later pile. A conversation is moved there and moved
+back as a whole — setting one Message aside takes the rest of its thread out of
+the Inbox with it, so the two never show halves of the same conversation. The
+Routing never fills it, because "read this later" is a decision about a
+conversation and not about who sent it. A reply landing in a thread whose
+Messages are in Aside pulls them back to the Inbox: the pile is for mail that is
+waiting, not for a live thread. A copy in Sent, or a sibling in the Screener,
+stays where it is.
 _Avoid_: snooze, star, later, set-aside (as a verb)
 
 **Reply Later**:
-Box `INBOX/Reply Later` — the name has a space in it. The pile of Messages you
-owe a reply. Like the Aside pile, mail is moved there one at a time and moved
-back, and the Routing never fills it: "I owe this a reply" is a decision about a
-Message, not about who sent it.
+Box `INBOX/Reply Later` — the name has a space in it. The pile of conversations
+you owe a reply. Like the Aside pile it takes and releases a whole thread at a
+time, and the Routing never fills it: "I owe this a reply" is a decision about a
+conversation, not about who sent it. Answering the conversation — or a reply
+arriving in it from anyone — pulls its Reply Later Messages back to the Inbox:
+the debt is paid, or the conversation is live again.
 _Avoid_: snooze, follow-up, todo, reply-later (as a verb)
 
 **Message**:
@@ -112,7 +119,9 @@ _Avoid_: copy, location, instance
 **Thread**:
 Messages linked by References and In-Reply-To, built by the Daemon across every
 Box. Confined to one Account: the same conversation reaching two Accounts is two
-Threads.
+Threads. A Box listing collapses a Thread to one row, badged with the whole
+Thread's size — every Message wherever it sits, the same number the reader
+shows — not just the part of it in the Box being listed.
 _Avoid_: conversation, IMAP thread (that is per-folder and narrower)
 
 **Search**:

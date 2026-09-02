@@ -5,6 +5,15 @@ Item {
     property var row: ({})
     property bool fresh: false
     property bool highlighted: false
+    // What a tap does. The default opens the row in the reader; the search
+    // overlay overrides it to open a hit without leaving its own context.
+    property var openAction: (function (id) { win.openMessage(id) })
+    // Right-click triage. Off for search results (a hit is open-only) and for
+    // Drafts rows (a draft is not routed / set aside / trashed to Trash).
+    property bool menuEnabled: true
+    // A far-right trash icon for fast delete — the Drafts bucket uses it.
+    property bool showDelete: false
+    signal deleteClicked()
     height: 78
 
     // A conversation has one subject; the Re:/Fwd:/AW: a client stacks onto
@@ -49,7 +58,7 @@ Item {
     Column {
         anchors {
             left: av.right; leftMargin: 16
-            right: date.left; rightMargin: 16
+            right: parent.right; rightMargin: 64
             verticalCenter: parent.verticalCenter
         }
         spacing: 4
@@ -63,50 +72,68 @@ Item {
             color: root.fresh ? Theme.textPrimary : Theme.textDim
             Behavior on color { ColorAnimation { duration: Theme.anim } }
         }
-        Row {
+        Text {
             width: parent.width
-            spacing: 6
-            Text {
-                width: parent.width - (countBadge.visible ? countBadge.width + parent.spacing : 0)
-                text: root.threadSubject(root.row.subject) || root.row.subject || ""
-                elide: Text.ElideRight
-                font.family: Theme.fontFamily
-                font.pixelSize: 14
-                font.weight: root.fresh ? Font.DemiBold : Font.Normal
-                color: root.fresh ? Theme.textPrimary : Theme.textDim
-                Behavior on color { ColorAnimation { duration: Theme.anim } }
-            }
-            // How many Messages of this Thread are in the box being shown —
-            // the daemon already collapsed the listing to this one row.
-            Rectangle {
-                id: countBadge
-                visible: (root.row.count || 0) > 1
-                width: countText.implicitWidth + 10; height: 16; radius: 8
-                anchors.verticalCenter: parent.verticalCenter
-                color: Theme.selection
-                Behavior on color { ColorAnimation { duration: Theme.anim } }
-                Text {
-                    id: countText
-                    anchors.centerIn: parent
-                    text: root.row.count || ""
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 9
-                    font.weight: Font.DemiBold
-                    color: Theme.textDim
-                    Behavior on color { ColorAnimation { duration: Theme.anim } }
-                }
-            }
+            text: root.threadSubject(root.row.subject) || root.row.subject || ""
+            elide: Text.ElideRight
+            font.family: Theme.fontFamily
+            font.pixelSize: 14
+            font.weight: root.fresh ? Font.DemiBold : Font.Normal
+            color: root.fresh ? Theme.textPrimary : Theme.textDim
+            Behavior on color { ColorAnimation { duration: Theme.anim } }
+        }
+    }
+
+    // How many Messages are in this conversation — pinned top-right, the way
+    // HEY badges a thread. The daemon already collapsed the listing to one
+    // row per Thread and this is its whole size, wherever its Messages sit.
+    Rectangle {
+        id: countBadge
+        visible: (root.row.count || 0) > 1
+        anchors { top: parent.top; right: parent.right; topMargin: 16; rightMargin: 16 }
+        width: Math.max(20, countText.implicitWidth + 14); height: 20; radius: 10
+        color: Theme.selection
+        Behavior on color { ColorAnimation { duration: Theme.anim } }
+        Text {
+            id: countText
+            anchors.centerIn: parent
+            text: root.row.count || ""
+            font.family: Theme.fontFamily
+            font.pixelSize: 11
+            font.weight: Font.DemiBold
+            color: Theme.textDim
+            Behavior on color { ColorAnimation { duration: Theme.anim } }
         }
     }
 
     Text {
         id: date
-        anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
+        anchors { right: parent.right; rightMargin: root.showDelete ? 44 : 14; bottom: parent.bottom; bottomMargin: 14 }
         text: root.row.date || ""
         font.family: Theme.fontFamily
         font.pixelSize: 11
         color: Theme.textDim
         Behavior on color { ColorAnimation { duration: Theme.anim } }
+    }
+
+    // Fast-delete affordance, pinned to the far right and vertically centred.
+    Rectangle {
+        id: delBtn
+        visible: root.showDelete
+        anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
+        width: 24; height: 24; radius: 12
+        color: delHover.hovered ? Theme.red : Theme.selection
+        Behavior on color { ColorAnimation { duration: Theme.anim } }
+        Text {
+            anchors.centerIn: parent
+            text: ""
+            font.family: Theme.fontFamily
+            font.pixelSize: 10
+            color: delHover.hovered ? "#ffffff" : Theme.textDim
+            Behavior on color { ColorAnimation { duration: Theme.anim } }
+        }
+        HoverHandler { id: delHover; cursorShape: Qt.PointingHandCursor }
+        TapHandler { onTapped: root.deleteClicked() }
     }
 
     Rectangle {
@@ -118,5 +145,11 @@ Item {
     }
 
     HoverHandler { id: hover }
-    TapHandler { onTapped: win.openMessage(root.row.id) }
+    TapHandler { onTapped: root.openAction(root.row.id) }
+    // Right-click opens the triage menu for this row's whole Thread.
+    TapHandler {
+        acceptedButtons: Qt.RightButton
+        enabled: root.menuEnabled
+        onTapped: win.showRowMenu(root.row)
+    }
 }

@@ -3,18 +3,24 @@ import QtQuick.Controls.Basic
 import QtQuick.Dialogs
 
 // Full-screen compose, in the shape of the reading view: a fixed header, a fixed
-// action bar, and the form between them. Handles both a fresh message and a
-// reply — a reply arrives with its recipient, subject and thread id prefilled.
+// action bar, and the form between them. Handles a fresh message, a reply, a
+// forward and re-opening an existing draft — a reply arrives with its recipient,
+// subject and thread id prefilled; a forward with just an `Fwd:` subject and the
+// id of the message being sent on; a draft with everything it last held.
 //
 // The body is the Lexxy editor and produces HTML, sent as body_html; the daemon
-// keeps a plain-text twin (ADR-0022). Sending is deferred five seconds by
-// SendUndoToast, so this view closes the instant Send is pressed and the actual
-// send / reply call happens from Main.
+// keeps a plain-text twin (ADR-0022). A forward is the exception: the daemon
+// quotes the original itself and ignores body_html, so only the plain note is
+// sent. Sending is deferred five seconds by SendUndoToast, so this view closes
+// the instant Send is pressed and the actual send / reply / forward call happens
+// from Main.
 Item {
     id: root
 
-    property string mode: "new"          // new | reply
+    property string mode: "new"          // new | reply | forward | draft
     property string replyId: ""
+    property string forwardId: ""
+    property string draftId: ""
     property bool replyAll: false
     property string replyFrom: ""
     property string baseSubject: ""
@@ -55,7 +61,8 @@ Item {
     }
 
     function resetForm() {
-        root.mode = "new"; root.replyId = ""; root.replyAll = false
+        root.mode = "new"; root.replyId = ""; root.forwardId = ""; root.draftId = ""
+        root.replyAll = false
         root.replyFrom = ""; root.baseSubject = ""; root.showCc = false
         root.attachments = []
         toPills.recipients = []; ccPills.recipients = []; bccPills.recipients = []
@@ -87,6 +94,52 @@ Item {
             lexxy.setHtml(root._replyDoc(quote, root._attribution(ctx.from || "", ctx.date || "")), true)
         else
             Qt.callLater(function () { lexxy.focusStart() })
+    }
+
+    // ctx: { id, subject } — a forward carries no recipient (forward needs
+    // --to) and no quote: the daemon appends the original whole, from its
+    // text/plain, so the editor starts empty for the note.
+    function openForward(ctx) {
+        resetForm()
+        root.mode = "forward"
+        root.forwardId = String(ctx.id || "")
+        root.baseSubject = ctx.subject || ""
+        subjectField.text = /^\s*(fwd?|aw):/i.test(root.baseSubject)
+            ? root.baseSubject : ("Fwd: " + root.baseSubject)
+        Qt.callLater(function () { toPills.focusInput() })
+    }
+
+    // msg: a `message` object from `draft show` — id, to, subject, body_html,
+    // body. Re-opens the draft with everything it last held; Save writes it
+    // back in place (draft edit), Send takes it out of the pile (draft send).
+    function openDraft(msg) {
+        resetForm()
+        root.mode = "draft"
+        root.draftId = String(msg.id || "")
+        root.baseSubject = msg.subject || ""
+        subjectField.text = msg.subject || ""
+        root._fillRecipients(toPills, msg.to || "")
+        if (msg.cc && String(msg.cc).length > 0) {
+            root.showCc = true
+            root._fillRecipients(ccPills, msg.cc)
+        }
+        var html = msg.body_html && String(msg.body_html).length > 0
+            ? msg.body_html
+            : ("<p>" + root._esc(msg.body || "").replace(/\n/g, "<br>") + "</p>")
+        lexxy.setHtml(html, true)
+        Qt.callLater(function () { toPills.focusInput() })
+    }
+
+    // Split a header address string ("Ada <a@x>, b@y") onto a pill row.
+    function _fillRecipients(pills, str) {
+        var parts = String(str || "").split(/,(?![^<]*>)/)
+        for (var i = 0; i < parts.length; i++) {
+            var s = parts[i].trim()
+            if (!s) continue
+            var m = s.match(/^"?(.*?)"?\s*<([^>]+)>$/)
+            if (m) pills.addRecipient(m[1], m[2])
+            else pills.addRecipient("", s)
+        }
     }
 
     function addAttachment(path) {
@@ -126,28 +179,51 @@ Item {
         if (root.mode === "reply" && !forDraft) {
             a.positional = root.replyId
             a.all = root.replyAll
+        } else if (root.mode === "forward" && !forDraft) {
+            // forward quotes the original server-side from its text/plain and
+            // ignores body_html — send only the plain note.
+            a.positional = root.forwardId
+            a.body = root._stripTags(html).replace(/\s+/g, " ").trim()
+            delete a.body_html
+        } else if (root.mode === "draft") {
+            // edit / send an existing draft in place, not a fresh append.
+            a.positional = root.draftId
+            // draft edit/send keeps the old plain twin unless `body` is given,
+            // so hand it a stripped copy alongside the real HTML.
+            a.body = root._stripTags(html).replace(/[ \t]+\n/g, "\n").trim()
         }
         return a
     }
-    function sendCmd() { return root.mode === "reply" ? ["reply"] : ["send"] }
+    function sendCmd() {
+        if (root.mode === "reply") return ["reply"]
+        if (root.mode === "forward") return ["forward"]
+        if (root.mode === "draft") return ["draft", "send"]
+        return ["send"]
+    }
 
     function summaryLabel() {
         var n = toPills.recipients.length
         var who = n === 0 ? "" : (toPills.recipients[0].name || toPills.recipients[0].email)
         if (n > 1) who += " +" + (n - 1)
-        return (root.mode === "reply" ? "Reply to " : "Message to ") + who
+        var verb = root.mode === "reply" ? "Reply to "
+                 : root.mode === "forward" ? "Forward to "
+                 : "Message to "
+        return verb + who
     }
 
     function snapshot(html) {
         return {
-            mode: root.mode, replyId: root.replyId, replyAll: root.replyAll,
+            mode: root.mode, replyId: root.replyId, forwardId: root.forwardId,
+            draftId: root.draftId, replyAll: root.replyAll,
             replyFrom: root.replyFrom, baseSubject: root.baseSubject, showCc: root.showCc,
             to: toPills.recipients.slice(), cc: ccPills.recipients.slice(), bcc: bccPills.recipients.slice(),
             subject: subjectField.text, bodyHtml: html || "", attachments: root.attachments.slice()
         }
     }
     function restore(s) {
-        root.mode = s.mode; root.replyId = s.replyId; root.replyAll = s.replyAll
+        root.mode = s.mode; root.replyId = s.replyId
+        root.forwardId = s.forwardId || ""; root.draftId = s.draftId || ""
+        root.replyAll = s.replyAll
         root.replyFrom = s.replyFrom; root.baseSubject = s.baseSubject; root.showCc = s.showCc
         toPills.recipients = s.to; ccPills.recipients = s.cc; bccPills.recipients = s.bcc
         subjectField.text = s.subject; root.attachments = s.attachments
@@ -168,11 +244,28 @@ Item {
     }
     function doSaveDraft() {
         lexxy.getHtml(function (html) {
-            Mailbox.call(["draft", "save"], root.collectArgs(true, html), function (r) {
+            // A re-opened draft is written back in place (edit); a fresh one is
+            // a first append (save).
+            var cmd = root.mode === "draft" ? ["draft", "edit"] : ["draft", "save"]
+            Mailbox.call(cmd, root.collectArgs(true, html), function (r) {
+                if (r.ok && r.data && r.data.id) root.draftId = r.data.id
                 win.flash(r.ok ? "Draft saved" : (r.error && r.error.length ? r.error : "Could not save draft"))
+                if (r.ok) win.refreshDrafts()
             })
             root.requestClose()
         })
+    }
+
+    // Drop a re-opened draft from the pile. The action bar's trash button does
+    // this in draft mode instead of just closing the view.
+    function doDiscardDraft() {
+        if (root.mode === "draft" && root.draftId) {
+            Mailbox.call(["draft", "delete"], { positional: root.draftId }, function (r) {
+                win.flash(r.ok ? "Draft discarded" : (r.error && r.error.length ? r.error : "Could not discard draft"))
+                if (r.ok) win.refreshDrafts()
+            })
+        }
+        root.requestClose()
     }
 
     readonly property real sideMargin: Math.max(28, (width - 820) / 2)
@@ -198,12 +291,6 @@ Item {
             }
             HoverHandler { id: backHover; cursorShape: Qt.PointingHandCursor }
             TapHandler { onTapped: root.requestClose() }
-        }
-        Text {
-            anchors.verticalCenter: parent.verticalCenter
-            text: root.mode === "reply" ? "Reply" : "New message"
-            font.family: Theme.fontFamily; font.pixelSize: 12; color: Theme.textDim
-            Behavior on color { ColorAnimation { duration: Theme.anim } }
         }
         Kbd { anchors.verticalCenter: parent.verticalCenter; text: "Esc" }
     }
@@ -242,8 +329,9 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             anchors.right: parent.right
             anchors.rightMargin: root.sideMargin
-            kind: "danger"; glyph: "\uf1f8"; text: ""
-            onClicked: root.requestClose()
+            kind: "danger"; glyph: "\uf1f8"
+            text: root.mode === "draft" ? "Discard draft" : ""
+            onClicked: root.mode === "draft" ? root.doDiscardDraft() : root.requestClose()
         }
     }
 
@@ -402,11 +490,14 @@ Item {
             id: lexxy
             anchors.fill: parent
             anchors.margins: 1
+            // A file dropped straight onto the web view (past the DropArea).
+            onFileDropped: function (url) { root.addAttachment(root._localPath(url)) }
         }
 
         // Drop files onto the editor to attach them.
         DropArea {
             anchors.fill: parent
+            onEntered: function (drag) { if (drag.hasUrls) drag.accept() }
             onDropped: function (drop) {
                 if (!drop.hasUrls) return
                 for (var i = 0; i < drop.urls.length; i++)

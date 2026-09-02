@@ -34,6 +34,9 @@ int main(int argc, char *argv[]) {
     // The two hand-tended piles shown as stacks along the bottom of the Inbox.
     MailModel asideModel;
     MailModel replyLaterModel;
+    // Results of the full-screen search overlay — its own model so opening a
+    // hit and coming back does not leave the bucket list showing the results.
+    MailModel searchModel;
 
     auto *pixelBlock = new PixelBlock(&app);
     QWebEngineProfile::defaultProfile()->setUrlRequestInterceptor(pixelBlock);
@@ -48,6 +51,7 @@ int main(int argc, char *argv[]) {
     ctx->setContextProperty("listModel", &listModel);
     ctx->setContextProperty("asideModel", &asideModel);
     ctx->setContextProperty("replyLaterModel", &replyLaterModel);
+    ctx->setContextProperty("searchModel", &searchModel);
     ctx->setContextProperty("PixelBlock", pixelBlock);
     ctx->setContextProperty("SurfaceWatcher", &surfaceWatcher);
 

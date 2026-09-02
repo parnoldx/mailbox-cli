@@ -10,10 +10,10 @@ import "Model.js" as Model
 //
 // Features:
 // - New for you (unread) vs Previously seen tabs
-// - Dedicated in-panel Screener with 1-click routing (Inbox, Feed, Paper Trail, Block)
+// - Dedicated in-panel Screener with 1-click triage (Inbox, Block, Trash)
 // - Sender initials in deterministic colored avatars
 // - Account filtering with per-account unread badges
-// - Keyboard navigation (S, U, P, I, F, T, B, R, N, arrows, Enter, Esc)
+// - Keyboard navigation (S, U, P, I, T, B, R, N, arrows, Enter, Esc)
 // - Flip settings page for open command, toast alerts, and bar visibility
 Panel {
   id: root
@@ -283,8 +283,6 @@ Panel {
         else if (t === "a" && root.tabFilter !== "screener") root.setAsideSelected()
         else if (t === "m" && root.tabFilter !== "screener") root.markSeenSelected()
         else if (t === "i" && root.tabFilter === "screener") root.routeSelected("inbox")
-        else if (t === "f" && root.tabFilter === "screener") root.routeSelected("feed")
-        else if ((t === "l" || t === "w") && root.tabFilter === "screener") root.routeSelected("paper trail")
         else if (t === "b" && root.tabFilter === "screener") root.routeSelected("block")
       }
 
@@ -716,7 +714,10 @@ Panel {
                         elide: Text.ElideRight
                       }
 
-                      // Action buttons: Inbox, Feed, Paper Trail, Block
+                      // Action buttons: Inbox, Block, Trash. Feed and Paper
+                      // Trail are deliberately not here — this widget only
+                      // screens a sender in or out; sorting them into a bucket
+                      // is a decision for the full client.
                       Row {
                         spacing: Style.space(4)
 
@@ -729,28 +730,6 @@ Panel {
                           horizontalPadding: Style.space(6)
                           verticalPadding: Style.space(4)
                           onClicked: service.routeSender(screenerCard.modelData.address, "inbox")
-                        }
-
-                        Button {
-                          text: "📰 FEED (F)"
-                          foreground: root.foreground
-                          background: Qt.darker(Color.accent, 1.3)
-                          fontFamily: root.fontFamily
-                          fontSize: Style.font.caption
-                          horizontalPadding: Style.space(6)
-                          verticalPadding: Style.space(4)
-                          onClicked: service.routeSender(screenerCard.modelData.address, "feed")
-                        }
-
-                        Button {
-                          text: "🧾 PAPER TRAIL (L)"
-                          foreground: root.foreground
-                          background: Qt.darker(Color.accent, 1.5)
-                          fontFamily: root.fontFamily
-                          fontSize: Style.font.caption
-                          horizontalPadding: Style.space(6)
-                          verticalPadding: Style.space(4)
-                          onClicked: service.routeSender(screenerCard.modelData.address, "paper trail")
                         }
 
                         Button {

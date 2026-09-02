@@ -33,8 +33,6 @@ test("Screening and routing are wired in Panel.qml", () => {
   for (const needle of [
     "service.routeSender",
     "inbox",
-    "feed",
-    "paper trail",
     "block",
     "screenerCards",
     "filteredMessages",
@@ -44,6 +42,13 @@ test("Screening and routing are wired in Panel.qml", () => {
   ]) {
     assert.ok(panelSrc.indexOf(needle) !== -1, "missing " + needle)
   }
+})
+
+test("Panel.qml screener offers only inbox / block / trash, not feed / paper trail", () => {
+  assert.equal(panelSrc.indexOf('routeSender(screenerCard.modelData.address, "feed")'), -1)
+  assert.equal(panelSrc.indexOf('routeSender(screenerCard.modelData.address, "paper trail")'), -1)
+  assert.ok(panelSrc.indexOf('routeSender(screenerCard.modelData.address, "inbox")') !== -1)
+  assert.ok(panelSrc.indexOf('routeSender(screenerCard.modelData.address, "block")') !== -1)
 })
 
 test("Dynamic visibility is implemented in BarWidget.qml", () => {

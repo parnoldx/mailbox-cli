@@ -13,6 +13,11 @@ Item {
 
     property bool loaded: false
     signal ready()
+    // A file dropped onto the editor. Lexxy's own uploader is disabled
+    // (attachments='false'), so Chromium would otherwise navigate the view to
+    // the file; onNavigationRequested catches that and hands the path here for
+    // ComposerView's attachment tray.
+    signal fileDropped(string url)
 
     function _js(s) { return JSON.stringify(s === undefined ? "" : s) }
 
@@ -60,7 +65,10 @@ Item {
             "<style>" + base + "</style>" +
             "<style id='omarchy'>" + root.paletteCss() + "</style>" +
             "<scr" + "ipt type='module'>" + lib + "</scr" + "ipt></head>" +
-            "<body><lexxy-editor id='ed'></lexxy-editor></body></html>"
+            // attachments='false' — this app has no direct-upload endpoint, so
+            // Lexxy's inline uploader just spins forever. Dropped files go to
+            // ComposerView's attachment tray instead (see fileDropped).
+            "<body><lexxy-editor id='ed' attachments='false'></lexxy-editor></body></html>"
     }
 
     function reload() {
@@ -125,6 +133,14 @@ Item {
         visible: root._webShown
         backgroundColor: "transparent"
         onNavigationRequested: function (req) {
+            var u = req.url.toString()
+            if (u.indexOf("file:") === 0) {
+                // A file dropped onto the editor: Chromium wants to open it.
+                // Keep the editor put and pass the path up to be attached.
+                root.fileDropped(u)
+                req.action = WebEngineNavigationRequest.IgnoreRequest
+                return
+            }
             if (req.navigationType === WebEngineNavigationRequest.LinkClickedNavigation) {
                 Qt.openUrlExternally(req.url)
                 req.action = WebEngineNavigationRequest.IgnoreRequest

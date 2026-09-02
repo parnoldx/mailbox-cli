@@ -32,6 +32,20 @@ Item {
         if (hi >= 0 && hi < flatRows.length) win.openMessage(flatRows[hi].id)
         else if (flatRows.length > 0) win.openMessage(flatRows[0].id)
     }
+    // The id of the highlighted row, for the triage keys and the Command
+    // Launcher's action rows. "" when nothing is highlighted.
+    function currentRowId() {
+        return (hi >= 0 && hi < flatRows.length) ? flatRows[hi].id : ""
+    }
+    // Pop the row menu for `row` at the cursor, and make it the highlighted
+    // row so the keys and the launcher line up with what was clicked.
+    function showRowMenu(row) {
+        if (!row || !row.id || win.isDraftsBucket()) return
+        for (var i = 0; i < flatRows.length; i++)
+            if (flatRows[i].id === row.id) { hi = i; break }
+        rowMenu.row = row
+        rowMenu.popup()
+    }
 
     Connections {
         target: listModel
@@ -66,20 +80,40 @@ Item {
                 Column {
                     width: parent.width - 44
                     spacing: 4
-                    Text {
-                        text: win.buckets[win.bucketIndex].label
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 30
-                        font.weight: Font.Bold
-                        color: Theme.textPrimary
-                        Behavior on color { ColorAnimation { duration: Theme.anim } }
-                    }
-                    Text {
-                        text: win.buckets[win.bucketIndex].blurb
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 12
-                        color: Theme.textDim
-                        Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    Row {
+                        width: parent.width
+                        spacing: 12
+                        Text {
+                            id: bucketTitle
+                            text: win.buckets[win.bucketIndex].label
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 30
+                            font.weight: Font.Bold
+                            color: Theme.textPrimary
+                            Behavior on color { ColorAnimation { duration: Theme.anim } }
+                        }
+
+                        // Search. A magnifier just right of the bucket title,
+                        // mirroring the `/` shortcut for the pointer. Only the
+                        // Inbox carries it; the other buckets stay bare.
+                        Rectangle {
+                            id: searchBtn
+                            visible: root.isInbox
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 34; height: 34; radius: 17
+                            color: searchHover.hovered ? Theme.cardHover : Theme.selection
+                            Behavior on color { ColorAnimation { duration: Theme.anim } }
+                            Text {
+                                anchors.centerIn: parent
+                                text: ""
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 13
+                                color: searchHover.hovered ? Theme.accent : Theme.textDim
+                                Behavior on color { ColorAnimation { duration: Theme.anim } }
+                            }
+                            HoverHandler { id: searchHover; cursorShape: Qt.PointingHandCursor }
+                            TapHandler { onTapped: win.openSearch() }
+                        }
                     }
                 }
             }
@@ -102,6 +136,12 @@ Item {
                         row: modelData
                         fresh: true
                         highlighted: root.hi === index
+                        // Drafts: a row opens the composer (via win.openMessage,
+                        // which routes drafts on), the right-click menu is off,
+                        // and each row carries its own fast-delete.
+                        showDelete: win.isDraftsBucket()
+                        menuEnabled: !win.isDraftsBucket()
+                        onDeleteClicked: win.deleteDraft(modelData.id)
                     }
                 }
             }
@@ -124,6 +164,9 @@ Item {
                         row: modelData
                         fresh: false
                         highlighted: root.hi === root.newRows.length + index
+                        showDelete: win.isDraftsBucket()
+                        menuEnabled: !win.isDraftsBucket()
+                        onDeleteClicked: win.deleteDraft(modelData.id)
                     }
                 }
             }
@@ -151,6 +194,13 @@ Item {
                 }
             }
         }
+    }
+
+    // Right-click any row for the same triage the reading view and the Command
+    // Launcher offer. One shared menu, re-pointed at whichever row opened it.
+    RowActions {
+        id: rowMenu
+        bucketKey: win.currentKey()
     }
 
     // Into the compose view. Mirrors the `c` shortcut, for the pointer. Only in
@@ -182,35 +232,6 @@ Item {
     BottomStacks {
         id: bottomStacks
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-    }
-
-    Row {
-        anchors { right: parent.right; bottom: parent.bottom; margins: 20 }
-        spacing: 10
-        // Step out of the way when the stacks are up — they share this edge.
-        opacity: bottomStacks.visible ? 0 : 0.75
-        visible: opacity > 0.01
-        Behavior on opacity { NumberAnimation { duration: Theme.anim } }
-        Kbd { text: "J" }
-        Kbd { text: "K" }
-        Text {
-            anchors.verticalCenter: parent.verticalCenter
-            text: "move"
-            font.family: Theme.fontFamily
-            font.pixelSize: 11
-            color: Theme.textDim
-            Behavior on color { ColorAnimation { duration: Theme.anim } }
-        }
-        Item { width: 8; height: 1 }
-        Kbd { text: "Ctrl K" }
-        Text {
-            anchors.verticalCenter: parent.verticalCenter
-            text: "switch bucket"
-            font.family: Theme.fontFamily
-            font.pixelSize: 11
-            color: Theme.textDim
-            Behavior on color { ColorAnimation { duration: Theme.anim } }
-        }
     }
 
     // Connection status: just the dot.

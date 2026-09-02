@@ -108,6 +108,24 @@ func localChecks(ctx context.Context, offline bool) []check {
 			Name: "imap", OK: true,
 			Detail: fmt.Sprintf("%s:%d, %d boxes", a.IMAPHost, a.IMAPPort, len(boxes)),
 		})
+		// The Primary Account has to be able to file what the Routing sends it.
+		// Without these Boxes a `fileinto` finds nothing and the mail lands in
+		// the Inbox as though no decision was made — `mailbox route` refuses
+		// outright rather than write a rule that does nothing (ADR-0019).
+		have := make([]string, len(boxes))
+		for i, b := range boxes {
+			have[i] = b.Name
+		}
+		if missing := setup.MissingBoxes(have); len(missing) > 0 {
+			out = append(out, check{Name: "routing", Detail: fmt.Sprintf(
+				"this account has no %s — routed mail cannot be filed; run `mailbox setup` and repair",
+				strings.Join(missing, ", "))})
+		} else {
+			out = append(out, check{
+				Name: "routing", OK: true,
+				Detail: "screener, feed, paper trail, aside, reply later and block are all here",
+			})
+		}
 	}
 	if err := probe.SMTP(ctx, a.SMTPHost, a.SMTPPort, a.Email, a.Password); err != nil {
 		out = append(out, check{Name: "smtp", Detail: err.Error()})

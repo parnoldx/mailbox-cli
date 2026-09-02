@@ -23,7 +23,14 @@
     --green:#9ece6a; --sheet:#1a1b26; --radius:8px;
   }
   * { box-sizing: border-box; }
-  html, body { margin:0; padding:0; background:var(--bg); color:var(--fg); overflow-x:hidden; }
+  /* Horizontal clip stays on <html> only. Putting overflow-x on <body> makes
+     it a scroll container that never scrolls, which disables position:sticky
+     for the cards' feet (the real scroll surface is the viewport).
+     scrollbar-gutter reserves the classic scrollbar's width on BOTH sides so
+     the centred column lands on the true window centre — matching BucketView,
+     which uses an overlay scrollbar that takes no layout width. */
+  html { overflow-x:hidden; scrollbar-gutter:stable both-edges; }
+  html, body { margin:0; padding:0; background:var(--bg); color:var(--fg); }
   body { font-family:"JetBrainsMono Nerd Font", ui-monospace, SFMono-Regular, monospace; }
   body, .card, .card *, .divider *, .hdr *, .empty * {
     transition: background-color .22s ease, color .22s ease, border-color .22s ease;
@@ -33,13 +40,14 @@
   ::-webkit-scrollbar-thumb { background:var(--sel); border-radius:5px; }
   ::-webkit-scrollbar-track { background:transparent; }
 
-  #wrap { width:min(880px, 100vw - 80px); margin:0 auto; padding:56px 0 140px; }
+  #wrap { width:min(880px, 100% - 80px); margin:0 auto; padding:56px 0 140px; }
 
-  /* header — same shape as every bucket in BucketView */
+  /* header — same shape as every bucket in BucketView. Glyph and title share a
+     line-height so they sit at the same baseline the QML header does. */
   .hdr { display:flex; align-items:flex-start; gap:14px; }
-  .glyph { font-family:"JetBrainsMono Nerd Font", monospace; font-size:30px; color:var(--accent); line-height:1; }
+  .glyph { font-family:"JetBrainsMono Nerd Font", monospace; font-size:30px; color:var(--accent); line-height:1.2; }
   .htext { flex:1; min-width:0; }
-  .htitle { font-size:30px; font-weight:700; color:var(--fg); line-height:1.1; }
+  .htitle { font-size:30px; font-weight:700; color:var(--fg); line-height:1.2; }
   .hstatus { font-size:12px; color:var(--dim); margin-top:4px; }
   .markall {
     align-self:center; font-family:inherit; font-size:11px; color:var(--dim);
@@ -82,25 +90,49 @@
     margin-top:12px; position:relative; overflow:hidden;
     border:1px solid var(--hairline); border-radius:var(--radius); background:var(--sheet);
   }
-  .bodyhost { max-height:360px; overflow:hidden; transition:max-height .22s ease; }
-  .card.open .bodyhost { max-height:none; }
-  .bodyhost iframe { display:block; width:100%; border:0; }
+  /* Collapsed, every card reserves the same body height whether it is still
+     showing "Loading preview…", the text snippet, or a clipped iframe — so
+     entering the Feed doesn't show a column of cards growing as bodies load in. */
+  .bodyhost { height:200px; overflow:hidden; }
+  .card.open .bodyhost { height:auto; }
+  /* Hidden until DarkReader has re-tinted the article (see onIframeLoad) so a
+     newsletter's own light backgrounds never flash before the invert. The
+     .sheet behind it is already the themed colour, so the swap is seamless —
+     no fade, which would just composite the light frame at partial opacity. */
+  .bodyhost iframe { display:block; width:100%; border:0; visibility:hidden; }
+  .bodyhost iframe.ready { visibility:visible; }
   .snippet {
     padding:16px; font-size:12px; line-height:1.45; color:var(--fg);
-    white-space:pre-wrap; max-height:328px; overflow:hidden;
+    white-space:pre-wrap;
   }
+  /* The snippet is the collapsed preview only. Once a card is open the article
+     iframe is what shows — hide the raw-text snippet so it can't flash in the
+     gap before the iframe is built and re-tinted. The dark .sheet fills the
+     gap instead. */
+  .card.open .snippet { display:none; }
   .fade {
     position:absolute; left:0; right:0; bottom:0; height:96px; pointer-events:none;
     background:linear-gradient(rgba(0,0,0,0), var(--sheet)); transition:opacity .2s ease;
   }
-  .card.open .fade, .card.short .fade { opacity:0; }
+  .card.open .fade { opacity:0; }
 
   .foot { display:flex; gap:10px; margin-top:12px; }
+  /* While the card is open its foot rides the bottom of the viewport, so the
+     "Read less" control is always in reach without scrolling down to the end
+     of a long article. It only detaches (scrolls away) once you scroll past
+     the whole card. */
+  .card.open .foot {
+    position:sticky; bottom:0; z-index:3;
+    margin:12px -14px -12px -16px; padding:12px 14px 12px 16px;
+    background:var(--card); border-top:1px solid var(--hairline);
+    border-radius:0 0 var(--radius) var(--radius);
+  }
   .chip {
     font-family:inherit; font-size:10px; color:var(--dim); background:var(--sel);
     border:0; border-radius:12px; height:24px; padding:0 11px; cursor:pointer;
   }
   .chip:hover { background:var(--cardhover); }
+  .chip.chip-trash:hover { background:#c0392b; color:#fff; }
 
   /* dividers — the "you got to here" rule from FeedDivider.qml */
   .divider { display:flex; align-items:center; gap:12px; height:34px; }
@@ -272,6 +304,7 @@
            '<div class="foot">' +
              '<button class="chip chip-more">Read more ▾</button>' +
              '<button class="chip chip-open">Open full page ↗</button>' +
+             '<button class="chip chip-trash">Trash ✕</button>' +
            '</div></div>';
   }
 
@@ -290,6 +323,10 @@
       e.stopPropagation();
       location.href = "feed:openfull/" + encodeURIComponent(card.dataset.id);
     });
+    card.querySelector(".chip-trash").addEventListener("click", function (e) {
+      e.stopPropagation();
+      location.href = "feed:trash/" + encodeURIComponent(card.dataset.id);
+    });
     fillSnippet(card);
   }
 
@@ -307,10 +344,27 @@
     var dark = !!THEME.dark;
     var bg = dark ? (THEME.sheet || "#1a1b26") : "#ffffff";
     var fg = dark ? (THEME.fg || "#a9b1d6") : "#1b1b1b";
+    // Drop any <meta> the source carried in its own <head>: the wrapper doc
+    // already sets charset / viewport / color-scheme, and newsletter HTML
+    // routinely ships `content="width=device-width; initial-scale=1"` — the
+    // ';' makes Chromium log a parse warning on every card. Stripping them
+    // also kills http-equiv refresh redirects and stray CSP from the body.
     var article = (b && b.html && b.html.length)
-      ? b.html
+      ? b.html.replace(/<meta\b[^>]*>/gi, "")
       : '<pre style="white-space:pre-wrap;font-family:inherit;font-size:14px">' +
         esc(b && b.text ? b.text : "(this message has no text part)") + "</pre>";
+    // DarkReader overrides an element's colour via a stylesheet rule, which the
+    // cascade ranks *below* an inline `style="…!important"` on that element — so
+    // a newsletter (or the unbox.at catch-all banner) that hard-codes a light
+    // `background-color:#fff !important` inline stays light forever. Drop
+    // !important from inline background/colour decls only (layout !important is
+    // left alone) so the dark theme can take hold. Both quote styles.
+    if (dark)
+      article = article.replace(/\sstyle=(["'])([\s\S]*?)\1/gi, function (m, q, decls) {
+        return " style=" + q + decls.replace(
+          /((?:^|;)\s*(?:background-color|background|color)\s*:[^;]*?)\s*!\s*important/gi,
+          "$1") + q;
+      });
     var css =
       "html,body{margin:0!important;padding:0!important;background:" + bg + "!important;color:" + fg + ";" +
         "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;" +
@@ -325,7 +379,8 @@
     return '<!DOCTYPE html><html><head><meta charset="utf-8">' +
            '<meta name="viewport" content="width=device-width,initial-scale=1">' +
            '<meta name="color-scheme" content="' + (dark ? "dark" : "light") + '">' +
-           "<style>" + css + "</style></head><body>" + article + "</body></html>";
+           "<style>" + css + "</style></head><body><div id=\"__mb\">" +
+           article + "</div></body></html>";
   }
 
   function ensureIframe(card) {
@@ -347,18 +402,36 @@
     var w = f.contentWindow, d = f.contentDocument;
     // Dark Reader, per iframe — same call ReadingView/the old FeedArticle made,
     // just injected after load so the 340 KB source lives once in this page.
+    var darkening = false;
     try {
       if (THEME.dark && DR && d) {
+        darkening = true;
         var s1 = d.createElement("script"); s1.textContent = DR; d.head.appendChild(s1);
         var s2 = d.createElement("script");
+        // immediateModify: run the full re-tint synchronously inside enable().
+        // Without it DarkReader sees this still-hidden iframe as "not visible"
+        // and defers the dynamic pass until after we've revealed it — which is
+        // the white-then-dark flash. With it, the iframe is already fully dark
+        // by the time onIframeLoad returns.
         s2.textContent = "try{DarkReader.enable(" + JSON.stringify({
-          mode: 1, brightness: 100, contrast: 90, sepia: 0,
+          mode: 1, brightness: 100, contrast: 90, sepia: 0, immediateModify: true,
           darkSchemeBackgroundColor: THEME.sheet, darkSchemeTextColor: THEME.fg,
           selectionColor: THEME.sel
         }) + ");}catch(e){}";
         d.head.appendChild(s2);
       }
     } catch (e) {}
+
+    // Show the iframe only once DarkReader's (synchronous) restyle has had a
+    // paint — two rAFs inside the iframe, with a timeout as a hard floor so it
+    // can never stay invisible. Nothing to wait for when not darkening.
+    var reveal = function () { f.classList.add("ready"); };
+    if (darkening && w && w.requestAnimationFrame) {
+      w.requestAnimationFrame(function () { w.requestAnimationFrame(reveal); });
+      setTimeout(reveal, 150);
+    } else {
+      reveal();
+    }
     // The iframe has nothing to scroll; forward the wheel to this page so the
     // feed moves under the pointer instead of nothing happening.
     try {
@@ -374,10 +447,17 @@
     try {
       var d = f.contentDocument;
       if (d && d.body) {
-        var hgt = Math.ceil(Math.max(
-          d.body.scrollHeight,
-          d.documentElement ? d.documentElement.scrollHeight : 0,
-          d.body.getBoundingClientRect().height));
+        // Measure the wrapper div's own box — body/documentElement scrollHeight
+        // never drop below the iframe's current height, so they'd pin a short
+        // article to whatever height the iframe already had.
+        var mb = d.getElementById("__mb");
+        var hgt = mb ? Math.ceil(mb.getBoundingClientRect().height) : 0;
+        // Marketing HTML that floats or absolutely-positions its top-level
+        // content leaves the wrapper with a zero box; fall back to the doc's
+        // own scroll extents so the card still opens to full height.
+        if (!hgt)
+          hgt = Math.max(d.body.scrollHeight, d.body.offsetHeight,
+                         d.documentElement ? d.documentElement.scrollHeight : 0);
         if (hgt > 0) {
           f.style.height = hgt + "px";
           card.classList.toggle("short", hgt <= 360);
@@ -404,6 +484,8 @@
   // ---------- open / highlight / watermark ----------
   function setOpen(card, open) {
     card.classList.toggle("open", open);
+    var more = card.querySelector(".chip-more");
+    if (more) more.textContent = open ? "Read less ▴" : "Read more ▾";
     if (open) {
       ensureIframe(card);
       var dr = card.dataset.date || "";

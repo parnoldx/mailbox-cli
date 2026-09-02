@@ -2,9 +2,22 @@ package mirror
 
 import (
 	"database/sql"
+	"net/url"
 	"strings"
 	"time"
 )
+
+// hrefKey is the spelling of an object's href the Mirror stores and compares
+// by: the root-relative path, which is how a server reports its own objects. A
+// locally built href can turn up with a scheme and host on it (it was made from
+// a collection URL), and left alone the two spellings of one resource become
+// two rows under the UNIQUE (collection_id, href) key.
+func hrefKey(href string) string {
+	if u, err := url.Parse(strings.TrimSpace(href)); err == nil && u.Path != "" {
+		return u.Path
+	}
+	return href
+}
 
 // Collection is one CalDAV or CardDAV collection: a calendar, a task list, or
 // an address book. It is named by its display name, because that is what a
@@ -128,6 +141,7 @@ func (t *Tx) SetSyncToken(collectionID int64, token string) error {
 // rather than derived here: the Mirror stores what it is given, and parsing
 // iCalendar is somebody else's job.
 func (t *Tx) PutObject(o Object) error {
+	o.Href = hrefKey(o.Href)
 	_, err := t.tx.Exec(`
 		INSERT INTO dav_objects (collection_id, href, etag, raw, kind, uid, summary,
 		                         location, description, status, emails, phones,
@@ -157,7 +171,7 @@ func (t *Tx) PutObject(o Object) error {
 // DeleteObject removes an object the server says is gone.
 func (t *Tx) DeleteObject(collectionID int64, href string) error {
 	_, err := t.tx.Exec(`DELETE FROM dav_objects WHERE collection_id = ? AND href = ?`,
-		collectionID, href)
+		collectionID, hrefKey(href))
 	return err
 }
 
@@ -224,7 +238,7 @@ func (m *Mirror) ObjectByUID(account, uid string) (Object, error) {
 // ObjectByHref reads one object of a collection back after it was written.
 func (m *Mirror) ObjectByHref(account string, collectionID int64, href string) (Object, error) {
 	out, err := m.objects(`WHERE c.account = ? AND o.collection_id = ? AND o.href = ?`,
-		account, collectionID, href)
+		account, collectionID, hrefKey(href))
 	if err != nil {
 		return Object{}, err
 	}

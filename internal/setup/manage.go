@@ -65,6 +65,35 @@ func (w *Wizard) snapshot(ctx context.Context) *snapshot {
 	return s
 }
 
+// repair rewrites what has drifted: the systemd units, and the Routing Boxes on
+// a Primary Account that has lost them. An account restored from backup, or one
+// that was set up before there was a wizard, comes back without INBOX/Screener,
+// and every `mailbox route` call is refused until it is here again (ADR-0019).
+func (w *Wizard) repair(ctx context.Context, s *snapshot) error {
+	if err := w.install(); err != nil {
+		return err
+	}
+	if s.cfg == nil {
+		return s.cfgErr
+	}
+	acc := s.cfg.Account
+	boxes, err := w.Prober.IMAP(ctx, acc.IMAPHost, acc.IMAPPort, acc.Email, acc.Password)
+	if err != nil {
+		return fmt.Errorf("imap: %w", err)
+	}
+	have := make([]string, len(boxes))
+	for i, b := range boxes {
+		have[i] = b.Name
+	}
+	if len(MissingBoxes(have)) == 0 {
+		return nil
+	}
+	return w.bootstrapRouting(ctx, Answers{
+		Email: acc.Email, Password: acc.Password,
+		IMAPHost: acc.IMAPHost, IMAPPort: acc.IMAPPort,
+	}, boxes)
+}
+
 // manage is the second run: state, then one action, then the state again.
 func (w *Wizard) manage(ctx context.Context) error {
 	for {
@@ -81,7 +110,7 @@ func (w *Wizard) manage(ctx context.Context) error {
 		case "r", "remove":
 			err = w.remove(ctx, s)
 		case "p", "repair":
-			err = w.install()
+			err = w.repair(ctx, s)
 		default:
 			s.close()
 			return nil

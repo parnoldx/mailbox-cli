@@ -39,9 +39,9 @@ private:
     struct Row {
         QString id, fromName, fromAddr, subject, date, dateRaw;
         bool seen = false;
-        // How many Messages of this row's Thread have a Placement in the box
-        // being shown — 0 for a Message on its own (the daemon already
-        // collapsed the listing to one row per Thread; this is just its badge).
+        // How many Messages are in this row's Thread in all, wherever they
+        // sit — 0 for a Message on its own (the daemon already collapsed the
+        // listing to one row per Thread; this is just its badge).
         int count = 0;
     };
     QList<Row> m_rows;

@@ -26,10 +26,10 @@ A Quickshell bar widget and dropdown panel for Omarchy, powered directly by the 
 
 - **In-Panel Screening**:
   - Dedicated screener tab listing pending senders waiting for routing decisions.
-  - One-click screening actions on each sender card:
+  - One-click screening actions on each sender card — screen a sender **in** or
+    **out**, nothing more; sorting mail into Feed / Paper Trail is a decision for
+    the full desktop client:
     - 📥 **Inbox** (`I`): Route future mail to Inbox and move existing Screener mail to Inbox.
-    - 📰 **Feed** (`F`): Route future mail to Feed and move existing mail.
-    - 🧾 **Paper Trail** (`L`): Route future mail to Paper Trail and move existing mail.
     - 🚫 **Block** (`B`): Block sender and move existing mail to `Screener/Block`.
     - 🗑 **Trash** (`T`): Move sender's screener mail directly to Trash.
 - **Live Push Updates**: Connects directly to `$XDG_RUNTIME_DIR/mailbox.sock`. Updates in real time whenever the daemon pushes `mail.changed`.
@@ -56,8 +56,6 @@ A Quickshell bar widget and dropdown panel for Omarchy, powered directly by the 
 | <kbd>A</kbd> | Mail List | **Set aside** (read later pile) |
 | <kbd>M</kbd> | Mail List | **Toggle read / unread** |
 | <kbd>I</kbd> | Screener | Route sender to **Inbox** |
-| <kbd>F</kbd> | Screener | Route sender to **Feed** |
-| <kbd>L</kbd> | Screener | Route sender to **Paper Trail** |
 | <kbd>B</kbd> | Screener | **Block** sender |
 
 ---
