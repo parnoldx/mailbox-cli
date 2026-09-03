@@ -1,5 +1,9 @@
 # The Routing is one Sieve script, and this program owns it
 
+> Superseded in part by ADR-0024: a move out of the Screener from any client is
+> now read as a routing decision. Everything below about the script being the
+> record, `address :is`, reachability, and not creating Boxes still holds.
+
 Mail is sorted before we see it. A Sieve script named `logic` on the Primary
 Account's server discards blocked senders, files the Inbox, the Paper Trail and
 the Feed, and drops everything else into the Screener. That is what makes the

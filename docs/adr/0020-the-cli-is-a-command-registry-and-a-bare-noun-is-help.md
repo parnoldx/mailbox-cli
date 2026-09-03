@@ -158,15 +158,10 @@ Three follow-ups, cut from this change on purpose rather than forgotten:
    There is no `output` help topic until it lands, because a topic that says
    "there is a `--json` flag" teaches an agent the tool has no output control.
 
-3. **`SKILL.md`.** `~/.claude/skills/mailbox/SKILL.md` documents the *old* CLI
-   end to end — `--jq`, `--quiet`, `--styled`, `box list`, `Drafts:12` — and it
-   invokes `~/.local/bin/mailbox`, which is the path `make install` writes to.
-   **Do not `make install` until that skill is rewritten**, or every agent
-   following it will type flags this binary has never heard of. It cannot be
-   rewritten properly before (2), since there is no honest answer yet to "how do
-   I get structured output". `repo/bin/mailbox` is earlier on `PATH` than
-   `~/.local/bin`, so nothing here needs the install.
-
-   That rewrite should also say that `mailbox daemon` and `mailbox setup` do not
-   return — `commands` carries no marker for it, by decision, so the skill is
-   where an agent is told.
+3. **`SKILL.md`** — done in the fourteenth slice (docs/DESIGN.md). The old skill
+   documented a CLI that no longer exists (`--jq`, `--quiet`, `box list`,
+   `Drafts:12`) as two real copies free to drift; `skill/SKILL.md` is now one
+   embedded file, installed by `make skill`, gated by
+   `TestSkillNamesOnlyRealCommands`, and it carries conduct rather than the
+   command surface — including that `mailbox daemon` and `mailbox setup` do not
+   return.

@@ -77,7 +77,7 @@ The fake must be able to produce, at a scripted point in the cycle:
 ## Schema
 
 One SQLite file, WAL, `schema_version` in `meta`; on mismatch the file is deleted
-and rebuilt (ADR-0013).
+and rebuilt (ADR-0013). Current version is 12.
 
 ```
 accounts        id, name, role(primary|secondary), imap/smtp settings
@@ -87,7 +87,8 @@ folders         account_id, name, uidvalidity, uidnext, highestmodseq,
 messages        id, account_id, message_key, date, subject,
                 from/to/cc, in_reply_to, references, thread_id,
                 text_plain, text_html, body_state
-placements      account_id, folder, uid, message_id, flags, internaldate, size
+placements      account_id, folder, uid, message_id, flags, internaldate, size,
+                bubble_at
 parts           message_id, path, mime_type, filename, size   -- metadata only
 messages_fts    fts5(subject, addresses, body)  content=messages
 
@@ -106,7 +107,8 @@ absent or collides (ADR-0007). `parts` holds attachment *metadata* so
 `attachment list` is a Mirror read; the bytes are never stored (ADR-0003). `raw`
 on `dav_objects` is the record and the columns beside it are a projection
 (ADR-0010), and `routing_script.raw` stands in the same relation to `routing`
-(ADR-0019).
+(ADR-0019). `placements.bubble_at` is a projection of the `$bubble-*` keyword
+(ADR-0023).
 
 The Outbox is a **separate** file and is never dropped (ADR-0013).
 
@@ -150,8 +152,7 @@ unwatched Box silently never syncing — with one Box mirrored the bug is
 invisible, which is exactly when it gets written.
 
 The Boxes are discovered with `LIST`, not configured. A Box created in webmail
-should simply appear, and a name copied by hand is how the CardDAV collection
-came to point at a 2-entry scratch address book instead of `Kontakte`.
+should simply appear.
 
 Live, IDLE runs on Inbox and Screener of the Primary and Inbox of each Secondary
 (ADR-0006). Because go-imap reports expunges as *sequence numbers*, the reconciler
@@ -210,10 +211,11 @@ flags, `PROPFIND Depth:1` on the CalDAV and CardDAV roots for Collections. It
 shows what it found with display names and item counts and lets you pick, marking
 `schedule-inbox`/`schedule-outbox` and similar as not selectable.
 
-This is not polish. The current omamail config has `carddav_home` pointing at
+This is not polish. The omamail config had `carddav_home` pointing at
 `Gesammelte Adressen` (2 vCards) instead of `Kontakte` — a hand-copied URL that
-has been silently wrong. Discovery matching on display name is the fix, and the
-wizard is where it belongs.
+had been silently wrong for years — and called the `Einkauf` task list a
+calendar. Discovery matching on display name and classifying a Collection by what
+it holds is the fix, and the wizard is where it belongs.
 
 Setup owns the whole install rather than only the account: it writes
 `config.toml`, the two systemd units and the agent skill, and it enables the
@@ -247,11 +249,13 @@ runs cycles one at a time from a depth-one trigger channel: several nudges
 arriving during a cycle coalesce into one cycle after it, which is all they can
 ever mean.
 
-This was found by running it, not by reasoning about it. The damage was small
-only because the re-map protection held: a redundant resync of a 260-message
-folder refetched exactly one body.
+## Acceptance
 
-## Acceptance: the first slice
+Each slice below lists what it added, the gates it is done when, its schema
+version if it moved, and the live test that covers the parts a scripted fake
+cannot. A fake tests the algorithm; only a server tests the assumption.
+
+### The first slice
 
 Inbox on the Primary Account only — envelopes, text parts, flags — into the
 Mirror, with `mailbox box view inbox` reading it. No writes, no DAV, no threading,
@@ -267,29 +271,15 @@ no search. Done when all five hold:
 diff path, and they are why `imapdrv` has a scripted fake rather than a real
 server behind it.
 
-Both are also reproducible against the real server, which the scripted fake does
-not excuse us from doing at least once. On a scratch folder `INBOX/mailbox-selftest`
-that the test creates and destroys:
+`go test -tags live ./internal/imapdrv/` runs both against the real server on a
+scratch folder `INBOX/mailbox-selftest`: gate 4 appends two messages, stops the
+Daemon, expunges one, restarts, asserts it is gone; gate 5 appends, `DELETE`s and
+re-`CREATE`s the folder — which moves UIDVALIDITY on mailbox.org and restarts
+uids at 1 — and appends again, asserting a clean resync that keeps the Messages.
+The live run caught four defects the fake passed cleanly, all in the gap between
+what the RFC permits and what Dovecot does (ADR-0016).
 
-- **gate 4** — append two messages, stop the Daemon, `UID STORE \Deleted` +
-  `EXPUNGE` one of them, restart, assert it is gone from the Mirror.
-- **gate 5** — append a message, `DELETE` the folder, `CREATE` it again, append
-  again. Measured on mailbox.org this moves UIDVALIDITY (`1681457875` ->
-  `1681457876`) and restarts uids at 1. Assert the Mirror resyncs cleanly and
-  keeps the Messages it already had.
-
-That makes gate 5 a live conformance test rather than only a fake-driver one, and
-it is cheap enough to run in CI against a real account.
-
-    go test -tags live ./internal/imapdrv/ -v
-
-Both suites pass. The live run is not a formality: it caught four defects that
-the fake passed cleanly, all of them in the space between what the RFC permits
-and what Dovecot actually does — see ADR-0016, and the CONDSTORE-without-ENABLE
-note in `imapdrv.Dial`. A fake tests the algorithm; only a server tests the
-assumption.
-
-## Acceptance: the second slice
+### The second slice
 
 Reading one Message out of the Mirror: `mailbox message view [box:]uid` prints
 its headers and its text, `--json` gives the envelope. Still no writes — reading
@@ -317,7 +307,7 @@ Done when all four hold:
 but whose text is not yet fetched is a state the reconciler really produces, and
 an empty body that does not say why is the wrong answer to it.
 
-## Acceptance: the third slice
+### The third slice
 
 Changing something: `mailbox seen ID...`, `mailbox unseen ID...`,
 `mailbox move ID... --to BOX`, `mailbox trash ID...`. Each blocks on the server
@@ -348,16 +338,9 @@ Done when all five hold:
 
 `go test -tags live ./internal/imapdrv/ -run TestLiveWrites` asks the real server
 the two questions the fake cannot answer for us: whether the STORE readback
-carries the uid, and whether MOVE reports COPYUID. It creates and destroys its
-own two folders.
+carries the uid, and whether MOVE reports COPYUID.
 
-One defect came out of this slice rather than the plan: `cycleLoop` was written
-but never started, so `kick` filled the trigger channel and nothing read it.
-Every cycle after the startup one — every poll, every IDLE nudge — was dropped.
-It only showed up here because a write with no UIDPLUS asks for a cycle and
-nothing happened.
-
-## Acceptance: the fourth slice
+### The fourth slice
 
 `mailbox search QUERY [--in BOX] [--from ADDR] [--limit N]`, answered by FTS5
 over the Mirror and never by the server (ADR-0009). One line per Message with
@@ -390,13 +373,7 @@ Done when all five hold:
 Schema version 2. The Mirror is rebuilt rather than migrated, which is what
 ADR-0013 buys: the index is derived state and one resync repopulates it.
 
-`snippet()` and `bm25()` are only usable where the FTS table is queried
-directly — not through a subquery or a window function — so the
-one-result-per-Message rule is applied in Go over a rank-ordered join rather
-than in SQL. The first version used `row_number() OVER (PARTITION BY ...)` and
-SQLite answered `unable to use function snippet in the requested context`.
-
-## Acceptance: the fifth slice
+### The fifth slice
 
 `mailbox thread ID` reads the whole conversation from any Message in it, oldest
 first, each under the id that reads it on its own. Threads are built as mail is
@@ -428,16 +405,7 @@ Done when all five hold:
 
 Schema version 3.
 
-The live suite grew a `purge` step while this was being built. `recreate` had
-been deleting the scratch folder best-effort — `_ = Delete(...)` — and when that
-DELETE was swallowed by a dropped connection the next run counted the previous
-run's messages. It showed up first as a one-off "gate 1: 3 rows, want 2" that
-would not reproduce, and then as gate 2 counting three new messages where one
-was appended. The fixture now selects the folder after recreating it and empties
-it for real. Neither failure was in the product, which is exactly why it was
-worth chasing: a fixture that lies makes the gates useless.
-
-## Acceptance: the sixth slice
+### The sixth slice
 
 `mailbox attachment list ID` and `mailbox attachment save ID[:INDEX]`. Listing is
 a Mirror read like any other; saving is the one read that goes to the server by
@@ -471,24 +439,12 @@ Done when all five hold:
 5. Inline images are listed too, marked by their disposition, because "what is
    in this mail" is a different question from "what did the sender attach".
 
-Schema version 4.
+Schema version 4. The live test also exposed that the driver had been asking for
+go-imap's non-extended `BodyStructure`, which is IMAP `BODY` and carries no
+Content-Disposition — so every disposition test downstream had been seeing
+nothing since the first slice. It is `{Extended: true}` now.
 
-**The live test found a defect that had been there since the first slice.** The
-driver asked for `BodyStructure: &imap.FetchItemBodyStructure{}` — go-imap's
-non-extended form, which is IMAP `BODY` and carries no Content-Disposition at
-all. Every disposition test downstream therefore saw nothing: the new listing
-reported an attachment as having no disposition, and, quietly, `textParts` had
-been unable to tell an attached `.txt` from the body since slice one. It is
-`{Extended: true}` now. The fake could not have caught this — it has no wire
-format to be wrong about.
-
-The live fixture also stopped pretending its connection is stable. Deleting and
-recreating a folder drops the connection that was looking at it, and until now
-only `recreate` handled that; an `append` straight afterwards failed with
-`unexpected EOF` and read as a product failure. Every command the other client
-issues now reconnects and retries once, and says so in the log.
-
-## Acceptance: the seventh slice
+### The seventh slice
 
 `mailbox send`, `mailbox reply` and `mailbox outbox`. This is the one command
 that makes something exist rather than reporting on something that already
@@ -547,42 +503,15 @@ Done when all six hold:
 Schema version 5: `messages` gains `cc_addr`. Reply-to-all is built from Cc, and
 a Cc that is not mirrored would have to be fetched again to answer the mail.
 
-**The end-to-end run found a defect the unit tests were blind to.** A mail with
-an attachment carried `charset=utf-8` on its text part; a mail without one
-carried no Content-Type at all, and a text part with no charset *is* us-ascii by
-definition. So a plain reply went out as base64-encoded UTF-8 declared as ASCII,
-and came back with one replacement character per byte — "Test — same thread"
-read as "Test ??? same thread" in our own Mirror. It survived the compose tests
-because the reader they parse with does not apply the charset it was told, which
-is the whole lesson: a round trip through a library that shares your assumption
-proves nothing. The test now asserts on the composed bytes (`charset=utf-8`,
-`quoted-printable`, and the em dash present as `=E2=80=94`) for both shapes of
-mail, and the real one reads back with its umlauts, its em dash and its € sign.
+The end-to-end run found that a text part with no charset *is* us-ascii by
+definition, so a plain reply was going out as base64 UTF-8 declared as ASCII and
+coming back as replacement characters. The compose test now asserts on the
+composed bytes (`charset=utf-8`, `quoted-printable`, the em dash as `=E2=80=94`)
+for both shapes of mail. `go test -tags live ./internal/imapdrv/ -run
+TestLiveSend` sends one mail from the account to itself over real submission,
+files the copy with APPEND, fetches it back, and deletes it.
 
-The live fixture stopped deleting its scratch folder between tests. DELETE +
-CREATE drops every connection that was looking at the folder and leaves the
-server serving a stale incarnation to the next one; `TestLiveAttachment` failed
-counting a previous test's message under a uid that no longer existed. Setup now
-creates the folder if it is missing and empties it, and cleanup empties it
-again. Only gate 5 deletes it, because UIDVALIDITY is what gate 5 is about. That
-is the third time this fixture has produced a failure that was not in the
-product, and the first time the fix removes the mechanism rather than retrying
-around it.
-
-`go test -tags live ./internal/imapdrv/ -run TestLiveSend` sends one mail from
-the account to itself over real submission, files the copy with APPEND, fetches
-it back, waits for delivery through a real MTA, and then deletes the delivered
-mail. It is what says the composer produces something a server will take: 963
-bytes went out, `APPENDUID` came back on the copy, the attachment returned
-identical, and the mail was in the Inbox nine seconds later.
-
-End to end on the real account: `mailbox send --to me --subject "… — Grüße"
---attach beleg.pdf` printed `filed as Sent:1292`, `message view Sent:1292` read
-it straight back out of the Mirror, `attachment save` returned the file byte for
-byte, `reply Sent:1292` filed `Sent:1294` and `thread` showed both under one
-conversation, and `outbox` listed both as filed.
-
-## Acceptance: the eighth slice
+### The eighth slice
 
 The calendars. `mailbox agenda [--days N] [--from DATE] [--calendar NAME]`,
 `mailbox calendar list`, `mailbox event view ID` — all of them Mirror reads, all
@@ -592,22 +521,12 @@ of them offline (ADR-0001).
 `current-user-principal`, then the calendar and address book homes, then one
 `PROPFIND Depth:1` per home. What comes back is display names, colours and
 component sets, and *that* decides what a collection is: a calendar advertising
-`VTODO` and not `VEVENT` is a task list whatever it is called. Running it against
-the real account is the argument for it — the old config called `Einkauf` a
-calendar and it is a task list, and both `Kontakte` (142 cards) and the
-`Gesammelte Adressen` scratch list the config had been pointing at for years
-came back side by side, named (ADR-0010).
+`VTODO` and not `VEVENT` is a task list whatever it is called (ADR-0010).
 
 A collection on another provider — a work calendar with its own credentials —
 cannot be discovered from our server, so it is configured, and the driver set
 routes each request to the server whose host owns the URL. A server that is down
 hides its own collections and nothing else.
-
-The requests are written here rather than taken from go-webdav, whose CalDAV
-client has no sync-collection at all, and whose multiget hands back a *parsed*
-calendar — re-encoding that to store it would throw away the record (ADR-0010).
-Four XML documents is a smaller thing to own than a mismatch with the one
-operation the design is built on (ADR-0015).
 
 **A repeating event is one row.** A rule with no end has no finite expansion to
 store, and the window belongs to the question rather than to the calendar, so
@@ -620,8 +539,6 @@ sides of the October clock change, which it would not be in UTC.
 There is no journal on this side and none is needed. The sync token and the
 objects it describes are committed together, so a crash leaves the old token with
 the old objects, and asking again from the old token returns the same changes.
-The mail side needs a journal because a modseq can be advanced over a
-half-fetched folder; that state cannot be constructed here.
 
 Done when all five hold:
 
@@ -641,15 +558,11 @@ Schema version 6: `dav_collections` and `dav_objects`, raw text and a projection
 beside it.
 
 `go test -tags live ./internal/davdrv/` reads the real account and writes
-nothing: discovery listed 7 collections across events, tasks and cards; the
-first sync of `Kalender` returned **1344 objects and a token in one request**,
-all 1344 projected, 6 of them repeating; the second sync with that token
-returned nothing. End to end, `mailbox agenda --days 10` printed the week from
-two servers at once — mailbox.org and a SOGo work calendar — with the repeating
-entries marked, and `mailbox event view` listed the next five Mondays of a
-weekly one.
+nothing: discovery listed 7 collections across events, tasks and cards; the first
+sync of `Kalender` returned 1344 objects and a token in one request, all
+projected, 6 of them repeating; the second sync with that token returned nothing.
 
-## Acceptance: the ninth slice
+### The ninth slice
 
 Todos and Habits. `mailbox todo [list|add|done|undone|rename|drop]` and
 `mailbox habit [list|add|done|undone|drop]`. Listing is a Mirror read; every
@@ -693,51 +606,14 @@ Done when all five hold:
 
 `go test -tags live ./internal/davdrv/ -run TestLiveWrite` creates its own task
 list with MKCALENDAR, writes a Todo with an umlaut and a due date, reads it back
-parsed, completes it with `If-Match`, watches a **stale** `If-Match` be refused,
+parsed, completes it with `If-Match`, watches a stale `If-Match` be refused,
 deletes it and removes the list. It is what established that this server returns
-no ETag on PUT.
+no ETag on PUT, that Open-Xchange exposes only a ~1-year window of each calendar
+over CalDAV (so the habits record is dated today and re-dated on every write,
+ADR-0018), and that the server keeps its own `SEQUENCE`/`LAST-MODIFIED` so the
+record is edited in place, never rebuilt.
 
-Two things the live run found that no fake would have:
-
-- **A server can refuse the token it just issued.** `Gesammelte Adressen`
-  answers `403 <valid-sync-token/>` to the token it handed out one request
-  earlier, so that collection resyncs from nothing on every cycle — 2 objects,
-  and correct, because starting again is what an expired token means. It is also
-  why only a 403 that actually names `valid-sync-token` is read that way: taking
-  every 403 for an expired token would turn a permission problem into a silent
-  full resync forever.
-- **A sync answer can name the same href twice.** `Kontakte` reports 143 items
-  with 141 distinct hrefs. Upserting by `(collection, href)` makes that a
-  non-event, which is why the count in the log and the count in the Mirror
-  differ by two.
-
-**A third thing the live run found, and the worst of them.** The habits record
-was a VEVENT dated 1990, copied from the program this one replaces. The server
-takes it — `201 Created` — and a `GET` of its URL returns it. It appears in no
-listing whatsoever: not `sync-collection`, not `PROPFIND Depth:1`. Open-Xchange
-exposes only a window of each calendar over CalDAV, about a year back, and an
-object outside it is stored and unfindable. The record is dated *today* now, and
-re-dated on every write, which is free because every change rewrites it anyway.
-`TestLiveHabitsObjectIsListed` writes one object dated today and one dated 1990
-into a scratch calendar and asserts the first is listed. This is the shape of
-defect that only a real server produces: every fake in this repo would have
-returned both.
-
-The same object then found the *fourth* one. Rewriting the habits record as a
-freshly built object is refused with `412` — with or without an `If-Match` —
-because the server keeps its own `SEQUENCE` and `LAST-MODIFIED` and reads an
-object without them as an outdated update. Habits are edited now, like the Todos
-and the Contacts: read the object, change the one field, write it back. Every
-`habit done` after the first one had been failing with a message about somebody
-else changing it, which was true of nobody.
-
-End to end on the real account: `mailbox todo add … --list Einkauf --due
-tomorrow` printed the new id, `todo list` showed it beside the user's own
-entries, `todo done` moved it to `--all` only, `todo drop` removed it; and a
-habit was created, ticked for today and yesterday, reported with its streak, and
-dropped again.
-
-## Acceptance: the tenth slice
+### The tenth slice
 
 The address books. `mailbox contact QUERY`, `contact view ID`, `contact add NAME
 [--email …] [--phone …]`, `contact email ID --value …`, `contact drop ID`.
@@ -766,20 +642,11 @@ Done when all five hold:
 4. Several address books have to be named, and a configured default answers it.
 5. Dropping one removes it from the server and from the Mirror.
 
-Schema version 8: `dav_objects` gains `emails` and `phones`.
+Schema version 8: `dav_objects` gains `emails` and `phones`. Projected values
+are stored newline-separated, not space-joined — `+49 30 000 111` is one phone
+number, not three, and the test that says so uses a number with spaces in it.
 
-**A phone number has spaces in it.** The first version joined the projected
-values with spaces, and `+49 30 000 111` came back out of the Mirror as three
-phone numbers — a contact with a phone book instead of a phone. They are stored
-newline-separated now, and the test that says so uses a number with spaces in it,
-because that is the only kind that catches this.
-
-End to end on the real account: `contact arnold` searched 143 real cards and
-printed five, `contact add` wrote one with an umlaut-free name and a spaced
-number, `contact email` added a second address to it, and `contact drop` removed
-it again.
-
-## Acceptance: the eleventh slice
+### The eleventh slice
 
 `mailbox setup`. The only place in this program where a human is asked anything,
 and it must not ask for a URL.
@@ -789,13 +656,7 @@ It asks for an address and a password, and then it **enumerates**: IMAP `LIST` w
 discovery chain for the Collections. Everything after that is a choice between
 things the servers said they have — which Boxes to watch, which task list a new
 Todo goes on, which address book a new Contact goes in. Nothing is typed that
-could be wrong.
-
-That is not polish. The old config pointed `carddav_home` at `Gesammelte
-Adressen`, a 2-entry scratch list, instead of `Kontakte`, and had done for years.
-Run against the real account, the wizard lists both by name and defaults to
-`Kontakte`, and it finds the Sent box by its `\Sent` flag rather than by a name
-that is `Gesendet` on half the servers in this country.
+could be wrong (see [Setup](#setup) for why).
 
 The password is checked against **both** servers before anything is written. A
 password that reads mail but is refused for submission is a failure that would
@@ -820,13 +681,12 @@ Done when all five hold:
 4. The file is 0600 from the moment it exists, and an existing one survives.
 5. The first sync reports each Box as it lands, Inbox first and Archive last.
 
-Live, against the real account: 68 Boxes read, `Sent` identified by its flag,
-submission checked, 7 Collections enumerated with their kinds, `Kontakte`
-defaulted rather than the scratch book, `INBOX` and `INBOX/Screener` offered as
-the Boxes worth watching — and not `INBOX/Screener/Block`, which is where the
-senders you never want to hear from again are filed.
+Live, against the real account: 68 Boxes read, `Sent` identified by its `\Sent`
+flag rather than by a localised name, submission checked, 7 Collections
+enumerated with their kinds, `Kontakte` defaulted rather than the scratch book,
+`INBOX` and `INBOX/Screener` offered as the Boxes worth watching.
 
-## Acceptance: the twelfth slice
+### The twelfth slice
 
 Secondary Accounts. `[accounts.gmx]` in the config makes `gmx/INBOX:412` mean
 something, and every id that worked when there was one account still works
@@ -879,14 +739,10 @@ Done when all five hold:
 There is no live test for this one: this account has no second mail account to
 add, and inventing one on somebody else's server to prove it is not a test worth
 its side effects. The scripted driver covers it, which is what it is for.
+Nothing-matched is `[]hit{}`, not nil — `null` on the socket made a caller
+special-case it twice.
 
-**Nothing-matched is an empty list, not `null`.** The multi-account search built
-its results with `var out []hit`, which is nil when nothing matched, and JSON
-turns that into `null` — so a caller reading the socket had to special-case
-nothing-matched twice. It is `[]hit{}` now, and the test asserts on the type
-rather than on the count.
-
-## Acceptance: the thirteenth slice
+### The thirteenth slice
 
 The Routing. `mailbox screener`, `mailbox route [TARGET... --to BOX]` and
 `mailbox aside` — the Primary Account's Screener, Feed, Paper Trail, Block and
@@ -936,56 +792,18 @@ Done when all five hold:
 5. An active script this program did not write is never switched off. It is
    enough that it reaches ours: the Routing is in force when `logic` is active
    *or* when the active script includes it, and a decision is refused only when
-   neither holds.
+   neither holds (ADR-0019).
 
 Schema version 9: `routing` and `routing_script`.
-
-**`header :contains "From"` was a bypass, not a style.** The script this replaces
-matched a substring of the raw From header, and a sender writes their own display
-name: `From: "anna@example.com" <attacker@example.net>` was filed as Anna, and
-`bob@example.com` matched `notbob@example.com` besides. The generated script uses
-`address :is :all "from"`, which tests the parsed address. The parser still reads
-the old spelling, because the script already on the account is written in it, and
-a Routing that cannot be read is a Routing that cannot be changed.
-
-An empty list is written as no rule at all. Sieve has no empty string list — `[]`
-does not compile — and the previous generator filled the gap with
-`["example@example.com"]`, which reads like a decision somebody made about a
-sender who does not exist. The parser drops that placeholder on the way in.
-
-**The live run found the defect, and it was the whole rule.** The first version
-refused a decision whenever the active script was not `logic`, on the reasoning
-that switching somebody else's filtering off to switch ours on is not something a
-routing decision should do. That reasoning is right and the test was wrong. The
-active script on this account is `Open-Xchange`, written by mailbox.org's webmail
-filter editor: four hand-made rules, ending in `include "logic";`. So the Routing
-was already running, from inside a script that is not it — and the check refused
-every decision on the one account that matters, while `PutScript(…, activate:
-true)` would have deactivated `Open-Xchange` and thrown those four rules away.
-The rule is reachability now: active, or included by whatever is active. Nothing
-is activated unless the server is running nothing at all.
-
-The same run put the parser against the real 10,694-byte script: 277 decisions —
-18 blocked, 65 Inbox, 109 Paper Trail, 85 Feed — read out of the old
-`header :contains` spelling and regenerated with no decision lost or changed. The
-count is *lower* than the number of entries in the file, because senders listed on
-two lists are counted once, under the rule Sieve actually reaches. Rewriting drops
-the entries the server was already stepping over.
-
-All six Boxes this slice names are on the real account — `INBOX`,
-`INBOX/Screener`, `INBOX/Feed`, `INBOX/Paper Trail`, `INBOX/Screener/Block` and
-`INBOX/Aside`, out of 68 — so nothing here needs a Box created to work. Gate 4 is
-for the account that does not have them, and for the day one is renamed.
 
 `go test -tags live ./internal/sievedrv/` is the gate no fake can be: the server
 is the only Sieve compiler in reach, and PUTSCRIPT either takes the generated
 script or refuses it. It writes under a scratch name, never activates it, checks
-the decisions survive the round trip, and deletes it. A generated script that is
-subtly not Sieve would otherwise pass every unit test in this repo and misfile
-mail for as long as nobody looked.
+the decisions survive the round trip, and deletes it. Run against the real
+10,694-byte account script it read 277 decisions out of the old `header
+:contains` spelling and regenerated them with none lost or changed.
 
-
-## Acceptance: the fourteenth slice
+### The fourteenth slice
 
 The agent skill. `skill/SKILL.md` in this repo is what an agent reads before it
 types anything here. `make skill` installs it to `~/.agents/skills/mailbox/`,
@@ -999,16 +817,10 @@ registry the one place a command exists, and it prints itself three ways:
 `mailbox help` for what there is, `mailbox <command> --help` for a command's
 flags, examples and the reason it works the way it does, and `mailbox commands`
 for the whole tree as JSON. Copying any of that into a document is a cache of a
-one-command lookup, and a cache with no invalidation.
-
-That is not a hypothesis. The skill this replaces was written on 2026-08-28,
-two slices before the end, and by the thirteenth it named `screener approve`,
-`screener deny`, `contact show`, `contact refresh`, `event list`,
-`todo complete`, `habit create`, `habit complete` and `search filters` — none of
-which exist — and eight flags this program has never had, `--jq`, `--ids-only`,
-`--count`, `--page`, `--all`, `--markdown`, `--allow-partial` and `-m`. An agent
-following it would have failed on nearly every write. It was 22 KB; this one is
-4.5 KB, and most of the difference is the reference it stopped keeping.
+one-command lookup, and a cache with no invalidation. The skill this replaces
+was 22 KB and named a dozen commands and eight flags this program has never had;
+this one is 4.5 KB, and most of the difference is the reference it stopped
+keeping.
 
 What it carries instead is what the binary cannot say about itself, because it
 is about conduct rather than usage: that a Behind Mirror still answers and an
@@ -1030,22 +842,13 @@ Done when all six hold:
 5. Text the agent composed itself does not reach SMTP without a person.
 6. The skill exists once: every path that reads it reads the same file.
 
-`TestSkillNamesOnlyRealCommands` is gate 1. It walks every backticked span in
-the skill down the same tree `RunWith` walks, holds the flags left over against
-what the command declared, and checks the help topics resolve. Fed the old
-skill's `mailbox screener approve 342 --spam` it says `screener has no --spam`,
-which is the sentence that would have caught the drift a week ago.
+`TestSkillNamesOnlyRealCommands` is gate 1: it walks every backticked span in
+the skill down the same tree `RunWith` walks and checks the flags and help
+topics resolve. Gate 6 is enforced by `make skill` writing the one file and
+linking the other name at it, refusing to remove a directory standing where the
+link belongs.
 
-Gate 2 is what the whole design is for, and it is why there is no generator
-here: a generated reference would be a cache kept honest by machinery, and no
-cache is cheaper than one that was never taken.
-
-Gate 6 is the same rule one level up. `make skill` writes the one file and links
-the other name at it, and it refuses to remove a directory standing where the
-link belongs — that is a decision for a person, and the target says so and
-stops.
-
-## Acceptance: the fifteenth slice
+### The fifteenth slice
 
 Setup as the install, and the config as the record. `mailbox setup` stops being a
 wizard that writes an account and starts being the thing that makes a machine
@@ -1061,24 +864,20 @@ enumerates, and never asks for a URL. What follows the config write is new: the
 units, `systemctl --user enable --now mailbox.socket`, the skill, and then setup
 connects to the socket **as a client** and prints the Daemon's first cycle as it
 lands. It ends by running `doctor` — the both-ends check, at the one moment when
-everything is known to work, so the broken version is legible later.
+everything is known to work.
 
 `firstSync` is gone from `main.go` and `firstOrder` now orders the Boxes the
-Daemon holds, so the cold start is the run that does the Inbox first. The order
-had been the wizard's private property and was lost on the way through anyway:
-`SyncAll` iterated a LIST-STATUS reply in whatever order the server gave it, so
-it now follows the order it was asked for. That removes the second writer —
-after the probes, setup opens no server connection and writes no Mirror.
-`--force` retires with it, because nothing is overwritten any more: the account
-list is edited, and `help_test.go` pins the system commands, so the test is
-where that surface change is stated.
+Daemon holds, so the cold start is the run that does the Inbox first. That
+removes the second writer — after the probes, setup opens no server connection
+and writes no Mirror. `--force` retires with it, because nothing is overwritten
+any more: the account list is edited, and `help_test.go` pins the system
+commands.
 
 **Socket activation becomes real.** `mailbox daemon --systemd-socket` takes its
 listener from `LISTEN_FDS` and fails rather than binding a path of its own
-(ADR-0012). The units on this machine already pass that flag and the binary does
-not accept it — they were written by hand, and nothing has ever kept them in step
-with the program. Setup writes both, compares them on a later run, and replaces
-what differs without restarting a Daemon that is serving.
+(ADR-0012). The units on this machine were written by hand and had drifted from
+the program. Setup writes both, compares them on a later run, and replaces what
+differs without restarting a Daemon that is serving.
 
 **The Primary's Boxes are created, with no naming choices.** A fresh account has
 no `INBOX/Screener`, `INBOX/Feed`, `INBOX/Paper Trail`, `INBOX/Aside` or
@@ -1099,10 +898,9 @@ account or a foreign calendar. The two live in different tables — `[accounts.g
 and `[caldav.verein]` — and share **one namespace**, because `search --in gmx`
 and `agenda` reading two different `gmx` is a bug nobody would suspect. A mail
 account is asked for address, password, IMAP host and display name and nothing
-else: the rest its own server can be asked for. A calendar is asked for a server
-and credentials and then discovered, listed by display name and picked — the
-`[caldav.*]` block with a typed URL is the last place in this program a person
-types one, and it is the same mistake `carddav_home` was.
+else. A calendar is asked for a server and credentials and then discovered,
+listed by display name and picked — the `[caldav.*]` block with a typed URL is
+the last place in this program a person types one.
 
 Removing:
 
@@ -1111,46 +909,30 @@ Removing:
 - **A Secondary mail account** is refused while its Outbox holds anything, and
   setup asks the Daemon before it writes, because the Daemon is the only thing
   that knows what is in flight (ADR-0021). Otherwise the block goes and the
-  Daemon prunes that account's rows. Deleting the whole Mirror would work and is
-  the wrong tool: ADR-0013 is about a schema change, not about a removal, and it
-  would cold-start every other account to forget one.
+  Daemon prunes that account's rows.
 - **A hand-added calendar** is its config block and `ForgetCollection`.
 - **A discovered Collection** cannot be removed, only excluded, and the exclusion
-  is an entry in the config keyed by display name. It cannot live on
-  `dav_collections`: that file is deleted and rebuilt on a schema change, so a
-  decision stored there has a half-life. `Discover` skips excluded names on the
-  way in.
-
-**Nothing has ever been pruned.** `davsync.Discover`'s comment says "a collection
-that disappears from the server is dropped, with its objects", and
-`PutCollection` is an upsert with no delete beside it. A calendar removed on the
-server has stayed in the Mirror since the ninth slice. Removal needs that path
-anyway, so this slice makes the comment true.
+  is an entry in the config keyed by display name — it cannot live on
+  `dav_collections`, which is deleted and rebuilt on a schema change. `Discover`
+  skips excluded names on the way in, and now also drops a Collection that has
+  disappeared from the server, with its objects — a path `davsync.Discover`'s
+  comment had always promised and never had.
 
 **The skill gets embedded.** Setup installs it on machines with no checkout, so
 `skill/SKILL.md` is `go:embed`ed — the first embed in this repo — and `make skill`
 keeps installing from the working tree. Both are the same bytes because both are
-the same file, so the sixth gate of the fourteenth slice holds, and
-`TestSkillNamesOnlyRealCommands` reads the embedded copy so what ships is what is
-gated. Setup keeps `make skill`'s refusal: a real directory standing where
-`~/.claude/skills/mailbox` should be a symlink is reported as a step that failed,
-not a wizard that dies.
+the same file, so the sixth gate of the fourteenth slice holds.
 
 **Problems are a short list, and a person is on the other end of it.** The
 Daemon carries `problems` in `status`, `doctor` prints them beside its own
-checks, every one of them goes to the journal — the Daemon logs to stderr and the
-unit puts that in `journalctl --user -u mailbox` — and each change pushes
+checks, every one of them goes to the journal, and each change pushes
 `problem.changed`. Three things qualify: a config that will not load, credentials
 a server refuses, and Held mail. Not Behind: every reply already carries the
 Mirror's state, a laptop lid produces one per suspend, and it resolves itself.
-Not a failing Box: `SyncAll` is built to carry on past one. The rule is that a
-problem means the program needs a human, and firing a few times a year is the
-point.
-
-The Daemon does not raise a desktop notification. It publishes the fact and a UI
-renders it, which is the widget's job and the ADR-0011 shape; until that slice
-exists the visible surfaces are the journal and `doctor`, and this slice does not
-pretend otherwise.
+Not a failing Box: `SyncAll` is built to carry on past one. The Daemon does not
+raise a desktop notification — it publishes the fact and a UI renders it
+(ADR-0011); until that slice exists the visible surfaces are the journal and
+`doctor`.
 
 Done when all six hold:
 
@@ -1171,14 +953,143 @@ Done when all six hold:
    `problem.changed`.
 
 Gate 4 is the ADR-0012 violation this slice removes, and 5 and 6 are ADR-0021's
-two halves. Gate 1 extends the eleventh slice's first gate to the branch it never
-covered.
+two halves. The install steps take a root directory so a test drives a whole
+install into a temporary one and reads back what was written, with `systemctl`
+behind a recording fake; the live check is a real `enable --now mailbox.socket`
+on this machine followed by `mailbox status` answering over the socket.
 
-The wizard is still the one thing an agent cannot exercise, which is why `Prober`
-is an interface. The install steps need the same treatment: the unit and skill
-writers take a root directory, so a test drives a whole install into a temporary
-one and reads back what was written, and `systemctl` is a small interface with a
-recording fake behind it. What no test covers is whether systemd accepts the
-generated unit, so the live check for this slice is a real
-`enable --now mailbox.socket` on this machine followed by `mailbox status`
-answering over the socket with no Daemon started by hand.
+### The sixteenth slice
+
+`mailbox bubble`. Bubble Up, matched from HEY: `mailbox bubble ID... (--now |
+--on DATE | --tomorrow | --weekend | --next-week)` sets a thread aside and has
+it come back to the Inbox on its own at a time you pick, unread, so the phone
+raises a notification. `mailbox bubble list` shows what is waiting and when each
+is due. One timing flag is required and there is no config default, because HEY
+has none (ADR-0023).
+
+A bubbled thread is an Aside thread that also carries a `$bubble-*` IMAP
+keyword — no new Box. The keyword is local wall-clock time with no zone, it is
+the record, and `placements.bubble_at` (schema version 12) is a projection of it
+derived wherever a placement's flags are written, so a Mirror rebuild
+repopulates it. `--on DATE` lands at 08:00, or at 18:00 when the date is today
+("Later today", this morning having passed); the two hours are `[bubble]
+morning` and `[bubble] evening` in the config.
+
+`bubbleLoop` returns the thread by scanning `bubble_at` against the wall clock,
+not by sleeping on a per-message timer — so a Daemon that was down across the
+instant catches every overdue return on its first tick. The return strips the
+keyword, removes `\Seen`, moves the thread's Aside members to the Inbox, and
+sets `$bubbled` so the Inbox listing floats it to the top. `--now` runs the same
+steps at once, and works on a thread already in the Inbox without a round trip.
+A reply landing in a bubbled thread pulls it back early through `reclaimPiled`,
+which now also strips the keyword.
+
+Done when all six hold:
+
+1. `bubble ID --tomorrow` puts the whole thread in Aside at 08:00 tomorrow; a
+   Sent copy and a Screener sibling do not move.
+2. The thread returns to the Inbox at or after its instant with the keyword
+   gone, and a Daemon down across the instant returns it on the first tick after
+   startup.
+3. A returned thread is `\Unseen` and `$bubbled`, and the Inbox listing puts it
+   first.
+4. `--now` on a thread already in the Inbox floats it and marks it unread with
+   no Aside round trip.
+5. Two Daemons both seeing one bubble come due return it to the Inbox once, not
+   twice and not bounced; a return scheduled by one fires from the other, which
+   shares only the keyword.
+6. A resync that rewrites every placement re-derives `bubble_at` from the
+   keyword; a reply returns a bubbled thread early and clears it.
+
+`go test -tags live ./internal/imapdrv/ -run TestLiveBubbleKeyword` is the gate
+no fake can be: it stores `$bubble-*` in a scratch folder on the real server,
+reads it back on a fresh connection, re-times it, and strips it, and it asserts
+`\*` is in the folder's PERMANENTFLAGS — without which a keyword the server was
+not told about is silently dropped and every return is lost.
+
+### The seventeenth slice
+
+Screener moves are decisions. A message dragged out of the Screener from any
+client — an iPhone, webmail — observed by a Daemon in a sync cycle, is a routing
+decision, and the destination folder names the destination: Inbox, Feed, Paper
+Trail, or `Screener/Block` for a block. A drag anywhere else is a plain move.
+This supersedes ADR-0019 for the Screener alone, because reading a message never
+requires moving it, so a message leaving the Screener is unambiguously the
+answer to the Screener's one question — and `mailbox route` does not run from a
+phone (ADR-0024).
+
+The cross-folder move is reconstructed from the cycle: the reconciler's
+`Outcome` carries `Added` and `Gone`, the placements a cycle wrote and deleted,
+named by Message id. A `Gone` from the Screener matched to an `Added` in a
+decision folder is the drag; the reverse — into the Screener from a decision
+folder — un-decides the sender. The sender's other waiting Screener mail sweeps
+to the destination, exactly as `mailbox route` does.
+
+It is idempotent rather than trying to tell its own move from an external one:
+`routing.Lists.Set` is a no-op when the entry is already there, so a `mailbox
+route` decision whose move syncs a cycle later re-derives the same entry and
+nothing happens. No echo loop, because editing the script moves no mail. Every
+inferred decision is logged loudly and appears in `mailbox status` as a
+recent-inferred list, because there is no human in the loop and a wrong one has
+to be visible. The reachability rule holds: an inference is refused, not
+applied, when the active script is not ours and does not include it.
+
+Done when all six hold:
+
+1. Screener→Inbox from a second client, no command run, routes that sender's
+   next mail to the Inbox and sweeps their other waiting Screener mail with it.
+2. Screener→Feed / →Paper Trail / →`Screener/Block` each write the matching
+   decision; Screener→Archive writes nothing.
+3. A `mailbox route` decision followed by its move syncing produces no second
+   script write and no second recorded decision — no loop.
+4. A message moved into the Screener from a decision folder un-decides its
+   sender.
+5. A second, always-on Daemon does 1–4 while the first is stopped, sharing only
+   the Mirror and the server.
+6. Every inferred decision is on the `status` reply and in the journal; an
+   unreachable Routing refuses the inference and records nothing.
+
+The Sieve compiler gate is `go test -tags live ./internal/sievedrv/ -run
+TestLiveRoutingScriptCompiles`, unchanged: an inferred decision is built through
+the same `routing.Lists.Set` → `Script()` → `PutScript` path as a command one.
+
+### The eighteenth slice
+
+The VPS Daemon. The same `mailbox` binary run as a second `mailbox daemon` on an
+always-on box, so the sixteenth slice's timed return and the seventeenth's
+move-watching happen while the home machine is off (ADR-0025, sanctioned by
+ADR-0012). Not a new component — `mailbox daemon` on a box that is always up.
+
+Two Daemons, one account, one Mirror file and one Outbox file **each** — which a
+separate machine gives for free, along with its own socket. They coordinate
+through server-side records only: the `$bubble-*` keyword, the Sieve script,
+`\Seen` and folder placement. Whichever acts first wins; the other syncs the
+result and finds nothing to do. No remote socket: scheduling happens only on the
+home machine, and the VPS Daemon runs `bubbleLoop`, the Screener inference and
+the ordinary full cycle.
+
+This slice is mostly the audit that nothing in the Daemon assumes it is the only
+one. It does not: `sync_journal` is keyed by `(account, folder)` in each
+Daemon's own Mirror; freshness is per-process memory with nothing persisted;
+every write is idempotent (`routing.Lists.Set`), server-arbitrated (`If-Match`,
+COPYUID), or tolerant of the uid being gone (`reclaimPiled`, `bubbleLoop`); and
+the reachability rule stops either Daemon deactivating a script it did not
+write. The two-Daemon gates of the sixteenth and seventeenth slices are this
+slice's tests.
+
+Done when all three hold:
+
+1. A bubble scheduled on the home Daemon returns from the VPS Daemon while the
+   home Daemon is stopped, and both seeing it due return it once.
+2. A Screener drag on the phone rewrites the script from the VPS Daemon while
+   the home Daemon is stopped.
+3. Nothing in the Daemon takes a lock or records "synced by me" that a second
+   instance on the same account would fight over.
+
+There is no new live test. The install is `mailbox daemon` with
+`MAILBOX_MIRROR`, `MAILBOX_OUTBOX` and `MAILBOX_CONFIG` pointed at that box's
+own files and a mode-0600 credentials file (ADR-0014 — no keyring on a headless
+box); `mailbox setup` reads piped answers and the config is hand-writable TOML,
+so there is no `--headless` mode to build. With no user session the service is a
+hand-written system unit, and `mailbox daemon` already binds its own socket path
+when it is not handed one under socket activation (ADR-0012).
