@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Pdf
 import QtQuick.Dialogs
+import QtMultimedia
 import "MailFormat.js" as Fmt
 
 // In-app file preview in the spirit of macOS Quick Look / omarchy-quick-look:
@@ -18,12 +19,26 @@ Item {
     readonly property string name: att.filename || "attachment"
     readonly property bool isPdf: mime.indexOf("pdf") >= 0 || name.toLowerCase().endsWith(".pdf")
     readonly property bool isImage: mime.indexOf("image/") === 0
+    readonly property bool isAudio: mime.indexOf("audio/") === 0
+        || /\.(mp3|m4a|aac|ogg|oga|opus|flac|wav|wma)$/i.test(name)
     readonly property bool isText: mime.indexOf("text/") === 0
         || mime.indexOf("json") >= 0 || mime.indexOf("xml") >= 0
         || mime.indexOf("javascript") >= 0 || mime.indexOf("csv") >= 0
 
     function fileUrl(p) { return Fmt.fileUrl(p) }
     function localPath(url) { return Fmt.localPath(url) }
+
+    // mm:ss (or h:mm:ss past an hour) from a millisecond position.
+    function clock(ms) {
+        if (!(ms > 0)) return "0:00"
+        var s = Math.floor(ms / 1000)
+        var h = Math.floor(s / 3600)
+        var m = Math.floor((s % 3600) / 60)
+        s = s % 60
+        var mm = (h > 0 && m < 10 ? "0" : "") + m
+        var ss = (s < 10 ? "0" : "") + s
+        return (h > 0 ? h + ":" : "") + mm + ":" + ss
+    }
 
     // Called from an attachment chip. Fetch to the cache dir, then show.
     function openFor(attachment) {
@@ -189,6 +204,95 @@ Item {
                 }
             }
 
+            Loader {
+                anchors.fill: parent
+                active: root.opened && root.isAudio && root.path !== ""
+                sourceComponent: Component {
+                    Item {
+                        // Eat clicks so a tap on the player chrome (or the empty
+                        // space around it) doesn't fall through to the scrim's
+                        // tap-to-dismiss, the way the image/text previews do.
+                        MouseArea { anchors.fill: parent }
+
+                        MediaPlayer {
+                            id: player
+                            source: root.fileUrl(root.path)
+                            audioOutput: AudioOutput {}
+                        }
+
+                        Column {
+                            anchors.centerIn: parent
+                            width: Math.min(parent.width - 96, 460)
+                            spacing: 20
+
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: ""
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 40
+                                color: Theme.hairline
+                                Behavior on color { ColorAnimation { duration: Theme.anim } }
+                            }
+
+                            Text {
+                                width: parent.width
+                                horizontalAlignment: Text.AlignHCenter
+                                text: root.name
+                                elide: Text.ElideMiddle
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 12
+                                font.weight: Font.DemiBold
+                                color: Theme.textPrimary
+                                Behavior on color { ColorAnimation { duration: Theme.anim } }
+                            }
+
+                            Rectangle {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: 52; height: 52; radius: 26
+                                color: playArea.containsMouse ? Theme.accent : Theme.cardHover
+                                Behavior on color { ColorAnimation { duration: Theme.anim } }
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: player.playbackState === MediaPlayer.PlayingState ? "" : ""
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 15
+                                    color: playArea.containsMouse ? Theme.railBg : Theme.textPrimary
+                                    Behavior on color { ColorAnimation { duration: Theme.anim } }
+                                }
+                                MouseArea {
+                                    id: playArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: player.playbackState === MediaPlayer.PlayingState
+                                               ? player.pause() : player.play()
+                                }
+                            }
+
+                            Slider {
+                                id: seek
+                                width: parent.width
+                                from: 0
+                                to: Math.max(1, player.duration)
+                                enabled: player.seekable
+                                value: player.position
+                                onMoved: player.position = value
+                            }
+
+                            Text {
+                                width: parent.width
+                                horizontalAlignment: Text.AlignHCenter
+                                text: root.clock(player.position) + " / " + root.clock(player.duration)
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 11
+                                color: Theme.textDim
+                                Behavior on color { ColorAnimation { duration: Theme.anim } }
+                            }
+                        }
+                    }
+                }
+            }
+
             Flickable {
                 anchors.fill: parent
                 visible: root.isText && root.path !== ""
@@ -214,7 +318,7 @@ Item {
             Column {
                 anchors.centerIn: parent
                 spacing: 12
-                visible: root.opened && root.path !== "" && !root.isPdf && !root.isImage && !root.isText
+                visible: root.opened && root.path !== "" && !root.isPdf && !root.isImage && !root.isAudio && !root.isText
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: ""

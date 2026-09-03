@@ -464,7 +464,26 @@ func printStatus(stdout, stderr io.Writer, resp daemon.Response) {
 			strings.Join(strs(asAny(m["watched"])), ", "))
 	}
 	_ = tw.Flush()
+	printInferred(stdout, resp)
 	behindNotice(stderr, resp)
+}
+
+// printInferred lists the routing decisions the daemon read out of a drag out
+// of the screener rather than from a command. It has no human in the loop, so a
+// wrong one is worth seeing here as well as in the journal.
+func printInferred(stdout io.Writer, resp daemon.Response) {
+	if len(resp.Inferred) == 0 {
+		return
+	}
+	fmt.Fprintln(stdout)
+	fmt.Fprintln(stdout, "inferred from a screener move")
+	for _, d := range resp.Inferred {
+		swept := ""
+		if d.Moved > 0 {
+			swept = fmt.Sprintf(", %d swept", d.Moved)
+		}
+		fmt.Fprintf(stdout, "  %s  %s -> %s%s\n", d.At, d.Address, d.To, swept)
+	}
 }
 
 func numOf(v any) int64 {

@@ -1,6 +1,5 @@
 #include <QGuiApplication>
 #include <QtWebEngineQuick/QtWebEngineQuick>
-#include <QWebEngineProfile>
 #include <QFile>
 #include <QFont>
 #include <QFontDatabase>
@@ -50,8 +49,10 @@ int main(int argc, char *argv[]) {
     // hit and coming back does not leave the bucket list showing the results.
     MailModel searchModel;
 
+    // Not armed here: installing it touches the default WebEngine profile,
+    // which is the ~half second of Chromium start-up the Inbox never needs.
+    // The QML side calls PixelBlock.arm() the first time a web view mounts.
     auto *pixelBlock = new PixelBlock(&app);
-    QWebEngineProfile::defaultProfile()->setUrlRequestInterceptor(pixelBlock);
 
     SurfaceWatcher surfaceWatcher;
 

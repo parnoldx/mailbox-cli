@@ -16,8 +16,10 @@ import (
 	"sync"
 	"time"
 
+	"mailbox/internal/bubble"
 	"mailbox/internal/htmlmd"
 	"mailbox/internal/mirror"
+	"mailbox/internal/routing"
 	"mailbox/internal/sync/mailsync"
 	"mailbox/internal/terminal"
 )
@@ -119,6 +121,8 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 		return d.handleAside(ctx, req, resp)
 	case "reply-later":
 		return d.handleReplyLater(ctx, req, resp)
+	case "bubble":
+		return d.handleBubble(ctx, req, resp)
 	case "sieve":
 		return d.handleSieve(ctx, req, resp)
 	case "label":
@@ -433,6 +437,7 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 
 	case "status":
 		resp.Problems = d.Problems()
+		resp.Inferred = d.RecentInferred()
 		out := []map[string]any{}
 		for _, acct := range d.accounts() {
 			f, err := d.Mirror.Folder(acct.Name, "INBOX")
@@ -961,6 +966,13 @@ type row struct {
 	// whole thing with `mailbox thread` on this row's own id (ADR-0008: any
 	// Message in a Thread names it).
 	Count int `json:"count,omitempty"`
+	// Due is the wall-clock time a bubbled thread comes back, "2006-01-02
+	// 15:04", shown in the Aside listing and beside a still-floating thread in
+	// the Inbox. Bubbled is set on a thread a return has just brought back:
+	// `mailbox bubble` floats it to the top of the Inbox and badges it until it
+	// is read.
+	Due     string `json:"due,omitempty"`
+	Bubbled bool   `json:"bubbled,omitempty"`
 }
 
 // formatMessageID is the id a caller hands back to message view. The Inbox is
@@ -1077,10 +1089,17 @@ func viewRows(a *Account, folder string, rows []mirror.Row, threadSizes map[int6
 		}
 		index[r.ThreadID] = len(out)
 		threadOf = append(threadOf, r.ThreadID)
-		out = append(out, row{
+		newRow := row{
 			ID: a.messageID(folder, r.UID), UID: r.UID, Date: date, From: r.From,
 			Subject: r.Subject, Seen: r.Seen(), Body: r.BodyState, Count: 1,
-		})
+		}
+		if when, ok := bubble.Of(r.Placement.Flags); ok {
+			newRow.Due = when.Format("2006-01-02 15:04")
+		}
+		if hasFlag(r.Placement.Flags, bubble.Returned) {
+			newRow.Bubbled = true
+		}
+		out = append(out, newRow)
 	}
 	for i := range out {
 		if sz := threadSizes[threadOf[i]]; sz > out[i].Count {
@@ -1089,6 +1108,12 @@ func viewRows(a *Account, folder string, rows []mirror.Row, threadSizes map[int6
 		if out[i].Count <= 1 {
 			out[i].Count = 0 // omitempty: no badge for a Message on its own
 		}
+	}
+	// A bubbled thread comes back with an old date and would sort low; the Inbox
+	// floats it to the top, badged, the way HEY does. Other Boxes keep their
+	// date order.
+	if folder == routing.BoxInbox {
+		sort.SliceStable(out, func(i, j int) bool { return out[i].Bubbled && !out[j].Bubbled })
 	}
 	return out
 }

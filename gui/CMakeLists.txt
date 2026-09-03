@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Network WebEngineQuick PdfQuick QuickDialogs2)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Network WebEngineQuick PdfQuick QuickDialogs2 Multimedia)
 
 qt_add_executable(mailbox-gui
     src/main.cpp
@@ -57,7 +57,7 @@ qt_add_resources(mailbox-gui "qml"
 
 target_include_directories(mailbox-gui PRIVATE src)
 target_link_libraries(mailbox-gui PRIVATE
-    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Network Qt6::WebEngineQuick Qt6::PdfQuick Qt6::QuickDialogs2)
+    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Network Qt6::WebEngineQuick Qt6::PdfQuick Qt6::QuickDialogs2 Qt6::Multimedia)
 
 # `cmake --install build --prefix ~/.local` drops the binary on PATH as
 # `mailbox-gui` — the name the mailbox.email notification widget shells out

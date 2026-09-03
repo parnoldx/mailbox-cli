@@ -61,6 +61,10 @@ type Daemon struct {
 	// TaskList is where a Todo goes when the caller does not say. With one task
 	// list it is unnecessary; with several, naming one is better than guessing.
 	TaskList string
+	// BubbleMorning and BubbleEvening are the hours `mailbox bubble` resolves
+	// its timing flags to. Zero means the defaults, 8 and 18.
+	BubbleMorning int
+	BubbleEvening int
 	// AddressBook is where a new Contact goes when the caller does not say.
 	AddressBook string
 	// Sieve is the ManageSieve connection that holds the Routing: the script
@@ -95,6 +99,7 @@ type Daemon struct {
 
 	mu        sync.Mutex
 	clients   map[chan Push]struct{}
+	inferred  []InferredDecision
 	connected bool
 	reachable map[string]bool
 	lastSync  time.Time
@@ -192,6 +197,7 @@ func (d *Daemon) Serve(ctx context.Context, ln net.Listener) error {
 	}
 	go d.davLoop(ctx)
 	go d.routingLoop(ctx)
+	go d.bubbleLoop(ctx)
 
 	// Either a signal, or a config change this process cannot make in place
 	// (ADR-0021). The second is an ordinary exit: under socket activation the
@@ -344,6 +350,11 @@ func (d *Daemon) cycle(ctx context.Context, a *Account, reason string) {
 	// a time, but a live thread is not something to keep hidden (matches how
 	// the Inbox row badges the whole thread).
 	if a.Primary {
+		// A message dragged out of the Screener from any client is a routing
+		// decision, and the destination folder names the destination (supersedes
+		// ADR-0019). Read from this cycle's outcomes before anything else looks
+		// at them.
+		d.inferScreenerDecisions(ctx, a, outcomes)
 		for _, out := range outcomes {
 			if out.Action == mailsync.ActionIncremental {
 				d.reclaimPiled(ctx, a, out.NewThreads)
@@ -376,6 +387,10 @@ func (d *Daemon) reclaimPiled(ctx context.Context, a *Account, threadIDs []int64
 	if len(refs) == 0 {
 		return
 	}
+	// A reply reviving a bubbled thread is an early return: it comes back the way
+	// any set-aside thread does, and its `$bubble-*` keyword goes with it, so
+	// bubbleLoop does not fire later on a thread that is already in the Inbox.
+	d.stripBubble(ctx, a, refs)
 	if _, err := a.Writer.Move(ctx, refs, routing.BoxInbox); err != nil {
 		d.logf("reclaim to inbox: %v", err)
 		return

@@ -76,9 +76,24 @@ type Collections struct {
 	Exclude []string `toml:"exclude"`
 }
 
+// Bubble is the two hours `mailbox bubble` resolves its timing flags to. HEY's
+// "Later today" is the evening one; every other flag lands on the morning one.
+// There is no config default for the flag itself — one is always required, to
+// match HEY exactly.
+type Bubble struct {
+	// Morning is the hour --tomorrow, --weekend, --next-week and a future --on
+	// return at. Default 8.
+	Morning int `toml:"morning"`
+	// Evening is the hour `--on <today>` returns at, this morning having passed.
+	// Default 18.
+	Evening int `toml:"evening"`
+}
+
 // Config is everything on disk.
 type Config struct {
 	Account Account `toml:"account"`
+	// Bubble is when a bubbled thread comes back.
+	Bubble Bubble `toml:"bubble"`
 	// Secondary accounts, keyed by the name their ids are prefixed with:
 	// `[accounts.gmx]` makes `gmx/INBOX:412` mean something (ADR-0005). They
 	// have an Inbox, Drafts and Sent and the ability to Send; the Screener and

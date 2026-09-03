@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"mailbox/internal/bubble"
 )
 
 // Intent is what a sync step wrote down before it touched the network.
@@ -251,15 +253,19 @@ func (t *Tx) PutParts(messageID int64, parts []Part) error {
 	return nil
 }
 
-// PutPlacement inserts or updates where a Message sits.
+// PutPlacement inserts or updates where a Message sits. bubble_at is derived
+// from the flags here rather than passed in, so it is a true projection of the
+// `$bubble-*` keyword — the one place a bubbled instant is written.
 func (t *Tx) PutPlacement(p Placement) error {
 	_, err := t.tx.Exec(`
-		INSERT INTO placements (account, folder, uid, message_id, flags, internaldate, size)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO placements (account, folder, uid, message_id, flags, bubble_at, internaldate, size)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (account, folder, uid) DO UPDATE SET
 		  message_id = excluded.message_id, flags = excluded.flags,
+		  bubble_at = excluded.bubble_at,
 		  internaldate = excluded.internaldate, size = excluded.size`,
-		t.account, p.Folder, p.UID, p.MessageID, joinFlags(p.Flags), nullTime(p.InternalDate), p.Size)
+		t.account, p.Folder, p.UID, p.MessageID, joinFlags(p.Flags),
+		bubble.Projected(p.Flags), nullTime(p.InternalDate), p.Size)
 	return err
 }
 
@@ -287,10 +293,14 @@ func (t *Tx) Placement(folder string, uid uint32) (Placement, error) {
 	return p, nil
 }
 
-// SetFlags updates a placement's flags, which is all a CONDSTORE flag change is.
+// SetFlags updates a placement's flags, which is all a CONDSTORE flag change
+// is. bubble_at is re-derived from the new flags in the same statement: a
+// `$bubble-*` keyword added, moved or stripped in any client is what schedules,
+// re-times or cancels a return.
 func (t *Tx) SetFlags(folder string, uid uint32, flags []string) error {
-	_, err := t.tx.Exec(`UPDATE placements SET flags = ? WHERE account = ? AND folder = ? AND uid = ?`,
-		joinFlags(flags), t.account, folder, uid)
+	_, err := t.tx.Exec(
+		`UPDATE placements SET flags = ?, bubble_at = ? WHERE account = ? AND folder = ? AND uid = ?`,
+		joinFlags(flags), bubble.Projected(flags), t.account, folder, uid)
 	return err
 }
 

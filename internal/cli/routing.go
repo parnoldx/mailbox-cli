@@ -162,6 +162,60 @@ func pileVerb(name string, done bool) func(*input, io.Writer, io.Writer) int {
 	}
 }
 
+// runBubble sets a thread aside with a return time — HEY's Bubble Up, one
+// timing flag required — lists what is bubbled, or with --now brings a thread
+// back straight away. Scheduling only happens here, on the home machine; the
+// always-on VPS daemon just runs the return loop.
+func runBubble(in *input, stdout, stderr io.Writer) int {
+	if len(in.Words) == 1 && in.Words[0] == "list" {
+		return request(daemon.Request{ID: "1", Cmd: []string{"bubble", "list"}},
+			in.JSON(), printBubbles, stdout, stderr)
+	}
+	render := printBubbles
+	if in.Bool("now") {
+		render = printChanges
+	}
+	return request(daemon.Request{
+		ID: "1", Cmd: []string{"bubble"},
+		Args: map[string]any{
+			"positional": in.Words,
+			"now":        in.Bool("now"),
+			"on":         in.Str("on"),
+			"tomorrow":   in.Bool("tomorrow"),
+			"weekend":    in.Bool("weekend"),
+			"next_week":  in.Bool("next-week"),
+		},
+	}, in.JSON(), render, stdout, stderr)
+}
+
+// printBubbles lists bubbled threads with the time each comes back, soonest
+// first. A due one — its instant already passed — returns on the next loop tick.
+func printBubbles(stdout, stderr io.Writer, resp daemon.Response) {
+	rows, ok := rowsOf(resp.Data)
+	if !ok {
+		encodeJSON(stdout, resp.Data)
+		return
+	}
+	if len(rows) == 0 {
+		fmt.Fprintln(stderr, "nothing is bubbled")
+		return
+	}
+	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
+	for _, r := range rows {
+		m, ok := r.(map[string]any)
+		if !ok {
+			continue
+		}
+		when := str(m["return"])
+		if due, _ := m["due"].(bool); due {
+			when += " (due)"
+		}
+		fmt.Fprintf(tw, "%v\t%v\t%v\n", m["id"], when, truncate(str(m["subject"]), 40))
+	}
+	_ = tw.Flush()
+	behindNotice(stderr, resp)
+}
+
 func encodeJSON(w io.Writer, v any) {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")

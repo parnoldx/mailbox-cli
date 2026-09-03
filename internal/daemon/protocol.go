@@ -42,6 +42,21 @@ type Response struct {
 	// answer, and a caller that has been pushed `problem.changed` re-reads
 	// status to find out what they are (ADR-0011).
 	Problems []Problem `json:"problems,omitempty"`
+	// Inferred is the recent routing decisions this Daemon read out of a drag
+	// out of the Screener rather than from a `mailbox route` command. Only
+	// `status` carries it: an inference has no human in the loop, so a wrong one
+	// has to be visible somewhere it will be seen (supersedes ADR-0019).
+	Inferred []InferredDecision `json:"inferred,omitempty"`
+}
+
+// InferredDecision is one routing decision the Daemon made from a Screener move
+// it observed, kept for `status` so a mistaken drag is not silent.
+type InferredDecision struct {
+	At      string `json:"at"`
+	Address string `json:"address"`
+	To      string `json:"to"`
+	// Moved is how many waiting Screener mails swept to the destination with it.
+	Moved int `json:"moved"`
 }
 
 // Push is an unsolicited line. It names what moved and says nothing about what

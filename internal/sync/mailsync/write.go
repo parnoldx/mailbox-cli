@@ -52,6 +52,15 @@ func (w *Writer) SetSeen(ctx context.Context, refs []Ref, seen bool) ([]Result, 
 	return w.setFlags(ctx, refs, add, remove)
 }
 
+// StoreFlags adds and removes keywords on a set of refs — one STORE per Box —
+// and stores what the server reports back rather than what was asked for
+// (ADR-0004, third slice). It is the primitive under SetSeen and SetLabel,
+// exported for the caller that has to add one keyword and strip another in the
+// same write: re-timing a bubble is add the new `$bubble-*` and remove the old.
+func (w *Writer) StoreFlags(ctx context.Context, refs []Ref, add, remove []string) ([]Result, error) {
+	return w.setFlags(ctx, refs, add, remove)
+}
+
 func (w *Writer) setFlags(ctx context.Context, refs []Ref, add, remove []string) ([]Result, error) {
 	var out []Result
 	err := w.perFolder(refs, func(folder string, uids []uint32) error {

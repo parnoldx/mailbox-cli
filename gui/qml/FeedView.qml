@@ -222,6 +222,10 @@ Item {
         sourceComponent: WebEngineView {
             backgroundColor: Theme.windowBg
             url: "qrc:/qml/vendor/feed.html"
+            // Arm the tracking-pixel blocker before the feed pulls any remote
+            // image — main.cpp leaves it unarmed to keep Chromium off the
+            // Inbox's start-up path.
+            Component.onCompleted: PixelBlock.arm()
 
             onLoadingChanged: function (req) {
                 if (req.status !== WebEngineView.LoadSucceededStatus) return

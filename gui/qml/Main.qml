@@ -69,6 +69,25 @@ ApplicationWindow {
 
     property bool composeOpen: _bootCompose   // the compose view sits above everything else
 
+    // The three web-hosting views (Feed, reader, composer) each build a
+    // QtWebEngine view on construction, and the first one to do so pays ~half a
+    // second of Chromium start-up. None of them is on screen when the Inbox
+    // opens, so each sits behind a Loader that stays inactive until the view is
+    // first needed. The latch is one-way: once loaded a view stays loaded, so
+    // the cost is paid once. `_bootCompose` starts the composer loaded because
+    // a `--compose` / mailto: launch has it covering the Inbox from frame one.
+    property bool _composerLoaded: _bootCompose
+    property bool _readerLoaded: false
+    property bool _feedLoaded: false
+    onComposeOpenChanged: if (composeOpen) _composerLoaded = true
+    onOpenIdChanged: if (openId) _readerLoaded = true
+    onFeedActiveChanged: if (feedActive) _feedLoaded = true
+    // Latch the view (creating it if this is the first call) and hand back its
+    // instance so a caller can drive it. Synchronous: a non-async Loader loads
+    // the moment `active` flips true.
+    function composer() { win._composerLoaded = true; return composerLoader.item }
+    function feed() { win._feedLoaded = true; return feedLoader.item }
+
     function currentKey() { return buckets[bucketIndex].key }
     // The Screener asks for a decision about a *sender*, not a read about a
     // mail, so it carries its own triage (route in / block / move) and hides
@@ -77,12 +96,12 @@ ApplicationWindow {
 
     // ---- compose -------------------------------------------------------
     function startCompose() {
-        composer.openNew()
+        composer().openNew()
         win.composeOpen = true
     }
     function startReply(all) {
         if (!win.openMsg) return
-        composer.openReply({
+        composer().openReply({
             id: win.openMsg.id,
             all: !!all,
             from: win.openMsg.from || "",
@@ -99,14 +118,14 @@ ApplicationWindow {
     // empty note; a recipient is required.
     function startForward() {
         if (!win.openMsg) return
-        composer.openForward({ id: win.openMsg.id, subject: win.openMsg.subject || "" })
+        composer().openForward({ id: win.openMsg.id, subject: win.openMsg.subject || "" })
         win.composeOpen = true
     }
     // A mailto: URI handed to us by the desktop — see mailbox-gui.desktop
     // (MimeType=x-scheme-handler/mailto, Exec ends in %u). Opens the composer
     // prefilled from the link.
     function startMailto(uri) {
-        composer.openMailto(win._parseMailto(uri))
+        composer().openMailto(win._parseMailto(uri))
         win.composeOpen = true
     }
     // RFC 6068: comma-separated recipients in the path, then a query of
@@ -144,7 +163,7 @@ ApplicationWindow {
         if (!id) return
         Mailbox.call(["draft", "show"], { positional: id }, function (r) {
             if (!r.ok || !r.data) { win.flash(win._failMsg("Open draft", r)); return }
-            composer.openDraft(r.data)
+            composer().openDraft(r.data)
             win.composeOpen = true
         })
     }
@@ -273,7 +292,7 @@ ApplicationWindow {
         sendToast.start(payload)
     }
     function reopenComposer(form) {
-        composer.restore(form)
+        composer().restore(form)
         win.composeOpen = true
     }
     function flash(text) { flashToast.show(text) }
@@ -527,7 +546,7 @@ ApplicationWindow {
 
     // The Feed gets its own scroll-and-expand view; every other bucket is a list.
     readonly property bool feedActive: !win.openId && !launcher.opened && currentKey() === "Feed"
-    function navView() { return feedActive ? feedView : bucketView }
+    function navView() { return feedActive ? feed() : bucketView }
 
     // ---- keyboard-gate state --------------------------------------------
     // These name the four situations the shortcuts below actually care about,
@@ -559,7 +578,7 @@ ApplicationWindow {
             else if (searchView.opened) searchView.close()
             else if (launcher.opened) launcher.close()
             else if (win.openId) win.back()
-            else if (win.feedActive && feedView.anyOpen()) feedView.collapseAll()
+            else if (win.feedActive && feed() && feed().anyOpen()) feed().collapseAll()
         }
     }
     // Compose a new message. Reply is driven from the reading view.
@@ -593,7 +612,7 @@ ApplicationWindow {
     }
     Shortcut {
         sequences: ["o", "l"]; enabled: win.navKeys
-        onActivated: win.feedActive ? feedView.openFull() : bucketView.openHighlighted()
+        onActivated: win.feedActive ? feed().openFull() : bucketView.openHighlighted()
     }
     // Trash the message you are reading. Matches the widget's T = trash.
     Shortcut {
@@ -658,7 +677,7 @@ ApplicationWindow {
     Shortcut {
         sequences: ["Ctrl+Return", "Ctrl+Enter"]
         enabled: win.composeOpen
-        onActivated: composer.doSend()
+        onActivated: composer().doSend()
     }
     Shortcut { sequence: "Ctrl+Q"; onActivated: Qt.quit() }
 
@@ -678,38 +697,53 @@ ApplicationWindow {
         Behavior on opacity { NumberAnimation { duration: Theme.anim; easing.type: Easing.OutCubic } }
     }
 
-    FeedView {
-        id: feedView
+    // Feed, reader and composer each sit behind a Loader that stays inactive
+    // until win._{feed,reader,composer}Loaded latches true (see the note by
+    // those properties). Everything the outgoing instances carried — the
+    // opacity fades, the enabled gate, the composer's backdrop — moves onto the
+    // Loader so the view underneath still behaves the same once the Loader is
+    // active. Access the instances through feed() / composer(); nothing outside
+    // reaches for the reader.
+    Loader {
+        id: feedLoader
         anchors.fill: parent
+        active: win._feedLoaded
         // No fade: the Feed is opaque and sits above BucketView, so it snaps in
         // to cover the outgoing bucket header while that one fades out beneath.
         opacity: (!win.openId && win.currentKey() === "Feed") ? 1 : 0
         visible: opacity > 0.01
+        sourceComponent: FeedView { id: feedView }
     }
 
-    ReadingView {
-        id: readingView
+    Loader {
+        id: readerLoader
         anchors.fill: parent
+        active: win._readerLoaded
         opacity: win.openId ? 1 : 0
         visible: opacity > 0.01
         Behavior on opacity { NumberAnimation { duration: Theme.anim; easing.type: Easing.OutCubic } }
+        sourceComponent: ReadingView { id: readingView }
     }
 
-    ComposerView {
-        id: composer
+    Loader {
+        id: composerLoader
         anchors.fill: parent
+        active: win._composerLoaded
         opacity: win.composeOpen ? 1 : 0
         visible: opacity > 0.01
         enabled: win.composeOpen
-        onRequestClose: win.composeOpen = false
         Behavior on opacity { NumberAnimation { duration: Theme.anim; easing.type: Easing.OutCubic } }
+        sourceComponent: ComposerView {
+            id: composer
+            onRequestClose: win.composeOpen = false
 
-        // Opaque backdrop so the view underneath never shows through.
-        Rectangle {
-            anchors.fill: parent
-            z: -1
-            color: Theme.windowBg
-            Behavior on color { ColorAnimation { duration: Theme.anim } }
+            // Opaque backdrop so the view underneath never shows through.
+            Rectangle {
+                anchors.fill: parent
+                z: -1
+                color: Theme.windowBg
+                Behavior on color { ColorAnimation { duration: Theme.anim } }
+            }
         }
     }
 

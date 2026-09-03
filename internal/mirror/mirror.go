@@ -189,6 +189,20 @@ func (m *Mirror) Placements(account string, messageID int64) ([]Placement, error
 	return out, rows.Err()
 }
 
+// SenderOf returns a Message's From header by its id. It outlives the
+// Placements that point at it (ADR-0007), so it still answers after a move —
+// which is when a Screener-decision inference needs it: the mail has already
+// left the Screener and the question is whose it was.
+func (m *Mirror) SenderOf(account string, messageID int64) (string, error) {
+	var from string
+	err := m.db.QueryRow(
+		`SELECT from_addr FROM messages WHERE account = ? AND id = ?`, account, messageID).Scan(&from)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return from, err
+}
+
 // scanRow reads one joined row, whether it came from Query or QueryRow.
 func scanRow(scan func(...any) error, folder string) (Row, error) {
 	var r Row

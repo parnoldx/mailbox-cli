@@ -264,6 +264,7 @@ func runDaemon(systemdSocket bool) error {
 	d.DAVHome = primaryDAV
 	d.TaskList = cfg.Account.TaskList
 	d.AddressBook = cfg.Account.AddressBook
+	d.BubbleMorning, d.BubbleEvening = cfg.Bubble.Morning, cfg.Bubble.Evening
 
 	// The Routing: one Sieve script on the Primary Account's server, which is
 	// what puts mail in the Screener, the Feed and the Paper Trail before this

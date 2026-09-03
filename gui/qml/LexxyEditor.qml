@@ -127,6 +127,10 @@ Item {
     WebEngineView {
         id: web
         anchors.fill: parent
+        // Arm the tracking-pixel blocker on the default profile before this
+        // view loads anything. main.cpp leaves it unarmed so the Inbox does not
+        // pay Chromium start-up; the first web view to mount pays it here.
+        Component.onCompleted: PixelBlock.arm()
         // The 1px width oscillation on _nudge is what actually clears a stale
         // black surface after a Wayland unmap; web.update() alone does not.
         anchors.rightMargin: root._nudge ? 1 : 0

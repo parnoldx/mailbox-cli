@@ -38,6 +38,22 @@ type Outcome struct {
 	// the Daemon pull a set-aside conversation back to the Inbox when a reply
 	// lands in it.
 	NewThreads []int64
+	// Added and Gone are the placements this incremental cycle wrote and
+	// deleted, at the Message level. A move made in another client is an expunge
+	// in one folder and an append in another, two folders apart and possibly
+	// two cycles apart; matching a Gone in one folder's outcome to an Added in
+	// another's is how the Daemon reads a drag out of the Screener as a routing
+	// decision (docs/bubble-and-screener-handoff.md, supersedes ADR-0019).
+	Added []PlacementDelta
+	Gone  []PlacementDelta
+}
+
+// PlacementDelta is one placement that appeared or vanished in a cycle, named
+// by the Message it points at so a cross-folder move can be reconstructed after
+// the fact.
+type PlacementDelta struct {
+	MessageID int64
+	Folder    string
 }
 
 // Resume redoes any folder whose intent was written but never cleared, which
@@ -288,6 +304,7 @@ func (r *Reconciler) incremental(ctx context.Context, folder string, local mirro
 		if known[uid] {
 			continue
 		}
+		out.Added = append(out.Added, PlacementDelta{MessageID: id, Folder: folder})
 		tid, err := tx.ThreadOf(id)
 		if err != nil {
 			return out, err
@@ -312,6 +329,11 @@ func (r *Reconciler) incremental(ctx context.Context, folder string, local mirro
 		localUIDs = append(localUIDs, newUIDs...)
 		sort.Slice(localUIDs, func(i, j int) bool { return localUIDs[i] < localUIDs[j] })
 		gone := diffUIDs(localUIDs, remoteUIDs)
+		for _, uid := range gone {
+			if p, perr := tx.Placement(folder, uid); perr == nil {
+				out.Gone = append(out.Gone, PlacementDelta{MessageID: p.MessageID, Folder: folder})
+			}
+		}
 		if err := tx.DeletePlacements(folder, gone); err != nil {
 			return out, err
 		}

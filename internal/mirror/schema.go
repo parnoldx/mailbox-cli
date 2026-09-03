@@ -2,7 +2,7 @@ package mirror
 
 // schemaVersion is bumped whenever the schema below changes. On a mismatch the
 // Mirror file is deleted and rebuilt rather than migrated (ADR-0013).
-const schemaVersion = 11
+const schemaVersion = 12
 
 const schema = `
 CREATE TABLE meta (
@@ -62,12 +62,21 @@ CREATE TABLE placements (
   uid           INTEGER NOT NULL,
   message_id    INTEGER NOT NULL REFERENCES messages(id),
   flags         TEXT    NOT NULL DEFAULT '',
+  -- The wall-clock instant a bubbled thread is due back in the Inbox, as
+  -- 'YYYY-MM-DDTHH:MM' local time with no zone, or NULL when the mail is not
+  -- bubbled. It is a projection of the '$bubble-*' IMAP keyword in flags,
+  -- derived wherever a placement's flags are written, so a Mirror rebuild
+  -- repopulates it from the keyword for free (ADR-0013). The two Daemons act on
+  -- the keyword; this column is only the "due now" scan and the soonest-first
+  -- sort.
+  bubble_at     TEXT,
   internaldate  TEXT,
   size          INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (account, folder, uid)
 );
 
 CREATE INDEX placements_message ON placements(message_id);
+CREATE INDEX placements_bubble ON placements(account, folder, bubble_at);
 
 -- What a Message carries besides the text: names, types and sizes, never bytes.
 -- Listing them is therefore a Mirror read like any other, and only naming one

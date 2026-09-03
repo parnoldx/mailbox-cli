@@ -497,6 +497,10 @@ Item {
                     onLoaded: root.renderHtml()
                     sourceComponent: WebEngineView {
                         backgroundColor: root.applyDark ? Theme.background : "#ffffff"
+                        // Arm the tracking-pixel blocker before this mail's HTML
+                        // fetches anything remote — main.cpp leaves it unarmed
+                        // to keep Chromium off the Inbox's start-up path.
+                        Component.onCompleted: PixelBlock.arm()
                         // The page's rendered height moves after first paint —
                         // inline images decode, DarkReader re-tints, a width
                         // change reflows. This fires on each of those, so the

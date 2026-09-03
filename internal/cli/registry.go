@@ -499,6 +499,35 @@ func tree(l Locals) []*Command {
 			},
 		},
 		{
+			Name: "bubble", Section: SectionOrganize, Short: "Bubble a thread back later",
+			Usage: []string{
+				"mailbox bubble ID... [--now] [--on DATE] [--tomorrow] [--weekend] [--next-week]",
+				"mailbox bubble list",
+			},
+			Needs: true,
+			Long: "Bubble Up, matched from HEY: the thread leaves the inbox and comes " +
+				"back on its own at the time you pick, unread so the phone raises a " +
+				"notification. It waits in Aside carrying a keyword — no separate box — " +
+				"and a reply arriving brings it back early. One timing flag is required " +
+				"and there is no default. --on takes a bare date and lands at 08:00, or " +
+				"at 18:00 when the date is today. `mailbox bubble list` shows what is " +
+				"waiting and when each is due; --now brings a thread back straight away.",
+			Flags: []Flag{
+				{Name: "now", Kind: KindBool, Desc: "bring the thread back now"},
+				{Name: "on", Kind: KindString, Arg: "DATE", Desc: "a date like 2026-09-10 (08:00, or 18:00 if today)"},
+				{Name: "tomorrow", Kind: KindBool, Desc: "08:00 tomorrow"},
+				{Name: "weekend", Kind: KindBool, Desc: "08:00 the coming Saturday"},
+				{Name: "next-week", Kind: KindBool, Desc: "08:00 the coming Monday"},
+			},
+			Examples: []string{
+				"mailbox bubble 36722 --tomorrow",
+				"mailbox bubble 36722 --on 2026-09-15",
+				"mailbox bubble list",
+				"mailbox bubble 36722 --now",
+			},
+			Run: runBubble,
+		},
+		{
 			Name: "label", Section: SectionOrganize, Short: "Labels on mail",
 			Long: "A label is an imap keyword, not a box: a message carries as many as you " +
 				"like and keeps all of them when it moves. A label in use needs no " +

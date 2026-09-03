@@ -133,6 +133,8 @@ func ParseDestination(word string) (Destination, error) {
 		return "", fmt.Errorf("aside is a pile, not a route: put one mail there with `mailbox aside ID`")
 	case "reply later", "reply-later", "replylater":
 		return "", fmt.Errorf("reply later is a pile, not a route: put one mail there with `mailbox reply-later add ID`")
+	case "bubble":
+		return "", fmt.Errorf("bubble is a timed pile, not a route: `mailbox bubble ID --tomorrow`")
 	}
 	for _, s := range order {
 		for _, a := range s.aliases {

@@ -2,6 +2,7 @@
 
 #include <QUrl>
 #include <QTimer>
+#include <QWebEngineProfile>
 
 PixelBlock::PixelBlock(QObject *parent)
     : QWebEngineUrlRequestInterceptor(parent)
@@ -22,6 +23,14 @@ PixelBlock::PixelBlock(QObject *parent)
         "/impression", "/piwik", "/matomo", "/collect?", "1x1.png",
         "1x1.gif", "spacer.gif", "blank.gif", "/detectblocker",
     };
+}
+
+void PixelBlock::arm()
+{
+    if (m_armed)
+        return;
+    m_armed = true;
+    QWebEngineProfile::defaultProfile()->setUrlRequestInterceptor(this);
 }
 
 void PixelBlock::reset()
