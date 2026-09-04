@@ -82,6 +82,94 @@ test("tasks keep their day, their hour and their rank, and finished ones are gon
   assert.ok(doc.tasks.every(t => !t.done))
 })
 
+test("agenda rows carry the mirror's numeric id, for edit and delete", () => {
+  const doc = Model.mailboxDocument(Model.mailboxRoster(ROSTER), AGENDA, [], 0)
+  const byUid = Object.fromEntries(doc.events.map(e => [e.id, e]))
+  assert.equal(byUid["all-day-1"].objectId, 1469)
+  assert.equal(byUid["standup"].objectId, 1488)
+  assert.equal(byUid["standup"].recurring, false)
+})
+
+test("clicking a day-list row prefills the entry pane from what the agenda already knows", () => {
+  const doc = Model.mailboxDocument(Model.mailboxRoster(ROSTER), AGENDA, [], 0)
+  const standup = doc.events.find(e => e.id === "standup")
+  const draft = Model.draftFromAgendaEvent(standup)
+  assert.equal(draft.title, "Standup https://meet.google.com/abc-defg-hij")
+  assert.equal(draft.dateKey, "2026-08-31")
+  assert.equal(draft.startTime, "08:10")
+  assert.equal(draft.endTime, "09:00")
+  assert.equal(draft.endDateKey, null)
+  assert.equal(draft.location, "IILS")
+  assert.equal(draft.calendarName, "Work")
+  assert.equal(draft.allDay, false)
+
+  const urlaub = doc.events.find(e => e.id === "all-day-1")
+  const allDayDraft = Model.draftFromAgendaEvent(urlaub)
+  assert.equal(allDayDraft.allDay, true)
+  // The wire end (2026-09-01) is exclusive; a one-day event has no separate
+  // end day to show.
+  assert.equal(allDayDraft.endDateKey, null)
+
+  const retreat = Object.assign({}, urlaub, { end: "2026-09-03" })
+  const retreatDraft = Model.draftFromAgendaEvent(retreat)
+  assert.equal(retreatDraft.endDateKey, "2026-09-02")
+})
+
+test("a timed event spanning midnight round-trips to the same end, not a day further", () => {
+  const overnight = {
+    id: "shift", dateKey: "2026-08-31", allDay: false, calendarName: "Work",
+    time: "21:00", start: "2026-08-31T21:00:00+02:00", end: "2026-09-01T02:00:00+02:00",
+    title: "Night shift", location: ""
+  }
+  const draft = Model.draftFromAgendaEvent(overnight)
+  assert.equal(draft.startTime, "21:00")
+  assert.equal(draft.endTime, "02:00")
+  assert.equal(draft.endDateKey, "2026-09-01")
+  // endNextDay is buildQuickAddRequest's own shorthand for the case where
+  // there is no explicit end date; the draft already names one, so it must
+  // stay false or the built end lands a day past the real one.
+  assert.equal(draft.endNextDay, false)
+
+  const built = Model.buildQuickAddRequest(draft, Date.parse("2026-08-31T00:00:00+02:00"))
+  assert.equal(built.ok, true)
+  assert.equal(built.request.endMs, Date.parse("2026-09-01T02:00:00+02:00"))
+})
+
+test("the rest of the picture arrives from event view: notes, link, alarm, repeat", () => {
+  const detail = {
+    id: 1488, summary: "Standup", description: "daily sync",
+    url: "https://meet.google.com/abc-defg-hij", alarms: [10],
+    repeat: "FREQ=WEEKLY;INTERVAL=2"
+  }
+  const draft = Model.draftFromEventDetail(detail, "2026-08-31")
+  assert.equal(draft.description, "daily sync")
+  assert.equal(draft.link, "https://meet.google.com/abc-defg-hij")
+  assert.equal(draft.alertMinutes, 10)
+  assert.deepEqual(draft.recurrence, { freq: "weekly", interval: 2 })
+
+  const bare = Model.draftFromEventDetail({ id: 1488, summary: "Standup" }, "2026-08-31")
+  assert.equal(bare.description, null)
+  assert.equal(bare.recurrence, null)
+})
+
+test("an edit names the object by id and leaves the calendar alone", () => {
+  const edit = Model.requestToArgs({
+    kind: "event", id: 1488, title: "Standup", startMs: 1756634400000,
+    endMs: 1756638000000, allDay: false, calendarName: "Work", location: "IILS" })
+  assert.deepEqual(edit, {
+    cmd: ["event", "edit"],
+    args: { positional: "1488", title: "Standup",
+      start: "2025-08-31 12:00", end: "2025-08-31 13:00", location: "IILS" }
+  })
+})
+
+test("a delete names only the id", () => {
+  assert.deepEqual(
+    Model.requestToArgs({ kind: "event", action: "delete", id: 1488 }),
+    { cmd: ["event", "delete"], args: { positional: "1488" } })
+  assert.equal(Model.requestToArgs({ kind: "event", action: "delete" }), null)
+})
+
 test("the link on an agenda row is the one the entry carries", () => {
   const rows = [Object.assign({}, AGENDA[1], {
     summary: "Standup", url: "https://meet.example.org/r?a=1,2" })]

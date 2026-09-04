@@ -128,6 +128,14 @@ Panel {
   property var lastBuiltRequest: null
   property var tbCalendars: []
 
+  // ---- Editing an event already on the server, opened by clicking it in
+  //      the day list rather than by the + or a right-click. Non-null id
+  //      is what tells commitEntry to send `event edit` instead of `event
+  //      add`, and the calendar chooser to go read-only -- an edit cannot
+  //      move an event to another calendar.
+  property var editingEventId: null
+  property bool deleteConfirming: false
+
   // The colour Omarchy's fastfetch logo is painted in — ANSI "green",
   // which is `green` in a named colors.toml and `color2` in an indexed
   // one. Today's cell is filled and ringed in it so the one date you look
@@ -1052,9 +1060,15 @@ Panel {
     root.selectedDayKey = String(key)
   }
 
-  function openEntry(dayKey) {
+  // The blank slate both a fresh + and an edit start from. Kept as one
+  // function so an edit cannot inherit a stray field a previous add left
+  // behind -- the two follow-up calls (applyDraft with a fallback draft,
+  // or with the event being opened) are the only difference between them.
+  function resetEntryState(dayKey) {
     if (dayKey) root.selectedDayKey = String(dayKey)
     root.entryKind = "event"
+    root.editingEventId = null
+    root.deleteConfirming = false
     root.nlText = ""
     root.nlSegments = []
     root.nlCalendarName = ""
@@ -1067,6 +1081,12 @@ Panel {
     root.formCalendar = ""
     root.formCalendarChosen = false
     root.nlApplied = ({})
+    // mergeEntryDraft falls back to whatever this already holds whenever
+    // neither a typed phrase nor the draft names a date explicitly via a
+    // segment (fallbackDraft and draftFromAgendaEvent never do) — left
+    // unset, a pane opened on one day would keep showing whatever day the
+    // last pane was on.
+    root.formDate = ""
     root.formStart = ""
     root.formEnd = ""
     root.formEndDate = ""
@@ -1077,6 +1097,10 @@ Panel {
     root.formAlertMinutes = 0
     root.formRecurrence = null
     root.formPriority = ""
+  }
+
+  function openEntry(dayKey) {
+    root.resetEntryState(dayKey)
     root.applyDraft(Model.fallbackDraft("", root.selectedDayKey, "event"))
     root.entryOpen = true
     Qt.callLater(function() {
@@ -1087,10 +1111,42 @@ Panel {
     })
   }
 
+  // Opens the entry pane on an event already on the server, filled with
+  // what the day list already knew about it. The description, link,
+  // alarms and repeat rule are not part of that agenda row, so they arrive
+  // a moment later from `event view` and are patched in directly -- not
+  // through another applyDraft, whose merge would read their absence from
+  // the first draft as the phrase clearing them (see mergeEntryDraft).
+  function openEventEdit(event) {
+    if (!event || !event.objectId) return
+    root.resetEntryState(event.dateKey)
+    root.editingEventId = event.objectId
+    root.applyDraft(Model.draftFromAgendaEvent(event))
+    root.formCalendarChosen = true
+    root.entryOpen = true
+    Qt.callLater(function() {
+      if (nlField) nlField.setPhrase("")
+    })
+    var editingId = event.objectId
+    mailbox.call(["event", "view"], { positional: String(editingId) }, function (error, data) {
+      // Superseded by a close, or by opening a different event, while the
+      // read was in flight.
+      if (root.editingEventId !== editingId) return
+      if (error) { root.entryStatus = error; return }
+      var detail = Model.draftFromEventDetail(data, root.formDate)
+      if (detail.description) root.formDescription = detail.description
+      if (detail.link) root.formLink = detail.link
+      if (detail.alertMinutes) root.formAlertMinutes = detail.alertMinutes
+      if (detail.recurrence) root.setRecurrenceFrom(detail.recurrence.freq + ":" + detail.recurrence.interval)
+    })
+  }
+
   function closeEntry() {
     root.closeAddressSuggestions()
     root.entryOpen = false
     root.entryStatus = ""
+    root.editingEventId = null
+    root.deleteConfirming = false
     Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
   }
 
@@ -1173,7 +1229,8 @@ Panel {
       link: root.formLink || null,
       alertMinutes: root.formAlertMinutes || null,
       recurrence: root.formRecurrence,
-      priority: root.formPriority || null
+      priority: root.formPriority || null,
+      editingId: root.entryKind === "event" ? root.editingEventId : null
     }
   }
 
@@ -1184,7 +1241,7 @@ Panel {
       return
     }
     root.lastBuiltRequest = built.request
-    root.entryStatus = "Adding…"
+    root.entryStatus = root.editingEventId ? "Saving…" : "Adding…"
     var sent = Model.requestToArgs(built.request)
     if (!sent) {
       root.entryStatus = "could not create"
@@ -1202,9 +1259,35 @@ Panel {
     })
   }
 
+  // The delete button is a two-click confirm rather than a native dialog —
+  // Escape or clicking anywhere else in the pane backs out of it the same
+  // way it backs out of everything else here.
+  function deleteEditingEvent() {
+    if (!root.editingEventId) return
+    if (!root.deleteConfirming) {
+      root.deleteConfirming = true
+      return
+    }
+    var sent = Model.requestToArgs({ kind: "event", action: "delete", id: root.editingEventId })
+    if (!sent) return
+    root.entryStatus = "Deleting…"
+    mailbox.call(sent.cmd, sent.args, function (error) {
+      if (error) {
+        root.entryStatus = error
+        root.deleteConfirming = false
+        return
+      }
+      root.closeEntry()
+      // The daemon pushes event.changed as the delete lands; the re-ask
+      // below is the read that drops it from the day list.
+      root.askCalendar()
+    })
+  }
+
   function handleEntryKey(event) {
     if (event.key === Qt.Key_Escape) {
-      root.closeEntry()
+      if (root.deleteConfirming) root.deleteConfirming = false
+      else root.closeEntry()
       event.accepted = true
     } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
       // Enter anywhere in the entry pane means Create — the form always
@@ -1215,6 +1298,9 @@ Panel {
   }
 
   function setEntryKind(kind) {
+    // Editing one specific event has nothing to switch to; the tabs are
+    // hidden for it, but the shortcuts that drive them are still live.
+    if (root.editingEventId) return
     root.entryKind = kind === "task" ? "task" : "event"
     if (root.nlText) root.applyPhrase()
     root.ensureCalendarForKind()
@@ -2203,6 +2289,17 @@ Panel {
                   joinable ? joinButton.height + Style.space(4) : 0
                 )
 
+                // Opens the event for editing. Stops short of the join
+                // button's own area so the two clicks stay separate — one
+                // joins the meeting, the other edits the appointment.
+                MouseArea {
+                  anchors.fill: parent
+                  anchors.rightMargin: eventRow.joinReserve
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.openEventEdit(eventRow.modelData)
+                }
+
                 Rectangle {
                   width: Style.space(3)
                   height: parent.height - Style.space(4)
@@ -2450,7 +2547,7 @@ Panel {
         Shortcut {
           enabled: entryPane.keysIdle
           sequence: "Escape"
-          onActivated: root.closeEntry()
+          onActivated: root.deleteConfirming ? (root.deleteConfirming = false) : root.closeEntry()
         }
 
         Shortcut {
@@ -2505,6 +2602,7 @@ Panel {
 
               Row {
                 id: kindTabs
+                visible: !root.editingEventId
                 anchors.left: backButton.right
                 anchors.leftMargin: Style.space(10)
                 anchors.verticalCenter: parent.verticalCenter
@@ -2523,6 +2621,20 @@ Panel {
                 }
               }
 
+              // Nothing to switch to while editing one specific event: the
+              // tabs above give way to saying plainly what the pane is for.
+              Text {
+                visible: root.editingEventId !== null
+                anchors.left: backButton.right
+                anchors.leftMargin: Style.space(10)
+                anchors.verticalCenter: parent.verticalCenter
+                text: "EDIT EVENT"
+                color: root.contentForeground
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.bodySmall
+                font.bold: true
+              }
+
               // The calendar the entry lands in, in the colour the server
               // gives it — the same dot the month grid paints on a day.
               Rectangle {
@@ -2539,6 +2651,12 @@ Panel {
               Dropdown {
                 id: calDropdown
                 visible: root.calendarChoices.length > 0
+                // An edit cannot move an event to another calendar — the
+                // daemon has no verb for that — so the chooser goes
+                // read-only rather than offering a change that would be
+                // silently dropped.
+                enabled: !root.editingEventId
+                opacity: enabled ? 1 : 0.55
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 width: Math.min(Style.space(150), parent.width * 0.36)
@@ -2555,6 +2673,8 @@ Panel {
               // gets matched at create time, so entry never blocks on it.
               TextField {
                 visible: root.calendarChoices.length === 0
+                enabled: !root.editingEventId
+                opacity: enabled ? 1 : 0.55
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 width: Math.min(Style.space(150), parent.width * 0.36)
@@ -3079,7 +3199,8 @@ Panel {
             Button {
               width: entryColumn.rowWidth
               anchors.horizontalCenter: parent.horizontalCenter
-              text: root.entryKind === "task" ? "Add this todo" : "Add this event"
+              text: root.editingEventId ? "Save changes"
+                : (root.entryKind === "task" ? "Add this todo" : "Add this event")
               selected: true
               foreground: root.contentForeground
               fontFamily: root.contentFontFamily
@@ -3093,6 +3214,21 @@ Panel {
                   event.accepted = true
                 }
               }
+            }
+
+            // Deleting is a click that arms it and a second click that
+            // does it — no native dialog, same as everything else here,
+            // but a mistaken single click must not be the whole story.
+            Button {
+              visible: root.editingEventId !== null
+              width: entryColumn.rowWidth
+              anchors.horizontalCenter: parent.horizontalCenter
+              text: root.deleteConfirming ? "Click again to delete" : "Delete this event"
+              bordered: true
+              accent: "#d9534f"
+              foreground: root.deleteConfirming ? "#d9534f" : root.contentForeground
+              fontFamily: root.contentFontFamily
+              onClicked: root.deleteEditingEvent()
             }
 
             Text {

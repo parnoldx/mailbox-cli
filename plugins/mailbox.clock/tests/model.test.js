@@ -530,6 +530,15 @@ test("buildQuickAddRequest builds timed, all-day and multi-day events", () => {
   assert.equal(noted.request.description, "bring cake")
 })
 
+test("an editingId on the draft rides along on the built request, an absent one does not", () => {
+  const edited = Model.buildQuickAddRequest(
+    Object.assign(baseDraft(), { editingId: 1488 }), nlNow)
+  assert.equal(edited.request.id, 1488)
+
+  const fresh = Model.buildQuickAddRequest(baseDraft(), nlNow)
+  assert.equal(fresh.request.id, undefined)
+})
+
 test("buildQuickAddRequest builds tasks with iCalendar priorities", () => {
   const mk = priority => Model.buildQuickAddRequest(
     Object.assign(Model.fallbackDraft("Buy groceries", "2026-08-24", "task"),
@@ -842,6 +851,22 @@ test("parts typed by hand are not the phrase's to clear", () => {
   round = type("review 14:00 with Ana", noted, round.applied)
   assert.equal(round.values.notes, "bring the deck")
   assert.equal(round.values.link, "https://zoom.us/j/1")
+})
+
+test("a fresh draft's date only wins if the caller clears the stale one first", () => {
+  // fallbackDraft and draftFromAgendaEvent never mark the date as something
+  // the phrase "said" (no date segment), so mergeEntryDraft falls back to
+  // whatever `current.date` already holds. Opening the entry pane on one
+  // day, then a second day, without resetting formDate in between, would
+  // silently keep showing the first day — this is the contract Panel.qml's
+  // resetEntryState relies on to avoid that.
+  const draft = Model.fallbackDraft("", "2026-09-09", "event")
+
+  const stale = Model.mergeEntryDraft(draft, Object.assign({}, emptyForm, { date: "2026-09-07" }), {}, "event")
+  assert.equal(stale.values.date, "2026-09-07", "a leftover current.date wins over the fresh draft")
+
+  const cleared = Model.mergeEntryDraft(draft, Object.assign({}, emptyForm, { date: "" }), {}, "event")
+  assert.equal(cleared.values.date, "2026-09-09", "clearing current.date first lets the fresh draft's day through")
 })
 
 test("merging keeps the task rules and the midnight wrap", () => {

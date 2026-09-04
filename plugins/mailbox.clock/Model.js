@@ -1304,6 +1304,70 @@ function fallbackDraft(text, dayKey, kind) {
   return draft
 }
 
+// What the entry pane shows first when a day-list row is clicked open for
+// editing: the fields already known from the agenda row it was drawn from.
+// It is missing the description, link, alarms and repeat rule -- those live
+// only on the full object -- so the caller follows up with `event view` and
+// applies a second, fuller draft on top once that answers.
+function draftFromAgendaEvent(event) {
+  var draft = emptyDraft("event", (event && event.dateKey) || "")
+  if (!event) return draft
+  draft.title = event.title || ""
+  draft.calendarName = event.calendarName || null
+  draft.location = event.location || null
+  draft.allDay = !!event.allDay
+  draft.link = event.meetingUrl || null
+  var endStr = String(event.end || "")
+  if (!event.allDay) {
+    draft.startTime = event.time || null
+    draft.endTime = endStr.length > 10 ? endStr.slice(11, 16) : null
+    var endDay = endStr.slice(0, 10)
+    // endNextDay is buildQuickAddRequest's shorthand for "wrap to the next
+    // calendar day" when there is no explicit end date; an explicit
+    // endDateKey already says which day, so setting both would add the
+    // wrap twice.
+    if (endDay && endDay !== draft.dateKey) draft.endDateKey = endDay
+  } else if (endStr) {
+    // The wire end date is exclusive (the day after the last day the event
+    // covers); the form wants the last day itself, the way a person would
+    // read "through the 12th".
+    var lastDay = dateFromKey(endStr.slice(0, 10), null)
+    if (lastDay) {
+      lastDay.setDate(lastDay.getDate() - 1)
+      var lastKey = keyForDate(lastDay)
+      if (lastKey !== draft.dateKey) draft.endDateKey = lastKey
+    }
+  }
+  return draft
+}
+
+// The rest of draftFromAgendaEvent's picture, once `event view` answers:
+// the fields that never made it into an agenda row.
+function draftFromEventDetail(detail, dayKey) {
+  var draft = emptyDraft("event", dayKey || "")
+  if (!detail) return draft
+  draft.description = detail.description || null
+  draft.link = safeLinkUrl(detail.url) || null
+  if (detail.alarms && detail.alarms.length) draft.alertMinutes = Number(detail.alarms[0]) || null
+  if (detail.repeat) {
+    var rule = parseRepeatRuleForForm(detail.repeat)
+    if (rule) draft.recurrence = rule
+  }
+  return draft
+}
+
+// The daemon hands back an RRULE; the form's recurrence pill only knows
+// FREQ and INTERVAL, so anything richer (BYDAY and the like) is left for
+// the raw rule to keep meaning rather than guessed at.
+function parseRepeatRuleForForm(rrule) {
+  var freqMatch = /FREQ=([A-Z]+)/.exec(String(rrule || ""))
+  if (!freqMatch) return null
+  var freq = freqMatch[1].toLowerCase()
+  if (["daily", "weekly", "monthly", "yearly"].indexOf(freq) === -1) return null
+  var intervalMatch = /INTERVAL=(\d+)/.exec(rrule)
+  return { freq: freq, interval: intervalMatch ? parseInt(intervalMatch[1], 10) || 1 : 1 }
+}
+
 var NL_MAX_EPOCH_DAYS = 2 * 366
 
 function nlValidMs(ms, nowMs) {
@@ -1501,22 +1565,24 @@ function buildQuickAddRequest(draft, nowMs) {
 
   var location = String(draft.location || "").replace(/^\s+|\s+$/g, "")
   var description = String(draft.description || "").replace(/^\s+|\s+$/g, "").slice(0, 8000)
-  return {
-    ok: true,
-    request: {
-      kind: "event",
-      title: title,
-      startMs: startMs,
-      endMs: endMs,
-      allDay: !!draft.allDay,
-      location: location || null,
-      description: description || null,
-      calendarName: draft.calendarName || null,
-      alertMinutes: draft.alertMinutes > 0 ? Math.round(draft.alertMinutes) : null,
-      recurrence: recurrence,
-      link: safeLinkUrl(draft.link) || null
-    }
+  var request = {
+    kind: "event",
+    title: title,
+    startMs: startMs,
+    endMs: endMs,
+    allDay: !!draft.allDay,
+    location: location || null,
+    description: description || null,
+    calendarName: draft.calendarName || null,
+    alertMinutes: draft.alertMinutes > 0 ? Math.round(draft.alertMinutes) : null,
+    recurrence: recurrence,
+    link: safeLinkUrl(draft.link) || null
   }
+  // An id on the draft means the pane is editing an event already on the
+  // server, not making a new one -- requestToArgs reads it to send `event
+  // edit` instead of `event add`.
+  if (draft.editingId) request.id = draft.editingId
+  return { ok: true, request: request }
 }
 
 // One-line confirmation for the entry pane's status row: what Create would
@@ -1661,6 +1727,11 @@ function eventsFromAgenda(rows, colors) {
     var start = String(row.start || "")
     var event = {
       id: String(row.uid || row.id || row.summary || ""),
+      // The mirror's numeric id, which is what `event edit`/`event delete`
+      // take — the uid above is for de-duplicating recurring instances, not
+      // for addressing the object on the server.
+      objectId: row.id !== undefined && row.id !== null ? Number(row.id) : null,
+      recurring: !!row.recurring,
       calendarId: cal,
       calendarName: cal,
       color: colors[cal] || "",
@@ -1761,13 +1832,20 @@ function requestToArgs(request) {
     if (request.priority) taskArgs.priority = priorityWord(request.priority)
     return { cmd: ["todo", "add"], args: taskArgs }
   }
-  if (!request.title || !request.startMs) return null
-  var args = {
-    positional: String(request.title),
-    start: stampLocal(request.startMs, !request.allDay)
+  if (request.action === "delete") {
+    if (!request.id) return null
+    return { cmd: ["event", "delete"], args: { positional: String(request.id) } }
   }
+  if (!request.title || !request.startMs) return null
+  var editing = !!request.id
+  var args = editing
+    ? { positional: String(request.id), title: String(request.title) }
+    : { positional: String(request.title) }
+  args.start = stampLocal(request.startMs, !request.allDay)
   if (request.endMs) args.end = stampLocal(request.endMs, !request.allDay)
-  if (request.calendarName) args.calendar = String(request.calendarName)
+  // An edit cannot move an event to another calendar -- the daemon has no
+  // verb for that -- so naming one only matters when this is a new event.
+  if (request.calendarName && !editing) args.calendar = String(request.calendarName)
   if (request.location) args.location = String(request.location)
   // The link is a link, not a line of the description: written as --url it is
   // one field every client shows as one, instead of a URL glued to the notes.
@@ -1777,7 +1855,7 @@ function requestToArgs(request) {
   var rule = repeatRule(request.recurrence)
   if (rule) args.repeat = rule
   if (request.allDay) args.all_day = true
-  return { cmd: ["event", "add"], args: args }
+  return { cmd: ["event", editing ? "edit" : "add"], args: args }
 }
 
 // The three words the daemon takes, from the number the pane picked.
@@ -2223,6 +2301,8 @@ if (typeof module !== "undefined") {
     meetingUrlFor: meetingUrlFor,
     parseEventPhrase: parseEventPhrase,
     fallbackDraft: fallbackDraft,
+    draftFromAgendaEvent: draftFromAgendaEvent,
+    draftFromEventDetail: draftFromEventDetail,
     buildQuickAddRequest: buildQuickAddRequest,
     buildQuickTodoRequest: buildQuickTodoRequest,
     firstTaskCalendarName: firstTaskCalendarName,
