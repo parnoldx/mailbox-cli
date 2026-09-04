@@ -24,9 +24,8 @@ func runBoxList(in *input, stdout, stderr io.Writer) int {
 // printBoxes prints one line per Box: the name that reads it, what is in it,
 // and a mark for the ones the daemon watches rather than polls.
 func printBoxes(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(resp.Data)
+	rows, ok := rowsOf(stdout, resp.Data)
 	if !ok {
-		encodeJSON(stdout, resp.Data)
 		return
 	}
 	if len(rows) == 0 {
@@ -128,9 +127,8 @@ func runSieveActivate(in *input, stdout, stderr io.Writer) int {
 // printScripts marks the active script and the one the routing owns, because
 // those are the two facts that decide whether editing one is safe.
 func printScripts(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(resp.Data)
+	rows, ok := rowsOf(stdout, resp.Data)
 	if !ok {
-		encodeJSON(stdout, resp.Data)
 		return
 	}
 	if len(rows) == 0 {

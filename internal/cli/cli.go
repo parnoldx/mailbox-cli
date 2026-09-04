@@ -103,11 +103,8 @@ func runAttachmentBytes(in *input, stdout, stderr io.Writer) int {
 }
 
 func printInlineBytes(stdout, stderr io.Writer, resp daemon.Response) {
-	m, ok := resp.Data.(map[string]any)
+	m, ok := fieldsOf(stdout, resp.Data)
 	if !ok {
-		enc := json.NewEncoder(stdout)
-		enc.SetIndent("", "  ")
-		_ = enc.Encode(resp.Data)
 		return
 	}
 	size := ""
@@ -119,11 +116,8 @@ func printInlineBytes(stdout, stderr io.Writer, resp daemon.Response) {
 }
 
 func printAttachments(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(resp.Data)
+	rows, ok := rowsOf(stdout, resp.Data)
 	if !ok {
-		enc := json.NewEncoder(stdout)
-		enc.SetIndent("", "  ")
-		_ = enc.Encode(resp.Data)
 		return
 	}
 	if len(rows) == 0 {
@@ -162,11 +156,8 @@ func printProblems(stdout io.Writer, resp daemon.Response) {
 }
 
 func printSaved(stdout, stderr io.Writer, resp daemon.Response) {
-	m, ok := resp.Data.(map[string]any)
+	m, ok := fieldsOf(stdout, resp.Data)
 	if !ok {
-		enc := json.NewEncoder(stdout)
-		enc.SetIndent("", "  ")
-		_ = enc.Encode(resp.Data)
 		return
 	}
 	size := ""
@@ -199,11 +190,8 @@ func runThread(in *input, stdout, stderr io.Writer) int {
 // printThread prints a conversation oldest first, each Message under a rule
 // carrying the id that reads it on its own.
 func printThread(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(resp.Data)
+	rows, ok := rowsOf(stdout, resp.Data)
 	if !ok {
-		enc := json.NewEncoder(stdout)
-		enc.SetIndent("", "  ")
-		_ = enc.Encode(resp.Data)
 		return
 	}
 	for i, r := range rows {
@@ -245,11 +233,8 @@ func runSearch(in *input, stdout, stderr io.Writer) int {
 // printHits prints one line per Message: the id to read it with, where it is,
 // and the text around the match.
 func printHits(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(resp.Data)
+	rows, ok := rowsOf(stdout, resp.Data)
 	if !ok {
-		enc := json.NewEncoder(stdout)
-		enc.SetIndent("", "  ")
-		_ = enc.Encode(resp.Data)
 		return
 	}
 	if len(rows) == 0 {
@@ -297,11 +282,8 @@ func runMove(in *input, stdout, stderr io.Writer) int {
 // printChanges says what a write did, one line per Message, in the id form the
 // next command would use.
 func printChanges(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(resp.Data)
+	rows, ok := rowsOf(stdout, resp.Data)
 	if !ok {
-		enc := json.NewEncoder(stdout)
-		enc.SetIndent("", "  ")
-		_ = enc.Encode(resp.Data)
 		return
 	}
 	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
@@ -330,15 +312,39 @@ func printChanges(stdout, stderr io.Writer, resp daemon.Response) {
 	behindNotice(stderr, resp)
 }
 
-// rowsOf reads a listing out of a reply. A reply with no data at all is an
-// empty listing: the daemon builds its lists empty, but a field that is absent
-// for any other reason should read the same way rather than printing "null".
-func rowsOf(data any) ([]any, bool) {
+// rowsOf reads a listing out of a reply and fieldsOf one record. A reply with
+// no data at all is an empty listing: the daemon builds its lists empty, but a
+// field that is absent for any other reason should read the same way rather
+// than printing "null".
+//
+// A reply that is neither is printed as indented JSON and reported as not
+// drawable, which is what every renderer then does with it: the daemon
+// answered, and showing the answer unformatted beats showing nothing. It
+// happens when a command grows a reply shape its printer has not caught up
+// with, so it is a fallback and not a path anything relies on.
+func rowsOf(stdout io.Writer, data any) ([]any, bool) {
 	if data == nil {
 		return nil, true
 	}
 	rows, ok := data.([]any)
+	if !ok {
+		encodeJSON(stdout, data)
+	}
 	return rows, ok
+}
+
+func fieldsOf(stdout io.Writer, data any) (map[string]any, bool) {
+	m, ok := data.(map[string]any)
+	if !ok {
+		encodeJSON(stdout, data)
+	}
+	return m, ok
+}
+
+func encodeJSON(w io.Writer, v any) {
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(v)
 }
 
 func asAny(v any) []any {
@@ -410,11 +416,8 @@ type renderer func(stdout, stderr io.Writer, resp daemon.Response)
 // body has already been rendered and sanitised by the Daemon, so this is only
 // layout.
 func printMessage(stdout, stderr io.Writer, resp daemon.Response) {
-	m, ok := resp.Data.(map[string]any)
+	m, ok := fieldsOf(stdout, resp.Data)
 	if !ok {
-		enc := json.NewEncoder(stdout)
-		enc.SetIndent("", "  ")
-		_ = enc.Encode(resp.Data)
 		return
 	}
 	for _, f := range []struct{ label, key string }{
@@ -442,11 +445,8 @@ func printMessage(stdout, stderr io.Writer, resp daemon.Response) {
 // printStatus says what the Mirror holds, one line per account. With one
 // account it is one line, which is what it always was.
 func printStatus(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(resp.Data)
+	rows, ok := rowsOf(stdout, resp.Data)
 	if !ok {
-		enc := json.NewEncoder(stdout)
-		enc.SetIndent("", "  ")
-		_ = enc.Encode(resp.Data)
 		return
 	}
 	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
@@ -492,11 +492,8 @@ func numOf(v any) int64 {
 }
 
 func printTable(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(resp.Data)
+	rows, ok := rowsOf(stdout, resp.Data)
 	if !ok {
-		enc := json.NewEncoder(stdout)
-		enc.SetIndent("", "  ")
-		_ = enc.Encode(resp.Data)
 		return
 	}
 	// Silence on an empty listing reads like a command that failed quietly, so

@@ -39,19 +39,16 @@ type sent struct {
 func (d *Daemon) handleSend(ctx context.Context, req Request, resp Response) Response {
 	// Which account sends is a choice about the mail, not an id, so it is a
 	// flag. Ids never need one (ADR-0005).
-	acct, err := d.accountNamed(str(req.Args["account"]))
+	acct, err := d.accountNamed(req.Str("account"))
 	if err != nil {
-		resp.Code, resp.Error = "usage", err.Error()
-		return resp
+		return resp.usage(err.Error())
 	}
 	if d.Outbox == nil || acct.Courier == nil {
-		resp.Code, resp.Error = "api", fmt.Sprintf("account %q cannot send: no outbox", acct.Name)
-		return resp
+		return resp.api(fmt.Sprintf("account %q cannot send: no outbox", acct.Name))
 	}
 	draft, err := d.draftOf(acct, req)
 	if err != nil {
-		resp.Code, resp.Error = "usage", err.Error()
-		return resp
+		return resp.usage(err.Error())
 	}
 	return d.deliver(ctx, acct, draft, resp, req)
 }
@@ -62,48 +59,41 @@ func (d *Daemon) handleSend(ctx context.Context, req Request, resp Response) Res
 // does not carry them starts a new conversation on every client that reads it
 // (ADR-0008).
 func (d *Daemon) handleReply(ctx context.Context, req Request, resp Response) Response {
-	id, _ := req.Args["positional"].(string)
+	id := req.Str("positional")
 	// A reply is sent by the account that received it. Answering from a
 	// different address than the one that was written to is not a default
 	// anybody would want.
 	acct, folder, uid, err := d.resolveID(id)
 	if err != nil {
-		resp.Code, resp.Error = "usage", err.Error()
-		return resp
+		return resp.usage(err.Error())
 	}
-	if wants, _ := req.Args["draft"].(bool); !wants && (d.Outbox == nil || acct.Courier == nil) {
-		resp.Code, resp.Error = "api", fmt.Sprintf("account %q cannot send: no outbox", acct.Name)
-		return resp
+	if !req.Bool("draft") && (d.Outbox == nil || acct.Courier == nil) {
+		return resp.api(fmt.Sprintf("account %q cannot send: no outbox", acct.Name))
 	}
 	parent, err := d.Mirror.Row(acct.Name, folder, uid)
 	if errors.Is(err, mirror.ErrNotFound) {
-		resp.Code, resp.Error = "not_found", noSuchMessage(id)
-		return resp
+		return resp.notFound(noSuchMessage(id))
 	}
 	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.api(err.Error())
 	}
 
 	draft, err := d.draftOf(acct, req)
 	if err != nil {
-		resp.Code, resp.Error = "usage", err.Error()
-		return resp
+		return resp.usage(err.Error())
 	}
-	all, _ := req.Args["all"].(bool)
+	all := req.Bool("all")
 	if err := d.answer(acct, &draft, parent.Message, all); err != nil {
-		resp.Code, resp.Error = "usage", err.Error()
-		return resp
+		return resp.usage(err.Error())
 	}
 	// Filing it is the same reply, written to the drafts box instead of the
 	// outbox. It is built here rather than by `draft save` because who to
 	// answer and what thread it belongs to come from the parent, and only this
 	// path has read it.
-	if wants, _ := req.Args["draft"].(bool); wants {
+	if req.Bool("draft") {
 		box, err := draftsBox(acct)
 		if err != nil {
-			resp.Code, resp.Error = "usage", err.Error()
-			return resp
+			return resp.usage(err.Error())
 		}
 		return d.saveDraft(ctx, acct, box, draft, resp)
 	}
@@ -199,7 +189,7 @@ func (d *Daemon) draftOf(a *Account, req Request) (compose.Draft, error) {
 		key  string
 		dest *[]compose.Address
 	}{{"to", &draft.To}, {"cc", &draft.Cc}, {"bcc", &draft.Bcc}} {
-		for _, raw := range strList(req.Args[f.key]) {
+		for _, raw := range req.Strings(f.key) {
 			list, err := compose.ParseAddressList(raw)
 			if err != nil {
 				return draft, err
@@ -207,13 +197,13 @@ func (d *Daemon) draftOf(a *Account, req Request) (compose.Draft, error) {
 			*f.dest = append(*f.dest, list...)
 		}
 	}
-	draft.Subject, _ = req.Args["subject"].(string)
-	draft.Body, _ = req.Args["body"].(string)
+	draft.Subject = req.Str("subject")
+	draft.Body = req.Str("body")
 	// The body carries an HTML twin. A caller that has real HTML (a GUI
 	// composer) passes it as body_html and we send it verbatim; otherwise the
 	// body is Markdown — plain prose is valid Markdown too — and we render it.
 	// Either way draft.Body stays the text/plain part, untouched.
-	if raw, _ := req.Args["body_html"].(string); raw != "" {
+	if raw := req.Str("body_html"); raw != "" {
 		draft.BodyHTML = raw
 		if draft.Body == "" {
 			draft.Body = htmlmd.HTMLToMarkdown(raw)
@@ -221,7 +211,7 @@ func (d *Daemon) draftOf(a *Account, req Request) (compose.Draft, error) {
 	} else if draft.Body != "" {
 		draft.BodyHTML = htmlmd.MarkdownToHTML(draft.Body)
 	}
-	for _, path := range strList(req.Args["attach"]) {
+	for _, path := range req.Strings("attach") {
 		// The Daemon reads the file, so the path has to mean the same thing
 		// here as it did in the caller's shell: an absolute one. The CLI
 		// resolves it, the same way `attachment save` resolves --output.
@@ -246,26 +236,22 @@ func (d *Daemon) deliver(ctx context.Context, a *Account, draft compose.Draft, r
 	// reminder.
 	watchWhen, watch, err := d.replyWatch(a, req)
 	if err != nil {
-		resp.Code, resp.Error = "usage", err.Error()
-		return resp
+		return resp.usage(err.Error())
 	}
 	raw, err := draft.Build()
 	if err != nil {
-		resp.Code, resp.Error = "usage", err.Error()
-		return resp
+		return resp.usage(err.Error())
 	}
 	id, err := d.Outbox.Enqueue(outbox.Item{
 		Account: a.Name, MessageKey: draft.MessageID, From: draft.From.Addr,
 		Recipients: draft.Recipients(), Subject: draft.Subject, Raw: raw,
 	})
 	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.api(err.Error())
 	}
 	it, err := a.Courier.Deliver(ctx, id)
 	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.api(err.Error())
 	}
 	out := sent{
 		OutboxID: it.ID, MessageID: it.MessageKey, State: string(it.State),
@@ -301,8 +287,7 @@ func (d *Daemon) deliver(ctx context.Context, a *Account, draft compose.Draft, r
 		// than chased across drains — a narrow edge case.
 		d.logf("outbox #%d: %s", it.ID, it.LastError)
 	}
-	resp.OK, resp.Data = true, out
-	return resp
+	return resp.ok(out)
 }
 
 // mirrorSentCopy brings the Box the copy landed in up to date and tells the
@@ -368,19 +353,14 @@ type outboxRow struct {
 // was cut off from went out (ADR-0017).
 func (d *Daemon) handleOutbox(ctx context.Context, req Request, resp Response) Response {
 	if d.Outbox == nil {
-		resp.Code, resp.Error = "api", "this daemon has no outbox"
-		return resp
+		return resp.api("this daemon has no outbox")
 	}
-	verb := "list"
-	if len(req.Cmd) > 1 {
-		verb = req.Cmd[1]
-	}
+	verb := req.Verb("list")
 	switch verb {
 	case "list":
 		items, err := d.Outbox.List(50)
 		if err != nil {
-			resp.Code, resp.Error = "api", err.Error()
-			return resp
+			return resp.api(err.Error())
 		}
 		rows := make([]outboxRow, 0, len(items))
 		for _, it := range items {
@@ -398,14 +378,12 @@ func (d *Daemon) handleOutbox(ctx context.Context, req Request, resp Response) R
 			}
 			rows = append(rows, row)
 		}
-		resp.OK, resp.Data = true, rows
-		return resp
+		return resp.ok(rows)
 
 	case "retry":
 		id, err := outboxID(req)
 		if err != nil {
-			resp.Code, resp.Error = "usage", err.Error()
-			return resp
+			return resp.usage(err.Error())
 		}
 		if err := d.Outbox.Retry(id); err != nil {
 			return outboxFail(resp, err)
@@ -416,42 +394,35 @@ func (d *Daemon) handleOutbox(ctx context.Context, req Request, resp Response) R
 		}
 		acct, err := d.accountNamed(queued.Account)
 		if err != nil || acct.Courier == nil {
-			resp.Code, resp.Error = "api", fmt.Sprintf("#%d belongs to account %q, which cannot send", id, queued.Account)
-			return resp
+			return resp.api(fmt.Sprintf("#%d belongs to account %q, which cannot send", id, queued.Account))
 		}
 		it, err := acct.Courier.Deliver(ctx, id)
 		if err != nil {
-			resp.Code, resp.Error = "api", err.Error()
-			return resp
+			return resp.api(err.Error())
 		}
 		if it.Box != "" && it.UID != 0 {
 			d.mirrorSentCopy(ctx, acct, it.Box)
 		}
 		if it.State == outbox.Queued {
-			resp.Code, resp.Error = "api", fmt.Sprintf("not sent: %s", it.LastError)
-			return resp
+			return resp.api(fmt.Sprintf("not sent: %s", it.LastError))
 		}
-		resp.OK, resp.Data = true, sent{
+		return resp.ok(sent{
 			OutboxID: it.ID, MessageID: it.MessageKey, State: string(it.State),
 			Subject: it.Subject, Recipients: it.Recipients, Box: it.Box, UID: it.UID,
 			ID: placementID(acct, it.Box, it.UID),
-		}
-		return resp
+		})
 
 	case "cancel":
 		id, err := outboxID(req)
 		if err != nil {
-			resp.Code, resp.Error = "usage", err.Error()
-			return resp
+			return resp.usage(err.Error())
 		}
 		if err := d.Outbox.Cancel(id); err != nil {
 			return outboxFail(resp, err)
 		}
-		resp.OK, resp.Data = true, map[string]any{"id": id, "state": "cancelled"}
-		return resp
+		return resp.ok(map[string]any{"id": id, "state": "cancelled"})
 	}
-	resp.Code, resp.Error = "usage", fmt.Sprintf("unknown outbox command %q", verb)
-	return resp
+	return resp.usage(fmt.Sprintf("unknown outbox command %q", verb))
 }
 
 func placementID(a *Account, box string, uid uint32) string {
@@ -463,11 +434,9 @@ func placementID(a *Account, box string, uid uint32) string {
 
 func outboxFail(resp Response, err error) Response {
 	if errors.Is(err, outbox.ErrNotFound) {
-		resp.Code, resp.Error = "not_found", err.Error()
-		return resp
+		return resp.notFound(err.Error())
 	}
-	resp.Code, resp.Error = "usage", err.Error()
-	return resp
+	return resp.usage(err.Error())
 }
 
 func outboxID(req Request) (int64, error) {
@@ -484,61 +453,33 @@ func outboxID(req Request) (int64, error) {
 	return 0, errors.New("no outbox id given")
 }
 
-// strList reads a repeatable argument, which JSON hands over as a list of any.
-func strList(v any) []string {
-	switch t := v.(type) {
-	case string:
-		if t == "" {
-			return nil
-		}
-		return []string{t}
-	case []string:
-		return t
-	case []any:
-		out := make([]string, 0, len(t))
-		for _, e := range t {
-			if s, ok := e.(string); ok && s != "" {
-				out = append(out, s)
-			}
-		}
-		return out
-	}
-	return nil
-}
-
 // handleForward sends a Message on to somebody else. It is a reply's mirror
 // image: a reply keeps the thread and changes the sender, a forward keeps the
 // text and changes the thread — so it carries no In-Reply-To and no References,
 // because the people it is going to were never in that conversation.
 func (d *Daemon) handleForward(ctx context.Context, req Request, resp Response) Response {
-	id, _ := req.Args["positional"].(string)
+	id := req.Str("positional")
 	acct, folder, uid, err := d.resolveID(id)
 	if err != nil {
-		resp.Code, resp.Error = "usage", err.Error()
-		return resp
+		return resp.usage(err.Error())
 	}
 	if d.Outbox == nil || acct.Courier == nil {
-		resp.Code, resp.Error = "api", fmt.Sprintf("account %q cannot send: no outbox", acct.Name)
-		return resp
+		return resp.api(fmt.Sprintf("account %q cannot send: no outbox", acct.Name))
 	}
 	original, err := d.Mirror.Row(acct.Name, folder, uid)
 	if errors.Is(err, mirror.ErrNotFound) {
-		resp.Code, resp.Error = "not_found", noSuchMessage(id)
-		return resp
+		return resp.notFound(noSuchMessage(id))
 	}
 	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.api(err.Error())
 	}
 
 	draft, err := d.draftOf(acct, req)
 	if err != nil {
-		resp.Code, resp.Error = "usage", err.Error()
-		return resp
+		return resp.usage(err.Error())
 	}
 	if len(draft.To) == 0 {
-		resp.Code, resp.Error = "usage", "forward needs --to"
-		return resp
+		return resp.usage("forward needs --to")
 	}
 	if draft.Subject == "" {
 		draft.Subject = forwardSubject(original.Message.Subject)

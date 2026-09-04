@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -43,11 +42,8 @@ func runEventView(in *input, stdout, stderr io.Writer) int {
 // printAgenda prints the days, each with what is on it. The id comes first,
 // because the next thing a caller does is read one of them.
 func printAgenda(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(resp.Data)
+	rows, ok := rowsOf(stdout, resp.Data)
 	if !ok {
-		enc := json.NewEncoder(stdout)
-		enc.SetIndent("", "  ")
-		_ = enc.Encode(resp.Data)
 		return
 	}
 	if len(rows) == 0 {
@@ -98,11 +94,8 @@ func dayHeading(date string) string {
 }
 
 func printCalendars(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(resp.Data)
+	rows, ok := rowsOf(stdout, resp.Data)
 	if !ok {
-		enc := json.NewEncoder(stdout)
-		enc.SetIndent("", "  ")
-		_ = enc.Encode(resp.Data)
 		return
 	}
 	if len(rows) == 0 {
@@ -152,11 +145,8 @@ func minutes(v any) string {
 }
 
 func printEvent(stdout, stderr io.Writer, resp daemon.Response) {
-	m, ok := resp.Data.(map[string]any)
+	m, ok := fieldsOf(stdout, resp.Data)
 	if !ok {
-		enc := json.NewEncoder(stdout)
-		enc.SetIndent("", "  ")
-		_ = enc.Encode(resp.Data)
 		return
 	}
 	fmt.Fprintf(stdout, "%-10s %s\n", "Summary:", str(m["summary"]))

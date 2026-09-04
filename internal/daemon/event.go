@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"mailbox/internal/habit"
 	"mailbox/internal/mirror"
 	"mailbox/internal/sync/davsync"
 	"mailbox/internal/vcal"
@@ -19,45 +18,23 @@ import (
 // iCalendar is the record, so an edit reads what is there, changes what was
 // named, and puts it back under the ETag it read (ADR-0010).
 func (d *Daemon) changeEvent(ctx context.Context, verb string, req Request, resp Response) Response {
-	if d.DAVWriter == nil {
-		resp.Code, resp.Error = "api", "this daemon cannot write: no dav connection"
-		return resp
-	}
-
 	if verb == "add" {
 		return d.addEvent(ctx, req, resp)
 	}
 
-	id, err := objectID(req)
+	object, col, err := d.load(req, "event")
 	if err != nil {
-		resp.Code, resp.Error = "usage", err.Error()
-		return resp
-	}
-	object, err := d.Mirror.Object(d.Account, id)
-	if errors.Is(err, mirror.ErrNotFound) {
-		resp.Code, resp.Error = "not_found", fmt.Sprintf("no event %d in the mirror", id)
-		return resp
-	}
-	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
-	}
-	col, err := d.collectionOf(object)
-	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.failed(err)
 	}
 
 	if verb == "delete" {
 		if err := d.DAVWriter.Delete(ctx, col, object); err != nil {
-			resp.Code, resp.Error = "api", err.Error()
-			return resp
+			return resp.api(err.Error())
 		}
-		d.push(Push{Event: "event.changed", Account: d.Account, Box: col.Name})
-		resp.OK, resp.Data = true, map[string]any{
-			"id": id, "state": "deleted", "summary": object.Summary, "calendar": col.Name,
-		}
-		return resp
+		d.push(Push{Event: eventChanged, Account: d.Account, Box: col.Name})
+		return resp.ok(map[string]any{
+			"id": object.ID, "state": "deleted", "summary": object.Summary, "calendar": col.Name,
+		})
 	}
 
 	// A repeating event is one object and one rule. Editing it moves every
@@ -65,48 +42,39 @@ func (d *Daemon) changeEvent(ctx context.Context, verb string, req Request, resp
 	// agenda, so it is said out loud rather than discovered next week.
 	edit, err := eventEdit(req)
 	if err != nil {
-		resp.Code, resp.Error = "usage", err.Error()
-		return resp
+		return resp.usage(err.Error())
 	}
 	if edit.Empty() {
-		resp.Code, resp.Error = "usage",
-			"event edit needs something to change: --title, --start, --end, --location, "+
-				"--notes, --url, --repeat or --alarm"
-		return resp
+		return resp.usage(
+			"event edit needs something to change: --title, --start, --end, --location, " +
+				"--notes, --url, --repeat or --alarm")
 	}
 	raw, err := vcal.SetEvent(object.Raw, edit)
 	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.api(err.Error())
 	}
-	written, err := d.writeEvent(ctx, col, object.Href, raw, object.ETag)
+	written, err := d.put(ctx, eventChanged, col, object.Href, raw, object.ETag)
 	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.api(err.Error())
 	}
-	resp.OK, resp.Data = true, viewEventObject(written, col)
-	return resp
+	return resp.ok(viewEventObject(written, col))
 }
 
 func (d *Daemon) addEvent(ctx context.Context, req Request, resp Response) Response {
-	summary := strings.TrimSpace(str(req.Args["positional"]))
+	summary := strings.TrimSpace(req.Str("positional"))
 	if summary == "" {
-		resp.Code, resp.Error = "usage", "an event needs a summary"
-		return resp
+		return resp.usage("an event needs a summary")
 	}
 	edit, err := eventEdit(req)
 	if err != nil {
-		resp.Code, resp.Error = "usage", err.Error()
-		return resp
+		return resp.usage(err.Error())
 	}
 	if edit.Start.IsZero() {
-		resp.Code, resp.Error = "usage", "an event needs --start"
-		return resp
+		return resp.usage("an event needs --start")
 	}
-	col, err := d.calendarFor(req)
+	col, err := d.pick(calendars, req.Str("calendar"))
 	if err != nil {
-		resp.Code, resp.Error = "usage", err.Error()
-		return resp
+		return resp.failed(err)
 	}
 	uid := vcal.NewUID()
 	// A new event says what it is in the text, not in --title, which is how an
@@ -114,25 +82,13 @@ func (d *Daemon) addEvent(ctx context.Context, req Request, resp Response) Respo
 	edit.Summary = summary
 	raw, err := vcal.NewEvent(uid, edit)
 	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.api(err.Error())
 	}
-	written, err := d.writeEvent(ctx, col, eventHref(col, uid), raw, "")
+	written, err := d.put(ctx, eventChanged, col, eventHref(col, uid), raw, "")
 	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.api(err.Error())
 	}
-	resp.OK, resp.Data = true, viewEventObject(written, col)
-	return resp
-}
-
-func (d *Daemon) writeEvent(ctx context.Context, col mirror.Collection, href, raw, ifMatch string) (mirror.Object, error) {
-	object, err := d.DAVWriter.Put(ctx, col, href, raw, ifMatch)
-	if err != nil {
-		return mirror.Object{}, err
-	}
-	d.push(Push{Event: "event.changed", Account: d.Account, Box: col.Name})
-	return object, nil
+	return resp.ok(viewEventObject(written, col))
 }
 
 // eventHref is where a new object goes. It defers to davsync.Href so a new
@@ -144,56 +100,17 @@ func eventHref(col mirror.Collection, uid string) string {
 	return davsync.Href(col, uid)
 }
 
-// calendarFor picks which calendar a new event goes on. One calendar needs no
-// naming; several do, because an appointment landing on the wrong one is worse
-// than being asked which.
-func (d *Daemon) calendarFor(req Request) (mirror.Collection, error) {
-	name, _ := req.Args["calendar"].(string)
-	cals, err := d.Mirror.Collections(d.Account, "events")
-	if err != nil {
-		return mirror.Collection{}, err
-	}
-	// The habits record lives on a calendar of its own and is not somewhere an
-	// appointment belongs (ADR-0018).
-	var open []mirror.Collection
-	for _, c := range cals {
-		if c.Name != habit.CalendarName {
-			open = append(open, c)
-		}
-	}
-	if len(open) == 0 {
-		return mirror.Collection{}, errors.New("there are no calendars on this account")
-	}
-	if name != "" {
-		for _, c := range open {
-			if strings.EqualFold(c.Name, name) {
-				return c, nil
-			}
-		}
-		return mirror.Collection{}, fmt.Errorf("no calendar called %q", name)
-	}
-	if len(open) == 1 {
-		return open[0], nil
-	}
-	names := make([]string, 0, len(open))
-	for _, c := range open {
-		names = append(names, c.Name)
-	}
-	return mirror.Collection{}, fmt.Errorf("there are %d calendars — name one with --calendar: %s",
-		len(open), strings.Join(names, ", "))
-}
-
 // eventEdit reads the fields an add or an edit was given. An empty one means
 // the caller named nothing, which is a usage error for an edit and the ordinary
 // case for the optional half of an add.
 func eventEdit(req Request) (vcal.EventEdit, error) {
 	e := vcal.EventEdit{
-		Summary:     strings.TrimSpace(str(req.Args["title"])),
-		Description: str(req.Args["notes"]),
-		Location:    str(req.Args["location"]),
-		URL:         strings.TrimSpace(str(req.Args["url"])),
+		Summary:     strings.TrimSpace(req.Str("title")),
+		Description: req.Str("notes"),
+		Location:    req.Str("location"),
+		URL:         strings.TrimSpace(req.Str("url")),
 	}
-	rule, err := vcal.Rule(str(req.Args["repeat"]))
+	rule, err := vcal.Rule(req.Str("repeat"))
 	if err != nil {
 		return vcal.EventEdit{}, err
 	}
@@ -216,7 +133,7 @@ func eventEdit(req Request) (vcal.EventEdit, error) {
 	// midnight on Friday, and storing it as one makes every client show a time
 	// nobody meant.
 	e.AllDay = startDay
-	if v, ok := req.Args["all_day"].(bool); ok && v {
+	if req.Bool("all_day") {
 		e.AllDay = true
 	}
 	if !e.Start.IsZero() && !e.End.IsZero() && !e.End.After(e.Start) && !e.AllDay {
@@ -230,7 +147,7 @@ func eventEdit(req Request) (vcal.EventEdit, error) {
 // client put on the entry; "none" is naming an empty list, which takes them
 // off.
 func alarmMinutes(req Request) ([]int, error) {
-	raw := strings.TrimSpace(str(req.Args["alarm"]))
+	raw := strings.TrimSpace(req.Str("alarm"))
 	if raw == "" {
 		return nil, nil
 	}
@@ -251,25 +168,6 @@ func alarmMinutes(req Request) ([]int, error) {
 		out = append(out, n)
 	}
 	return out, nil
-}
-
-// eventTime reads one of --start or --end. Both a bare date and a date with a
-// time are accepted; which one was given decides whether the event has a clock.
-func eventTime(req Request, key string) (when time.Time, isDay bool, err error) {
-	raw := strings.TrimSpace(str(req.Args[key]))
-	if raw == "" {
-		return time.Time{}, false, nil
-	}
-	for _, layout := range []string{"2006-01-02 15:04", "2006-01-02T15:04", "2006-01-02 15:04:05"} {
-		if t, perr := time.ParseInLocation(layout, raw, time.Local); perr == nil {
-			return t, false, nil
-		}
-	}
-	if t, perr := time.ParseInLocation("2006-01-02", raw, time.Local); perr == nil {
-		return t, true, nil
-	}
-	return time.Time{}, false, fmt.Errorf(
-		"--%s takes 2026-09-01 or 2026-09-01 14:00, got %q", key, raw)
 }
 
 // viewEventObject is what a write reports back: enough to see it landed, and

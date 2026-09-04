@@ -22,22 +22,17 @@ import (
 // and trashes the old, so its uid changes and the reply says what the new one
 // is (ADR-0004).
 func (d *Daemon) handleDraft(ctx context.Context, req Request, resp Response) Response {
-	verb := "list"
-	if len(req.Cmd) > 1 {
-		verb = req.Cmd[1]
-	}
+	verb := req.Verb("list")
 	acct := d.primaryAccount()
-	if name, _ := req.Args["account"].(string); name != "" {
+	if name := req.Str("account"); name != "" {
 		var err error
 		if acct, err = d.accountNamed(name); err != nil {
-			resp.Code, resp.Error = "usage", err.Error()
-			return resp
+			return resp.usage(err.Error())
 		}
 	}
 	box, err := draftsBox(acct)
 	if err != nil {
-		resp.Code, resp.Error = "usage", err.Error()
-		return resp
+		return resp.usage(err.Error())
 	}
 
 	if verb == "save" {
@@ -45,40 +40,32 @@ func (d *Daemon) handleDraft(ctx context.Context, req Request, resp Response) Re
 		// an edit does, with nothing to trash afterwards.
 		draft, err := d.draftOf(acct, req)
 		if err != nil {
-			resp.Code, resp.Error = "usage", err.Error()
-			return resp
+			return resp.usage(err.Error())
 		}
 		return d.saveDraft(ctx, acct, box, draft, resp)
 	}
 
 	if verb == "list" {
-		limit := 25
-		if v, ok := req.Args["limit"].(float64); ok && v > 0 {
-			limit = int(v)
-		}
+		limit := req.Int("limit", 25)
 		rows, err := d.Mirror.Rows(acct.Name, box, limit)
 		if err != nil {
-			resp.Code, resp.Error = "api", err.Error()
-			return resp
+			return resp.api(err.Error())
 		}
 		out := []message{}
 		for _, r := range rows {
 			out = append(out, viewMessage(acct, box, r, nil))
 		}
-		resp.OK, resp.Data = true, out
-		return resp
+		return resp.ok(out)
 	}
 
 	row, err := d.draftRow(acct, box, req)
 	if err != nil {
-		resp.Code, resp.Error = "not_found", err.Error()
-		return resp
+		return resp.notFound(err.Error())
 	}
 
 	switch verb {
 	case "show":
-		resp.OK, resp.Data = true, viewMessage(acct, box, row, nil)
-		return resp
+		return resp.ok(viewMessage(acct, box, row, nil))
 
 	case "delete":
 		results, err := acct.Writer.Move(ctx, []mailsync.Ref{{Folder: box, UID: row.Placement.UID}}, "Trash")
@@ -87,17 +74,14 @@ func (d *Daemon) handleDraft(ctx context.Context, req Request, resp Response) Re
 	case "edit", "send":
 		draft, err := d.draftFrom(acct, row, req)
 		if err != nil {
-			resp.Code, resp.Error = "usage", err.Error()
-			return resp
+			return resp.usage(err.Error())
 		}
 		if verb == "send" {
 			if d.Outbox == nil || acct.Courier == nil {
-				resp.Code, resp.Error = "api", fmt.Sprintf("account %q cannot send: no outbox", acct.Name)
-				return resp
+				return resp.api(fmt.Sprintf("account %q cannot send: no outbox", acct.Name))
 			}
 			if len(draft.To) == 0 {
-				resp.Code, resp.Error = "usage", "this draft has nobody to send to: add --to"
-				return resp
+				return resp.usage("this draft has nobody to send to: add --to")
 			}
 			out := d.deliver(ctx, acct, draft, resp, req)
 			if !out.OK {
@@ -112,8 +96,7 @@ func (d *Daemon) handleDraft(ctx context.Context, req Request, resp Response) Re
 		}
 		return d.replaceDraft(ctx, acct, box, row, draft, resp)
 	}
-	resp.Code, resp.Error = "usage", fmt.Sprintf("unknown draft command %q", verb)
-	return resp
+	return resp.usage(fmt.Sprintf("unknown draft command %q", verb))
 }
 
 // saveDraft files a new draft and nothing else.
@@ -131,18 +114,15 @@ func (d *Daemon) replaceDraft(ctx context.Context, acct *Account, box string, ol
 func (d *Daemon) putDraft(ctx context.Context, acct *Account, box string, old *mirror.Row, draft compose.Draft, resp Response) Response {
 	raw, err := draft.Build()
 	if err != nil {
-		resp.Code, resp.Error = "usage", err.Error()
-		return resp
+		return resp.usage(err.Error())
 	}
 	uid, err := acct.Writer.Driver.Append(ctx, box, []string{`\Draft`}, raw)
 	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.api(err.Error())
 	}
 	if old != nil {
 		if _, err := acct.Writer.Move(ctx, []mailsync.Ref{{Folder: box, UID: old.Placement.UID}}, "Trash"); err != nil {
-			resp.Code, resp.Error = "api", err.Error()
-			return resp
+			return resp.api(err.Error())
 		}
 	}
 	// The Mirror is caught up here rather than at the next cycle, so a listing
@@ -158,8 +138,7 @@ func (d *Daemon) putDraft(ctx context.Context, acct *Account, box string, old *m
 	if uid != 0 {
 		out["id"] = acct.messageID(box, uid)
 	}
-	resp.OK, resp.Data = true, out
-	return resp
+	return resp.ok(out)
 }
 
 // draftFrom reads a draft back into something sendable and applies whatever the
@@ -179,7 +158,7 @@ func (d *Daemon) draftFrom(acct *Account, row mirror.Row, req Request) (compose.
 		{"to", row.Message.To, &draft.To, "to"},
 		{"cc", row.Message.Cc, &draft.Cc, "cc"},
 	} {
-		given := strList(req.Args[f.key])
+		given := req.Strings(f.key)
 		if len(given) == 0 {
 			// Kept as the draft had them. A malformed address somebody typed in
 			// webmail is dropped rather than made into an error here: the point
@@ -202,14 +181,14 @@ func (d *Daemon) draftFrom(acct *Account, row mirror.Row, req Request) (compose.
 	draft.InReplyTo = row.Message.InReplyTo
 	draft.References = row.Message.References
 	draft.Subject = row.Message.Subject
-	if v, ok := req.Args["subject"].(string); ok && v != "" {
+	if v := req.Str("subject"); v != "" {
 		draft.Subject = v
 	}
 	draft.Body = row.Message.TextPlain
-	if v, ok := req.Args["body"].(string); ok && v != "" {
+	if v := req.Str("body"); v != "" {
 		draft.Body = v
 	}
-	if raw, _ := req.Args["body_html"].(string); raw != "" {
+	if raw := req.Str("body_html"); raw != "" {
 		draft.BodyHTML = raw
 	} else if strings.TrimSpace(draft.Body) != "" {
 		// An edited draft is sent like any other: its body is Markdown and

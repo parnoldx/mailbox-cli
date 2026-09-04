@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -171,11 +170,8 @@ func (r *repeated) Set(v string) error {
 // printSent says what happened to the mail, in two facts: it went, and where
 // the copy of it is.
 func printSent(stdout, stderr io.Writer, resp daemon.Response) {
-	m, ok := resp.Data.(map[string]any)
+	m, ok := fieldsOf(stdout, resp.Data)
 	if !ok {
-		enc := json.NewEncoder(stdout)
-		enc.SetIndent("", "  ")
-		_ = enc.Encode(resp.Data)
 		return
 	}
 	if state := str(m["state"]); state == "cancelled" {
@@ -191,11 +187,8 @@ func printSent(stdout, stderr io.Writer, resp daemon.Response) {
 }
 
 func printOutbox(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(resp.Data)
+	rows, ok := rowsOf(stdout, resp.Data)
 	if !ok {
-		enc := json.NewEncoder(stdout)
-		enc.SetIndent("", "  ")
-		_ = enc.Encode(resp.Data)
 		return
 	}
 	if len(rows) == 0 {

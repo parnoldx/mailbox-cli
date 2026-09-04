@@ -73,19 +73,14 @@ type event struct {
 // handleCalendar lists the Collections the Mirror holds. Like every other list
 // command this never touches the network (ADR-0001).
 func (d *Daemon) handleCalendar(req Request, resp Response) Response {
-	verb := "list"
-	if len(req.Cmd) > 1 {
-		verb = req.Cmd[1]
-	}
+	verb := req.Verb("list")
 	if verb != "list" {
-		resp.Code, resp.Error = "usage", fmt.Sprintf("unknown calendar command %q", verb)
-		return resp
+		return resp.usage(fmt.Sprintf("unknown calendar command %q", verb))
 	}
-	kind, _ := req.Args["kind"].(string)
+	kind := req.Str("kind")
 	cols, err := d.Mirror.Collections(d.Account, kind)
 	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.api(err.Error())
 	}
 	out := make([]calendar, 0, len(cols))
 	for _, c := range cols {
@@ -100,8 +95,7 @@ func (d *Daemon) handleCalendar(req Request, resp Response) Response {
 		}
 		out = append(out, row)
 	}
-	resp.OK, resp.Data = true, out
-	return resp
+	return resp.ok(out)
 }
 
 // handleAgenda answers "what is on" for a window. The window is the question:
@@ -110,65 +104,52 @@ func (d *Daemon) handleCalendar(req Request, resp Response) Response {
 func (d *Daemon) handleAgenda(req Request, resp Response) Response {
 	from, to, err := window(req)
 	if err != nil {
-		resp.Code, resp.Error = "usage", err.Error()
-		return resp
+		return resp.usage(err.Error())
 	}
-	name, _ := req.Args["calendar"].(string)
+	name := req.Str("calendar")
 	if name != "" {
 		// A calendar nobody has heard of is a mistake worth naming, rather than
 		// an empty agenda that reads like a quiet week.
 		if _, err := d.Mirror.CollectionNamed(d.Account, "", name); errors.Is(err, mirror.ErrNotFound) {
-			resp.Code, resp.Error = "not_found", fmt.Sprintf("no calendar called %q", name)
-			return resp
+			return resp.notFound(fmt.Sprintf("no calendar called %q", name))
 		} else if err != nil {
-			resp.Code, resp.Error = "api", err.Error()
-			return resp
+			return resp.api(err.Error())
 		}
 	}
 	objects, err := d.Mirror.ObjectsIn(d.Account, "events", from, to, name)
 	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.api(err.Error())
 	}
 	out, err := expand(objects, from, to)
 	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.api(err.Error())
 	}
-	if limit, ok := req.Args["limit"].(float64); ok && limit > 0 && len(out) > int(limit) {
-		out = out[:int(limit)]
+	if limit := req.Int("limit", 0); limit > 0 && len(out) > limit {
+		out = out[:limit]
 	}
-	resp.OK, resp.Data = true, out
-	return resp
+	return resp.ok(out)
 }
 
 // handleEvent reads one calendar object, with the next few times it happens.
 func (d *Daemon) handleEvent(ctx context.Context, req Request, resp Response) Response {
-	verb := "view"
-	if len(req.Cmd) > 1 {
-		verb = req.Cmd[1]
-	}
+	verb := req.Verb("view")
 	switch verb {
 	case "add", "edit", "delete":
 		return d.changeEvent(ctx, verb, req, resp)
 	}
 	if verb != "view" {
-		resp.Code, resp.Error = "usage", fmt.Sprintf("unknown event command %q", verb)
-		return resp
+		return resp.usage(fmt.Sprintf("unknown event command %q", verb))
 	}
 	id, err := objectID(req)
 	if err != nil {
-		resp.Code, resp.Error = "usage", err.Error()
-		return resp
+		return resp.usage(err.Error())
 	}
 	o, err := d.Mirror.Object(d.Account, id)
 	if errors.Is(err, mirror.ErrNotFound) {
-		resp.Code, resp.Error = "not_found", fmt.Sprintf("no event %d in the mirror", id)
-		return resp
+		return resp.notFound(fmt.Sprintf("no event %d in the mirror", id))
 	}
 	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.api(err.Error())
 	}
 	out := event{
 		ID: o.ID, Calendar: o.Collection, UID: o.UID, Summary: o.Summary,
@@ -185,15 +166,13 @@ func (d *Daemon) handleEvent(ctx context.Context, req Request, resp Response) Re
 	now := time.Now()
 	next, err := expand([]mirror.Object{o}, now.Add(-24*time.Hour), now.AddDate(1, 0, 0))
 	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.api(err.Error())
 	}
 	if len(next) > 5 {
 		next = next[:5]
 	}
 	out.Next = next
-	resp.OK, resp.Data = true, out
-	return resp
+	return resp.ok(out)
 }
 
 // expand turns objects into the instances that fall in the window, in order.
@@ -254,7 +233,7 @@ func window(req Request) (from, to time.Time, err error) {
 	// Truncate works in UTC, so the local midnight has to be built by hand.
 	y, m, dd := time.Now().Local().Date()
 	from = time.Date(y, m, dd, 0, 0, 0, 0, time.Local)
-	if v, ok := req.Args["from"].(string); ok && v != "" {
+	if v := req.Str("from"); v != "" {
 		parsed, perr := time.ParseInLocation("2006-01-02", strings.TrimSpace(v), time.Local)
 		if perr != nil {
 			return from, to, fmt.Errorf("--from takes a date like 2026-08-29, got %q", v)

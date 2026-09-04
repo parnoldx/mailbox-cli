@@ -56,9 +56,8 @@ func runLabelList(in *input, stdout, stderr io.Writer) int {
 }
 
 func printLabels(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(resp.Data)
+	rows, ok := rowsOf(stdout, resp.Data)
 	if !ok {
-		encodeJSON(stdout, resp.Data)
 		return
 	}
 	if len(rows) == 0 {

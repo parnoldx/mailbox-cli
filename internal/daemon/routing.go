@@ -152,24 +152,18 @@ func (d *Daemon) handleScreener(req Request, resp Response) Response {
 	a := d.primaryAccount()
 	box, ok := d.boxNamed(a, routing.BoxScreener)
 	if !ok {
-		resp.Code, resp.Error = "usage", fmt.Sprintf("this account has no %s box", routing.BoxScreener)
-		return resp
+		return resp.usage(fmt.Sprintf("this account has no %s box", routing.BoxScreener))
 	}
-	limit := 25
-	if v, ok := req.Args["limit"].(float64); ok && v > 0 {
-		limit = int(v)
-	}
+	limit := req.Int("limit", 25)
 	rows, err := d.Mirror.Rows(a.Name, box, screenerScan)
 	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.api(err.Error())
 	}
 	out := groupBySender(a, box, rows)
 	if len(out) > limit {
 		out = out[:limit]
 	}
-	resp.OK, resp.Data = true, out
-	return resp
+	return resp.ok(out)
 }
 
 // waiting is one sender the Screener is holding mail from: the decision owed,
@@ -244,8 +238,7 @@ type route struct {
 func (d *Daemon) handleRouting(req Request, resp Response) Response {
 	routes, err := d.Mirror.Routing(d.Account)
 	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.api(err.Error())
 	}
 	view := routingView{Routes: make([]route, 0, len(routes))}
 	for _, r := range routes {
@@ -256,21 +249,18 @@ func (d *Daemon) handleRouting(req Request, resp Response) Response {
 	case errors.Is(err, mirror.ErrNotFound):
 		// Never read one. That is not an empty Routing, it is no answer, and
 		// saying so is better than reporting nobody is routed anywhere.
-		resp.Code, resp.Error = "not_found", "the mirror holds no routing script yet"
-		return resp
+		return resp.notFound("the mirror holds no routing script yet")
 	case err != nil:
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.api(err.Error())
 	}
 	view.Active = script.Active
 	if !script.SyncedAt.IsZero() {
 		view.SyncedAt = script.SyncedAt.Format(time.RFC3339)
 	}
-	if show, _ := req.Args["script"].(bool); show {
+	if req.Bool("script") {
 		view.Script = script.Raw
 	}
-	resp.OK, resp.Data = true, view
-	return resp
+	return resp.ok(view)
 }
 
 // decision is what one routing decision did: where the sender's mail goes from
@@ -296,25 +286,22 @@ type decision struct {
 // the script was stored leaves the decision made and the old mail where it is,
 // which the same command run again finishes.
 func (d *Daemon) handleRoute(ctx context.Context, req Request, resp Response) Response {
-	targets := argStrings(req.Args["positional"])
+	targets := req.Strings("positional")
 	if len(targets) == 0 {
 		return d.handleRouting(req, resp)
 	}
 	a := d.primaryAccount()
 	if a.Writer == nil {
-		resp.Code, resp.Error = "api", "this daemon cannot write: no server connection"
-		return resp
+		return resp.api("this daemon cannot write: no server connection")
 	}
-	to, err := routing.ParseDestination(str(req.Args["to"]))
+	to, err := routing.ParseDestination(req.Str("to"))
 	if err != nil {
-		resp.Code, resp.Error = "usage", err.Error()
-		return resp
+		return resp.usage(err.Error())
 	}
 
 	addresses, err := d.senders(targets)
 	if err != nil {
-		resp.Code, resp.Error = "usage", err.Error()
-		return resp
+		return resp.usage(err.Error())
 	}
 
 	// What is already here, gathered before anything is written: it decides
@@ -326,8 +313,7 @@ func (d *Daemon) handleRoute(ctx context.Context, req Request, resp Response) Re
 		for _, addr := range addresses {
 			refs, err := d.screenerRefs(a, screener, addr)
 			if err != nil {
-				resp.Code, resp.Error = "api", err.Error()
-				return resp
+				return resp.api(err.Error())
 			}
 			waiting[addr] = refs
 			total += len(refs)
@@ -341,28 +327,25 @@ func (d *Daemon) handleRoute(ctx context.Context, req Request, resp Response) Re
 			continue
 		}
 		if _, ok := d.boxNamed(a, box); !ok {
-			resp.Code, resp.Error = "usage", fmt.Sprintf(
-				"this account has no %q box — create it before routing mail there", box)
-			return resp
+			return resp.usage(fmt.Sprintf(
+				"this account has no %q box — create it before routing mail there", box))
 		}
 	}
 
 	st, err := d.readRouting(ctx)
 	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.api(err.Error())
 	}
 	// Never disable somebody else's filtering to enable ours: activating a
 	// script deactivates the one that was running, and that is somebody's
 	// webmail rules. So the decision is refused unless the Routing already
 	// runs — because it is active, or because the active script includes it.
 	if !st.inForce && !st.activate {
-		resp.Code, resp.Error = "api", fmt.Sprintf(
+		return resp.api(fmt.Sprintf(
 			"%q is the active sieve script and it does not include %q, so the routing "+
 				"would be stored and never run — add `include %q;` to the end of %q, "+
 				"or make %q the active script",
-			st.active, routing.ScriptName, routing.ScriptName, st.active, routing.ScriptName)
-		return resp
+			st.active, routing.ScriptName, routing.ScriptName, st.active, routing.ScriptName))
 	}
 
 	out := make([]decision, 0, len(addresses))
@@ -370,8 +353,7 @@ func (d *Daemon) handleRoute(ctx context.Context, req Request, resp Response) Re
 	for _, addr := range addresses {
 		did, err := st.lists.Set(addr, to)
 		if err != nil {
-			resp.Code, resp.Error = "usage", err.Error()
-			return resp
+			return resp.usage(err.Error())
 		}
 		changed = changed || did
 		out = append(out, decision{Address: addr, To: string(to), Box: to.Box(), Changed: did, Moved: []string{}})
@@ -380,15 +362,13 @@ func (d *Daemon) handleRoute(ctx context.Context, req Request, resp Response) Re
 	if changed || !st.exists {
 		script := st.lists.Script()
 		if err := d.Sieve.PutScript(ctx, routing.ScriptName, script, st.activate); err != nil {
-			resp.Code, resp.Error = "api", err.Error()
-			return resp
+			return resp.api(err.Error())
 		}
 		// What the server accepted is what it compiled: PUTSCRIPT either takes
 		// the script or refuses it, so the bytes we sent are the bytes it now
 		// runs, and storing them is storing the ack (ADR-0004).
 		if err := d.storeRouting(script, true, st.lists); err != nil {
-			resp.Code, resp.Error = "api", err.Error()
-			return resp
+			return resp.api(err.Error())
 		}
 	}
 
@@ -401,8 +381,7 @@ func (d *Daemon) handleRoute(ctx context.Context, req Request, resp Response) Re
 			}
 			results, err := a.Writer.Move(ctx, refs, box)
 			if err != nil {
-				resp.Code, resp.Error = "api", err.Error()
-				return resp
+				return resp.api(err.Error())
 			}
 			for _, r := range results {
 				if r.NewUID != 0 {
@@ -415,8 +394,7 @@ func (d *Daemon) handleRoute(ctx context.Context, req Request, resp Response) Re
 		d.push(Push{Event: "mail.changed", Account: a.Name, Box: screener})
 		d.push(Push{Event: "mail.changed", Account: a.Name, Box: box})
 	}
-	resp.OK, resp.Data = true, out
-	return resp
+	return resp.ok(out)
 }
 
 // pileFor is where mail already in the Screener goes for a decision, empty when
@@ -518,16 +496,15 @@ func (d *Daemon) handleReplyLater(ctx context.Context, req Request, resp Respons
 func (d *Daemon) movePile(ctx context.Context, req Request, resp Response, pileBox string) Response {
 	acct, refs, err := d.refs(req)
 	if err != nil {
-		return refsFail(resp, err)
+		return resp.failed(err)
 	}
 	want := pileBox
-	if len(req.Cmd) > 1 && req.Cmd[1] == "done" {
+	if req.Verb("") == "done" {
 		want = routing.BoxInbox
 	}
 	dest, ok := d.boxNamed(acct, want)
 	if !ok {
-		resp.Code, resp.Error = "usage", fmt.Sprintf("this account has no %q box", want)
-		return resp
+		return resp.usage(fmt.Sprintf("this account has no %q box", want))
 	}
 	// Sweep the whole Thread out of everywhere it could be shown alongside the
 	// destination — the Inbox and both piles — minus the destination itself,
@@ -539,8 +516,7 @@ func (d *Daemon) movePile(ctx context.Context, req Request, resp Response, pileB
 		}
 	}
 	if refs, err = d.threadedWithin(acct.Name, refs, from...); err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.api(err.Error())
 	}
 	results, err := acct.Writer.Move(ctx, refs, dest)
 	return d.wrote(acct, resp, results, err)
@@ -556,26 +532,4 @@ func (d *Daemon) boxNamed(a *Account, want string) (string, bool) {
 		}
 	}
 	return want, false
-}
-
-// argStrings reads a positional argument that may be one value or several.
-func argStrings(v any) []string {
-	switch t := v.(type) {
-	case string:
-		if t == "" {
-			return nil
-		}
-		return []string{t}
-	case []string:
-		return t
-	case []any:
-		out := make([]string, 0, len(t))
-		for _, e := range t {
-			if s, ok := e.(string); ok && s != "" {
-				out = append(out, s)
-			}
-		}
-		return out
-	}
-	return nil
 }

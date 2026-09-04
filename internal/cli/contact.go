@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -30,11 +29,8 @@ func contactVerb(verb string) func(*input, io.Writer, io.Writer) int {
 }
 
 func printContacts(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(resp.Data)
+	rows, ok := rowsOf(stdout, resp.Data)
 	if !ok {
-		enc := json.NewEncoder(stdout)
-		enc.SetIndent("", "  ")
-		_ = enc.Encode(resp.Data)
 		return
 	}
 	if len(rows) == 0 {
@@ -57,11 +53,8 @@ func printContacts(stdout, stderr io.Writer, resp daemon.Response) {
 }
 
 func printContact(stdout, stderr io.Writer, resp daemon.Response) {
-	m, ok := resp.Data.(map[string]any)
+	m, ok := fieldsOf(stdout, resp.Data)
 	if !ok {
-		enc := json.NewEncoder(stdout)
-		enc.SetIndent("", "  ")
-		_ = enc.Encode(resp.Data)
 		return
 	}
 	if state := str(m["state"]); state != "" {

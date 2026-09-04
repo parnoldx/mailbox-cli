@@ -2,13 +2,79 @@
 // connections to the servers.
 package daemon
 
-import "time"
+import (
+	"errors"
+	"fmt"
+	"time"
+)
 
 // Request is one line in from a client.
 type Request struct {
 	ID   string         `json:"id"`
 	Cmd  []string       `json:"cmd"`
 	Args map[string]any `json:"args,omitempty"`
+}
+
+// Reading one request's arguments. They arrive over the socket as JSON, so a
+// number is a float64 and a repeatable flag may be a list of anys — the four
+// accessors below are the only place that has to know it, and a handler that
+// wants a limit asks for a limit.
+
+// Str is one string argument, empty when it was not given.
+func (r Request) Str(key string) string {
+	s, _ := r.Args[key].(string)
+	return s
+}
+
+// Bool is one switch.
+func (r Request) Bool(key string) bool {
+	b, _ := r.Args[key].(bool)
+	return b
+}
+
+// Int is one number, or fallback when none was given. Every number a command
+// takes is a limit or a count of days, and neither means anything at zero or
+// below, so a value that is not positive is treated as absent.
+func (r Request) Int(key string, fallback int) int {
+	v, ok := r.Args[key].(float64)
+	if !ok || v <= 0 {
+		return fallback
+	}
+	return int(v)
+}
+
+// Strings is a repeatable flag, or the one value it was given once. Blanks are
+// dropped: a flag given and left empty is the caller not giving it.
+func (r Request) Strings(key string) []string {
+	switch t := r.Args[key].(type) {
+	case string:
+		if t == "" {
+			return nil
+		}
+		return []string{t}
+	case []string:
+		return t
+	case []any:
+		out := make([]string, 0, len(t))
+		for _, e := range t {
+			if s, ok := e.(string); ok && s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+// Verb is the subcommand, or fallback when the caller named only the group.
+// Every group has a default — `todo` is `todo list`, `event` is `event view` —
+// because the bare noun is what somebody types when they want to see the thing
+// (ADR-0020).
+func (r Request) Verb(fallback string) string {
+	if len(r.Cmd) > 1 {
+		return r.Cmd[1]
+	}
+	return fallback
 }
 
 // MirrorState says how fresh the answer is. It rides on every reply, because a
@@ -47,6 +113,68 @@ type Response struct {
 	// `status` carries it: an inference has no human in the loop, so a wrong one
 	// has to be visible somewhere it will be seen (supersedes ADR-0019).
 	Inferred []InferredDecision `json:"inferred,omitempty"`
+}
+
+// The four ways a handler ends. Every one of them takes the Response it was
+// given — which already carries the id and the MirrorState — and returns it
+// finished, so a handler's last line is the whole of its answer.
+//
+// The Codes are the ones the CLI turns into exit codes: `usage` is a mistake in
+// what was typed, `not_found` is an id the Mirror does not hold (which is
+// ordinary against a Mirror that may be Behind), and `api` is everything a
+// server or the disk did. They are spelled here and nowhere else.
+func (r Response) ok(data any) Response {
+	r.OK, r.Data = true, data
+	return r
+}
+
+func (r Response) usage(msg string) Response {
+	r.Code, r.Error = "usage", msg
+	return r
+}
+
+func (r Response) notFound(msg string) Response {
+	r.Code, r.Error = "not_found", msg
+	return r
+}
+
+func (r Response) api(msg string) Response {
+	r.Code, r.Error = "api", msg
+	return r
+}
+
+// codedError is an error that already knows which Code the reply should carry.
+// A helper several calls below a handler can tell "you typed something wrong"
+// apart from "that id is gone" without every caller having to work it out
+// again from the wording.
+type codedError struct {
+	code string
+	msg  string
+}
+
+func (e codedError) Error() string { return e.msg }
+
+// usageErr is a mistake in what the caller typed; notFoundErr is an id that
+// parsed but names nothing the Mirror holds, which is ordinary against a Mirror
+// that may be Behind. Anything else is left as a plain error and comes out as
+// `api`.
+func usageErr(format string, a ...any) error {
+	return codedError{"usage", fmt.Sprintf(format, a...)}
+}
+
+func notFoundErr(format string, a ...any) error {
+	return codedError{"not_found", fmt.Sprintf(format, a...)}
+}
+
+// failed answers with whatever went wrong. An error that named its own Code
+// keeps it; everything else is something a server or the disk did.
+func (r Response) failed(err error) Response {
+	var c codedError
+	if errors.As(err, &c) {
+		r.Code, r.Error = c.code, c.msg
+		return r
+	}
+	return r.api(err.Error())
 }
 
 // InferredDecision is one routing decision the Daemon made from a Screener move

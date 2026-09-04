@@ -23,35 +23,31 @@ import (
 // runs only the loop (D7, D9). See docs/bubble-and-screener-handoff.md.
 func (d *Daemon) handleBubble(ctx context.Context, req Request, resp Response) Response {
 	a := d.primaryAccount()
-	if len(req.Cmd) > 1 && req.Cmd[1] == "list" {
+	if req.Verb("") == "list" {
 		return d.bubbleList(a, resp)
 	}
 	if a.Writer == nil {
-		resp.Code, resp.Error = "api", "this daemon cannot write: no server connection"
-		return resp
+		return resp.api("this daemon cannot write: no server connection")
 	}
 
 	when, now, err := d.bubbleWhen(req)
 	if err != nil {
-		resp.Code, resp.Error = "usage", err.Error()
-		return resp
+		return resp.usage(err.Error())
 	}
 
 	acct, refs, err := d.refs(req)
 	if err != nil {
-		return refsFail(resp, err)
+		return resp.failed(err)
 	}
 	if !acct.Primary {
-		resp.Code, resp.Error = "usage", "bubble belongs to the primary account"
-		return resp
+		return resp.usage("bubble belongs to the primary account")
 	}
 	// Set the whole conversation aside, like `aside`: the id is expanded to its
 	// Thread and every member in the Inbox or a pile moves with it. A Sent copy
 	// or a Screener sibling stays where it is.
 	refs, err = d.threadedWithin(acct.Name, refs, routing.BoxInbox, routing.BoxAside, routing.BoxReplyLater)
 	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.api(err.Error())
 	}
 
 	if now {
@@ -65,13 +61,11 @@ func (d *Daemon) handleBubble(ctx context.Context, req Request, resp Response) R
 
 	rows, err := d.setBubble(ctx, acct, refs, when)
 	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.api(err.Error())
 	}
 	d.push(Push{Event: "mail.changed", Account: acct.Name, Box: routing.BoxInbox})
 	d.push(Push{Event: "mail.changed", Account: acct.Name, Box: routing.BoxAside})
-	resp.OK, resp.Data = true, rows
-	return resp
+	return resp.ok(rows)
 }
 
 // bubbleRow is one bubbled thread as `bubble list` and a schedule reply show
@@ -92,16 +86,13 @@ type bubbleRow struct {
 func (d *Daemon) bubbleList(a *Account, resp Response) Response {
 	box, ok := d.boxNamed(a, routing.BoxAside)
 	if !ok {
-		resp.OK, resp.Data = true, []bubbleRow{}
-		return resp
+		return resp.ok([]bubbleRow{})
 	}
 	refs, err := d.Mirror.Bubbled(a.Name, box)
 	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.api(err.Error())
 	}
-	resp.OK, resp.Data = true, bubbleRows(a, refs, nil)
-	return resp
+	return resp.ok(bubbleRows(a, refs, nil))
 }
 
 // bubbleRows folds bubbled placements to one row per Thread. keep, when set,
@@ -327,11 +318,11 @@ func (d *Daemon) returnDue(ctx context.Context, a *Account) {
 // bubbleWhen resolves the one required timing flag. now is true for --now, the
 // manual return; otherwise `when` is the wall-clock instant to come back at.
 func (d *Daemon) bubbleWhen(req Request) (when time.Time, now bool, err error) {
-	nowFlag, _ := req.Args["now"].(bool)
-	tomorrow, _ := req.Args["tomorrow"].(bool)
-	weekend, _ := req.Args["weekend"].(bool)
-	nextWeek, _ := req.Args["next_week"].(bool)
-	on := strings.TrimSpace(str(req.Args["on"]))
+	nowFlag := req.Bool("now")
+	tomorrow := req.Bool("tomorrow")
+	weekend := req.Bool("weekend")
+	nextWeek := req.Bool("next_week")
+	on := strings.TrimSpace(req.Str("on"))
 
 	set := 0
 	for _, b := range []bool{nowFlag, tomorrow, weekend, nextWeek, on != ""} {
@@ -382,7 +373,7 @@ func (d *Daemon) bubbleWhen(req Request) (when time.Time, now bool, err error) {
 // --tomorrow, --weekend, --next-week — required only once --if-no-reply asks
 // for it. --now makes no sense here: there is nothing yet to bring back.
 func (d *Daemon) replyWatch(acct *Account, req Request) (when time.Time, ok bool, err error) {
-	if wants, _ := req.Args["if_no_reply"].(bool); !wants {
+	if !req.Bool("if_no_reply") {
 		return time.Time{}, false, nil
 	}
 	if !acct.Primary {
@@ -411,21 +402,4 @@ func (d *Daemon) bubbleHours() (morning, evening int) {
 		evening = 18
 	}
 	return morning, evening
-}
-
-// atHour is `day` at a whole hour, local time.
-func atHour(day time.Time, hour int) time.Time {
-	y, m, d := day.Date()
-	return time.Date(y, m, d, hour, 0, 0, 0, time.Local)
-}
-
-// comingWeekday is the next `target` weekday on or after `from`. strict pushes
-// a match on `from` itself to the following week — "next Monday" said on a
-// Monday is not today.
-func comingWeekday(from time.Time, target time.Weekday, strict bool) time.Time {
-	delta := (int(target) - int(from.Weekday()) + 7) % 7
-	if delta == 0 && strict {
-		delta = 7
-	}
-	return from.AddDate(0, 0, delta)
 }

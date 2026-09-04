@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"text/tabwriter"
@@ -19,9 +18,8 @@ func runScreener(in *input, stdout, stderr io.Writer) int {
 }
 
 func printScreener(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(resp.Data)
+	rows, ok := rowsOf(stdout, resp.Data)
 	if !ok {
-		encodeJSON(stdout, resp.Data)
 		return
 	}
 	if len(rows) == 0 {
@@ -104,9 +102,8 @@ func printRouting(stdout, stderr io.Writer, resp daemon.Response) {
 // was already here, because those are two different things and only one of
 // them is visible in a box listing afterwards.
 func printDecisions(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(resp.Data)
+	rows, ok := rowsOf(stdout, resp.Data)
 	if !ok {
-		encodeJSON(stdout, resp.Data)
 		return
 	}
 	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
@@ -191,9 +188,8 @@ func runBubble(in *input, stdout, stderr io.Writer) int {
 // printBubbles lists bubbled threads with the time each comes back, soonest
 // first. A due one — its instant already passed — returns on the next loop tick.
 func printBubbles(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(resp.Data)
+	rows, ok := rowsOf(stdout, resp.Data)
 	if !ok {
-		encodeJSON(stdout, resp.Data)
 		return
 	}
 	if len(rows) == 0 {
@@ -214,10 +210,4 @@ func printBubbles(stdout, stderr io.Writer, resp daemon.Response) {
 	}
 	_ = tw.Flush()
 	behindNotice(stderr, resp)
-}
-
-func encodeJSON(w io.Writer, v any) {
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	_ = enc.Encode(v)
 }

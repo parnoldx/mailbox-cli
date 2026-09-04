@@ -22,69 +22,57 @@ type Mirror struct {
 	path string
 }
 
-// Open opens the Mirror at path, creating it if absent. A schema version
-// mismatch deletes the file and starts again: every byte in here is derived
-// from a server that still holds the original (ADR-0013).
+// dsn is how the Mirror is opened, in both the read and the rebuild: WAL so a
+// sync and a command can hold it at once, a busy timeout so the loser of that
+// waits instead of failing, and foreign keys on so a Placement cannot outlive
+// its Message.
+func dsn(path string) string {
+	return "file:" + path + "?_pragma=journal_mode(wal)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(on)"
+}
+
+// Open opens the Mirror at path, creating it if absent. There is one schema and
+// no migrations: a file at any other version is deleted and built again,
+// because every byte in here is derived from a server that still holds the
+// original (ADR-0013). That is the whole of the version handling — nothing
+// reads an old shape and nothing translates one.
 func Open(path string) (*Mirror, error) {
-	m, rebuilt, err := open(path)
+	db, err := sql.Open("sqlite", dsn(path))
 	if err != nil {
 		return nil, err
 	}
-	if rebuilt {
-		return m, nil
-	}
-	return m, nil
-}
-
-func open(path string) (*Mirror, bool, error) {
-	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=journal_mode(wal)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(on)")
-	if err != nil {
-		return nil, false, err
-	}
-	v, err := readVersion(db)
-	if err != nil {
-		db.Close()
-		return nil, false, err
-	}
-	if v == schemaVersion {
-		return &Mirror{db: db, path: path}, false, nil
+	if readVersion(db) == schemaVersion {
+		return &Mirror{db: db, path: path}, nil
 	}
 	db.Close()
-	if v != 0 {
-		// Derived state at the wrong version: drop it and resync.
-		for _, suffix := range []string{"", "-wal", "-shm"} {
-			if err := os.Remove(path + suffix); err != nil && !errors.Is(err, os.ErrNotExist) {
-				return nil, false, err
-			}
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		if err := os.Remove(path + suffix); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return nil, err
 		}
 	}
-	db, err = sql.Open("sqlite", "file:"+path+"?_pragma=journal_mode(wal)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(on)")
+	db, err = sql.Open("sqlite", dsn(path))
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
-		return nil, false, fmt.Errorf("create schema: %w", err)
+		return nil, fmt.Errorf("create schema: %w", err)
 	}
 	if _, err := db.Exec(`INSERT INTO meta (key, value) VALUES ('schema_version', ?)`, schemaVersion); err != nil {
 		db.Close()
-		return nil, false, err
+		return nil, err
 	}
-	return &Mirror{db: db, path: path}, true, nil
+	return &Mirror{db: db, path: path}, nil
 }
 
-func readVersion(db *sql.DB) (int, error) {
+// readVersion is the version the file claims. Anything that cannot be read as
+// one — no row, no meta table, not a database at all — is 0, which is not the
+// current version and so means rebuild.
+func readVersion(db *sql.DB) int {
 	var v int
-	err := db.QueryRow(`SELECT value FROM meta WHERE key = 'schema_version'`).Scan(&v)
-	switch {
-	case err == nil:
-		return v, nil
-	case errors.Is(err, sql.ErrNoRows):
-		return 0, nil
-	default:
-		// No meta table at all: an empty or foreign file.
-		return 0, nil
+	if err := db.QueryRow(`SELECT value FROM meta WHERE key = 'schema_version'`).Scan(&v); err != nil {
+		return 0
 	}
+	return v
 }
 
 // Close closes the underlying database.

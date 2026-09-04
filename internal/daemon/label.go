@@ -16,79 +16,62 @@ import (
 // brings back every label in use and forgets the empty ones, which is the right
 // way round.
 func (d *Daemon) handleLabel(ctx context.Context, req Request, resp Response) Response {
-	verb := "list"
-	if len(req.Cmd) > 1 {
-		verb = req.Cmd[1]
-	}
-	name := labelName(str(req.Args["name"]))
+	verb := req.Verb("list")
+	name := labelName(req.Str("name"))
 
 	switch verb {
 	case "list":
 		names, err := d.Mirror.Labels(d.Account)
 		if err != nil {
-			resp.Code, resp.Error = "api", err.Error()
-			return resp
+			return resp.api(err.Error())
 		}
 		out := []labelRow{}
 		for _, n := range names {
 			rows, err := d.Mirror.Labelled(d.Account, n, 0)
 			if err != nil {
-				resp.Code, resp.Error = "api", err.Error()
-				return resp
+				return resp.api(err.Error())
 			}
 			out = append(out, labelRow{Label: n, Count: len(rows)})
 		}
-		resp.OK, resp.Data = true, out
-		return resp
+		return resp.ok(out)
 
 	case "view":
 		if name == "" {
-			resp.Code, resp.Error = "usage", "label view needs a label"
-			return resp
+			return resp.usage("label view needs a label")
 		}
-		limit := 50
-		if v, ok := req.Args["limit"].(float64); ok && v > 0 {
-			limit = int(v)
-		}
+		limit := req.Int("limit", 50)
 		acct := d.primaryAccount()
 		rows, err := d.Mirror.Labelled(d.Account, name, limit)
 		if err != nil {
-			resp.Code, resp.Error = "api", err.Error()
-			return resp
+			return resp.api(err.Error())
 		}
 		out := []message{}
 		for _, r := range rows {
 			out = append(out, viewMessage(acct, r.Placement.Folder, r, nil))
 		}
-		resp.OK, resp.Data = true, out
-		return resp
+		return resp.ok(out)
 
 	case "create":
 		if name == "" {
-			resp.Code, resp.Error = "usage", "label create needs a name"
-			return resp
+			return resp.usage("label create needs a name")
 		}
 		if err := d.Mirror.RememberLabel(name); err != nil {
-			resp.Code, resp.Error = "api", err.Error()
-			return resp
+			return resp.api(err.Error())
 		}
 		// Creating with ids is creating and applying: naming a label and the
 		// mail it is for in one command is the ordinary way one comes to exist.
-		if len(strList(req.Args["positional"])) == 0 {
-			resp.OK, resp.Data = true, []labelRow{{Label: name}}
-			return resp
+		if len(req.Strings("positional")) == 0 {
+			return resp.ok([]labelRow{{Label: name}})
 		}
 		return d.applyLabel(ctx, name, true, req, resp)
 
 	case "add", "remove":
 		if name == "" {
-			resp.Code, resp.Error = "usage", fmt.Sprintf("label %s needs a label", verb)
-			return resp
+			return resp.usage(fmt.Sprintf("label %s needs a label", verb))
 		}
 		return d.applyLabel(ctx, name, verb == "add", req, resp)
 	}
-	resp.Code, resp.Error = "usage", fmt.Sprintf("unknown label command %q", verb)
-	return resp
+	return resp.usage(fmt.Sprintf("unknown label command %q", verb))
 }
 
 // applyLabel puts a keyword on mail or takes it off. It waits for the server
@@ -97,14 +80,13 @@ func (d *Daemon) handleLabel(ctx context.Context, req Request, resp Response) Re
 func (d *Daemon) applyLabel(ctx context.Context, name string, add bool, req Request, resp Response) Response {
 	acct, refs, err := d.refs(req)
 	if err != nil {
-		return refsFail(resp, err)
+		return resp.failed(err)
 	}
 	if add {
 		// Applying a label is also how one comes to exist, so the name is
 		// remembered here too rather than only by create.
 		if err := d.Mirror.RememberLabel(name); err != nil {
-			resp.Code, resp.Error = "api", err.Error()
-			return resp
+			return resp.api(err.Error())
 		}
 	}
 	results, err := acct.Writer.SetLabel(ctx, refs, name, add)

@@ -34,103 +34,69 @@ type todo struct {
 // Mirror read; adding and completing block on the server and update the Mirror
 // from the ack (ADR-0004).
 func (d *Daemon) handleTodo(ctx context.Context, req Request, resp Response) Response {
-	verb := "list"
-	if len(req.Cmd) > 1 {
-		verb = req.Cmd[1]
-	}
+	verb := req.Verb("list")
 	switch verb {
 	case "list":
-		list, _ := req.Args["list"].(string)
-		all, _ := req.Args["all"].(bool)
+		list := req.Str("list")
+		all := req.Bool("all")
 		objects, err := d.Mirror.Todos(d.Account, list, all)
 		if err != nil {
-			resp.Code, resp.Error = "api", err.Error()
-			return resp
+			return resp.api(err.Error())
 		}
 		out := make([]todo, 0, len(objects))
 		for _, o := range objects {
 			out = append(out, viewTodo(o))
 		}
-		resp.OK, resp.Data = true, out
-		return resp
+		return resp.ok(out)
 
 	case "add":
-		summary, _ := req.Args["positional"].(string)
+		summary := req.Str("positional")
 		if strings.TrimSpace(summary) == "" {
-			resp.Code, resp.Error = "usage", "a todo needs something to say"
-			return resp
+			return resp.usage("a todo needs something to say")
 		}
-		col, err := d.taskList(req)
+		col, err := d.pick(taskLists, or(req.Str("list"), d.defaultTaskList()))
 		if err != nil {
-			resp.Code, resp.Error = "usage", err.Error()
-			return resp
+			return resp.failed(err)
 		}
 		due, isDate, err := dueDate(req)
 		if err != nil {
-			resp.Code, resp.Error = "usage", err.Error()
-			return resp
+			return resp.usage(err.Error())
 		}
-		priority, err := vcal.PriorityNumber(str(req.Args["priority"]))
+		priority, err := vcal.PriorityNumber(req.Str("priority"))
 		if err != nil {
-			resp.Code, resp.Error = "usage", err.Error()
-			return resp
+			return resp.usage(err.Error())
 		}
 		uid := vcal.NewUID()
 		raw, err := vcal.NewTodo(uid, summary, due, isDate, priority)
 		if err != nil {
-			resp.Code, resp.Error = "api", err.Error()
-			return resp
+			return resp.api(err.Error())
 		}
-		object, err := d.write(ctx, col, davsync.Href(col, uid), raw, "")
+		object, err := d.put(ctx, todoChanged, col, davsync.Href(col, uid), raw, "")
 		if err != nil {
-			resp.Code, resp.Error = "api", err.Error()
-			return resp
+			return resp.api(err.Error())
 		}
-		resp.OK, resp.Data = true, viewTodo(object)
-		return resp
+		return resp.ok(viewTodo(object))
 
 	case "done", "undone", "rename", "drop":
 		return d.changeTodo(ctx, verb, req, resp)
 	}
-	resp.Code, resp.Error = "usage", fmt.Sprintf("unknown todo command %q", verb)
-	return resp
+	return resp.usage(fmt.Sprintf("unknown todo command %q", verb))
 }
 
 // changeTodo applies one change to one Todo and stores what the server ended up
 // with.
 func (d *Daemon) changeTodo(ctx context.Context, verb string, req Request, resp Response) Response {
-	if d.DAVWriter == nil {
-		resp.Code, resp.Error = "api", "this daemon cannot write: no dav connection"
-		return resp
-	}
-	id, err := objectID(req)
+	object, col, err := d.load(req, "todo")
 	if err != nil {
-		resp.Code, resp.Error = "usage", err.Error()
-		return resp
-	}
-	object, err := d.Mirror.Object(d.Account, id)
-	if errors.Is(err, mirror.ErrNotFound) {
-		resp.Code, resp.Error = "not_found", fmt.Sprintf("no todo %d in the mirror", id)
-		return resp
-	}
-	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
-	}
-	col, err := d.collectionOf(object)
-	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.failed(err)
 	}
 
 	if verb == "drop" {
 		if err := d.DAVWriter.Delete(ctx, col, object); err != nil {
-			resp.Code, resp.Error = "api", err.Error()
-			return resp
+			return resp.api(err.Error())
 		}
-		d.push(Push{Event: "todo.changed", Account: d.Account, Box: col.Name})
-		resp.OK, resp.Data = true, map[string]any{"id": id, "state": "dropped", "summary": object.Summary}
-		return resp
+		d.push(Push{Event: todoChanged, Account: d.Account, Box: col.Name})
+		return resp.ok(map[string]any{"id": object.ID, "state": "dropped", "summary": object.Summary})
 	}
 
 	var raw string
@@ -140,140 +106,23 @@ func (d *Daemon) changeTodo(ctx context.Context, verb string, req Request, resp 
 	case "undone":
 		raw, err = vcal.Uncomplete(object.Raw)
 	case "rename":
-		title, _ := req.Args["title"].(string)
+		title := req.Str("title")
 		if strings.TrimSpace(title) == "" {
-			resp.Code, resp.Error = "usage", "rename needs --title"
-			return resp
+			return resp.usage("rename needs --title")
 		}
 		raw, err = vcal.Rename(object.Raw, title)
 	}
 	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.api(err.Error())
 	}
 	// If-Match is the ETag we read. A Todo somebody else changed in between is
 	// refused rather than overwritten: the next cycle brings their version and
 	// the caller can decide again.
-	written, err := d.write(ctx, col, object.Href, raw, object.ETag)
+	written, err := d.put(ctx, todoChanged, col, object.Href, raw, object.ETag)
 	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.api(err.Error())
 	}
-	resp.OK, resp.Data = true, viewTodo(written)
-	return resp
-}
-
-// write puts an object and tells the listeners.
-func (d *Daemon) write(ctx context.Context, col mirror.Collection, href, raw, ifMatch string) (mirror.Object, error) {
-	if d.DAVWriter == nil {
-		return mirror.Object{}, errors.New("this daemon cannot write: no dav connection")
-	}
-	object, err := d.DAVWriter.Put(ctx, col, href, raw, ifMatch)
-	if err != nil {
-		return mirror.Object{}, err
-	}
-	d.push(Push{Event: "todo.changed", Account: d.Account, Box: col.Name})
-	return object, nil
-}
-
-// taskList picks where a new Todo goes. One list needs no naming; several do,
-// because "add milk" landing on the work list is worse than being asked.
-func (d *Daemon) taskList(req Request) (mirror.Collection, error) {
-	name, _ := req.Args["list"].(string)
-	if name == "" {
-		name = d.defaultTaskList()
-	}
-	lists, err := d.Mirror.Collections(d.Account, "tasks")
-	if err != nil {
-		return mirror.Collection{}, err
-	}
-	if len(lists) == 0 {
-		return mirror.Collection{}, errors.New("there are no task lists on this account")
-	}
-	if name != "" {
-		for _, c := range lists {
-			if strings.EqualFold(c.Name, name) {
-				return c, nil
-			}
-		}
-		return mirror.Collection{}, fmt.Errorf("no task list called %q", name)
-	}
-	if len(lists) == 1 {
-		return lists[0], nil
-	}
-	names := make([]string, 0, len(lists))
-	for _, c := range lists {
-		names = append(names, c.Name)
-	}
-	return mirror.Collection{}, fmt.Errorf("there are %d task lists — name one with --list: %s",
-		len(lists), strings.Join(names, ", "))
-}
-
-func (d *Daemon) collectionOf(o mirror.Object) (mirror.Collection, error) {
-	cols, err := d.Mirror.Collections(d.Account, "")
-	if err != nil {
-		return mirror.Collection{}, err
-	}
-	for _, c := range cols {
-		if c.ID == o.CollectionID {
-			return c, nil
-		}
-	}
-	return mirror.Collection{}, fmt.Errorf("the collection %q is no longer in the mirror", o.Collection)
-}
-
-// dueDate reads --due, and says whether what it was given was a bare date. A
-// bare date is a date: "by Friday" does not mean 00:00 on Friday, and storing
-// it as one makes every client show a time nobody meant. A date with a clock on
-// it is the other thing people mean — "by 17:00 on Friday" — and that one keeps
-// its hour.
-func dueDate(req Request) (time.Time, bool, error) {
-	raw, _ := req.Args["due"].(string)
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return time.Time{}, false, nil
-	}
-	// A word and a time is how somebody says it out loud: "tomorrow 09:00".
-	word, clock, _ := strings.Cut(raw, " ")
-	if day, ok := relativeDay(word); ok {
-		if strings.TrimSpace(clock) == "" {
-			return day, true, nil
-		}
-		at, err := time.ParseInLocation("15:04", strings.TrimSpace(clock), time.Local)
-		if err != nil {
-			return time.Time{}, false, dueError(raw)
-		}
-		return day.Add(time.Duration(at.Hour())*time.Hour + time.Duration(at.Minute())*time.Minute), false, nil
-	}
-	for _, layout := range []string{"2006-01-02 15:04", "2006-01-02T15:04", "2006-01-02 15:04:05"} {
-		if t, err := time.ParseInLocation(layout, raw, time.Local); err == nil {
-			return t, false, nil
-		}
-	}
-	if t, err := time.ParseInLocation("2006-01-02", raw, time.Local); err == nil {
-		return t, true, nil
-	}
-	return time.Time{}, false, dueError(raw)
-}
-
-func dueError(raw string) error {
-	return fmt.Errorf("--due takes 2026-09-01, 2026-09-01 17:00, today, or tomorrow — got %q", raw)
-}
-
-// relativeDay reads the two words a caller uses instead of a date.
-func relativeDay(word string) (time.Time, bool) {
-	switch strings.ToLower(strings.TrimSpace(word)) {
-	case "today":
-		return startOfDay(time.Now()), true
-	case "tomorrow":
-		return startOfDay(time.Now().AddDate(0, 0, 1)), true
-	}
-	return time.Time{}, false
-}
-
-func startOfDay(t time.Time) time.Time {
-	y, m, d := t.Local().Date()
-	return time.Date(y, m, d, 0, 0, 0, 0, time.Local)
+	return resp.ok(viewTodo(written))
 }
 
 func viewTodo(o mirror.Object) todo {
@@ -318,81 +167,69 @@ type habitRow struct {
 // calendar, so every change here is one read and one write of that object
 // (ADR-0018).
 func (d *Daemon) handleHabit(ctx context.Context, req Request, resp Response) Response {
-	verb := "list"
-	if len(req.Cmd) > 1 {
-		verb = req.Cmd[1]
-	}
+	verb := req.Verb("list")
 	on, err := habitDate(req)
 	if err != nil {
-		resp.Code, resp.Error = "usage", err.Error()
-		return resp
+		return resp.usage(err.Error())
 	}
 
 	if verb == "list" {
 		bag, _, _, err := d.habits(ctx, false)
 		if err != nil {
-			resp.Code, resp.Error = "api", err.Error()
-			return resp
+			return resp.api(err.Error())
 		}
-		resp.OK, resp.Data = true, viewHabits(bag, on)
-		return resp
+		return resp.ok(viewHabits(bag, on))
 	}
 
 	// Everything else changes the object, so the collection has to exist.
 	bag, col, object, err := d.habits(ctx, true)
 	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.api(err.Error())
 	}
-	name, _ := req.Args["positional"].(string)
+	name := req.Str("positional")
 	date := on.Format("2006-01-02")
 
 	switch verb {
 	case "add":
 		if strings.TrimSpace(name) == "" {
-			resp.Code, resp.Error = "usage", "a habit needs a name"
-			return resp
+			return resp.usage("a habit needs a name")
 		}
-		days, derr := habit.ParseDays(str(req.Args["days"]))
+		days, derr := habit.ParseDays(req.Str("days"))
 		if derr != nil {
-			resp.Code, resp.Error = "usage", derr.Error()
-			return resp
+			return resp.usage(derr.Error())
 		}
 		bag.Habits = append(bag.Habits, habit.Habit{
 			ID: vcal.NewUID(), Name: strings.TrimSpace(name), Days: days,
-			Color: str(req.Args["color"]), Icon: str(req.Args["icon"]),
+			Color: req.Str("color"), Icon: req.Str("icon"),
 		})
 	case "edit":
 		h, ferr := bag.Find(name)
 		if ferr != nil {
-			resp.Code, resp.Error = "not_found", ferr.Error()
-			return resp
+			return resp.notFound(ferr.Error())
 		}
 		// Only what was named changes. An edit that reset the days because the
 		// caller was renaming would lose a schedule nobody meant to touch, and
 		// a habit's days are the part hardest to reconstruct.
-		if v := strings.TrimSpace(str(req.Args["title"])); v != "" {
+		if v := strings.TrimSpace(req.Str("title")); v != "" {
 			h.Name = v
 		}
-		if v := str(req.Args["days"]); v != "" {
+		if v := req.Str("days"); v != "" {
 			days, derr := habit.ParseDays(v)
 			if derr != nil {
-				resp.Code, resp.Error = "usage", derr.Error()
-				return resp
+				return resp.usage(derr.Error())
 			}
 			h.Days = days
 		}
-		if v := str(req.Args["color"]); v != "" {
+		if v := req.Str("color"); v != "" {
 			h.Color = v
 		}
-		if v := str(req.Args["icon"]); v != "" {
+		if v := req.Str("icon"); v != "" {
 			h.Icon = v
 		}
 	case "done", "undone", "drop":
 		h, ferr := bag.Find(name)
 		if ferr != nil {
-			resp.Code, resp.Error = "not_found", ferr.Error()
-			return resp
+			return resp.notFound(ferr.Error())
 		}
 		switch verb {
 		case "done":
@@ -409,16 +246,13 @@ func (d *Daemon) handleHabit(ctx context.Context, req Request, resp Response) Re
 			bag.Habits = keep
 		}
 	default:
-		resp.Code, resp.Error = "usage", fmt.Sprintf("unknown habit command %q", verb)
-		return resp
+		return resp.usage(fmt.Sprintf("unknown habit command %q", verb))
 	}
 
 	if err := d.saveHabits(ctx, col, object, bag); err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.api(err.Error())
 	}
-	resp.OK, resp.Data = true, viewHabits(bag, on)
-	return resp
+	return resp.ok(viewHabits(bag, on))
 }
 
 // habits reads the Habit record. create says whether to make the calendar and
@@ -500,11 +334,8 @@ func (d *Daemon) saveHabits(ctx context.Context, col mirror.Collection, object m
 	if href == "" {
 		href = davsync.Href(col, habit.UID)
 	}
-	if _, err := d.write(ctx, col, href, raw, ifMatch); err != nil {
-		return err
-	}
-	d.push(Push{Event: "habit.changed", Account: d.Account, Box: col.Name})
-	return nil
+	_, err = d.put(ctx, habitChanged, col, href, raw, ifMatch)
+	return err
 }
 
 func viewHabits(bag habit.Bag, on time.Time) []habitRow {
@@ -519,26 +350,4 @@ func viewHabits(bag habit.Bag, on time.Time) []habitRow {
 		})
 	}
 	return out
-}
-
-// habitDate reads --date, defaulting to today. A Habit is a fact about a day,
-// so which day has to be answerable.
-func habitDate(req Request) (time.Time, error) {
-	raw := strings.TrimSpace(str(req.Args["date"]))
-	switch strings.ToLower(raw) {
-	case "", "today":
-		return startOfDay(time.Now()), nil
-	case "yesterday":
-		return startOfDay(time.Now().AddDate(0, 0, -1)), nil
-	}
-	t, err := time.ParseInLocation("2006-01-02", raw, time.Local)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("--date takes a date like 2026-08-29, or today, or yesterday — got %q", raw)
-	}
-	return t, nil
-}
-
-func str(v any) string {
-	s, _ := v.(string)
-	return s
 }

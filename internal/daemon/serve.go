@@ -97,8 +97,7 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 		// Not a CLI command: `mailbox setup` sends it after it writes the
 		// config, so the wizard does not sit for up to a minute waiting for
 		// the poll to notice (ADR-0021).
-		resp.OK, resp.Data = true, map[string]any{"changes": d.reloadConfig("asked over the socket")}
-		return resp
+		return resp.ok(map[string]any{"changes": d.reloadConfig("asked over the socket")})
 	case "outbox":
 		return d.handleOutbox(ctx, req, resp)
 	case "calendar":
@@ -137,14 +136,13 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 	case "box list":
 		// Both filters are applied here rather than while printing, so a flag
 		// means the same thing whether a caller reads the table or the JSON.
-		unreadOnly, _ := req.Args["unread"].(bool)
-		everything, _ := req.Args["archive"].(bool)
+		unreadOnly := req.Bool("unread")
+		everything := req.Bool("archive")
 		out := []boxRow{}
 		for _, acct := range d.accounts() {
 			counts, err := d.Mirror.BoxCounts(acct.Name)
 			if err != nil {
-				resp.Code, resp.Error = "api", err.Error()
-				return resp
+				return resp.api(err.Error())
 			}
 			held := map[string]mirror.BoxCount{}
 			for _, c := range counts {
@@ -168,79 +166,64 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 				})
 			}
 		}
-		resp.OK, resp.Data = true, out
-		return resp
+		return resp.ok(out)
 
 	case "box view":
 		// A Box is named the same way a Message is: `[account/]box`, with the
 		// Primary Account implicit (ADR-0005).
-		name, _ := req.Args["positional"].(string)
+		name := req.Str("positional")
 		prefix, rest := splitAccount(name, d.accountNames())
 		acct, err := d.accountNamed(prefix)
 		if err != nil {
-			resp.Code, resp.Error = "usage", err.Error()
-			return resp
+			return resp.usage(err.Error())
 		}
 		folder := "INBOX"
 		if rest != "" {
 			folder = resolveBox(rest, acct.Mirrored)
 		}
-		limit := 50
-		if v, ok := req.Args["limit"].(float64); ok && v > 0 {
-			limit = int(v)
-		}
+		limit := req.Int("limit", 50)
 		rows, err := d.Mirror.Rows(acct.Name, folder, limit)
 		if err != nil {
-			resp.Code, resp.Error = "api", err.Error()
-			return resp
+			return resp.api(err.Error())
 		}
-		resp.OK, resp.Data = true, viewRows(acct, folder, rows, d.threadSizesFor(acct.Name, rows))
-		return resp
+		return resp.ok(viewRows(acct, folder, rows, d.threadSizesFor(acct.Name, rows)))
 
 	case "message view":
-		id, _ := req.Args["positional"].(string)
+		id := req.Str("positional")
 		acct, folder, uid, err := d.resolveID(id)
 		if err != nil {
-			resp.Code, resp.Error = "usage", err.Error()
-			return resp
+			return resp.usage(err.Error())
 		}
 		r, err := d.Mirror.Row(acct.Name, folder, uid)
 		if errors.Is(err, mirror.ErrNotFound) {
-			resp.Code, resp.Error = "not_found", noSuchMessage(id)
-			return resp
+			return resp.notFound(noSuchMessage(id))
 		}
 		if err != nil {
-			resp.Code, resp.Error = "api", err.Error()
-			return resp
+			return resp.api(err.Error())
 		}
 		places, err := d.Mirror.Placements(acct.Name, r.Message.ID)
 		if err != nil {
-			resp.Code, resp.Error = "api", err.Error()
-			return resp
+			return resp.api(err.Error())
 		}
-		resp.OK, resp.Data = true, viewMessage(acct, folder, r, places)
-		return resp
+		return resp.ok(viewMessage(acct, folder, r, places))
 
 	case "attachment list":
-		id, _ := req.Args["positional"].(string)
+		id := req.Str("positional")
 		acct, folder, uid, _, err := d.resolveAttachmentID(id)
 		if err != nil {
-			resp.Code, resp.Error = "usage", err.Error()
-			return resp
+			return resp.usage(err.Error())
 		}
 		parts, err := d.partsOf(acct, folder, uid)
 		if err != nil {
 			return fail(resp, id, err)
 		}
-		resp.OK, resp.Data = true, viewParts(acct, folder, uid, parts)
-		return resp
+		return resp.ok(viewParts(acct, folder, uid, parts))
 
 	case "attachment save":
-		id, _ := req.Args["positional"].(string)
+		id := req.Str("positional")
 		acct, folder, uid, index, err := d.resolveAttachmentID(id)
 		if err != nil {
-			resp.Code, resp.Error = "usage", err.Error()
-			return resp
+			return resp.usage(err.Error())
 		}
 		parts, err := d.partsOf(acct, folder, uid)
 		if err != nil {
@@ -248,25 +231,21 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 		}
 		part, err := pick(acct, folder, uid, parts, index)
 		if err != nil {
-			resp.Code, resp.Error = "usage", err.Error()
-			return resp
+			return resp.usage(err.Error())
 		}
-		out, _ := req.Args["output"].(string)
-		force, _ := req.Args["force"].(bool)
+		out := req.Str("output")
+		force := req.Bool("force")
 		saved, err := d.save(ctx, acct, folder, uid, part, out, force)
 		if err != nil {
-			resp.Code, resp.Error = "api", err.Error()
-			return resp
+			return resp.api(err.Error())
 		}
-		resp.OK, resp.Data = true, saved
-		return resp
+		return resp.ok(saved)
 
 	case "attachment bytes":
-		id, _ := req.Args["positional"].(string)
+		id := req.Str("positional")
 		acct, folder, uid, index, err := d.resolveAttachmentID(id)
 		if err != nil {
-			resp.Code, resp.Error = "usage", err.Error()
-			return resp
+			return resp.usage(err.Error())
 		}
 		parts, err := d.partsOf(acct, folder, uid)
 		if err != nil {
@@ -274,78 +253,61 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 		}
 		part, err := pick(acct, folder, uid, parts, index)
 		if err != nil {
-			resp.Code, resp.Error = "usage", err.Error()
-			return resp
+			return resp.usage(err.Error())
 		}
 		if part.Size > maxInlineBytes {
-			resp.Code, resp.Error = "usage", fmt.Sprintf(
+			return resp.usage(fmt.Sprintf(
 				"%s is %d bytes; use `attachment save` for anything over %d",
-				part.Name(), part.Size, int64(maxInlineBytes))
-			return resp
+				part.Name(), part.Size, int64(maxInlineBytes)))
 		}
 		if acct.Reconciler == nil {
-			resp.Code, resp.Error = "api", "this daemon cannot fetch: no server connection"
-			return resp
+			return resp.api("this daemon cannot fetch: no server connection")
 		}
 		body, err := acct.Reconciler.Driver.FetchPart(ctx, folder, uid, part.Path)
 		if err != nil {
-			resp.Code, resp.Error = "api", err.Error()
-			return resp
+			return resp.api(err.Error())
 		}
-		resp.OK, resp.Data = true, inlineBytes{
+		return resp.ok(inlineBytes{
 			Filename: part.Name(), MIMEType: part.MIMEType, Size: len(body),
 			ContentID: part.ContentID, Base64: base64.StdEncoding.EncodeToString(body),
-		}
-		return resp
+		})
 
 	case "thread view":
-		id, _ := req.Args["positional"].(string)
+		id := req.Str("positional")
 		acct, folder, uid, err := d.resolveID(id)
 		if err != nil {
-			resp.Code, resp.Error = "usage", err.Error()
-			return resp
+			return resp.usage(err.Error())
 		}
 		r, err := d.Mirror.Row(acct.Name, folder, uid)
 		if errors.Is(err, mirror.ErrNotFound) {
-			resp.Code, resp.Error = "not_found", noSuchMessage(id)
-			return resp
+			return resp.notFound(noSuchMessage(id))
 		}
 		if err != nil {
-			resp.Code, resp.Error = "api", err.Error()
-			return resp
+			return resp.api(err.Error())
 		}
 		// A Thread never crosses an Account: the same conversation reaching two
 		// accounts is two Threads (ADR-0008).
 		rows, err := d.Mirror.Thread(acct.Name, r.Message.ThreadID)
 		if err != nil {
-			resp.Code, resp.Error = "api", err.Error()
-			return resp
+			return resp.api(err.Error())
 		}
 		out := make([]message, 0, len(rows))
 		for _, row := range rows {
 			out = append(out, viewMessage(acct, row.Placement.Folder, row, nil))
 		}
-		resp.OK, resp.Data = true, out
-		return resp
+		return resp.ok(out)
 
 	case "search":
-		text, _ := req.Args["positional"].(string)
-		q := mirror.Query{Text: text, Limit: 25}
-		if v, ok := req.Args["from"].(string); ok {
-			q.From = v
-		}
-		if v, ok := req.Args["limit"].(float64); ok && v > 0 {
-			q.Limit = int(v)
-		}
+		text := req.Str("positional")
+		q := mirror.Query{Text: text, From: req.Str("from"), Limit: req.Int("limit", 25)}
 		// `--in` may name an account's Box, and it may name the account alone.
-		box, _ := req.Args["in"].(string)
+		box := req.Str("in")
 		prefix, rest := splitAccount(box, d.accountNames())
 		search := d.accounts()
 		if prefix != "" {
 			acct, err := d.accountNamed(prefix)
 			if err != nil {
-				resp.Code, resp.Error = "usage", err.Error()
-				return resp
+				return resp.usage(err.Error())
 			}
 			search = []*Account{acct}
 		}
@@ -360,8 +322,7 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 			}
 			hits, err := d.Mirror.Search(acct.Name, aq)
 			if err != nil {
-				resp.Code, resp.Error = "usage", err.Error()
-				return resp
+				return resp.usage(err.Error())
 			}
 			out = append(out, viewHits(acct, hits)...)
 		}
@@ -374,13 +335,12 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 				out = out[:q.Limit]
 			}
 		}
-		resp.OK, resp.Data = true, out
-		return resp
+		return resp.ok(out)
 
 	case "seen", "unseen":
 		acct, refs, err := d.refs(req)
 		if err != nil {
-			return refsFail(resp, err)
+			return resp.failed(err)
 		}
 		results, err := acct.Writer.SetSeen(ctx, refs, req.Cmd[0] == "seen")
 		return d.wrote(acct, resp, results, err)
@@ -388,11 +348,10 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 	case "move", "trash", "spam":
 		acct, refs, err := d.refs(req)
 		if err != nil {
-			return refsFail(resp, err)
+			return resp.failed(err)
 		}
 		if refs, err = d.threaded(acct.Name, refs); err != nil {
-			resp.Code, resp.Error = "api", err.Error()
-			return resp
+			return resp.api(err.Error())
 		}
 		dest := "Trash"
 		if req.Cmd[0] == "spam" {
@@ -400,15 +359,13 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 			// server's own spam handling can see it, and blocks nobody. The
 			// sender-level decision is `route set --to block`.
 			if dest, err = junkBox(acct); err != nil {
-				resp.Code, resp.Error = "usage", err.Error()
-				return resp
+				return resp.usage(err.Error())
 			}
 		}
 		if req.Cmd[0] == "move" {
-			to, _ := req.Args["to"].(string)
+			to := req.Str("to")
 			if to == "" {
-				resp.Code, resp.Error = "usage", "move needs --to BOX"
-				return resp
+				return resp.usage("move needs --to BOX")
 			}
 			// A move within one account. Moving mail between accounts is a
 			// different operation — a copy and a delete over two servers — and
@@ -421,8 +378,7 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 			// now, while the uid we hold is still the message's — after the
 			// move it has a new one in Trash, which the Mirror never sees.
 			if _, err := acct.Writer.SetSeen(ctx, refs, true); err != nil {
-				resp.Code, resp.Error = "api", err.Error()
-				return resp
+				return resp.api(err.Error())
 			}
 		}
 		results, err := acct.Writer.Move(ctx, refs, dest)
@@ -444,8 +400,7 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 		for _, acct := range d.accounts() {
 			f, err := d.Mirror.Folder(acct.Name, "INBOX")
 			if err != nil {
-				resp.Code, resp.Error = "api", err.Error()
-				return resp
+				return resp.api(err.Error())
 			}
 			out = append(out, map[string]any{
 				"account": acct.Name, "primary": acct.Primary,
@@ -454,8 +409,7 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 				"boxes": len(acct.Mirrored), "watched": acct.Watched,
 			})
 		}
-		resp.OK, resp.Data = true, out
-		return resp
+		return resp.ok(out)
 	}
 
 	resp.Code = "usage"
@@ -495,13 +449,6 @@ func (d *Daemon) partsOf(a *Account, folder string, uid uint32) ([]mirror.Part, 
 	return d.Mirror.Parts(r.Message.ID)
 }
 
-// idNotFound is a refs() error for an id that resolved to a real Box and uid but
-// matched no Message. It carries the id as the caller typed it so every write
-// command answers the same way the read commands do.
-type idNotFound struct{ id string }
-
-func (e idNotFound) Error() string { return noSuchMessage(e.id) }
-
 // noSuchMessage is what every command says for an id that parsed but matches no
 // Message: the id as the caller typed it, then the reason it is usually gone —
 // it was moved or expunged between the listing that printed it and now. It does
@@ -511,29 +458,14 @@ func noSuchMessage(id string) string {
 	return fmt.Sprintf("%s: no such message — moved or deleted since it was listed", id)
 }
 
-// refsFail answers a refs() error. An id that named nothing in the Mirror is
-// not_found — it was most likely expunged — and everything else is a usage
-// mistake in what the caller typed.
-func refsFail(resp Response, err error) Response {
-	var nf idNotFound
-	if errors.As(err, &nf) {
-		resp.Code, resp.Error = "not_found", err.Error()
-		return resp
-	}
-	resp.Code, resp.Error = "usage", err.Error()
-	return resp
-}
-
 // fail turns a Mirror read error into the right reply. An id the Mirror does
 // not hold is not_found rather than a failure: it may have been expunged, and
 // the Mirror may be Behind.
 func fail(resp Response, id string, err error) Response {
 	if errors.Is(err, mirror.ErrNotFound) {
-		resp.Code, resp.Error = "not_found", noSuchMessage(id)
-		return resp
+		return resp.notFound(noSuchMessage(id))
 	}
-	resp.Code, resp.Error = "api", err.Error()
-	return resp
+	return resp.failed(err)
 }
 
 // pick chooses the part a save was asked for. A Message with exactly one
@@ -663,47 +595,40 @@ func parseAttachmentID(value string, known []string) (folder string, uid uint32,
 // all have to name the same account: a single STORE or MOVE goes to one server,
 // and an id list spanning two of them is a mistake worth naming rather than two
 // half-done commands.
+//
+// Everything that can go wrong here is something the caller typed, so the
+// errors carry their own Code: usage, except for an id that named nothing in
+// the Mirror, which is not_found because it was most likely expunged.
 func (d *Daemon) refs(req Request) (*Account, []mailsync.Ref, error) {
-	var ids []string
-	switch v := req.Args["positional"].(type) {
-	case string:
-		ids = []string{v}
-	case []any:
-		for _, e := range v {
-			s, _ := e.(string)
-			ids = append(ids, s)
-		}
-	case []string:
-		ids = v
-	}
+	ids := req.Strings("positional")
 	if len(ids) == 0 {
-		return nil, nil, errors.New("no message id given")
+		return nil, nil, usageErr("no message id given")
 	}
 	var acct *Account
 	refs := make([]mailsync.Ref, 0, len(ids))
 	for _, id := range ids {
 		a, folder, uid, err := d.resolveID(id)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, usageErr("%s", err)
 		}
 		// An id that parses but names nothing in the Mirror is the common
 		// case — it was expunged since the listing that printed it. Catch it
 		// here so the reply says so, rather than after a pointless server
 		// round trip that fails with a folder-shaped "INBOX: not found".
 		if _, err := d.Mirror.Row(a.Name, folder, uid); errors.Is(err, mirror.ErrNotFound) {
-			return nil, nil, idNotFound{id}
+			return nil, nil, notFoundErr("%s", noSuchMessage(id))
 		} else if err != nil {
 			return nil, nil, err
 		}
 		if acct == nil {
 			acct = a
 		} else if !strings.EqualFold(acct.Name, a.Name) {
-			return nil, nil, fmt.Errorf("%s and %s are on different accounts — one command, one account", ids[0], id)
+			return nil, nil, usageErr("%s and %s are on different accounts — one command, one account", ids[0], id)
 		}
 		refs = append(refs, mailsync.Ref{Folder: folder, UID: uid})
 	}
 	if acct.Writer == nil {
-		return nil, nil, errors.New("this daemon cannot write: no server connection")
+		return nil, nil, usageErr("this daemon cannot write: no server connection")
 	}
 	return acct, refs, nil
 }
@@ -776,8 +701,7 @@ func (d *Daemon) threadedWithin(account string, refs []mailsync.Ref, boxes ...st
 // UIDPLUS — also asks for a cycle, because only a cycle can find it.
 func (d *Daemon) wrote(a *Account, resp Response, results []mailsync.Result, err error) Response {
 	if err != nil {
-		resp.Code, resp.Error = "api", err.Error()
-		return resp
+		return resp.api(err.Error())
 	}
 	boxes := map[string]struct{}{}
 	needCycle := false
@@ -802,8 +726,7 @@ func (d *Daemon) wrote(a *Account, resp Response, results []mailsync.Result, err
 	if needCycle {
 		d.kickAccount(a, "write")
 	}
-	resp.OK, resp.Data = true, out
-	return resp
+	return resp.ok(out)
 }
 
 // routingOrder is the order Boxes are listed in: the way mail moves through
