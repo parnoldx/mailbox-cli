@@ -126,6 +126,8 @@ func primaryDiffers(was, now config.Account) string {
 		return "the sent box changed"
 	case was.DisplayName != now.DisplayName:
 		return "the display name changed"
+	case was.NoDAV != now.NoDAV:
+		return "no_dav changed"
 	}
 	return ""
 }

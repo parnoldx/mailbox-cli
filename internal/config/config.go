@@ -51,6 +51,13 @@ type Account struct {
 	// SievePort is 4190, the registered ManageSieve port. The connection starts
 	// in the clear there and is upgraded with STARTTLS, or refused.
 	SievePort int `toml:"sieve_port"`
+	// NoDAV skips the calendars, task lists and address books entirely: no
+	// discovery, no hand-configured collections, no periodic cycle. For the VPS
+	// Daemon (ADR-0025), which exists for mail routing and bubble timing and
+	// reads no calendar — leaving DAV configured there just fails it on every
+	// cycle once the app password is gone, since an empty DAVPassword falls
+	// back to the mail one and mailbox.org refuses that for CalDAV/CardDAV.
+	NoDAV bool `toml:"no_dav"`
 }
 
 // Calendar is a Collection on a server we cannot discover: another provider,

@@ -213,57 +213,63 @@ func runDaemon(systemdSocket bool) error {
 
 	// The calendars and task lists. The account's own server is enumerated;
 	// anything configured by hand is only used when it has its own credentials,
-	// which means it is on a server we cannot ask (ADR-0010).
-	clients := []*davdrv.Client{davdrv.New(davdrv.Config{
-		Endpoint: cfg.Account.DAVEndpoint,
-		Username: cfg.Account.Email, Password: cfg.Account.DAVPassword,
-	})}
-	for key, cal := range cfg.CalDAV {
-		if cal.URL == "" || cal.Password == "" {
-			continue // on our own server: discovery finds it
-		}
-		name := cal.Name
-		if name == "" {
-			name = key
-		}
-		kind := cal.Kind
-		if kind == "" {
-			kind = "events"
-		}
-		user := cal.User
-		if user == "" {
-			user = cfg.Account.Email
-		}
-		clients = append(clients, davdrv.Static(
-			davdrv.Config{Endpoint: cal.URL, Username: user, Password: cal.Password},
-			davsync.Collection{Kind: kind, URL: cal.URL, Name: name, Color: cal.Color},
-		))
-		logger.Printf("calendar %q comes from %s with its own credentials", name, cal.URL)
-	}
-	primaryDAV := clients[0]
-	d.DAV = &davsync.Reconciler{
-		Account: "primary", Mirror: m, Driver: davdrv.NewSet(clients...),
-		Location: time.Local,
-		// Collections this machine does not mirror. Discovery skips them on the
-		// way in and drops them if they are already held (ADR-0013 is why the
-		// list is in the config and not on the row).
-		Exclude: cfg.Collections.Exclude,
-		OnCollection: func(name string, out davsync.Outcome, err error) {
-			switch {
-			case err != nil:
-				logger.Printf("dav %s: %v", name, err)
-			case out.Changed > 0 || out.Deleted > 0:
-				logger.Printf("dav %s: changed=%d deleted=%d full=%v", name, out.Changed, out.Deleted, out.Full)
+	// which means it is on a server we cannot ask (ADR-0010). Skipped entirely
+	// when NoDAV is set (ADR-0025's VPS Daemon): d.DAV stays nil, which the
+	// reconciler and every command already treat as "no calendars configured".
+	if !cfg.Account.NoDAV {
+		clients := []*davdrv.Client{davdrv.New(davdrv.Config{
+			Endpoint: cfg.Account.DAVEndpoint,
+			Username: cfg.Account.Email, Password: cfg.Account.DAVPassword,
+		})}
+		for key, cal := range cfg.CalDAV {
+			if cal.URL == "" || cal.Password == "" {
+				continue // on our own server: discovery finds it
 			}
-		},
-	}
+			name := cal.Name
+			if name == "" {
+				name = key
+			}
+			kind := cal.Kind
+			if kind == "" {
+				kind = "events"
+			}
+			user := cal.User
+			if user == "" {
+				user = cfg.Account.Email
+			}
+			clients = append(clients, davdrv.Static(
+				davdrv.Config{Endpoint: cal.URL, Username: user, Password: cal.Password},
+				davsync.Collection{Kind: kind, URL: cal.URL, Name: name, Color: cal.Color},
+			))
+			logger.Printf("calendar %q comes from %s with its own credentials", name, cal.URL)
+		}
+		primaryDAV := clients[0]
+		d.DAV = &davsync.Reconciler{
+			Account: "primary", Mirror: m, Driver: davdrv.NewSet(clients...),
+			Location: time.Local,
+			// Collections this machine does not mirror. Discovery skips them on the
+			// way in and drops them if they are already held (ADR-0013 is why the
+			// list is in the config and not on the row).
+			Exclude: cfg.Collections.Exclude,
+			OnCollection: func(name string, out davsync.Outcome, err error) {
+				switch {
+				case err != nil:
+					logger.Printf("dav %s: %v", name, err)
+				case out.Changed > 0 || out.Deleted > 0:
+					logger.Printf("dav %s: changed=%d deleted=%d full=%v", name, out.Changed, out.Deleted, out.Full)
+				}
+			},
+		}
 
-	d.DAVWriter = &davsync.Writer{
-		Account: "primary", Mirror: m, Driver: davdrv.NewSet(clients...), Reconciler: d.DAV,
+		d.DAVWriter = &davsync.Writer{
+			Account: "primary", Mirror: m, Driver: davdrv.NewSet(clients...), Reconciler: d.DAV,
+		}
+		d.DAVHome = primaryDAV
+		d.TaskList = cfg.Account.TaskList
+		d.AddressBook = cfg.Account.AddressBook
+	} else {
+		logger.Printf("no_dav set: calendars, task lists and address books are skipped")
 	}
-	d.DAVHome = primaryDAV
-	d.TaskList = cfg.Account.TaskList
-	d.AddressBook = cfg.Account.AddressBook
 	d.BubbleMorning, d.BubbleEvening = cfg.Bubble.Morning, cfg.Bubble.Evening
 
 	// The Routing: one Sieve script on the Primary Account's server, which is
