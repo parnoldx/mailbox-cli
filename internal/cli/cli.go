@@ -379,9 +379,7 @@ func request(req daemon.Request, asJSON bool, render renderer, stdout, stderr io
 			continue // a push
 		}
 		if asJSON {
-			enc := json.NewEncoder(stdout)
-			enc.SetIndent("", "  ")
-			_ = enc.Encode(resp)
+			encodeJSON(stdout, resp)
 		} else if !resp.OK {
 			fmt.Fprintf(stderr, "%s\n", resp.Error)
 		} else {

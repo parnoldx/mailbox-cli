@@ -28,10 +28,9 @@ func (d *Daemon) changeEvent(ctx context.Context, verb string, req Request, resp
 	}
 
 	if verb == "delete" {
-		if err := d.DAVWriter.Delete(ctx, col, object); err != nil {
+		if err := d.remove(ctx, eventChanged, col, object); err != nil {
 			return resp.api(err.Error())
 		}
-		d.push(Push{Event: eventChanged, Account: d.Account, Box: col.Name})
 		return resp.ok(map[string]any{
 			"id": object.ID, "state": "deleted", "summary": object.Summary, "calendar": col.Name,
 		})
@@ -84,20 +83,15 @@ func (d *Daemon) addEvent(ctx context.Context, req Request, resp Response) Respo
 	if err != nil {
 		return resp.api(err.Error())
 	}
-	written, err := d.put(ctx, eventChanged, col, eventHref(col, uid), raw, "")
+	// davsync.Href names the new object by the same root-relative path the sync
+	// REPORT will report it under. Spelling it absolutely (col.URL carries the
+	// scheme and host) made the created row and the synced row miss each other on
+	// the (collection_id, href) key and the Mirror kept both.
+	written, err := d.put(ctx, eventChanged, col, davsync.Href(col, uid), raw, "")
 	if err != nil {
 		return resp.api(err.Error())
 	}
 	return resp.ok(viewEventObject(written, col))
-}
-
-// eventHref is where a new object goes. It defers to davsync.Href so a new
-// event is named by the same root-relative path the sync REPORT will report it
-// under: spelling it absolutely here (col.URL carries the scheme and host) made
-// the created row and the synced row miss each other on the (collection_id,
-// href) key and the Mirror kept both.
-func eventHref(col mirror.Collection, uid string) string {
-	return davsync.Href(col, uid)
 }
 
 // eventEdit reads the fields an add or an edit was given. An empty one means

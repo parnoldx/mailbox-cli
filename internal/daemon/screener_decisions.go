@@ -25,7 +25,7 @@ func (d *Daemon) inferScreenerDecisions(ctx context.Context, a *Account, outcome
 	if d.Sieve == nil {
 		return
 	}
-	screener, ok := d.boxNamed(a, routing.BoxScreener)
+	screener, ok := a.boxNamed(routing.BoxScreener)
 	if !ok {
 		return
 	}
@@ -183,7 +183,7 @@ func (d *Daemon) applyInferred(ctx context.Context, a *Account, screener string,
 		}
 		moved := 0
 		if pile != "" {
-			if box, ok := d.boxNamed(a, pile); !ok {
+			if box, ok := a.boxNamed(pile); !ok {
 				d.logf("screener inference: %s decided for %s but that box is not here", addr, pile)
 			} else if results, mErr := a.Writer.Move(ctx, refs, box); mErr != nil {
 				d.logf("screener inference: sweeping %s to %s: %v", addr, pile, mErr)

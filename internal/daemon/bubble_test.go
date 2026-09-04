@@ -301,7 +301,7 @@ func TestBubbleAtIsRederivedFromTheKeyword(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	box, _ := d.boxNamed(d.primaryAccount(), routing.BoxAside)
+	box, _ := d.primaryAccount().boxNamed(routing.BoxAside)
 	got, err := d.Mirror.Bubbled("primary", box)
 	if err != nil {
 		t.Fatal(err)

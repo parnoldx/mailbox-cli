@@ -25,13 +25,16 @@ func (d *Daemon) handleLabel(ctx context.Context, req Request, resp Response) Re
 		if err != nil {
 			return resp.api(err.Error())
 		}
+		counts, err := d.Mirror.LabelCounts(d.Account)
+		if err != nil {
+			return resp.api(err.Error())
+		}
+		// Names and counts are read separately because they answer different
+		// questions: a label that has been created and used by nothing is on the
+		// list, at nought.
 		out := []labelRow{}
 		for _, n := range names {
-			rows, err := d.Mirror.Labelled(d.Account, n, 0)
-			if err != nil {
-				return resp.api(err.Error())
-			}
-			out = append(out, labelRow{Label: n, Count: len(rows)})
+			out = append(out, labelRow{Label: n, Count: counts[n]})
 		}
 		return resp.ok(out)
 

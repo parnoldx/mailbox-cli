@@ -452,6 +452,34 @@ func systemKeyword(name string) bool {
 	return false
 }
 
+// LabelCounts is how much mail carries each label, in one query: the distinct
+// flag strings and how many Placements hold each, tallied per keyword here. A
+// count per label read by listing that label's mail would be a query per label
+// and a page-sized cap on the number — and "how many" is the one thing a
+// listing is for.
+func (m *Mirror) LabelCounts(account string) (map[string]int, error) {
+	rows, err := m.db.Query(
+		`SELECT flags, count(*) FROM placements WHERE account = ? AND flags <> '' GROUP BY flags`, account)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var flags string
+		var n int
+		if err := rows.Scan(&flags, &n); err != nil {
+			return nil, err
+		}
+		for _, f := range splitFlags(flags) {
+			if f != "" && !systemKeyword(f) {
+				out[f] += n
+			}
+		}
+	}
+	return out, rows.Err()
+}
+
 // Labelled is the mail carrying one label, newest first. It is a Mirror read
 // like a Box listing: a keyword is stored beside the Placement it is on.
 //

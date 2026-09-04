@@ -150,7 +150,7 @@ func (d *Daemon) storeRouting(raw string, active bool, lists *routing.Lists) err
 // mail: five mails from one address are one thing to decide, not five.
 func (d *Daemon) handleScreener(req Request, resp Response) Response {
 	a := d.primaryAccount()
-	box, ok := d.boxNamed(a, routing.BoxScreener)
+	box, ok := a.boxNamed(routing.BoxScreener)
 	if !ok {
 		return resp.usage(fmt.Sprintf("this account has no %s box", routing.BoxScreener))
 	}
@@ -306,7 +306,7 @@ func (d *Daemon) handleRoute(ctx context.Context, req Request, resp Response) Re
 
 	// What is already here, gathered before anything is written: it decides
 	// which Boxes have to exist, and a Mirror read costs nothing.
-	screener, hasScreener := d.boxNamed(a, routing.BoxScreener)
+	screener, hasScreener := a.boxNamed(routing.BoxScreener)
 	waiting := map[string][]mailsync.Ref{}
 	total := 0
 	if hasScreener && to != routing.None {
@@ -326,7 +326,7 @@ func (d *Daemon) handleRoute(ctx context.Context, req Request, resp Response) Re
 		if box == "" {
 			continue
 		}
-		if _, ok := d.boxNamed(a, box); !ok {
+		if _, ok := a.boxNamed(box); !ok {
 			return resp.usage(fmt.Sprintf(
 				"this account has no %q box — create it before routing mail there", box))
 		}
@@ -373,7 +373,7 @@ func (d *Daemon) handleRoute(ctx context.Context, req Request, resp Response) Re
 	}
 
 	if pile := pileFor(to, total); pile != "" {
-		box, _ := d.boxNamed(a, pile)
+		box, _ := a.boxNamed(pile)
 		for i, addr := range addresses {
 			refs := waiting[addr]
 			if len(refs) == 0 {
@@ -502,7 +502,7 @@ func (d *Daemon) movePile(ctx context.Context, req Request, resp Response, pileB
 	if req.Verb("") == "done" {
 		want = routing.BoxInbox
 	}
-	dest, ok := d.boxNamed(acct, want)
+	dest, ok := acct.boxNamed(want)
 	if !ok {
 		return resp.usage(fmt.Sprintf("this account has no %q box", want))
 	}
@@ -522,10 +522,11 @@ func (d *Daemon) movePile(ctx context.Context, req Request, resp Response, pileB
 	return d.wrote(acct, resp, results, err)
 }
 
-// boxNamed finds a Box on an account by name, case-insensitively, and reports
+// boxNamed finds a Box on this account by name, case-insensitively, and reports
 // whether it is there at all. A Box that is not there is worth an error rather
-// than a write that goes nowhere.
-func (d *Daemon) boxNamed(a *Account, want string) (string, bool) {
+// than a write that goes nowhere. It is a question about an Account and nothing
+// else, which is why it does not go through the Daemon.
+func (a *Account) boxNamed(want string) (string, bool) {
 	for _, b := range a.Mirrored {
 		if strings.EqualFold(b, want) {
 			return b, true

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"mailbox/internal/habit"
@@ -99,7 +100,7 @@ func (d *Daemon) load(req Request, noun string) (mirror.Object, mirror.Collectio
 	if d.DAVWriter == nil {
 		return mirror.Object{}, mirror.Collection{}, errNoDAVWriter
 	}
-	id, err := objectID(req)
+	id, err := objectID(req, noun)
 	if err != nil {
 		return mirror.Object{}, mirror.Collection{}, usageErr("%s", err)
 	}
@@ -112,6 +113,22 @@ func (d *Daemon) load(req Request, noun string) (mirror.Object, mirror.Collectio
 	}
 	col, err := d.collectionOf(object)
 	return object, col, err
+}
+
+// objectID reads the Mirror id a command was given. noun is what the thing is
+// called in the error — "event", "todo", "contact" — because the same reader
+// serves all three and being told an event id is wanted for a `todo done` is
+// the sort of small lie that costs somebody a minute.
+func objectID(req Request, noun string) (int64, error) {
+	raw := req.Text("positional")
+	if raw == "" {
+		return 0, fmt.Errorf("no %s id given", noun)
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, fmt.Errorf("%s id must be a number, got %q", noun, raw)
+	}
+	return id, nil
 }
 
 // put writes one object to the server and tells the listeners what kind of
@@ -127,6 +144,21 @@ func (d *Daemon) put(ctx context.Context, event string, col mirror.Collection, h
 	}
 	d.push(Push{Event: event, Account: d.Account, Box: col.Name})
 	return object, nil
+}
+
+// remove deletes one object from the server and tells the listeners the same
+// thing put does. It is put's other half: an appointment, a todo and a card are
+// deleted in exactly the same three steps, and only the noun in the reply
+// differs.
+func (d *Daemon) remove(ctx context.Context, event string, col mirror.Collection, o mirror.Object) error {
+	if d.DAVWriter == nil {
+		return errNoDAVWriter
+	}
+	if err := d.DAVWriter.Delete(ctx, col, o); err != nil {
+		return err
+	}
+	d.push(Push{Event: event, Account: d.Account, Box: col.Name})
+	return nil
 }
 
 // errNoDAVWriter is a Daemon configured for mail alone, or one whose DAV

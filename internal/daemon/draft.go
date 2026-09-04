@@ -88,10 +88,10 @@ func (d *Daemon) handleDraft(ctx context.Context, req Request, resp Response) Re
 				return out
 			}
 			// The draft goes only once the mail is out. A send that failed
-			// leaves it where it was, so nothing is lost by retrying.
-			if _, err := acct.Writer.Move(ctx, []mailsync.Ref{{Folder: box, UID: row.Placement.UID}}, "Trash"); err != nil {
-				return out
-			}
+			// leaves it where it was, so nothing is lost by retrying — and a
+			// failure to bin it is not a failure of the send, which has already
+			// happened: the reply says the mail went either way.
+			_, _ = acct.Writer.Move(ctx, []mailsync.Ref{{Folder: box, UID: row.Placement.UID}}, "Trash")
 			return out
 		}
 		return d.replaceDraft(ctx, acct, box, row, draft, resp)
@@ -204,21 +204,7 @@ func (d *Daemon) draftFrom(acct *Account, row mirror.Row, req Request) (compose.
 // draftRow finds the draft a caller named. An id may be bare, because `draft`
 // has already said which Box this is about, or qualified the ordinary way.
 func (d *Daemon) draftRow(acct *Account, box string, req Request) (mirror.Row, error) {
-	// A number is as good as a string here: over the socket a caller may send
-	// either, the way an event id may be (see objectID).
-	id := ""
-	switch v := req.Args["positional"].(type) {
-	case string:
-		id = strings.TrimSpace(v)
-	case float64:
-		id = fmt.Sprintf("%d", int64(v))
-	case int:
-		id = fmt.Sprintf("%d", v)
-	case int64:
-		id = fmt.Sprintf("%d", v)
-	case uint32:
-		id = fmt.Sprintf("%d", v)
-	}
+	id := req.Text("positional")
 	if id == "" {
 		return mirror.Row{}, errors.New("which draft? give the id draft list printed")
 	}

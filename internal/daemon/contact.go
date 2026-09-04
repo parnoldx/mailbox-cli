@@ -43,7 +43,7 @@ func (d *Daemon) handleContact(ctx context.Context, req Request, resp Response) 
 		return resp.ok(out)
 
 	case "view":
-		id, err := objectID(req)
+		id, err := objectID(req, "contact")
 		if err != nil {
 			return resp.usage(err.Error())
 		}
@@ -91,10 +91,9 @@ func (d *Daemon) changeContact(ctx context.Context, verb string, req Request, re
 	}
 
 	if verb == "drop" {
-		if err := d.DAVWriter.Delete(ctx, book, object); err != nil {
+		if err := d.remove(ctx, contactChanged, book, object); err != nil {
 			return resp.api(err.Error())
 		}
-		d.push(Push{Event: contactChanged, Account: d.Account, Box: book.Name})
 		return resp.ok(map[string]any{"id": object.ID, "state": "dropped", "name": object.Summary})
 	}
 

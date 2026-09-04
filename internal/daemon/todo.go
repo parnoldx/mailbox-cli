@@ -92,10 +92,9 @@ func (d *Daemon) changeTodo(ctx context.Context, verb string, req Request, resp 
 	}
 
 	if verb == "drop" {
-		if err := d.DAVWriter.Delete(ctx, col, object); err != nil {
+		if err := d.remove(ctx, todoChanged, col, object); err != nil {
 			return resp.api(err.Error())
 		}
-		d.push(Push{Event: todoChanged, Account: d.Account, Box: col.Name})
 		return resp.ok(map[string]any{"id": object.ID, "state": "dropped", "summary": object.Summary})
 	}
 
@@ -294,18 +293,15 @@ func (d *Daemon) makeHabitsCalendar(ctx context.Context) (mirror.Collection, err
 	if err != nil {
 		return mirror.Collection{}, err
 	}
-	id, err := d.Mirror.PutCollection(mirror.Collection{
+	if _, err := d.Mirror.PutCollection(mirror.Collection{
 		Account: d.Account, Kind: found.Kind, URL: found.URL, Name: found.Name, Color: found.Color,
-	})
-	if err != nil {
+	}); err != nil {
 		return mirror.Collection{}, err
 	}
-	col, err := d.Mirror.CollectionNamed(d.Account, "", habit.CalendarName)
-	if err != nil {
-		return mirror.Collection{}, err
-	}
-	_ = id
-	return col, nil
+	// Read back rather than built from `found`: the caller needs the row as the
+	// Mirror holds it, id and all, and that is what a write to a collection is
+	// addressed by.
+	return d.Mirror.CollectionNamed(d.Account, "", habit.CalendarName)
 }
 
 // saveHabits writes the record back, in one PUT.

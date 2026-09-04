@@ -5,6 +5,8 @@ package daemon
 import (
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -41,6 +43,26 @@ func (r Request) Int(key string, fallback int) int {
 		return fallback
 	}
 	return int(v)
+}
+
+// Text is one argument as the caller wrote it, whatever JSON shape it arrived
+// in. An id sent as the number 12 and the same id sent as "12" are the same id,
+// and a handler reading one should not have to know which spelling a client
+// chose — the CLI sends strings, a GUI over the socket sends numbers.
+func (r Request) Text(key string) string {
+	switch v := r.Args[key].(type) {
+	case string:
+		return strings.TrimSpace(v)
+	case float64:
+		return strconv.FormatInt(int64(v), 10)
+	case int:
+		return strconv.Itoa(v)
+	case int64:
+		return strconv.FormatInt(v, 10)
+	case uint32:
+		return strconv.FormatUint(uint64(v), 10)
+	}
+	return ""
 }
 
 // Strings is a repeatable flag, or the one value it was given once. Blanks are

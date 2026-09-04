@@ -84,7 +84,7 @@ type bubbleRow struct {
 
 // bubbleList reports the bubbled threads, soonest-due first, one row per Thread.
 func (d *Daemon) bubbleList(a *Account, resp Response) Response {
-	box, ok := d.boxNamed(a, routing.BoxAside)
+	box, ok := a.boxNamed(routing.BoxAside)
 	if !ok {
 		return resp.ok([]bubbleRow{})
 	}
@@ -150,6 +150,7 @@ func (d *Daemon) setBubble(ctx context.Context, a *Account, refs []mailsync.Ref,
 		return nil, err
 	}
 
+	aside, hasAside := a.boxNamed(routing.BoxAside)
 	var toAside []mailsync.Ref
 	for _, ref := range refs {
 		if strings.EqualFold(ref.Folder, routing.BoxInbox) {
@@ -157,17 +158,15 @@ func (d *Daemon) setBubble(ctx context.Context, a *Account, refs []mailsync.Ref,
 		}
 	}
 	if len(toAside) > 0 {
-		dest, ok := d.boxNamed(a, routing.BoxAside)
-		if !ok {
+		if !hasAside {
 			return nil, fmt.Errorf("this account has no %q box", routing.BoxAside)
 		}
-		if _, err := a.Writer.Move(ctx, toAside, dest); err != nil {
+		if _, err := a.Writer.Move(ctx, toAside, aside); err != nil {
 			return nil, err
 		}
 	}
 
-	box, _ := d.boxNamed(a, routing.BoxAside)
-	all, err := d.Mirror.Bubbled(a.Name, box)
+	all, err := d.Mirror.Bubbled(a.Name, aside)
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +184,7 @@ func (d *Daemon) setBubble(ctx context.Context, a *Account, refs []mailsync.Ref,
 // the same second: one MOVE wins and the other gets "no such uid", which the
 // loop logs (gate 4).
 func (d *Daemon) bringBack(ctx context.Context, a *Account, refs []mailsync.Ref) ([]mailsync.Result, error) {
-	inbox, _ := d.boxNamed(a, routing.BoxInbox)
+	inbox, _ := a.boxNamed(routing.BoxInbox)
 	var out []mailsync.Result
 	var move []mailsync.Ref
 	for _, ref := range refs {
@@ -392,10 +391,9 @@ func (d *Daemon) replyWatch(acct *Account, req Request) (when time.Time, ok bool
 // bubbleHours is the configured morning and evening hours, or 8 and 18.
 func (d *Daemon) bubbleHours() (morning, evening int) {
 	morning, evening = d.BubbleMorning, d.BubbleEvening
-	if morning < 0 || morning > 23 {
-		morning = 0
-	}
-	if morning == 0 {
+	// Midnight is not a morning anybody means, so 0 reads as unset like anything
+	// out of range does.
+	if morning <= 0 || morning > 23 {
 		morning = 8
 	}
 	if evening <= 0 || evening > 23 {

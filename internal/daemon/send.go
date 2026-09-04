@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -294,7 +295,8 @@ func (d *Daemon) deliver(ctx context.Context, a *Account, draft compose.Draft, r
 // listeners. A failure here is not a failure of the send: the mail is gone and
 // the copy is filed, and the next cycle will find it.
 func (d *Daemon) mirrorSentCopy(ctx context.Context, a *Account, box string) {
-	if a.Reconciler == nil || !a.mirrors(box) {
+	_, mirrored := a.boxNamed(box)
+	if a.Reconciler == nil || !mirrored {
 		// A Box the Mirror does not hold: nothing to read it back from.
 		return
 	}
@@ -304,15 +306,6 @@ func (d *Daemon) mirrorSentCopy(ctx context.Context, a *Account, box string) {
 		return
 	}
 	d.push(Push{Event: "mail.changed", Account: a.Name, Box: box})
-}
-
-func (a *Account) mirrors(box string) bool {
-	for _, m := range a.Mirrored {
-		if strings.EqualFold(m, box) {
-			return true
-		}
-	}
-	return false
 }
 
 // drain sends what is queued and files what is unfiled. It runs after every
@@ -439,18 +432,19 @@ func outboxFail(resp Response, err error) Response {
 	return resp.usage(err.Error())
 }
 
+// outboxID reads the row a retry or a cancel named. The `#` an outbox listing
+// prints in front of the number is taken off, because that is the form somebody
+// copies back out of it.
 func outboxID(req Request) (int64, error) {
-	switch v := req.Args["positional"].(type) {
-	case float64:
-		return int64(v), nil
-	case string:
-		var id int64
-		if _, err := fmt.Sscanf(strings.TrimPrefix(strings.TrimSpace(v), "#"), "%d", &id); err != nil || id <= 0 {
-			return 0, fmt.Errorf("outbox id must be a number, got %q", v)
-		}
-		return id, nil
+	raw := strings.TrimPrefix(req.Text("positional"), "#")
+	if raw == "" {
+		return 0, errors.New("no outbox id given")
 	}
-	return 0, errors.New("no outbox id given")
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, fmt.Errorf("outbox id must be a number, got %q", raw)
+	}
+	return id, nil
 }
 
 // handleForward sends a Message on to somebody else. It is a reply's mirror

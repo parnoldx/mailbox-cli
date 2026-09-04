@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -140,7 +139,7 @@ func (d *Daemon) handleEvent(ctx context.Context, req Request, resp Response) Re
 	if verb != "view" {
 		return resp.usage(fmt.Sprintf("unknown event command %q", verb))
 	}
-	id, err := objectID(req)
+	id, err := objectID(req, "event")
 	if err != nil {
 		return resp.usage(err.Error())
 	}
@@ -229,10 +228,7 @@ func viewOccurrence(o mirror.Object, in vcal.Occurrence) occurrence {
 // window reads the days a caller asked about. The default is a week from
 // today, because "what is coming up" is the question an agenda answers.
 func window(req Request) (from, to time.Time, err error) {
-	from = time.Now().Local().Truncate(24 * time.Hour)
-	// Truncate works in UTC, so the local midnight has to be built by hand.
-	y, m, dd := time.Now().Local().Date()
-	from = time.Date(y, m, dd, 0, 0, 0, 0, time.Local)
+	from = startOfDay(time.Now())
 	if v := req.Str("from"); v != "" {
 		parsed, perr := time.ParseInLocation("2006-01-02", strings.TrimSpace(v), time.Local)
 		if perr != nil {
@@ -251,24 +247,6 @@ func window(req Request) (from, to time.Time, err error) {
 		days = 1
 	}
 	return from, from.AddDate(0, 0, days), nil
-}
-
-func objectID(req Request) (int64, error) {
-	switch v := req.Args["positional"].(type) {
-	case float64:
-		return int64(v), nil
-	case int64:
-		return v, nil
-	case int:
-		return int64(v), nil
-	case string:
-		id, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
-		if err != nil || id <= 0 {
-			return 0, fmt.Errorf("event id must be a number, got %q", v)
-		}
-		return id, nil
-	}
-	return 0, errors.New("no event id given")
 }
 
 // davCycle reconciles collections of the kinds named and reports what moved.
