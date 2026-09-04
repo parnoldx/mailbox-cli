@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"mailbox/internal/bubble"
+	"mailbox/internal/message"
 )
 
 // Intent is what a sync step wrote down before it touched the network.
@@ -128,7 +129,45 @@ func (t *Tx) UpsertMessage(m Message) (id int64, hasBody bool, err error) {
 		id, m.Subject, strings.TrimSpace(m.From+" "+m.To+" "+m.Cc)); err != nil {
 		return 0, false, err
 	}
+	if err := t.upsertCorrespondents(m); err != nil {
+		return 0, false, err
+	}
 	return id, false, t.thread(id, m)
+}
+
+// upsertCorrespondents keeps the correspondents cache in step with a newly
+// mirrored Message: every address in From/To/Cc gets its last-seen date
+// bumped and, the first time it carries one, its display name filled in.
+// It runs once, right here, so recipient autocomplete's "seen in mail" layer
+// never has to parse a header at query time (see SearchCorrespondents).
+func (t *Tx) upsertCorrespondents(m Message) error {
+	seen := map[string]bool{}
+	for _, header := range []string{m.From, m.To, m.Cc} {
+		addrs, err := message.ParseAddressList(header)
+		if err != nil {
+			continue // malformed header: no address worth caching, not a reason to fail the mirror
+		}
+		for _, a := range addrs {
+			email := strings.ToLower(strings.TrimSpace(a.Addr))
+			if email == "" || seen[email] {
+				continue
+			}
+			seen[email] = true
+			if _, err := t.tx.Exec(`
+				INSERT INTO correspondents (account, email, name, last_seen, count)
+				VALUES (?, ?, ?, ?, 1)
+				ON CONFLICT (account, email) DO UPDATE SET
+					name = CASE WHEN excluded.name != '' THEN excluded.name ELSE correspondents.name END,
+					last_seen = CASE WHEN excluded.last_seen IS NOT NULL
+					                 AND (correspondents.last_seen IS NULL OR excluded.last_seen > correspondents.last_seen)
+					            THEN excluded.last_seen ELSE correspondents.last_seen END,
+					count = correspondents.count + 1`,
+				t.account, email, a.Name, nullTime(m.Date)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // thread files a new Message into a conversation. It looks both ways: at the

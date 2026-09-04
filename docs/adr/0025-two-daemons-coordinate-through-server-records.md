@@ -60,3 +60,23 @@ answers, and the config is hand-writable TOML, so no `--headless` mode is
 needed. There is no user session, so the service is a system unit written by
 hand rather than a `--user` one; `mailbox daemon` already binds its own socket
 path when it is not handed one under socket activation (ADR-0012).
+
+The account has `no_dav = true`: this Daemon exists for mail routing and
+bubble timing, and reads no calendar, so nothing here builds a DAV client.
+
+## Updating the VPS Daemon
+
+There is no `mailbox setup`/`make install` path on this box (no user session,
+no systemd `--user`), so a code change is pushed by hand:
+
+```
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/mailbox-vps ./cmd/mailbox
+scp /tmp/mailbox-vps misc:/root/mailbox.new
+ssh misc 'systemctl stop mailbox.service && mv /root/mailbox.new /root/mailbox && chmod 755 /root/mailbox && systemctl start mailbox.service'
+```
+
+`systemctl status mailbox.service` / `journalctl -u mailbox.service -n 30`
+after, same as any restart. A config-only change (no binary rebuild) just
+needs `scp` to `/root/.config/mailbox/config.toml`, `chmod 600`, and
+`systemctl restart mailbox.service` — no `stop`/`mv` dance needed since
+nothing is replacing the running binary.

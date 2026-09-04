@@ -2,7 +2,7 @@ package mirror
 
 // schemaVersion is bumped whenever the schema below changes. On a mismatch the
 // Mirror file is deleted and rebuilt rather than migrated (ADR-0013).
-const schemaVersion = 12
+const schemaVersion = 13
 
 const schema = `
 CREATE TABLE meta (
@@ -182,6 +182,21 @@ CREATE TABLE routing_script (
   active    INTEGER NOT NULL DEFAULT 0,
   synced_at TEXT
 );
+
+-- One address the mailbox has actually exchanged mail with, kept in step with
+-- messages as they are mirrored (Tx.upsertCorrespondents) rather than parsed
+-- from raw headers on every keystroke. This is the second layer of recipient
+-- autocomplete: the address book first, "seen in mail" as the fallback.
+CREATE TABLE correspondents (
+  account   TEXT NOT NULL,
+  email     TEXT NOT NULL,
+  name      TEXT NOT NULL DEFAULT '',
+  last_seen TEXT,
+  count     INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (account, email)
+);
+
+CREATE INDEX correspondents_name ON correspondents(account, name COLLATE NOCASE);
 
 -- A sync step records its intent before touching the network, so a crash leaves
 -- either the old state or the new one, never an advanced modseq over a

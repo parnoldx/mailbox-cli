@@ -113,6 +113,8 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 		return d.handleHabit(ctx, req, resp)
 	case "contact":
 		return d.handleContact(ctx, req, resp)
+	case "correspondent":
+		return d.handleCorrespondent(req, resp)
 	case "screener":
 		return d.handleScreener(req, resp)
 	case "route":

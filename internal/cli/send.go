@@ -41,12 +41,26 @@ func runCompose(in *input, stdout, stderr io.Writer) int {
 	}
 	return request(daemon.Request{
 		ID: "1", Cmd: cmd,
-		Args: map[string]any{
+		Args: withReplyWatch(map[string]any{
 			"to": to, "cc": in.List("cc"), "bcc": in.List("bcc"),
 			"subject": in.Str("subject"), "body": text, "attach": paths,
 			"body_html": in.Str("body-html"), "account": in.Str("account"),
-		},
+		}, in),
 	}, in.JSON(), render, stdout, stderr)
+}
+
+// withReplyWatch adds the "if no reply by" reminder flags — HEY's Bubble Up,
+// applied to a message on its way out instead of one already sitting in the
+// Inbox. --if-no-reply is the switch; the timing is the same one flag `mailbox
+// bubble` takes (bubbleWhen on the daemon side), shared by send, reply,
+// forward and draft send.
+func withReplyWatch(args map[string]any, in *input) map[string]any {
+	args["if_no_reply"] = in.Bool("if-no-reply")
+	args["on"] = in.Str("on")
+	args["tomorrow"] = in.Bool("tomorrow")
+	args["weekend"] = in.Bool("weekend")
+	args["next_week"] = in.Bool("next-week")
+	return args
 }
 
 // runReply answers a Message. The recipients and the References come from the
@@ -69,12 +83,12 @@ func runReply(in *input, stdout, stderr io.Writer) int {
 	}
 	return request(daemon.Request{
 		ID: "1", Cmd: []string{"reply"},
-		Args: map[string]any{
+		Args: withReplyWatch(map[string]any{
 			"positional": in.First(), "all": in.Bool("all"),
 			"to": in.List("to"), "cc": in.List("cc"),
 			"subject": in.Str("subject"), "body": text, "attach": paths,
 			"body_html": in.Str("body-html"), "draft": in.Bool("draft"),
-		},
+		}, in),
 	}, in.JSON(), render, stdout, stderr)
 }
 

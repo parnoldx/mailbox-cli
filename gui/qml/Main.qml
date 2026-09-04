@@ -241,6 +241,22 @@ ApplicationWindow {
             win.refreshStacks()
         })
     }
+    // Bubble Up (ADR-0023): set a Thread aside with a return time, or re-time
+    // one already bubbled. `timing` is what BubbleMenu's chosen() signal
+    // carries — {tomorrow:true} | {weekend:true} | {next_week:true} |
+    // {on:"YYYY-MM-DD"} — merged straight onto the request the same shape
+    // `mailbox bubble` takes.
+    function bubbleId(id, timing, label) {
+        if (!id) return
+        if (win._actsOnOpenThread(id)) win.back()
+        var args = Object.assign({ positional: id }, timing)
+        Mailbox.call(["bubble"], args, function (r) {
+            win.flash(r && r.ok ? label : win._failMsg(label, r))
+            win.loadCounts()
+            win.refreshBucket()
+            win.refreshStacks()
+        })
+    }
     // Move a Thread into a named Box — the Command Launcher's archive picker,
     // where `box` is a short name off `box list --archive` (e.g. "Archive/2019").
     function moveId(id, box, label) {

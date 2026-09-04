@@ -94,10 +94,10 @@ func runForward(in *input, stdout, stderr io.Writer) int {
 	}
 	return request(daemon.Request{
 		ID: "1", Cmd: []string{"forward"},
-		Args: map[string]any{
+		Args: withReplyWatch(map[string]any{
 			"positional": in.First(), "to": in.List("to"), "cc": in.List("cc"),
 			"subject": in.Str("subject"), "body": in.Str("body"), "attach": paths,
-		},
+		}, in),
 	}, in.JSON(), printSent, stdout, stderr)
 }
 
@@ -145,13 +145,16 @@ func draftVerb(verb string) func(*input, io.Writer, io.Writer) int {
 		case "delete":
 			render = printChanges
 		}
+		args := map[string]any{
+			"positional": in.First(), "limit": in.Int("limit"),
+			"to": in.List("to"), "cc": in.List("cc"),
+			"subject": in.Str("subject"), "body": in.Str("body"),
+		}
+		if verb == "send" {
+			args = withReplyWatch(args, in)
+		}
 		return request(daemon.Request{
-			ID: "1", Cmd: []string{"draft", verb},
-			Args: map[string]any{
-				"positional": in.First(), "limit": in.Int("limit"),
-				"to": in.List("to"), "cc": in.List("cc"),
-				"subject": in.Str("subject"), "body": in.Str("body"),
-			},
+			ID: "1", Cmd: []string{"draft", verb}, Args: args,
 		}, in.JSON(), render, stdout, stderr)
 	}
 }

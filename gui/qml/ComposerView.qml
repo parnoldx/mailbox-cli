@@ -264,6 +264,26 @@ Item {
             })
         })
     }
+    // Same send, plus a "no reply by" reminder: the daemon writes the return
+    // keyword onto the filed copy once it's out (see internal/daemon/bubble.go
+    // replyWatch), so this only needs to merge the same timing shape
+    // SendWatchMenu hands back onto the args doSend() already builds —
+    // {tomorrow:true} | {weekend:true} | {next_week:true} | {on:"YYYY-MM-DD"}.
+    function doSendWithWatch(timing) {
+        if (!root.canSend) return
+        lexxy.getHtml(function (html) {
+            var args = root.collectArgs(false, html)
+            args.if_no_reply = true
+            for (var k in timing) args[k] = timing[k]
+            win.beginSend({
+                cmd: root.sendCmd(),
+                args: args,
+                label: root.summaryLabel(),
+                warnAttachment: root._mentionsAttachment(html),
+                form: root.snapshot(html)
+            })
+        })
+    }
     function doSaveDraft() {
         lexxy.getHtml(function (html) {
             // A re-opened draft is written back in place (edit); a fresh one is
@@ -334,10 +354,35 @@ Item {
             anchors.left: parent.left
             anchors.leftMargin: root.sideMargin
             spacing: 10
-            AppButton {
-                kind: "primary"; glyph: "\uf1d8"; text: "Send message"
-                active: root.canSend
-                onClicked: root.doSend()
+            Row {
+                spacing: 1
+                AppButton {
+                    kind: "primary"; glyph: "\uf1d8"; text: "Send message"
+                    active: root.canSend
+                    onClicked: root.doSend()
+                }
+                // The caret: same weight as the Send button beside it, opens
+                // "Bubble up if no reply" \u2014 the same reminder Bubble Up offers on
+                // a received thread, staged here rather than firing at once,
+                // since this is attached to a draft that has not gone out yet.
+                AppButton {
+                    id: sendCaret
+                    kind: "primary"; text: "\uf0d7"
+                    active: root.canSend
+                    onClicked: sendMenu.open()
+                }
+            }
+            SendWatchMenu {
+                id: sendMenu
+                parent: sendCaret
+                // The action bar sits at the bottom of the composer, so opening
+                // downward (like BubbleMenu does from the reading-view toolbar)
+                // would push this off the window. It opens upward instead, and
+                // tracks `height` so it stays flush above the caret as the
+                // content grows from one row to the timing list to the confirm
+                // step.
+                y: -height - 4
+                onSend: function (timing) { root.doSendWithWatch(timing) }
             }
             AppButton { kind: "ghost"; text: "Save draft"; onClicked: root.doSaveDraft() }
             // Attach — a paperclip, right of Save draft.
@@ -346,14 +391,17 @@ Item {
                 onClicked: attachDialog.open()
             }
         }
-        // Discard — a trash can, far right.
+        // Discard — a trash can, far right. Only shown once there is a
+        // persisted draft to delete; a fresh/reply/forward compose has nothing
+        // saved yet, so Esc/the back arrow already covers closing it.
         AppButton {
             anchors.verticalCenter: parent.verticalCenter
             anchors.right: parent.right
             anchors.rightMargin: root.sideMargin
             kind: "danger"; glyph: "\uf1f8"
-            text: root.mode === "draft" ? "Discard draft" : ""
-            onClicked: root.mode === "draft" ? root.doDiscardDraft() : root.requestClose()
+            visible: root.mode === "draft"
+            text: "Discard draft"
+            onClicked: root.doDiscardDraft()
         }
     }
 
@@ -434,6 +482,7 @@ Item {
                 id: toPills
                 label: "To"
                 width: parent.width - (root.showCc ? 0 : ccToggle.width + 12)
+                tabNext: function () { root.showCc ? ccPills.focusInput() : subjectField.forceActiveFocus() }
             }
             Rectangle {
                 id: ccToggle
@@ -468,8 +517,14 @@ Item {
             }
         }
 
-        RecipientPills { id: ccPills; label: "Cc"; width: parent.width; visible: root.showCc }
-        RecipientPills { id: bccPills; label: "Bcc"; width: parent.width; visible: root.showCc }
+        RecipientPills {
+            id: ccPills; label: "Cc"; width: parent.width; visible: root.showCc
+            tabNext: function () { bccPills.focusInput() }
+        }
+        RecipientPills {
+            id: bccPills; label: "Bcc"; width: parent.width; visible: root.showCc
+            tabNext: function () { subjectField.forceActiveFocus() }
+        }
 
         // Subject — just the field, its placeholder is label enough.
         TextField {
@@ -483,6 +538,7 @@ Item {
             font.weight: Font.DemiBold
             background: null
             leftPadding: 0
+            Keys.onTabPressed: function (e) { lexxy.focusStart(); e.accepted = true }
         }
 
         Rectangle {

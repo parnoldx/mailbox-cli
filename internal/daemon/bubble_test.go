@@ -417,3 +417,171 @@ func TestBubbleListIsGroupedByThread(t *testing.T) {
 		t.Fatalf("bubble list = %+v, want one row for the one thread", rows)
 	}
 }
+
+// ---- "if no reply by" — HEY's Bubble Up applied on the way out ------------
+
+// send --if-no-reply writes the same $bubble-* keyword straight onto the
+// filed Sent copy. Unlike an ordinary bubble it does not move anywhere — it
+// stays in Sent until either a reply cancels it or the deadline brings it
+// back.
+func TestIfNoReplyWatchesTheSentCopyWithoutMovingIt(t *testing.T) {
+	d, _ := seedSend(t)
+	out := send(t, d, map[string]any{
+		"to": []string{"kunde@example.com"}, "subject": "Angebot",
+		"body": "Anbei das Angebot.", "if_no_reply": true, "tomorrow": true,
+	})
+
+	row := placement(t, d, "INBOX/Sent", out.UID)
+	if _, ok := bubble.Of(row.Placement.Flags); !ok {
+		t.Errorf("the Sent copy carries no $bubble-* keyword: %v", row.Placement.Flags)
+	}
+	if sent := boxView(t, d, "Sent"); len(sent) != 1 {
+		t.Errorf("Sent = %+v, want the copy to stay put", sent)
+	}
+}
+
+// --if-no-reply with no timing flag is a usage error, and fails before
+// anything is enqueued or sent — a bad flag must not cost the mail its send.
+func TestIfNoReplyWithoutATimingFlagFailsBeforeSending(t *testing.T) {
+	d, tr := seedSend(t)
+	resp := d.handle(context.Background(), Request{ID: "1", Cmd: []string{"send"}, Args: map[string]any{
+		"to": []string{"kunde@example.com"}, "subject": "Angebot", "body": "Text",
+		"if_no_reply": true,
+	}})
+	if resp.OK {
+		t.Fatal("if-no-reply with no timing flag was accepted")
+	}
+	if resp.Code != "usage" {
+		t.Errorf("code = %q, want usage", resp.Code)
+	}
+	if tr.count() != 0 {
+		t.Errorf("smtp saw the mail despite the usage error")
+	}
+}
+
+// A reply landing in the thread cancels a pending watch — the same "any new
+// mail on the thread" signal reclaimPiled already acts on for Aside and Reply
+// Later — but only cancels it: the Sent copy is not moved, since the reply
+// itself is what shows up in the Inbox.
+func TestAReplyCancelsTheNoReplyWatch(t *testing.T) {
+	d, _ := seedSend(t)
+	a := d.primaryAccount()
+	ctx := context.Background()
+	// Past its first sync, so the reply below is a genuine incremental cycle —
+	// reclaimPiled only runs on ActionIncremental, never on a folder's first
+	// ever sync.
+	if _, err := a.Reconciler.SyncAll(ctx, a.Mirrored); err != nil {
+		t.Fatal(err)
+	}
+	out := send(t, d, map[string]any{
+		"to": []string{"kunde@example.com"}, "subject": "Angebot",
+		"body": "Anbei das Angebot.", "if_no_reply": true, "next_week": true,
+	})
+
+	f := fakeOf(d)
+	sentCopy := filedCopy(t, d, out.UID)
+	reply := f.Deliver("INBOX", "antwort@example.com", "Re: Angebot", "Danke, passt.")
+	reply.From = "kunde@example.com"
+	reply.Reply(sentCopy)
+	d.cycle(ctx, a, "test")
+
+	row := placement(t, d, "INBOX/Sent", out.UID)
+	if _, ok := bubble.Of(row.Placement.Flags); ok {
+		t.Errorf("the watch was not cancelled: %v", row.Placement.Flags)
+	}
+	if sent := boxView(t, d, "Sent"); len(sent) != 1 {
+		t.Errorf("the Sent copy moved: %+v", sent)
+	}
+}
+
+// With the deadline passed and no reply, the Sent copy comes back to the
+// Inbox exactly the way an Aside thread does: unread, $bubbled, keyword gone.
+func TestNoReplyWatchBringsTheSentCopyToTheInboxWhenDue(t *testing.T) {
+	d, _ := seedSend(t)
+	ctx := context.Background()
+	yesterday := startOfDay(time.Now()).AddDate(0, 0, -1).Format("2006-01-02")
+	send(t, d, map[string]any{
+		"to": []string{"kunde@example.com"}, "subject": "Angebot",
+		"body": "Anbei das Angebot.", "if_no_reply": true, "on": yesterday,
+	})
+
+	d.returnDue(ctx, d.primaryAccount())
+
+	if sent := boxView(t, d, "Sent"); len(sent) != 0 {
+		t.Errorf("Sent still holds the copy: %+v", sent)
+	}
+	var found *mirror.Row
+	for _, r := range rowsIn(t, d, routing.BoxInbox) {
+		r := r
+		if r.Message.Subject == "Angebot" {
+			found = &r
+		}
+	}
+	if found == nil {
+		t.Fatal("the Sent copy did not come back to the Inbox")
+	}
+	if found.Seen() {
+		t.Errorf("the returned copy is \\Seen; the phone will not push it")
+	}
+	if !hasFlag(found.Placement.Flags, bubble.Returned) {
+		t.Errorf("not marked %s: %v", bubble.Returned, found.Placement.Flags)
+	}
+	if _, ok := bubble.Of(found.Placement.Flags); ok {
+		t.Errorf("still carries a $bubble-* keyword: %v", found.Placement.Flags)
+	}
+}
+
+// One returnDue tick picks up an Aside bubble and a Sent no-reply watch
+// together — the scan is account-wide, not folder-scoped, because bubble_at
+// is a projection of a flag and not a property of any one folder.
+func TestReturnDueSweepsAsideAndSentTogether(t *testing.T) {
+	d, _ := seedSend(t)
+	f := fakeOf(d)
+	f.AddFolder(routing.BoxAside)
+	d.Mirrored = append(d.Mirrored, routing.BoxAside)
+	d.Writer.Mirrored = d.Mirrored
+	a := d.primaryAccount()
+	ctx := context.Background()
+	yesterday := startOfDay(time.Now()).AddDate(0, 0, -1).Format("2006-01-02")
+
+	newsletter := f.Deliver("INBOX", "n1@example.com", "Newsletter", "News")
+	newsletter.From, newsletter.Date = "news@example.com", time.Date(2026, 9, 1, 9, 0, 0, 0, time.UTC)
+	if _, err := a.Reconciler.SyncAll(ctx, a.Mirrored); err != nil {
+		t.Fatal(err)
+	}
+	var newsletterID string
+	for _, r := range boxView(t, d, "inbox") {
+		if r.Subject == "Newsletter" {
+			newsletterID = r.ID
+		}
+	}
+	if newsletterID == "" {
+		t.Fatal("the newsletter is not in the inbox listing")
+	}
+	mustAsk(t, d, []string{"bubble"}, map[string]any{"positional": newsletterID, "on": yesterday})
+
+	send(t, d, map[string]any{
+		"to": []string{"kunde@example.com"}, "subject": "Angebot",
+		"body": "Anbei das Angebot.", "if_no_reply": true, "on": yesterday,
+	})
+
+	d.returnDue(ctx, a)
+
+	if len(boxView(t, d, "Aside")) != 0 {
+		t.Errorf("the Aside thread did not return")
+	}
+	for _, r := range boxView(t, d, "Sent") {
+		if r.Subject == "Angebot" {
+			t.Errorf("the Angebot Sent copy did not return: %+v", r)
+		}
+	}
+	var haveNewsletter, haveAngebot bool
+	for _, r := range boxView(t, d, "inbox") {
+		haveNewsletter = haveNewsletter || r.Subject == "Newsletter"
+		haveAngebot = haveAngebot || r.Subject == "Angebot"
+	}
+	if !haveNewsletter || !haveAngebot {
+		t.Fatalf("inbox = %+v, want both the Aside thread and the Sent copy back",
+			boxView(t, d, "inbox"))
+	}
+}

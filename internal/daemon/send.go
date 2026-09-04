@@ -8,10 +8,12 @@ import (
 	"strings"
 	"time"
 
+	"mailbox/internal/bubble"
 	"mailbox/internal/htmlmd"
 	compose "mailbox/internal/message"
 	"mailbox/internal/mirror"
 	"mailbox/internal/outbox"
+	"mailbox/internal/sync/mailsync"
 )
 
 // sent is what a send did. It names the Outbox row as well as the copy in Sent,
@@ -51,7 +53,7 @@ func (d *Daemon) handleSend(ctx context.Context, req Request, resp Response) Res
 		resp.Code, resp.Error = "usage", err.Error()
 		return resp
 	}
-	return d.deliver(ctx, acct, draft, resp)
+	return d.deliver(ctx, acct, draft, resp, req)
 }
 
 // handleReply answers a Message the Mirror holds. The recipients and the
@@ -105,7 +107,7 @@ func (d *Daemon) handleReply(ctx context.Context, req Request, resp Response) Re
 		}
 		return d.saveDraft(ctx, acct, box, draft, resp)
 	}
-	resp = d.deliver(ctx, acct, draft, resp)
+	resp = d.deliver(ctx, acct, draft, resp, req)
 	// Answering a Message is the end of owing it a reply, so its thread does
 	// not belong in a pile any more: pull the conversation's Reply Later and
 	// Aside Messages back to the Inbox, the same as an incoming reply would
@@ -238,7 +240,15 @@ func (d *Daemon) draftOf(a *Account, req Request) (compose.Draft, error) {
 // deliver builds the mail, queues it, and hands it over. A mail SMTP would not
 // take is an error the caller sees — and it is still in the Outbox, which is
 // what the error says.
-func (d *Daemon) deliver(ctx context.Context, a *Account, draft compose.Draft, resp Response) Response {
+func (d *Daemon) deliver(ctx context.Context, a *Account, draft compose.Draft, resp Response, req Request) Response {
+	// Resolved before anything is enqueued: a bad --if-no-reply flag fails as a
+	// usage error rather than sending the mail and silently dropping the
+	// reminder.
+	watchWhen, watch, err := d.replyWatch(a, req)
+	if err != nil {
+		resp.Code, resp.Error = "usage", err.Error()
+		return resp
+	}
 	raw, err := draft.Build()
 	if err != nil {
 		resp.Code, resp.Error = "usage", err.Error()
@@ -275,9 +285,20 @@ func (d *Daemon) deliver(ctx context.Context, a *Account, draft compose.Draft, r
 		// how to read. Syncing the one Box it landed in makes the id above
 		// readable now rather than at the next poll.
 		d.mirrorSentCopy(ctx, a, it.Box)
+		if watch {
+			// The reminder is just the return-time keyword, written straight onto
+			// the filed copy — same record bubble uses (ADR-0023), no move: it
+			// stays in Sent and bubbleLoop brings it to the Inbox if the thread is
+			// still quiet when it comes due.
+			ref := mailsync.Ref{Folder: it.Box, UID: it.UID}
+			if _, err := a.Writer.StoreFlags(ctx, []mailsync.Ref{ref}, []string{bubble.Keyword(watchWhen)}, nil); err != nil {
+				d.logf("if-no-reply watch on outbox #%d: %v", it.ID, err)
+			}
+		}
 	} else if it.State == outbox.Sent {
 		// Sent, but the copy is not filed. The mail has gone; the next drain
-		// tries the copy again.
+		// tries the copy again. A requested watch is silently dropped rather
+		// than chased across drains — a narrow edge case.
 		d.logf("outbox #%d: %s", it.ID, it.LastError)
 	}
 	resp.OK, resp.Data = true, out
@@ -527,7 +548,7 @@ func (d *Daemon) handleForward(ctx context.Context, req Request, resp Response) 
 	// block as Markdown would only mangle it, so it stays text/plain.
 	draft.Body = forwardBody(draft.Body, original.Message)
 	draft.BodyHTML = ""
-	return d.deliver(ctx, acct, draft, resp)
+	return d.deliver(ctx, acct, draft, resp, req)
 }
 
 // forwardSubject prefixes Fwd: exactly once, the way replySubject does for Re:.

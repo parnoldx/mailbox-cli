@@ -37,6 +37,7 @@ Item {
             out.push({ act: "forward",     glyph: "", label: "Forward",     accentGlyph: true })
             out.push({ act: "reply-later", glyph: "", label: "Reply later", accentGlyph: true })
             out.push({ act: "set-aside",   glyph: "", label: "Set aside",   accentGlyph: true })
+            out.push({ act: "bubble",      glyph: "", label: "Bubble up",   accentGlyph: true })
         }
         if (m && scr) {
             out.push({ act: "route-inbox",   glyph: "", label: "Inbox", accentGlyph: true })
@@ -54,6 +55,7 @@ Item {
         else if (act === "reply-all") win.startReply(true)
         else if (act === "forward") win.startForward()
         else if (act === "screener-move") scMoveMenu.popup(chipItem, 0, chipItem.height + 4)
+        else if (act === "bubble") bubbleMenu.popup(chipItem, 0, chipItem.height + 4)
         else if (act === "route-inbox") Triage.dispatch(win, "inbox", id)
         else if (act === "route-block") Triage.dispatch(win, "block", id)
         else if (act === "set-aside") Triage.dispatch(win, "aside", id)
@@ -115,6 +117,12 @@ Item {
             ScreenerMoveMenu {
                 id: scMoveMenu
                 targetId: win.openMsg ? win.openMsg.id : ""
+            }
+            BubbleMenu {
+                id: bubbleMenu
+                onChosen: function (timing) {
+                    win.bubbleId(win.openMsg ? win.openMsg.id : "", timing, "Bubbled up")
+                }
             }
         }
 

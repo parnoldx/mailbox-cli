@@ -99,7 +99,7 @@ func (d *Daemon) handleDraft(ctx context.Context, req Request, resp Response) Re
 				resp.Code, resp.Error = "usage", "this draft has nobody to send to: add --to"
 				return resp
 			}
-			out := d.deliver(ctx, acct, draft, resp)
+			out := d.deliver(ctx, acct, draft, resp, req)
 			if !out.OK {
 				return out
 			}

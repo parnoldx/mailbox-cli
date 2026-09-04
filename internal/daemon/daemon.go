@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"mailbox/internal/bubble"
 	compose "mailbox/internal/message"
 	"mailbox/internal/mirror"
 	"mailbox/internal/outbox"
@@ -364,13 +365,16 @@ func (d *Daemon) cycle(ctx context.Context, a *Account, reason string) {
 }
 
 // reclaimPiled moves every Aside and Reply Later Message of the named Threads
-// back to the Inbox. It is called with the Threads a cycle just added mail to,
-// so an untouched pile is left alone.
+// back to the Inbox, and cancels any "if no reply by" reminder those Threads
+// carry elsewhere (typically a Sent copy). It is called with the Threads a
+// cycle just added mail to, so an untouched pile — or an unanswered
+// reminder — is left alone.
 func (d *Daemon) reclaimPiled(ctx context.Context, a *Account, threadIDs []int64) {
 	if len(threadIDs) == 0 {
 		return
 	}
 	var refs []mailsync.Ref
+	var watched []mailsync.Ref
 	for _, tid := range threadIDs {
 		members, err := d.Mirror.Thread(a.Name, tid)
 		if err != nil {
@@ -378,11 +382,24 @@ func (d *Daemon) reclaimPiled(ctx context.Context, a *Account, threadIDs []int64
 			continue
 		}
 		for _, m := range members {
+			ref := mailsync.Ref{Folder: m.Placement.Folder, UID: m.Placement.UID}
 			switch m.Placement.Folder {
 			case routing.BoxAside, routing.BoxReplyLater:
-				refs = append(refs, mailsync.Ref{Folder: m.Placement.Folder, UID: m.Placement.UID})
+				refs = append(refs, ref)
+			case routing.BoxInbox:
+				// Already home.
+			default:
+				// A reply landed, so a pending "if no reply by" reminder on this
+				// Thread's Sent copy is answered — cancel it, but leave the copy
+				// where it is: the reply itself is what shows up in the Inbox.
+				if bubble.KeywordOf(m.Placement.Flags) != "" {
+					watched = append(watched, ref)
+				}
 			}
 		}
+	}
+	if len(watched) > 0 {
+		d.stripBubble(ctx, a, watched)
 	}
 	if len(refs) == 0 {
 		return

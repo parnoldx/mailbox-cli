@@ -34,12 +34,26 @@ func (m *Mirror) BubblesDue(account, folder string, at time.Time) ([]BubbleRef, 
 	return m.bubbled(account, folder, at.In(time.Local).Format(bubble.ProjectionLayout))
 }
 
+// BubblesDueAccount is BubblesDue across every folder of the account, not just
+// one. bubble_at is a projection of a flag, not a folder property (ADR-0023),
+// so a return-time keyword can sit anywhere — the "if no reply by" reminder
+// (see docs/adr) puts one on a Sent copy, not on an Aside placement.
+func (m *Mirror) BubblesDueAccount(account string, at time.Time) ([]BubbleRef, error) {
+	return m.bubbled(account, "", at.In(time.Local).Format(bubble.ProjectionLayout))
+}
+
+// bubbled reads placements with a return time, soonest first. An empty folder
+// scans every folder of the account instead of one.
 func (m *Mirror) bubbled(account, folder, dueBy string) ([]BubbleRef, error) {
 	q := `SELECT p.folder, p.uid, p.message_id, p.bubble_at,
 		     m.thread_id, m.subject, m.from_addr
 		FROM placements p JOIN messages m ON m.id = p.message_id
-	       WHERE p.account = ? AND p.folder = ? AND p.bubble_at IS NOT NULL`
-	args := []any{account, folder}
+	       WHERE p.account = ? AND p.bubble_at IS NOT NULL`
+	args := []any{account}
+	if folder != "" {
+		q += ` AND p.folder = ?`
+		args = append(args, folder)
+	}
 	if dueBy != "" {
 		q += ` AND p.bubble_at <= ?`
 		args = append(args, dueBy)

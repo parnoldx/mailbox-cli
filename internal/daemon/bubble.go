@@ -275,14 +275,12 @@ func (d *Daemon) bubbleLoop(ctx context.Context) {
 	}
 }
 
-// returnDue is one bubbleLoop tick: every bubbled thread in Aside whose
-// bubble_at is at or before now, brought back.
+// returnDue is one bubbleLoop tick: every bubbled thread whose bubble_at is at
+// or before now, brought back. The scan runs the whole account, not just
+// Aside — bubble_at is a projection of a flag, not a folder property, and the
+// "if no reply by" reminder puts the keyword on a Sent copy instead.
 func (d *Daemon) returnDue(ctx context.Context, a *Account) {
-	box, ok := d.boxNamed(a, routing.BoxAside)
-	if !ok {
-		return
-	}
-	due, err := d.Mirror.BubblesDue(a.Name, box, time.Now())
+	due, err := d.Mirror.BubblesDueAccount(a.Name, time.Now())
 	if err != nil {
 		d.logf("bubble scan: %v", err)
 		return
@@ -300,9 +298,18 @@ func (d *Daemon) returnDue(ctx context.Context, a *Account) {
 		}
 		var refs []mailsync.Ref
 		for _, m := range members {
+			ref := mailsync.Ref{Folder: m.Placement.Folder, UID: m.Placement.UID}
 			switch m.Placement.Folder {
 			case routing.BoxAside, routing.BoxReplyLater:
-				refs = append(refs, mailsync.Ref{Folder: m.Placement.Folder, UID: m.Placement.UID})
+				refs = append(refs, ref)
+			case routing.BoxInbox:
+				// Already home.
+			default:
+				// A reply-watched Sent copy, or anywhere else a keyword landed:
+				// bringBack below Moves anything that isn't already in Inbox.
+				if bubble.KeywordOf(m.Placement.Flags) != "" {
+					refs = append(refs, ref)
+				}
 			}
 		}
 		if len(refs) == 0 {
@@ -363,6 +370,32 @@ func (d *Daemon) bubbleWhen(req Request) (when time.Time, now bool, err error) {
 		}
 		return atHour(day, morning), false, nil
 	}
+}
+
+// replyWatch resolves an optional "if no reply by" reminder off a send,
+// reply, forward or draft-send request — HEY's "Bubble Up – if no reply by",
+// matched: the sent copy comes back to the Inbox on its own if the thread
+// stays quiet. ok is false when none was requested, which is the common case
+// and changes nothing else about the send.
+//
+// The timing is the same one bubble ID uses (bubbleWhen) — one of --on,
+// --tomorrow, --weekend, --next-week — required only once --if-no-reply asks
+// for it. --now makes no sense here: there is nothing yet to bring back.
+func (d *Daemon) replyWatch(acct *Account, req Request) (when time.Time, ok bool, err error) {
+	if wants, _ := req.Args["if_no_reply"].(bool); !wants {
+		return time.Time{}, false, nil
+	}
+	if !acct.Primary {
+		return time.Time{}, false, fmt.Errorf("the no-reply reminder only works for the primary account")
+	}
+	when, now, err := d.bubbleWhen(req)
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("if-no-reply: %w", err)
+	}
+	if now {
+		return time.Time{}, false, fmt.Errorf("if-no-reply needs a timing flag, not --now")
+	}
+	return when, true, nil
 }
 
 // bubbleHours is the configured morning and evening hours, or 8 and 18.

@@ -10,6 +10,10 @@ Item {
     id: root
     property string label: "To"
     property var recipients: []
+    // Called (with no args) when Tab should move focus onward from this row's
+    // input — e.g. to the next pill row, or to Subject. Left null to fall back
+    // to whatever the window's default focus chain would otherwise do.
+    property var tabNext: null
     signal changed()
 
     implicitHeight: Math.max(34, box.implicitHeight)
@@ -48,25 +52,65 @@ Item {
     property var suggestions: []
     property int sugActive: 0
 
+    // Flattens contact rows ({name, emails:[...]}) or correspondent rows
+    // ({name, email}) into {name, email} suggestions, skipping addresses
+    // already on this row.
+    function _hits(rows, multi) {
+        var out = []
+        for (var i = 0; i < rows.length; i++) {
+            var em = multi ? (rows[i].emails || []) : [rows[i].email]
+            for (var j = 0; j < em.length; j++) {
+                if (!em[j]) continue
+                var lc = root._norm(em[j])
+                var dup = false
+                for (var k = 0; k < root.recipients.length; k++)
+                    if (root._norm(root.recipients[k].email) === lc) dup = true
+                if (!dup) out.push({ name: rows[i].name || "", email: em[j] })
+            }
+        }
+        return out
+    }
+
+    // Contacts get first claim on the list; correspondents get the rest, so a
+    // common name with many cards still leaves room below for the address
+    // actually seen in mail that isn't in anybody's card.
+    readonly property int contactCap: 5
+    readonly property int totalCap: 8
+
     function refreshSuggestions() {
         var q = input.text.trim()
         if (q.length < 2) { root.suggestions = []; return }
         Mailbox.call(["contact", "search"], { positional: q, limit: 6 }, function (r) {
             if (input.text.trim() !== q) return
-            var out = []
-            var rows = (r.ok && r.data) ? r.data : []
-            for (var i = 0; i < rows.length; i++) {
-                var em = rows[i].emails || []
-                for (var j = 0; j < em.length; j++) {
-                    var lc = root._norm(em[j])
-                    var dup = false
-                    for (var k = 0; k < root.recipients.length; k++)
-                        if (root._norm(root.recipients[k].email) === lc) dup = true
-                    if (!dup) out.push({ name: rows[i].name || "", email: em[j] })
-                }
-            }
-            root.suggestions = out.slice(0, 6)
+            var contactHits = root._hits((r.ok && r.data) ? r.data : [], true).slice(0, root.contactCap)
+            root.suggestions = contactHits
             root.sugActive = 0
+            // Addresses actually seen in mail, appended below the address
+            // book's own matches — not gated on those coming up empty, since
+            // being in the address book doesn't mean it's who this is to.
+            Mailbox.call(["correspondent", "search"], { positional: q, limit: 6 }, function (r2) {
+                if (input.text.trim() !== q) return
+                var knownEmails = {}, knownNames = {}
+                for (var i = 0; i < contactHits.length; i++) {
+                    knownEmails[root._norm(contactHits[i].email)] = true
+                    var nm = root._norm(contactHits[i].name)
+                    if (nm) knownNames[nm] = true
+                }
+                var corr = root._hits((r2.ok && r2.data) ? r2.data : [], false)
+                var merged = contactHits.slice()
+                for (var j = 0; j < corr.length && merged.length < root.totalCap; j++) {
+                    var lc = root._norm(corr[j].email)
+                    var nm2 = root._norm(corr[j].name)
+                    // Skip an address already listed, and skip a second address
+                    // for somebody already shown by name — a contact reappearing
+                    // under a mail-only address reads as a duplicate, not a find.
+                    if (knownEmails[lc] || (nm2 && knownNames[nm2])) continue
+                    knownEmails[lc] = true
+                    merged.push(corr[j])
+                }
+                root.suggestions = merged
+                root.sugActive = 0
+            })
         })
     }
     function commitSuggestion(i) {
@@ -168,7 +212,8 @@ Item {
                 Keys.onReturnPressed: root.commitInput()
                 Keys.onEnterPressed: root.commitInput()
                 Keys.onTabPressed: function (e) {
-                    if (root.suggestions.length > 0 || input.text.trim().length > 0) { root.commitInput(); e.accepted = true }
+                    if (root.suggestions.length > 0 || input.text.trim().length > 0) root.commitInput()
+                    if (root.tabNext) { root.tabNext(); e.accepted = true }
                     else e.accepted = false
                 }
                 // On blur, only keep what was actually typed — do not silently

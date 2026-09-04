@@ -144,6 +144,20 @@ func (in *input) List(name string) []string {
 	return nil
 }
 
+// replyWatchFlags are the "if no reply by" reminder flags — HEY's Bubble Up,
+// matched from the sending side: --if-no-reply is the switch, and the timing
+// is the same one flag `mailbox bubble` takes (see its Flags below), required
+// only once --if-no-reply asks for it. Shared by compose, reply, forward and
+// draft send.
+var replyWatchFlags = []Flag{
+	{Name: "if-no-reply", Kind: KindBool,
+		Desc: "bring this back to the Inbox if nobody replies by the timing below"},
+	{Name: "on", Kind: KindString, Arg: "DATE", Desc: "a date like 2026-09-10 (08:00, or 18:00 if today)"},
+	{Name: "tomorrow", Kind: KindBool, Desc: "08:00 tomorrow"},
+	{Name: "weekend", Kind: KindBool, Desc: "08:00 the coming Saturday"},
+	{Name: "next-week", Kind: KindBool, Desc: "08:00 the coming Monday"},
+}
+
 // tree is the whole command surface. Everything printed as help, everything
 // listed by `mailbox commands`, and everything the dispatcher will run is here
 // and only here.
@@ -232,7 +246,7 @@ func tree(l Locals) []*Command {
 				"pass --body-html instead to send HTML you already have. With --draft " +
 				"it goes to the drafts box instead of out, and `mailbox draft` takes " +
 				"it from there.",
-			Flags: []Flag{
+			Flags: append([]Flag{
 				{Name: "to", Kind: KindList, Arg: "ADDR", Desc: "a recipient (repeatable, or comma separated)"},
 				{Name: "subject", Kind: KindString, Arg: "S", Desc: "the subject"},
 				{Name: "body", Kind: KindString, Arg: "TEXT", Desc: "the text, as Markdown; omit to read it from stdin"},
@@ -242,12 +256,13 @@ func tree(l Locals) []*Command {
 				{Name: "attach", Kind: KindList, Arg: "PATH", Desc: "a file to attach (repeatable)"},
 				{Name: "account", Kind: KindString, Arg: "NAME", Desc: "which account sends it (default the primary)"},
 				{Name: "draft", Kind: KindBool, Desc: "file it in drafts instead of sending it"},
-			},
+			}, replyWatchFlags...),
 			Examples: []string{
 				`mailbox compose --to anna@example.com --subject "Kurz" --body "Passt."`,
 				`printf 'Langer Text\n' | mailbox compose --to anna@example.com --subject Bericht`,
 				"mailbox compose --to anna@example.com --subject Foto --attach ./bild.png",
 				`mailbox compose --to anna@example.com --subject Angebot --body "…" --draft`,
+				"mailbox compose --to anna@example.com --subject Angebot --if-no-reply --next-week",
 			},
 			Run: runCompose,
 		},
@@ -258,7 +273,7 @@ func tree(l Locals) []*Command {
 				"so a thread is never assembled by hand. With --draft it goes to the " +
 				"drafts box instead of out, and it stays in the thread when it is sent " +
 				"from there.",
-			Flags: []Flag{
+			Flags: append([]Flag{
 				{Name: "all", Kind: KindBool, Desc: "copy everyone the message was addressed to"},
 				{Name: "body", Kind: KindString, Arg: "TEXT", Desc: "the text, as Markdown; omit to read it from stdin"},
 				{Name: "body-html", Kind: KindString, Arg: "HTML", Desc: "send this HTML as the body instead of rendering --body"},
@@ -267,11 +282,12 @@ func tree(l Locals) []*Command {
 				{Name: "subject", Kind: KindString, Arg: "S", Desc: "override the Re: subject"},
 				{Name: "attach", Kind: KindList, Arg: "PATH", Desc: "a file to attach (repeatable)"},
 				{Name: "draft", Kind: KindBool, Desc: "file it in drafts instead of sending it"},
-			},
+			}, replyWatchFlags...),
 			Examples: []string{
 				`mailbox reply 36722 --body "Danke, passt."`,
 				`mailbox reply Screener:342 --all --body "Cc an alle."`,
 				`mailbox reply 36722 --body "Erster Entwurf." --draft`,
+				`mailbox reply 36722 --body "Bin dran." --if-no-reply --tomorrow`,
 			},
 			Run: runReply,
 		},
@@ -281,13 +297,13 @@ func tree(l Locals) []*Command {
 			Long: "The original is quoted whole under a header block. A forward starts a " +
 				"new conversation rather than joining the old one, because the people it " +
 				"goes to were never in that one.",
-			Flags: []Flag{
+			Flags: append([]Flag{
 				{Name: "to", Kind: KindList, Arg: "ADDR", Desc: "who to send it to (repeatable)"},
 				{Name: "cc", Kind: KindList, Arg: "ADDR", Desc: "a copied recipient"},
 				{Name: "body", Kind: KindString, Arg: "TEXT", Desc: "a note above the forwarded mail"},
 				{Name: "subject", Kind: KindString, Arg: "S", Desc: "override the Fwd: subject"},
 				{Name: "attach", Kind: KindList, Arg: "PATH", Desc: "a file to attach (repeatable)"},
-			},
+			}, replyWatchFlags...),
 			Examples: []string{
 				"mailbox forward 36722 --to anna@example.com",
 				`mailbox forward Screener:342 --to anna@example.com --body "Kennst du die?"`,
@@ -336,12 +352,12 @@ func tree(l Locals) []*Command {
 					Usage: []string{"mailbox draft send ID [--to ADDR] [--body TEXT]"},
 					Long: "It goes through the outbox like any other send, and the draft is " +
 						"trashed only once the mail is out.",
-					Flags: []Flag{
+					Flags: append([]Flag{
 						{Name: "to", Kind: KindList, Arg: "ADDR", Desc: "replace the recipients"},
 						{Name: "cc", Kind: KindList, Arg: "ADDR", Desc: "replace the copied recipients"},
 						{Name: "subject", Kind: KindString, Arg: "S", Desc: "a new subject"},
 						{Name: "body", Kind: KindString, Arg: "TEXT", Desc: "new text"},
-					},
+					}, replyWatchFlags...),
 					Examples: []string{"mailbox draft send 12"},
 					Run:      draftVerb("send"),
 				},

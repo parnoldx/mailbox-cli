@@ -136,6 +136,16 @@ Menu {
         visible: !menu.inScreener && !menu.inAside
         onTriggered: Triage.dispatch(win, "aside", menu.row.id)
     }
+    Action {
+        text: "Bubble up"
+        glyph: ""
+        visible: !menu.inScreener
+        onTriggered: bubbleMenu.popup()
+    }
+    BubbleMenu {
+        id: bubbleMenu
+        onChosen: function (timing) { win.bubbleId(menu.row.id, timing, "Bubbled up") }
+    }
 
     Rule {}
 
