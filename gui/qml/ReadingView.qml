@@ -24,7 +24,11 @@ Item {
         void win.openMsg; void win.inScreener; void win.openThread
         void win.expandedIds; void PixelBlock.blocked
         var m = !!win.openMsg, scr = win.inScreener, out = []
-        if (PixelBlock.blocked > 0)
+        var named = (win.openMsg && win.openMsg.trackers) ? win.openMsg.trackers : []
+        if (named && named.length)
+            out.push({ act: "", interactive: false, glyph: "", glyphColor: Theme.green,
+                       label: "Tracked by " + named.join(", ") })
+        else if (PixelBlock.blocked > 0)
             out.push({ act: "", interactive: false, glyph: "", glyphColor: Theme.green,
                        label: PixelBlock.blocked + (PixelBlock.blocked === 1 ? " tracker blocked" : " trackers blocked") })
         if (win.openThread.length > 1)
@@ -38,6 +42,11 @@ Item {
             out.push({ act: "reply-later", glyph: "", label: "Reply later", accentGlyph: true })
             out.push({ act: "set-aside",   glyph: "", label: "Set aside",   accentGlyph: true })
             out.push({ act: "bubble",      glyph: "", label: "Bubble up",   accentGlyph: true })
+        }
+        if (m && win.openMsg.invite) {
+            out.push({ act: "rsvp-accept",    glyph: "", label: "Accept",    accentGlyph: true })
+            out.push({ act: "rsvp-tentative", glyph: "", label: "Maybe",     accentGlyph: true })
+            out.push({ act: "rsvp-decline",   glyph: "", label: "Decline",   danger: true })
         }
         if (m && scr) {
             out.push({ act: "route-inbox",   glyph: "", label: "Inbox", accentGlyph: true })
@@ -59,6 +68,9 @@ Item {
         else if (act === "route-inbox") Triage.dispatch(win, "inbox", id)
         else if (act === "route-block") Triage.dispatch(win, "block", id)
         else if (act === "set-aside") Triage.dispatch(win, "aside", id)
+        else if (act === "rsvp-accept") win.rsvpId(id, "accept", "Accepted")
+        else if (act === "rsvp-tentative") win.rsvpId(id, "tentative", "Tentative")
+        else if (act === "rsvp-decline") win.rsvpId(id, "decline", "Declined")
         else Triage.dispatch(win, act, id)   // reply-later | trash
     }
 

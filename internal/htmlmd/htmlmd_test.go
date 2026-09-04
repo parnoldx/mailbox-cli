@@ -71,6 +71,13 @@ func TestTrackingPixelDropped(t *testing.T) {
 	}
 }
 
+func TestNamedTrackerDroppedEvenWhenNotOneByOne(t *testing.T) {
+	got := HTMLToMarkdown(`<p>hi</p><img src="https://example.us18.list-manage.com/track/open.php?u=1" width="100" height="20" alt="">`)
+	if strings.Contains(got, "list-manage") {
+		t.Fatalf("named tracker kept: %q", got)
+	}
+}
+
 // helper to keep test self-contained
 func HTMLToMarkupSafe(s string) string { return s }
 

@@ -304,34 +304,6 @@ func (d *Daemon) handleRoute(ctx context.Context, req Request, resp Response) Re
 		return resp.usage(err.Error())
 	}
 
-	// What is already here, gathered before anything is written: it decides
-	// which Boxes have to exist, and a Mirror read costs nothing.
-	screener, hasScreener := a.boxNamed(routing.BoxScreener)
-	waiting := map[string][]mailsync.Ref{}
-	total := 0
-	if hasScreener && to != routing.None {
-		for _, addr := range addresses {
-			refs, err := d.screenerRefs(a, screener, addr)
-			if err != nil {
-				return resp.api(err.Error())
-			}
-			waiting[addr] = refs
-			total += len(refs)
-		}
-	}
-	// A Box that is not there is a rule that silently does nothing: Sieve files
-	// into a Box it cannot find by not filing at all, and the mail lands in the
-	// Inbox looking as though the decision was never made.
-	for _, box := range []string{to.Box(), pileFor(to, total)} {
-		if box == "" {
-			continue
-		}
-		if _, ok := a.boxNamed(box); !ok {
-			return resp.usage(fmt.Sprintf(
-				"this account has no %q box — create it before routing mail there", box))
-		}
-	}
-
 	st, err := d.readRouting(ctx)
 	if err != nil {
 		return resp.api(err.Error())
@@ -357,6 +329,34 @@ func (d *Daemon) handleRoute(ctx context.Context, req Request, resp Response) Re
 		}
 		changed = changed || did
 		out = append(out, decision{Address: addr, To: string(to), Box: to.Box(), Changed: did, Moved: []string{}})
+	}
+
+	// What is already here, after the decision is in the lists: a domain key
+	// has to see Of() so a more specific address rule is not swept along.
+	screener, hasScreener := a.boxNamed(routing.BoxScreener)
+	waiting := map[string][]mailsync.Ref{}
+	total := 0
+	if hasScreener && to != routing.None {
+		for _, addr := range addresses {
+			refs, err := d.screenerRefs(a, screener, addr, st.lists, to)
+			if err != nil {
+				return resp.api(err.Error())
+			}
+			waiting[addr] = refs
+			total += len(refs)
+		}
+	}
+	// A Box that is not there is a rule that silently does nothing: Sieve files
+	// into a Box it cannot find by not filing at all, and the mail lands in the
+	// Inbox looking as though the decision was never made.
+	for _, box := range []string{to.Box(), pileFor(to, total)} {
+		if box == "" {
+			continue
+		}
+		if _, ok := a.boxNamed(box); !ok {
+			return resp.usage(fmt.Sprintf(
+				"this account has no %q box — create it before routing mail there", box))
+		}
 	}
 
 	if changed || !st.exists {
@@ -414,8 +414,14 @@ func (d *Daemon) senders(targets []string) ([]string, error) {
 	out := []string{}
 	seen := map[string]bool{}
 	for _, t := range targets {
+		t = strings.TrimSpace(t)
 		addr := ""
-		if strings.Contains(t, "@") {
+		if routing.IsDomain(t) {
+			addr = strings.ToLower(t)
+			if !routing.ValidDomain(addr) {
+				return nil, fmt.Errorf("%q is not a domain this script can carry", t)
+			}
+		} else if strings.Contains(t, "@") {
 			if addr = routing.AddressOf(t); addr == "" {
 				return nil, fmt.Errorf("%q is not an address", t)
 			}
@@ -438,7 +444,11 @@ func (d *Daemon) senders(targets []string) ([]string, error) {
 				return nil, fmt.Errorf("cannot tell who %s is from (%q)", t, r.From)
 			}
 		}
-		if !routing.Valid(addr) {
+		if routing.IsDomain(addr) {
+			if !routing.ValidDomain(addr) {
+				return nil, fmt.Errorf("%q is not a domain this script can carry", addr)
+			}
+		} else if !routing.Valid(addr) {
 			return nil, fmt.Errorf("%q is not an address this script can carry", addr)
 		}
 		if !seen[addr] {
@@ -453,14 +463,26 @@ func (d *Daemon) senders(targets []string) ([]string, error) {
 // The Mirror narrows it with a substring match over the From header and the
 // header is parsed here, because `bob@example.com` is a substring of
 // `notbob@example.com` and of any display name a sender cares to write.
-func (d *Daemon) screenerRefs(a *Account, box, address string) ([]mailsync.Ref, error) {
-	rows, err := d.Mirror.RowsFrom(a.Name, box, address, screenerScan)
+func (d *Daemon) screenerRefs(a *Account, box, key string, lists *routing.Lists, to routing.Destination) ([]mailsync.Ref, error) {
+	needle := key
+	if routing.IsDomain(key) {
+		needle = routing.DomainOf(key)
+	}
+	rows, err := d.Mirror.RowsFrom(a.Name, box, needle, screenerScan)
 	if err != nil {
 		return nil, err
 	}
 	var refs []mailsync.Ref
 	for _, r := range rows {
-		if routing.AddressOf(r.From) != address {
+		addr := routing.AddressOf(r.From)
+		if lists.Of(addr) != to {
+			continue
+		}
+		if routing.IsDomain(key) {
+			if routing.DomainOf(addr) != routing.DomainOf(key) {
+				continue
+			}
+		} else if addr != key {
 			continue
 		}
 		refs = append(refs, mailsync.Ref{Folder: box, UID: r.Placement.UID})

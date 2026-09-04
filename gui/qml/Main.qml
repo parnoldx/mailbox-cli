@@ -241,6 +241,14 @@ ApplicationWindow {
             win.refreshStacks()
         })
     }
+    function rsvpId(id, status, label) {
+        if (!id) return
+        var args = { positional: id }
+        args[status] = true
+        Mailbox.call(["rsvp"], args, function (r) {
+            win.flash(r && r.ok ? label : win._failMsg(label, r))
+        })
+    }
     // Bubble Up (ADR-0023): set a Thread aside with a return time, or re-time
     // one already bubbled. `timing` is what BubbleMenu's chosen() signal
     // carries — {tomorrow:true} | {weekend:true} | {next_week:true} |

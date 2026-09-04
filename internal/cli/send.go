@@ -167,6 +167,30 @@ func (r *repeated) Set(v string) error {
 	return nil
 }
 
+func runRSVP(in *input, stdout, stderr io.Writer) int {
+	n := 0
+	for _, f := range []string{"accept", "decline", "tentative"} {
+		if in.Bool(f) {
+			n++
+		}
+	}
+	if n != 1 {
+		fmt.Fprint(stderr, "rsvp needs one of --accept, --decline, --tentative\n")
+		return ExitUsage
+	}
+	return request(daemon.Request{
+		ID:  "1",
+		Cmd: []string{"rsvp"},
+		Args: map[string]any{
+			"positional": in.First(),
+			"accept":     in.Bool("accept"),
+			"decline":    in.Bool("decline"),
+			"tentative":  in.Bool("tentative"),
+			"calendar":   in.Str("calendar"),
+		},
+	}, in.JSON(), printSent, stdout, stderr)
+}
+
 // printSent says what happened to the mail, in two facts: it went, and where
 // the copy of it is.
 func printSent(stdout, stderr io.Writer, resp daemon.Response) {

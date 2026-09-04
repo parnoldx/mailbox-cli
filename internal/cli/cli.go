@@ -428,6 +428,16 @@ func printMessage(stdout, stderr io.Writer, resp daemon.Response) {
 	if places, ok := m["placements"].([]any); ok && len(places) > 1 {
 		fmt.Fprintf(stdout, "%-8s %s\n", "Also:", strings.Join(strs(places), ", "))
 	}
+	if names := strs(asAny(m["trackers"])); len(names) > 0 {
+		fmt.Fprintf(stdout, "%-8s Tracked by %s\n", "Trackers:", strings.Join(names, ", "))
+	}
+	if inv, ok := m["invite"].(map[string]any); ok && str(inv["summary"]) != "" {
+		fmt.Fprintf(stdout, "%-8s %s", "Invite:", str(inv["summary"]))
+		if org := str(inv["organizer"]); org != "" {
+			fmt.Fprintf(stdout, " (%s)", org)
+		}
+		fmt.Fprintln(stdout)
+	}
 	fmt.Fprintln(stdout)
 	switch body := str(m["body"]); {
 	case body != "":

@@ -259,3 +259,86 @@ func TestIncludesFindsTheOneThatRunsUs(t *testing.T) {
 		}
 	}
 }
+
+// A domain key (`@stripe.com`) matches every address at that domain, and a
+// specific address always wins — the two-pass order the generated script
+// encodes: every address rule, then every domain rule.
+func TestADomainKeyMatchesEveryAddressAtThatDomain(t *testing.T) {
+	l := New()
+	if _, err := l.Set("@stripe.com", PaperTrail); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.Set("receipts@stripe.com", Inbox); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.Set("spammy@stripe.com", Block); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		addr string
+		want Destination
+	}{
+		{"invoices@stripe.com", PaperTrail},
+		{"receipts@stripe.com", Inbox},
+		{"spammy@stripe.com", Block},
+		{"other@example.com", None},
+	} {
+		if got := l.Of(tc.addr); got != tc.want {
+			t.Errorf("Of(%q) = %q, want %q", tc.addr, got, tc.want)
+		}
+	}
+}
+
+func TestADomainKeyRoundTripsThroughTheScript(t *testing.T) {
+	l := New()
+	for key, d := range map[string]Destination{
+		"anna@example.com": Inbox,
+		"@stripe.com":      PaperTrail,
+		"@evil.com":        Block,
+		"news@example.com": Feed,
+	} {
+		if _, err := l.Set(key, d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	script := l.Script()
+	if !strings.Contains(script, `address :domain :is "from"`) {
+		t.Errorf("the generated script has no domain test:\n%s", script)
+	}
+	if !strings.Contains(script, `"stripe.com"`) {
+		t.Errorf("the domain was not written without the @:\n%s", script)
+	}
+	// Address rules must appear before domain rules so Sieve's first match
+	// is the two-pass: exact address, then domain.
+	addrAt := strings.Index(script, `address :is :all "from"`)
+	domAt := strings.Index(script, `address :domain :is "from"`)
+	if addrAt < 0 || domAt < 0 || addrAt > domAt {
+		t.Errorf("address rules must come before domain rules:\n%s", script)
+	}
+
+	back := Parse(script)
+	for _, r := range l.All() {
+		if got := back.Of(r.Address); got != r.To {
+			t.Errorf("%s came back as %q, want %q\n%s", r.Address, got, r.To, script)
+		}
+	}
+	if back.Of("invoices@stripe.com") != PaperTrail {
+		t.Errorf("parsed domain did not match invoices@stripe.com: %q\n%s",
+			back.Of("invoices@stripe.com"), script)
+	}
+}
+
+func TestADomainThatCouldWriteRulesIsRefused(t *testing.T) {
+	l := New()
+	for _, key := range []string{
+		`@b.com"] { discard; } if true {`,
+		"@b.com\nif true { discard; }",
+		"@",
+		"@nodot",
+		"stripe.com",
+	} {
+		if ok, err := l.Set(key, Inbox); err == nil || ok {
+			t.Errorf("Set(%q) was accepted", key)
+		}
+	}
+}

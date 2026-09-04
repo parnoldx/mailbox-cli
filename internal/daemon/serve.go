@@ -22,6 +22,7 @@ import (
 	"mailbox/internal/routing"
 	"mailbox/internal/sync/mailsync"
 	"mailbox/internal/terminal"
+	"mailbox/internal/trackers"
 )
 
 // serve handles one client: NDJSON requests in, replies and pushes out.
@@ -126,6 +127,8 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 		return d.handleBubble(ctx, req, resp)
 	case "sieve":
 		return d.handleSieve(ctx, req, resp)
+	case "rsvp":
+		return d.handleRSVP(ctx, req, resp)
 	case "label":
 		return d.handleLabel(ctx, req, resp)
 	case "draft":
@@ -205,7 +208,11 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 		if err != nil {
 			return resp.api(err.Error())
 		}
-		return resp.ok(viewMessage(acct, folder, r, places))
+		m := viewMessage(acct, folder, r, places)
+		if card := d.inviteCardOf(ctx, acct, folder, uid, r.Message.ID); card != nil {
+			m.Invite = card
+		}
+		return resp.ok(m)
 
 	case "attachment list":
 		id := req.Str("positional")
@@ -933,6 +940,12 @@ type message struct {
 	BodyHTML   string   `json:"body_html,omitempty"`
 	BodyState  string   `json:"body_state"`
 	Placements []string `json:"placements"`
+	// Trackers are the named open-tracking pixels in the HTML, a projection
+	// of the stored part (ADR-0003): the HTML is not rewritten.
+	Trackers []string `json:"trackers,omitempty"`
+	// Invite is a meeting request this Message carries, when a text/calendar
+	// or .ics part is present. Details may be empty until the part is fetched.
+	Invite *inviteCard `json:"invite,omitempty"`
 }
 
 func viewMessage(a *Account, folder string, r mirror.Row, places []mirror.Placement) message {
@@ -943,6 +956,7 @@ func viewMessage(a *Account, folder string, r mirror.Row, places []mirror.Placem
 		Flags: r.Placement.Flags, Size: r.Placement.Size, MessageKey: r.Message.Key,
 		Body: body, BodyFormat: format, BodyState: r.BodyState,
 		BodyHTML: r.Message.TextHTML,
+		Trackers: trackers.InHTML(r.Message.TextHTML),
 	}
 	if !r.Message.Date.IsZero() {
 		m.Date = r.Message.Date.Format(time.RFC3339)

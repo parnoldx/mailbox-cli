@@ -9,12 +9,23 @@ PixelBlock::PixelBlock(QObject *parent)
 {
     // Pure analytics / open-tracking hosts. Kept deliberately tight so that a
     // newsletter's real images and CDN assets still load.
+    // Keep in step with internal/trackers: named ESPs plus generic open paths.
     m_hosts = {
         "doubleclick.net", "google-analytics.com", "googletagmanager.com",
         "hs-analytics.net", "mixpanel.com", "segment.io", "segment.com",
         "amplitude.com", "matomo.", "piwik.", "stats.g.doubleclick",
         "email.mg.", "sendgrid.net/wf/open", "list-manage.com/track",
         "mailchimp.com/track", "click.e.", "trk.", "/open.aspx",
+        "awstrack.me", "t.hubspotemail.net", "t.hubspotfree.net",
+        "track.hubspot.com", "mandrillapp.com/track", "pstmrk.it/open",
+        "email.mailgun.net/o/", "track.mailgun.org", "mjt.lu/oo",
+        "mailtrack.io/trace", "mltrk.io/pixel", "emltrk.com",
+        "go.pardot.com/l/", "exct.net/open.aspx", "t.yesware.com",
+        "email.substack.com/o", "r.superhuman.com", "via.intercom.io/o",
+        "trk.klclick.com", "linkedin.com/emimp/", "getmailspring.com/open",
+        "mailfoogae.appspot.com", "yamm-track.appspot", "polymail.io/track",
+        "contactmonkey.com/api/v1/tracker", "openrate.aweber.com",
+        "sendibt1.com", "sendibt2.com", "sendibm1.com",
     };
     // Path shapes that only ever mean "someone opened this".
     m_paths = {
@@ -22,6 +33,7 @@ PixelBlock::PixelBlock(QObject *parent)
         "/track/open", "/trackopen", "/pixel", "/px.gif", "/beacon",
         "/impression", "/piwik", "/matomo", "/collect?", "1x1.png",
         "1x1.gif", "spacer.gif", "blank.gif", "/detectblocker",
+        "/email_opened", "/o.gif", "/pixel.gif", "/ut.php",
     };
 }
 

@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"mailbox/internal/terminal"
+	"mailbox/internal/trackers"
 )
 
 var inlineMeta = map[rune]bool{'\\': true, '`': true, '*': true, '_': true, '~': true, '[': true, ']': true, '<': true, '>': true, '|': true}
@@ -1138,6 +1139,10 @@ func styleProp(style string, names ...string) string {
 }
 
 func isTrackingImage(n *node) bool {
+	src := attrOr(n, "src", "")
+	if trackers.Identify(src) != "" {
+		return true
+	}
 	width := strings.TrimSpace(attrOr(n, "width", ""))
 	height := strings.TrimSpace(attrOr(n, "height", ""))
 	return (width == "0" || width == "1") && (height == "0" || height == "1")

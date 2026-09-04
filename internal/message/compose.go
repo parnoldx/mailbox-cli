@@ -77,6 +77,11 @@ type Draft struct {
 	InReplyTo   []string // Message-IDs, without angle brackets
 	References  []string
 	Attachments []Attachment
+	// CalendarICS is an iMIP text/calendar body (RFC 6047). When set, Build
+	// writes it both as an inline text/calendar part and as an invite.ics
+	// attachment, which is what calendar clients key off.
+	CalendarMethod string
+	CalendarICS    []byte
 	// MessageID and Date are filled in by Build when empty.
 	MessageID string
 	Date      time.Time
@@ -118,6 +123,7 @@ func (d *Draft) Build() ([]byte, error) {
 	if d.MessageID == "" {
 		d.MessageID = NewMessageID(domainOf(d.From.Addr))
 	}
+	d.sanitise()
 
 	var h gomail.Header
 	h.SetDate(d.Date)
@@ -141,8 +147,9 @@ func (d *Draft) Build() ([]byte, error) {
 
 	var buf bytes.Buffer
 	alt := d.BodyHTML != ""
+	imip := len(d.CalendarICS) > 0
 
-	if len(d.Attachments) == 0 {
+	if len(d.Attachments) == 0 && !imip {
 		if !alt {
 			// The charset goes on the message's own header, because there is no
 			// part header to put it on. Leaving it off does not mean
@@ -210,10 +217,15 @@ func (d *Draft) Build() ([]byte, error) {
 			return nil, err
 		}
 	}
+	if imip {
+		if err := d.writeCalendar(mw); err != nil {
+			return nil, err
+		}
+	}
 	for _, a := range d.Attachments {
 		var ah gomail.AttachmentHeader
 		ah.Set("Content-Type", a.MIMEType)
-		ah.SetFilename(a.Filename)
+		ah.SetFilename(sanitizeFilename(a.Filename))
 		aw, err := mw.CreateAttachment(ah)
 		if err != nil {
 			return nil, err
@@ -296,6 +308,76 @@ func NewMessageID(domain string) string {
 		return fmt.Sprintf("%d.mailbox@%s", time.Now().UnixNano(), domain)
 	}
 	return fmt.Sprintf("%d.%s.mailbox@%s", time.Now().Unix(), hex.EncodeToString(b[:]), domain)
+}
+
+func (d *Draft) sanitise() {
+	d.Subject = sanitizeHeaderValue(d.Subject)
+	d.From.Name = sanitizeHeaderValue(d.From.Name)
+	d.From.Addr = sanitizeHeaderValue(d.From.Addr)
+	for i := range d.To {
+		d.To[i].Name = sanitizeHeaderValue(d.To[i].Name)
+		d.To[i].Addr = sanitizeHeaderValue(d.To[i].Addr)
+	}
+	for i := range d.Cc {
+		d.Cc[i].Name = sanitizeHeaderValue(d.Cc[i].Name)
+		d.Cc[i].Addr = sanitizeHeaderValue(d.Cc[i].Addr)
+	}
+	for i := range d.Bcc {
+		d.Bcc[i].Name = sanitizeHeaderValue(d.Bcc[i].Name)
+		d.Bcc[i].Addr = sanitizeHeaderValue(d.Bcc[i].Addr)
+	}
+	for i := range d.Attachments {
+		d.Attachments[i].Filename = sanitizeFilename(d.Attachments[i].Filename)
+	}
+}
+
+func (d Draft) writeCalendar(mw *gomail.Writer) error {
+	method := d.CalendarMethod
+	if method == "" {
+		method = "REPLY"
+	}
+	var ih gomail.InlineHeader
+	ih.Set("Content-Type", "text/calendar; charset=utf-8; method="+sanitizeHeaderValue(method))
+	iw, err := mw.CreateSingleInline(ih)
+	if err != nil {
+		return err
+	}
+	if _, err := iw.Write(d.CalendarICS); err != nil {
+		return err
+	}
+	if err := iw.Close(); err != nil {
+		return err
+	}
+	var ah gomail.AttachmentHeader
+	ah.Set("Content-Type", "application/ics")
+	ah.SetFilename("invite.ics")
+	aw, err := mw.CreateAttachment(ah)
+	if err != nil {
+		return err
+	}
+	if _, err := aw.Write(d.CalendarICS); err != nil {
+		return err
+	}
+	return aw.Close()
+}
+
+// sanitizeHeaderValue strips CR and LF so a subject or a display name cannot
+// smuggle a header. Folding is the encoder's job; a newline here is injection.
+func sanitizeHeaderValue(s string) string {
+	s = strings.ReplaceAll(s, "\r", "")
+	s = strings.ReplaceAll(s, "\n", "")
+	return s
+}
+
+func sanitizeFilename(s string) string {
+	s = filepath.Base(s)
+	s = sanitizeHeaderValue(s)
+	s = strings.ReplaceAll(s, `"`, "")
+	s = strings.TrimSpace(s)
+	if s == "" || s == "." || s == ".." {
+		return "attachment"
+	}
+	return s
 }
 
 func domainOf(addr string) string {

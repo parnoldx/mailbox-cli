@@ -134,6 +134,7 @@ mailbox compose --to user@example.com --subject "Hello" --body "Message body"
 mailbox reply 36722 --body "Thanks for the update."
 mailbox forward 36722 --to colleague@example.com
 mailbox compose --to user@example.com --subject "Draft" --body "WIP" --draft  # File in drafts instead of sending
+mailbox rsvp 36722 --accept        # Accept a meeting invite (iMIP + calendar)
 mailbox draft list                 # Mail written but not yet sent
 mailbox draft send 12              # Send a draft (optionally override --to/--subject/--body)
 mailbox outbox list                # View queue status and held messages
@@ -147,6 +148,7 @@ mailbox route set sender@domain --to feed        # Route sender to Feed
 mailbox route set sender@domain --to inbox       # Route sender to Inbox
 mailbox route set sender@domain --to paper        # Route sender to Paper Trail
 mailbox route set sender@domain --to block       # Block sender at server level
+mailbox route set @stripe.com --to paper         # Every address at that domain
 mailbox aside add 36722            # Put a message into the read-later pile
 mailbox reply-later add 36722      # Put a message into the reply-later pile
 mailbox move 36722 --to Archive    # Move message to a box

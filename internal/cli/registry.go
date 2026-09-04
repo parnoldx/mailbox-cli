@@ -292,6 +292,25 @@ func tree(l Locals) []*Command {
 			Run: runReply,
 		},
 		{
+			Name: "rsvp", Section: SectionMail, Short: "Accept or decline a meeting", Needs: true,
+			Usage: []string{"mailbox rsvp ID --accept|--decline|--tentative"},
+			Long: "Answers a meeting invite carried on a message: sends an iMIP reply " +
+				"to the organizer, and on accept or tentative also puts the event on " +
+				"the calendar.",
+			Flags: []Flag{
+				{Name: "accept", Kind: KindBool, Desc: "accept the meeting"},
+				{Name: "decline", Kind: KindBool, Desc: "decline the meeting"},
+				{Name: "tentative", Kind: KindBool, Desc: "accept tentatively"},
+				{Name: "calendar", Kind: KindString, Arg: "NAME", Desc: "which calendar to put it on"},
+			},
+			Examples: []string{
+				"mailbox rsvp 36722 --accept",
+				"mailbox rsvp 36722 --decline",
+				"mailbox rsvp 36722 --tentative --calendar Work",
+			},
+			Run: runRSVP,
+		},
+		{
 			Name: "forward", Section: SectionMail, Short: "Send a message on", Needs: true,
 			Usage: []string{"mailbox forward ID --to ADDR [--body TEXT]"},
 			Long: "The original is quoted whole under a header block. A forward starts a " +
@@ -456,16 +475,18 @@ func tree(l Locals) []*Command {
 				{
 					Name: "set", Short: "Decide where a sender's mail goes", Needs: true,
 					Usage: []string{"mailbox route set TARGET... --to BOX"},
-					Long: "TARGET is a message id or an address: whoever has just read " +
-						"something in the screener has its id and not its sender's " +
-						"address. BOX is inbox, feed, paper, block, or screener, which " +
-						"forgets the sender and puts their next mail back there.",
+					Long: "TARGET is a message id, an address, or a domain key (`@example.com`): " +
+						"whoever has just read something in the screener has its id and not " +
+						"its sender's address. A domain matches every address at that domain; " +
+						"a specific address always wins. BOX is inbox, feed, paper, block, or " +
+						"screener, which forgets the sender and puts their next mail back there.",
 					Flags: []Flag{
 						{Name: "to", Kind: KindString, Arg: "BOX", Desc: "inbox, feed, paper, block, or screener"},
 					},
 					Examples: []string{
 						"mailbox route set Screener:342 --to feed",
 						"mailbox route set news@example.com --to block",
+						"mailbox route set @stripe.com --to paper",
 						"mailbox route set alt@example.com --to screener",
 					},
 					Run: runRouteSet,

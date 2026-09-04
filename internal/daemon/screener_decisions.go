@@ -176,7 +176,7 @@ func (d *Daemon) applyInferred(ctx context.Context, a *Account, screener string,
 		pile := ""
 		if dest != routing.None {
 			var rerr error
-			if refs, rerr = d.screenerRefs(a, screener, addr); rerr != nil {
+			if refs, rerr = d.screenerRefs(a, screener, addr, st.lists, dest); rerr != nil {
 				d.logf("screener inference: waiting mail for %s: %v", addr, rerr)
 			}
 			pile = pileFor(dest, len(refs))

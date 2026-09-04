@@ -10,6 +10,7 @@ MAIL
   search        Search every box
   compose       Write and send a mail
   reply         Answer, in its thread
+  rsvp          Accept or decline a meeting
   forward       Send a message on
   draft         Mail written but not sent
   outbox        What is queued to go out

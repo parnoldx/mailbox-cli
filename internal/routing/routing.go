@@ -158,19 +158,33 @@ type Lists struct {
 func New() *Lists { return &Lists{by: map[string]Destination{}} }
 
 // Of reports what was decided about a sender, None when nothing was.
+// An exact address always wins over a domain key (`@example.com`).
 func (l *Lists) Of(address string) Destination {
-	if d, ok := l.by[normalise(address)]; ok {
+	a := normalise(address)
+	if d, ok := l.by[a]; ok {
 		return d
+	}
+	if IsDomain(a) {
+		return None
+	}
+	if dom := DomainOf(a); dom != "" {
+		if d, ok := l.by["@"+dom]; ok {
+			return d
+		}
 	}
 	return None
 }
 
 // Set records a decision and reports whether it changed anything. Setting None
-// takes the sender off every list. An address the script could not carry safely
-// is refused rather than escaped (see Valid).
+// takes the sender off every list. An address or domain the script could not
+// carry safely is refused rather than escaped (see Valid, ValidDomain).
 func (l *Lists) Set(address string, d Destination) (bool, error) {
 	a := normalise(address)
-	if !Valid(a) {
+	if IsDomain(a) {
+		if !ValidDomain(a) {
+			return false, fmt.Errorf("%q is not a domain this script can carry", address)
+		}
+	} else if !Valid(a) {
 		return false, fmt.Errorf("%q is not an address this script can carry", address)
 	}
 	if d == None {
@@ -214,13 +228,33 @@ func (l *Lists) All() []Route {
 	return out
 }
 
-// Route is one decision: this sender's mail goes there.
+// Route is one decision: this sender's mail goes there. Address is either an
+// email address or a domain key (`@example.com`).
 type Route struct {
 	Address string      `json:"address"`
 	To      Destination `json:"to"`
 	// Box is the Box the script files this sender's mail into, empty for a
 	// blocked sender whose mail is discarded.
 	Box string `json:"box"`
+}
+
+// IsDomain reports a routing key that names every address at a domain:
+// `@example.com`.
+func IsDomain(key string) bool {
+	k := normalise(key)
+	return strings.HasPrefix(k, "@") && !strings.Contains(k[1:], "@") && len(k) > 1
+}
+
+// DomainOf is the domain of an address or of a domain key, empty when neither.
+func DomainOf(address string) string {
+	a := normalise(address)
+	if IsDomain(a) {
+		return a[1:]
+	}
+	if i := strings.LastIndex(a, "@"); i >= 0 && i+1 < len(a) {
+		return a[i+1:]
+	}
+	return ""
 }
 
 // Count is how many senders have been decided about.
@@ -243,6 +277,21 @@ var addressRe = regexp.MustCompile(`^[^\s"\\\[\]<>,;]+@[^\s"\\\[\]<>,;]+$`)
 // Valid reports whether an address can be stored in a list.
 func Valid(address string) bool {
 	return len(address) <= 320 && addressRe.MatchString(address)
+}
+
+// domainRe is the shape of a domain that can be embedded in a Sieve quoted
+// string. Same refusal as Valid: a quote or a newline in a domain is attacker
+// input, and no real domain needs it. At least one dot, so `@com` is not a
+// domain somebody meant.
+var domainRe = regexp.MustCompile(`^[^\s"\\\[\]<>,;@]+(\.[^\s"\\\[\]<>,;@]+)+$`)
+
+// ValidDomain reports whether `@example.com` can be stored as a domain key.
+func ValidDomain(key string) bool {
+	k := normalise(key)
+	if !IsDomain(k) || len(k) > 320 {
+		return false
+	}
+	return domainRe.MatchString(k[1:])
 }
 
 // AddressOf pulls the address out of a From header. The Mirror stores the
@@ -308,32 +357,61 @@ func NameOf(header string) string {
 func (l *Lists) Script() string {
 	var b strings.Builder
 	b.WriteString(scriptHeader)
+	// Address rules first, then domain rules. Sieve's first match wins, so
+	// this is the two-pass: a specific address always beats `@domain`.
 	for _, s := range order {
-		addrs := l.Addresses(s.dest)
-		if len(addrs) == 0 {
-			continue
-		}
-		fmt.Fprintf(&b, "\n# %s\nif address :is :all \"from\" [\n", s.title)
-		for i, a := range addrs {
-			comma := ","
-			if i == len(addrs)-1 {
-				comma = ""
-			}
-			fmt.Fprintf(&b, "  %q%s\n", a, comma)
-		}
-		b.WriteString("] {\n")
-		if s.seen {
-			b.WriteString("  addflag \"\\\\Seen\";\n")
-		}
-		if s.files == "" {
-			b.WriteString("  discard;\n")
-		} else {
-			fmt.Fprintf(&b, "  fileinto %q;\n", s.files)
-		}
-		b.WriteString("  stop;\n}\n")
+		writeRule(&b, s, l.keys(s.dest, false), false)
+	}
+	for _, s := range order {
+		writeRule(&b, s, l.keys(s.dest, true), true)
 	}
 	fmt.Fprintf(&b, "\n# Everyone else: a sender nothing has been decided about.\nfileinto %q;\n", BoxScreener)
 	return b.String()
+}
+
+func (l *Lists) keys(d Destination, domains bool) []string {
+	var out []string
+	for a, got := range l.by {
+		if got == d && IsDomain(a) == domains {
+			out = append(out, a)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func writeRule(b *strings.Builder, s spec, keys []string, domain bool) {
+	if len(keys) == 0 {
+		return
+	}
+	title := s.title
+	test := `address :is :all "from"`
+	if domain {
+		title = strings.TrimSuffix(s.title, ".") + ", by domain."
+		test = `address :domain :is "from"`
+	}
+	fmt.Fprintf(b, "\n# %s\nif %s [\n", title, test)
+	for i, k := range keys {
+		val := k
+		if domain {
+			val = strings.TrimPrefix(k, "@")
+		}
+		comma := ","
+		if i == len(keys)-1 {
+			comma = ""
+		}
+		fmt.Fprintf(b, "  %q%s\n", val, comma)
+	}
+	b.WriteString("] {\n")
+	if s.seen {
+		b.WriteString("  addflag \"\\\\Seen\";\n")
+	}
+	if s.files == "" {
+		b.WriteString("  discard;\n")
+	} else {
+		fmt.Fprintf(b, "  fileinto %q;\n", s.files)
+	}
+	b.WriteString("  stop;\n}\n")
 }
 
 const scriptHeader = `# Generated by ` + "`mailbox route`" + `. This whole script is rewritten on every
@@ -345,7 +423,7 @@ require ["fileinto", "imap4flags"];
 // listRe finds a rule's address list. Both spellings are read: the one this
 // program writes, and the ` + "`header :contains \"From\"`" + ` one the script on the account
 // was written with before this program owned it.
-var listRe = regexp.MustCompile(`(?is)(?:header\s+:contains\s+"from"|address\s+[^"\[]*"from")\s*\[([^\]]*)\]`)
+var listRe = regexp.MustCompile(`(?is)((?:header\s+:contains\s+"from"|address\s+[^"\[]*"from"))\s*\[([^\]]*)\]`)
 
 // fileintoRe finds the Box a rule files into.
 var fileintoRe = regexp.MustCompile(`(?i)fileinto\s+"([^"]*)"`)
@@ -361,7 +439,9 @@ var fileintoRe = regexp.MustCompile(`(?i)fileinto\s+"([^"]*)"`)
 func Parse(script string) *Lists {
 	l := New()
 	for _, m := range listRe.FindAllStringSubmatchIndex(script, -1) {
-		addrs := parseAddresses(script[m[2]:m[3]])
+		test := script[m[2]:m[3]]
+		domain := strings.Contains(strings.ToLower(test), ":domain")
+		addrs := parseKeys(script[m[4]:m[5]], domain)
 		if len(addrs) == 0 {
 			continue
 		}
@@ -425,11 +505,25 @@ func actionAfter(rest string) (Destination, bool) {
 // and importing it would turn a list nobody is on into a decision about a
 // sender who does not exist.
 func parseAddresses(raw string) []string {
+	return parseKeys(raw, false)
+}
+
+func parseKeys(raw string, domain bool) []string {
 	var out []string
 	seen := map[string]bool{}
 	for _, field := range strings.Split(raw, ",") {
 		a := normalise(strings.Trim(strings.TrimSpace(field), `"`))
-		if a == "" || a == "example@example.com" || !Valid(a) || seen[a] {
+		if a == "" || a == "example@example.com" {
+			continue
+		}
+		if domain && !strings.HasPrefix(a, "@") {
+			a = "@" + a
+		}
+		ok := Valid(a)
+		if domain {
+			ok = ValidDomain(a)
+		}
+		if !ok || seen[a] {
 			continue
 		}
 		seen[a] = true

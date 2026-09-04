@@ -40,6 +40,8 @@ and each help text carries the reason the command works the way it does.
 | answer one | `mailbox reply 36722 --body "..."` |
 | write a new one | `mailbox compose --to a@b.de --subject "..." --body "..."` |
 | decide about a sender | `mailbox screener`, then `mailbox route set ID --to feed` |
+| route a whole domain | `mailbox route set @stripe.com --to paper` |
+| accept a meeting | `mailbox rsvp ID --accept` |
 | keep one for later | `mailbox aside add 36722` |
 | flag one you owe a reply | `mailbox reply-later add 36722` |
 | file it | `mailbox move 36722 --to Archive/Immo` |
@@ -52,9 +54,11 @@ and each help text carries the reason the command works the way it does.
 | something is broken | `mailbox doctor` |
 
 `route set` owns the Sieve script that sorts mail on the server, so it is how a
-sender is blocked or let through; `mailbox sieve` is raw access for the cases
-route does not cover. `attachment save` writes into the working directory unless
-`--output` names somewhere else.
+sender is blocked or let through. A target `@example.com` is every address at
+that domain; a specific address always wins. `mailbox sieve` is raw access for
+the cases route does not cover. `mailbox rsvp ID --accept` answers a meeting
+invite (iMIP to the organizer, and the event on the calendar). `attachment save`
+writes into the working directory unless `--output` names somewhere else.
 
 ## Reading the answer
 

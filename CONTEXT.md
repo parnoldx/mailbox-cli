@@ -57,12 +57,15 @@ The Sieve script on the Primary Account's server that files new mail before this
 program sees it: blocked senders discarded, then the Inbox, the Paper Trail and
 the Feed, and everything left over into the Screener. The script is the record;
 what the Mirror holds beside it is a projection of it. It runs when it is the
-server's active script or when the active one includes it (ADR-0019).
+server's active script or when the active one includes it (ADR-0019). A
+decision is about an address or a whole domain (`@example.com`); an address
+always wins (ADR-0026).
 _Avoid_: filter, rule, sieve (that is the language it is written in)
 
 **Destination**:
 Where the Routing sends one sender's mail: Inbox, Feed, Paper Trail or Block.
-The Screener is the absence of one, not a fifth.
+The Screener is the absence of one, not a fifth. Named by an address or by a
+domain key (`@example.com`).
 _Avoid_: category, label, bucket
 
 **Screener**:

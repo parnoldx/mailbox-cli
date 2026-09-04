@@ -677,3 +677,35 @@ func TestAsideSurvivesTheNextSync(t *testing.T) {
 		t.Fatalf("inbox = %+v after a sync, want it empty — the aside was undone", rows)
 	}
 }
+
+// A domain key files every sender at that domain, and a more specific address
+// already decided is left alone — the same two-pass the generated script uses.
+func TestADomainRouteMovesEveryoneAtThatDomain(t *testing.T) {
+	d, sieve := seedScreener(t)
+	mustAsk(t, d, []string{"route"}, map[string]any{
+		"positional": []any{"news@example.com"}, "to": "inbox",
+	})
+	resp := mustAsk(t, d, []string{"route"}, map[string]any{
+		"positional": []any{"@example.com"}, "to": "paper",
+	})
+	got := resp.Data.([]decision)
+	if len(got) != 1 || got[0].Address != "@example.com" || !got[0].Changed {
+		t.Fatalf("decision = %+v", got)
+	}
+	// bills@example.com was waiting and had no address rule: it moves.
+	// news@example.com was already decided for the Inbox, so its (already
+	// moved) mail is not swept to Paper Trail.
+	if len(got[0].Moved) != 1 || !strings.HasPrefix(got[0].Moved[0], "Paper Trail:") {
+		t.Fatalf("moved = %v, want bills only", got[0].Moved)
+	}
+	l := routing.Parse(sieve.scripts[routing.ScriptName])
+	if l.Of("news@example.com") != routing.Inbox {
+		t.Errorf("the address rule lost to the domain: %v", l.All())
+	}
+	if l.Of("bills@example.com") != routing.PaperTrail {
+		t.Errorf("the domain did not catch bills: %v", l.All())
+	}
+	if l.Of("spam@example.net") != routing.None {
+		t.Errorf("a different domain was routed: %v", l.All())
+	}
+}

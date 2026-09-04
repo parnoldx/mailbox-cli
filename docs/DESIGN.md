@@ -761,11 +761,13 @@ them two would ask for the same decision twice. Each line carries the count, how
 many are unread, the newest subject and the id that reads it, so the decision
 usually does not need the mail opened at all.
 
-**One command finishes one decision.** `route` takes a message id or an address
-— an agent that has just read something in the Screener has its id and not its
-sender's address — rewrites the script so the sender's *next* mail is filed, and
-moves the mail already waiting. `--to screener` is the undo: it takes the sender
-off every list, and their next mail is owed a decision again.
+**One command finishes one decision.** `route` takes a message id, an address,
+or a domain key (`@example.com`) — an agent that has just read something in the
+Screener has its id and not its sender's address — rewrites the script so the
+sender's *next* mail is filed, and moves the mail already waiting. A domain
+matches every address at that domain; a specific address always wins
+(ADR-0026). `--to screener` is the undo: it takes the sender off every list,
+and their next mail is owed a decision again.
 
 Blocking is the asymmetric one. Their next mail is `discard`ed, because that is
 what blocking means; the mail already in the Screener goes to
