@@ -95,7 +95,7 @@ function coerceWeekStart(value) {
   if (typeof value === "number")
     return isFinite(value) ? ((Math.round(value) % 7) + 7) % 7 : null
 
-  var text = String(value).replace(/^\s+|\s+$/g, "").toLowerCase()
+  var text = String(value).trim().toLowerCase()
   if (text === "") return null
 
   for (var i = 0; i < WEEKDAY_NAMES.length; i++)
@@ -167,17 +167,21 @@ function yearProgressPercent(year, month, day) {
 // arithmetic, and whoever wants a different number can say so.
 var DEFAULT_LIFE_EXPECTANCY = 90
 
+// A whole number in range, or the fallback. Blank, malformed, negative,
+// fractional and out-of-range all mean the same thing: the setting is not set.
+function parseWholeNumber(value, min, max, fallback) {
+  var text = String(value === undefined || value === null ? "" : value).trim()
+  if (!/^\d+$/.test(text)) return fallback
+  var n = parseInt(text, 10)
+  return n >= min && n <= max ? n : fallback
+}
+
 // A birth year rather than an age, so the bar keeps counting on its own
-// instead of going stale the moment it is entered. 0 means "not set", which
-// is also what a blank, malformed, future, or implausibly distant year means.
+// instead of going stale the moment it is entered. 0 means "not set".
 function parseBirthYear(value, currentYear) {
   var now = Math.round(Number(currentYear))
   if (!isFinite(now)) return 0
-  var text = String(value === undefined || value === null ? "" : value).replace(/^\s+|\s+$/g, "")
-  if (!/^\d{4}$/.test(text)) return 0
-  var year = parseInt(text, 10)
-  if (!isFinite(year) || year > now || year < now - 120) return 0
-  return year
+  return parseWholeNumber(value, now - 120, now, 0)
 }
 
 // Whole years, the way people say their age: born in 1979 makes you 47 for
@@ -188,24 +192,15 @@ function ageFromBirthYear(birthYear, currentYear) {
   return Math.round(Number(currentYear)) - born
 }
 
-// 0 means "not set", which is also what a blank, negative, fractional, or
-// absurd entry means — the life bar simply stays hidden.
+// 0 means "not set" — the life bar simply stays hidden.
 function parseAge(value) {
-  var text = String(value === undefined || value === null ? "" : value).replace(/^\s+|\s+$/g, "")
-  if (!/^\d+$/.test(text)) return 0
-  var years = parseInt(text, 10)
-  if (!isFinite(years) || years <= 0 || years > 120) return 0
-  return years
+  return parseWholeNumber(value, 1, 120, 0)
 }
 
 // Unset or nonsense falls back to the default rather than to zero, so the
 // bar always has something to measure against.
 function parseLifeExpectancy(value) {
-  var text = String(value === undefined || value === null ? "" : value).replace(/^\s+|\s+$/g, "")
-  if (!/^\d+$/.test(text)) return DEFAULT_LIFE_EXPECTANCY
-  var years = parseInt(text, 10)
-  if (!isFinite(years) || years <= 0 || years > 150) return DEFAULT_LIFE_EXPECTANCY
-  return years
+  return parseWholeNumber(value, 1, 150, DEFAULT_LIFE_EXPECTANCY)
 }
 
 function lifeProgress(age, expectancy) {
@@ -305,12 +300,6 @@ function dateFromKey(dateKey, fallback) {
   var day = parseInt(parts[2], 10)
   if (isNaN(year) || isNaN(month) || isNaN(day)) return fallback
   return new Date(year, month - 1, day)
-}
-
-function formatDateKey(dk) {
-  var d = dateFromKey(dk, null)
-  if (!d) return String(dk || "")
-  return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })
 }
 
 // ---- Tasks. A VTODO has at most a due date, and most have none at all, so
@@ -467,20 +456,9 @@ function buildCompleteRequest(task, nowMs) {
   }
 }
 
-function parseEventDocument(raw) {
-  if (!raw) return null
-  try {
-    var parsed = JSON.parse(raw)
-    if (parsed && parsed.version === 1) return parsed
-  } catch (error) {
-    return null
-  }
-  return null
-}
-
 var MINUTE_MS = 60 * 1000
 var HOUR_MS = 60 * MINUTE_MS
-var DAY_MS = 24 * HOUR_MS
+var DAY_MS = MS_PER_DAY
 
 function eventStartMs(event) {
   if (!event || !event.start) return NaN
@@ -577,12 +555,8 @@ function isImminent(deltaMs) {
 }
 
 function joinButtonLabel(url) {
-  var text = String(url || "").toLowerCase()
-  if (text.indexOf("zoom.") !== -1) return "Join Zoom"
-  if (text.indexOf("meet.google.") !== -1) return "Join Meet"
-  if (text.indexOf("teams.") !== -1) return "Join Teams"
-  if (text.indexOf("jit.si") !== -1 || text.indexOf("jitsi") !== -1) return "Join Jitsi"
-  return "Join"
+  var provider = linkProviderLabel(url)
+  return provider === "Link" ? "Join" : "Join " + provider
 }
 
 var MAX_ANNOUNCE_TITLE = 28
@@ -592,13 +566,6 @@ function truncateTitle(title, limit) {
   var max = limit || MAX_ANNOUNCE_TITLE
   if (text.length <= max) return text
   return text.substring(0, max - 1).replace(/\s+$/, "") + "…"
-}
-
-function announceLabel(clockText, title, countdown, limit) {
-  if (!countdown) return clockText
-  var shown = truncateTitle(title, limit)
-  if (!shown) return clockText
-  return clockText + "  ·  " + shown + " " + countdown
 }
 
 function millisUntil(event, nowMs) {
@@ -660,11 +627,6 @@ function isDismissed(event, dismissedKey) {
   return key !== "" && key === String(dismissedKey || "")
 }
 
-function joinTooltip(event) {
-  var title = String(event && event.title ? event.title : "").replace(/^\s+|\s+$/g, "")
-  return title ? "Join " + title : "Join meeting"
-}
-
 function eventDisplayTime(event) {
   if (!event) return ""
   if (event.allDay) return "All day"
@@ -677,15 +639,16 @@ function eventDisplayTime(event) {
   return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m
 }
 
-// Only https is ever launched. A meeting link is supplied by whoever sent
-// the invitation, so treating it as trusted input would be a mistake.
+// A link is supplied by whoever sent the invitation, so treating it as
+// trusted input would be a mistake. http as well as https — the entry pane
+// lets a link be typed by hand, and refusing to open what it just stored
+// would be the odder of the two. Every other scheme stays out: this string
+// is handed to a browser.
 function safeUrl(url) {
   var text = String(url || "").trim()
-  // http as well as https — the entry pane lets a link be typed by hand, and
-  // refusing to open what it just stored would be the odder of the two. Every
-  // other scheme stays out: this string is handed to a browser.
   if (!/^https?:\/\//i.test(text)) return ""
   if (/[\s"'<>]/.test(text)) return ""
+  if (text.length > 2000) return ""
   return text
 }
 
@@ -699,15 +662,9 @@ function safeColor(value) {
   return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(text) ? text : ""
 }
 
-// A link to store on an item. Wider than safeUrl — which guards what we hand
-// to a browser — because http links are worth keeping in the calendar even
-// though the join button will not launch them.
+// The same guard under the name the storing paths call it by.
 function safeLinkUrl(url) {
-  var text = String(url || "").trim()
-  if (!/^https?:\/\//i.test(text)) return ""
-  if (/[\s"'<>]/.test(text)) return ""
-  if (text.length > 2000) return ""
-  return text
+  return safeUrl(url)
 }
 
 // What to call a meeting link in one word, for the pill that holds it.
@@ -717,7 +674,7 @@ function linkProviderLabel(url) {
   if (text.indexOf("zoom.") !== -1) return "Zoom"
   if (text.indexOf("meet.google.") !== -1) return "Meet"
   if (text.indexOf("teams.") !== -1) return "Teams"
-  if (text.indexOf("jitsi") !== -1) return "Jitsi"
+  if (text.indexOf("jitsi") !== -1 || text.indexOf("jit.si") !== -1) return "Jitsi"
   if (text.indexOf("whereby.") !== -1) return "Whereby"
   if (text.indexOf("webex.") !== -1) return "Webex"
   return "Link"
@@ -816,18 +773,6 @@ function nlParseStrictTime(tokens, i) {
   return { minutes: hours * 60 + minutes, used: used }
 }
 
-// Loose time: accepts what the strict matcher does plus bare "15 30"
-// pairs? No — deliberately not. Loose here only means "hh:mm or hh.mm",
-// used inside ranges where the dashes already signal intent.
-function nlParseRangeTime(text) {
-  var match = /^(\d{1,2})[:.]?(\d{2})$/.exec(String(text || ""))
-  if (!match) return null
-  var hours = parseInt(match[1], 10)
-  var minutes = parseInt(match[2], 10)
-  if (hours > 23 || minutes > 59) return null
-  return hours * 60 + minutes
-}
-
 function nlTimeLabel(minutesOfDay) {
   return pad2(Math.floor(minutesOfDay / 60)) + ":" + pad2(minutesOfDay % 60)
 }
@@ -856,6 +801,37 @@ function nlConnector(text) {
 function nlNextWeekday(base, weekday) {
   var d = new Date(base.getFullYear(), base.getMonth(), base.getDate())
   d.setDate(d.getDate() + ((weekday - d.getDay() + 7) % 7))
+  return d
+}
+
+// A single day word — "today", "morgen", a weekday name, "15.3." or an ISO
+// date — as a Date, or null when the word is not one of those. `next` pushes
+// a named weekday or an explicit date a week on; "next today" is not a thing,
+// so the relative words ignore it.
+function nlDayFrom(word, base, next) {
+  var lower = String(word || "").toLowerCase().replace(/[,.;]$/, "")
+  var midnight = new Date(base.getFullYear(), base.getMonth(), base.getDate())
+
+  if (nlIs(lower, "today")) return midnight
+  if (nlIs(lower, "tomorrow")) {
+    midnight.setDate(midnight.getDate() + 1)
+    return midnight
+  }
+
+  var weekday = nlWeekdayIndex(lower)
+  if (weekday !== -1) {
+    var wd = nlNextWeekday(base, weekday)
+    if (next) wd.setDate(wd.getDate() + 7)
+    return wd
+  }
+
+  var explicit = nlExplicitDate(lower, base.getFullYear())
+  if (!explicit || isNaN(explicit.date.getTime())) return null
+  var d = explicit.date
+  // "15.3." said in August means the March that is coming, not the one that
+  // went. Only yearless dates roll forward; ISO means what it says.
+  if (explicit.yearless && d.getTime() < midnight.getTime()) d.setFullYear(d.getFullYear() + 1)
+  if (next) d.setDate(d.getDate() + 7)
   return d
 }
 
@@ -898,7 +874,7 @@ function emptyDraft(kind, dayKey) {
 // form reads and edits. `knownCalendars` (from the mirror's own list) lets
 // bare "in Work" resolve without the slash-flag syntax.
 function parseEventPhrase(text, dayKey, nowMs, knownCalendars) {
-  var raw = String(text === undefined || text === null ? "" : text).replace(/^\s+|\s+$/g, "")
+  var raw = String(text === undefined || text === null ? "" : text).trim()
   if (!raw) return null
   var now = new Date(isFinite(nowMs) ? nowMs : Date.now())
   var base = dateFromKey(dayKey, null) || new Date(now.getFullYear(), now.getMonth(), now.getDate())
@@ -1049,34 +1025,9 @@ function parseEventPhrase(text, dayKey, nowMs, knownCalendars) {
 
     if (nlIs(lower, "next")) { pendingNext = true; mark(p, p, "date"); continue }
 
-    if (nlIs(lower, "today") || nlIs(lower, "tomorrow")) {
-      var d = new Date(base.getFullYear(), base.getMonth(), base.getDate())
-      if (nlIs(lower, "tomorrow")) d.setDate(d.getDate() + 1)
-      draft.dateKey = keyForDate(d)
-      pendingNext = false
-      mark(p, p, "date")
-      continue
-    }
-
-    var weekday = nlWeekdayIndex(lower)
-    if (weekday !== -1) {
-      var wd = nlNextWeekday(base, weekday)
-      if (pendingNext) wd.setDate(wd.getDate() + 7)
-      draft.dateKey = keyForDate(wd)
-      pendingNext = false
-      mark(p, p, "date")
-      continue
-    }
-
-    var explicit = nlExplicitDate(lower, base.getFullYear())
-    if (explicit && !isNaN(explicit.date.getTime())) {
-      var edate = explicit.date
-      // "15.3." said in August means the March that is coming, not the one
-      // that went. Only yearless dates roll forward; ISO means what it says.
-      if (explicit.yearless && edate.getTime() < new Date(base.getFullYear(), base.getMonth(), base.getDate()).getTime())
-        edate.setFullYear(edate.getFullYear() + 1)
-      if (pendingNext) edate.setDate(edate.getDate() + 7)
-      draft.dateKey = keyForDate(edate)
+    var said = nlDayFrom(lower, base, pendingNext)
+    if (said) {
+      draft.dateKey = keyForDate(said)
       pendingNext = false
       mark(p, p, "date")
       continue
@@ -1140,24 +1091,8 @@ function parseEventPhrase(text, dayKey, nowMs, knownCalendars) {
       var q = p + 1
       var endDate = null
       if (q < rest.length) {
-        var tillLower = String(rest[q]).toLowerCase().replace(/[,.;]$/, "")
-        if (nlIs(tillLower, "today") || nlIs(tillLower, "tomorrow")) {
-          endDate = new Date(base.getFullYear(), base.getMonth(), base.getDate())
-          if (nlIs(tillLower, "tomorrow")) endDate.setDate(endDate.getDate() + 1)
-          q += 1
-        } else {
-          var tw = nlWeekdayIndex(tillLower)
-          if (tw !== -1) { endDate = nlNextWeekday(base, tw); q += 1 }
-          else {
-            var tillExplicit = nlExplicitDate(tillLower, base.getFullYear())
-            if (tillExplicit && !isNaN(tillExplicit.date.getTime())) {
-              endDate = tillExplicit.date
-              if (tillExplicit.yearless && endDate.getTime() < new Date(base.getFullYear(), base.getMonth(), base.getDate()).getTime())
-                endDate.setFullYear(endDate.getFullYear() + 1)
-              q += 1
-            }
-          }
-        }
+        endDate = nlDayFrom(rest[q], base, false)
+        if (endDate) q += 1
       }
       var tillTime = q < rest.length ? nlParseStrictTime(rest, q) : null
       if (!tillTime && q < rest.length && /^\d{1,2}$/.test(String(rest[q]).replace(/[,.;]$/, ""))) {
@@ -1272,10 +1207,10 @@ function parseEventPhrase(text, dayKey, nowMs, knownCalendars) {
   for (var km = 0; km < keptIndex.length; km++)
     if (!spans[keptIndex[km]].role) spans[keptIndex[km]].role = "title"
 
-  draft.title = kept.join(" ").replace(/^\s+|\s+$/g, "")
+  draft.title = kept.join(" ").trim()
   if (!draft.title) {
     // Never dead-end: whatever could not be parsed becomes the title whole.
-    draft.title = raw.replace(/\s*\/[^ ]+|\s*-a\d+[mhd]|\s*-r\d+[dwmy]/gi, "").replace(/^\s+|\s+$/g, "")
+    draft.title = raw.replace(/\s*\/[^ ]+|\s*-a\d+[mhd]|\s*-r\d+[dwmy]/gi, "").trim()
   }
   if (!draft.title) draft.title = raw
   draft.segments = mergeSegments(spans)
@@ -1299,7 +1234,7 @@ function mergeSegments(spans) {
 // day as date, everything else default. Quick-add must never dead-end.
 function fallbackDraft(text, dayKey, kind) {
   var draft = emptyDraft(kind === "task" ? "task" : "event", dayKey)
-  draft.title = String(text === undefined || text === null ? "" : text).replace(/^\s+|\s+$/g, "")
+  draft.title = String(text === undefined || text === null ? "" : text).trim()
   draft.segments = draft.title ? [{ start: 0, end: draft.title.length, role: "title" }] : []
   return draft
 }
@@ -1404,7 +1339,7 @@ function nlMsFor(dateKeyStr, timeLabel) {
 // first list that can hold a todo, so there is no chooser to answer. Anything
 // more than that is what the entry pane is for.
 function buildQuickTodoRequest(title, calendarName) {
-  var text = String(title || "").replace(/^\s+|\s+$/g, "")
+  var text = String(title || "").trim()
   if (!text) return { ok: false, error: "nothing to add" }
   if (text.length > 300) return { ok: false, error: "title is too long" }
   return {
@@ -1447,7 +1382,7 @@ function countOpenTodos(tasks, title, calendarName) {
 var PENDING_TODO_TTL_MS = 90 * 1000
 
 function pendingTodo(title, calendarName, nowMs, tasks) {
-  var text = String(title || "").replace(/^\s+|\s+$/g, "")
+  var text = String(title || "").trim()
   if (!text) return null
   var list = String(calendarName || "")
   var colors = calendarColors(tasks)
@@ -1502,7 +1437,7 @@ function buildQuickAddRequest(draft, nowMs) {
   var kind = draft && draft.kind === "task" ? "task" : "event"
   if (!draft) return { ok: false, error: "nothing entered" }
 
-  var title = String(draft.title || "").replace(/^\s+|\s+$/g, "")
+  var title = String(draft.title || "").trim()
   if (!title) return { ok: false, error: "title is empty" }
   if (title.length > 300) return { ok: false, error: "title is too long" }
 
@@ -1532,7 +1467,7 @@ function buildQuickAddRequest(draft, nowMs) {
         title: title,
         dueMs: dueMs,
         dueHasTime: dueHasTime,
-        description: String(draft.description || "").replace(/^\s+|\s+$/g, "").slice(0, 8000) || null,
+        description: String(draft.description || "").trim().slice(0, 8000) || null,
         calendarName: draft.calendarName || null,
         priority: prio,
         recurrence: recurrence,
@@ -1563,8 +1498,8 @@ function buildQuickAddRequest(draft, nowMs) {
   }
   if (endMs !== null && endMs <= startMs) return { ok: false, error: "end is not after start" }
 
-  var location = String(draft.location || "").replace(/^\s+|\s+$/g, "")
-  var description = String(draft.description || "").replace(/^\s+|\s+$/g, "").slice(0, 8000)
+  var location = String(draft.location || "").trim()
+  var description = String(draft.description || "").trim().slice(0, 8000)
   var request = {
     kind: "event",
     title: title,
@@ -1661,7 +1596,6 @@ function normalizeColor(color) {
 // The best join link in free text, meeting hosts first. A link on an unknown
 // host is a document, not a room to join, so it never wins.
 var MAILBOX_MEETING_HOST = /meet\.|zoom\.|teams\.|jitsi|whereby|webex|gotomeeting|skype\.|discord\.gg/i
-var MAILBOX_MEETING_URL = /https?:\/\/[^\s<>"')]+/g
 
 function meetingUrlIn() {
   for (var i = 0; i < arguments.length; i++) {
@@ -1679,13 +1613,11 @@ function meetingUrlIn() {
   return ""
 }
 
-// One agenda/todo row's time fields read back as local wall clock. The
-// daemon answers ISO with an offset; Date.parse takes it from there.
-function pad2(n) { return (n < 10 ? "0" : "") + n }
-
+// One agenda/todo row's time fields as local wall clock, the way the daemon
+// takes them back.
 function stampLocal(ms, withTime) {
   var d = new Date(ms)
-  var day = d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate())
+  var day = keyForDate(d)
   if (!withTime) return day
   return day + " " + pad2(d.getHours()) + ":" + pad2(d.getMinutes())
 }
@@ -1744,7 +1676,6 @@ function eventsFromAgenda(rows, colors) {
       time: allDay ? "" : String(row.start || "").slice(11, 16),
       meetingUrl: safeLinkUrl(row.url) || meetingUrlIn(row.summary, row.location, row.notes)
     }
-    var key = event.id + "|" + event.dateKey
     if (seen[event.id + "|" + event.dateKey]) continue
     seen[event.id + "|" + event.dateKey] = true
     out.push(event)
@@ -1796,8 +1727,8 @@ function tasksFromMailbox(rows, colors) {
   return out
 }
 
-// The three daemon answers as one document, the shape parseEventDocument
-// reads. The panel owns the asking; Model owns the shaping.
+// The three daemon answers as one document, the shape the panel draws from.
+// The panel owns the asking; Model owns the shaping.
 function mailboxDocument(roster, agenda, todos, nowMs) {
   var eventColors = {}
   var taskColors = {}
@@ -1954,28 +1885,8 @@ function parseDateInput(text, baseKey, nowMs) {
   var words = t.split(/\s+/)
   var next = nlIs(words[0], "next")
   if (next && words.length > 1) words = words.slice(1)
-  var head = words[0]
-
-  if (nlIs(head, "today")) return keyForDate(base)
-  if (nlIs(head, "tomorrow")) {
-    var tm = new Date(base.getTime())
-    tm.setDate(tm.getDate() + 1)
-    return keyForDate(tm)
-  }
-  var weekday = nlWeekdayIndex(head)
-  if (weekday !== -1) {
-    var wd = nlNextWeekday(base, weekday)
-    if (next) wd.setDate(wd.getDate() + 7)
-    return keyForDate(wd)
-  }
-  var explicit = nlExplicitDate(head, base.getFullYear())
-  if (explicit && !isNaN(explicit.date.getTime())) {
-    var d = explicit.date
-    if (explicit.yearless && d.getTime() < base.getTime()) d.setFullYear(d.getFullYear() + 1)
-    if (next) d.setDate(d.getDate() + 7)
-    return keyForDate(d)
-  }
-  return null
+  var day = nlDayFrom(words[0], base, next)
+  return day ? keyForDate(day) : null
 }
 
 // A time typed into a time chip. The chip itself is the anchor, so a bare
@@ -2071,20 +1982,20 @@ function repeatOptions(value) {
 // A query is worth sending once it is a word rather than a keystroke, and
 // only the panel's own field ever asks — the phrase never goes to the net.
 function shouldSuggestAddress(text) {
-  return String(text || "").replace(/^\s+|\s+$/g, "").length >= 3
+  return String(text || "").trim().length >= 3
 }
 
 // House number after the street, the way German addresses are written; a
 // place name leads when OSM has one, since that is what was typed.
 function addressLines(props) {
   var p = props || {}
-  var name = String(p.name || "").replace(/^\s+|\s+$/g, "")
-  var street = String(p.street || "").replace(/^\s+|\s+$/g, "")
-  var number = String(p.housenumber || "").replace(/^\s+|\s+$/g, "")
-  var postcode = String(p.postcode || "").replace(/^\s+|\s+$/g, "")
-  var city = String(p.city || p.locality || p.district || p.county || "").replace(/^\s+|\s+$/g, "")
-  var state = String(p.state || "").replace(/^\s+|\s+$/g, "")
-  var country = String(p.country || "").replace(/^\s+|\s+$/g, "")
+  var name = String(p.name || "").trim()
+  var street = String(p.street || "").trim()
+  var number = String(p.housenumber || "").trim()
+  var postcode = String(p.postcode || "").trim()
+  var city = String(p.city || p.locality || p.district || p.county || "").trim()
+  var state = String(p.state || "").trim()
+  var country = String(p.country || "").trim()
 
   var line = street ? (number ? street + " " + number : street) : ""
   var town = postcode && city ? postcode + " " + city : (city || postcode)
@@ -2107,7 +2018,7 @@ function addressSuggestion(feature) {
   if (!props) return null
   var parts = addressLines(props)
   if (!parts.length) return null
-  var country = String(props.country || "").replace(/^\s+|\s+$/g, "")
+  var country = String(props.country || "").trim()
   var detail = parts.slice(1)
   if (country && parts.length > 1 && detail.join(", ").indexOf(country) === -1) detail.push(country)
   return {
@@ -2272,8 +2183,6 @@ if (typeof module !== "undefined") {
     hasOpenTask: hasOpenTask,
     buildCompleteRequest: buildCompleteRequest,
     dateFromKey: dateFromKey,
-    formatDateKey: formatDateKey,
-    parseEventDocument: parseEventDocument,
     nextEvent: nextEvent,
     eventStartMs: eventStartMs,
     eventEndMs: eventEndMs,
@@ -2283,13 +2192,11 @@ if (typeof module !== "undefined") {
     isImminent: isImminent,
     joinButtonLabel: joinButtonLabel,
     truncateTitle: truncateTitle,
-    announceLabel: announceLabel,
     millisUntil: millisUntil,
     shouldAnnounce: shouldAnnounce,
     shouldNudge: shouldNudge,
     occurrenceKey: occurrenceKey,
     isDismissed: isDismissed,
-    joinTooltip: joinTooltip,
     eventDisplayTime: eventDisplayTime,
     safeUrl: safeUrl,
     safeLinkUrl: safeLinkUrl,

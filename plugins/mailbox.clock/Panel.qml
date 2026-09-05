@@ -125,7 +125,6 @@ Panel {
   property string entryKind: "event"
   property string nlText: ""
   property string entryStatus: ""
-  property var lastBuiltRequest: null
   property var tbCalendars: []
 
   // ---- Editing an event already on the server, opened by clicking it in
@@ -164,9 +163,6 @@ Panel {
   property string formDescription: ""
   property string formCalendar: ""
   property string formLink: ""
-  // True once this entry's calendar was deliberately chosen (dropdown,
-  // free text or parsed from the phrase); kind switches then keep it.
-  property bool formCalendarChosen: false
   // Which summary value is currently an inline editor ("" = display mode).
   property string editingSegment: ""
   // Roles the parser found in the phrase, as offsets into it.
@@ -539,12 +535,6 @@ Panel {
     }
   }
 
-  // One optional part of the entry — location, notes, alert, repeat,
-  // priority. The pill above opens it, the phrase opens it by mentioning
-  // ---- One task, in the day list or in the week bucket. Shaped like the
-  //      event row it sits under — same colour rail, same title-over-meta —
-  //      so a day reads as one list rather than two. The box is the only new
-  //      control: it is the whole of ticking something off.
   // ---- One task, as a chip rather than a row: box, title, and a note only
   //      when there is one to make. Chips flow, so a week's worth of small
   //      things takes one line instead of five — a to-do list is mostly two
@@ -659,7 +649,83 @@ Panel {
 
   }
 
-  // it, and the × takes the part back off the entry.
+  // A labelled meter: small-caps name on the left, percentage on the right,
+  // the track between them. The year rail and the life rail are the same
+  // thing measured against different spans.
+  component ProgressRail: Item {
+    id: rail
+    property string label: ""
+    property real fraction: 0
+    property int percent: 0
+
+    width: parent ? parent.width : 0
+    height: Math.max(railLabel.implicitHeight, Style.space(10))
+
+    Text {
+      id: railLabel
+      anchors.left: parent.left
+      anchors.verticalCenter: parent.verticalCenter
+      text: rail.label
+      color: Qt.darker(root.contentForeground, 1.5)
+      font.family: root.contentFontFamily
+      font.pixelSize: Style.font.bodySmall
+      font.letterSpacing: 1
+    }
+
+    Text {
+      id: railPercent
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      text: rail.percent + "%"
+      color: root.contentForeground
+      font.family: root.contentFontFamily
+      font.pixelSize: Style.font.bodySmall
+    }
+
+    Rectangle {
+      anchors.left: railLabel.right
+      anchors.right: railPercent.left
+      anchors.leftMargin: Style.space(12)
+      anchors.rightMargin: Style.space(12)
+      anchors.verticalCenter: parent.verticalCenter
+      height: Style.space(6)
+      radius: Style.cornerRadius > 0 ? height / 2 : 0
+      color: Qt.rgba(root.contentForeground.r, root.contentForeground.g, root.contentForeground.b, 0.12)
+
+      Rectangle {
+        width: Math.round(parent.width * rail.fraction)
+        height: parent.height
+        radius: parent.radius
+        color: Style.selectedStateColor(root.contentForeground, Color.accent)
+
+        Behavior on width { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+      }
+    }
+  }
+
+  // The pill that opens one optional part. `focusTarget` is the control the
+  // row holds, so opening a part puts the caret straight in it.
+  component Pill: Button {
+    property string rowName: ""
+    property var focusTarget: null
+
+    bordered: true
+    horizontalPadding: Style.space(7)
+    selected: root.rowOpen(rowName)
+    foreground: root.contentForeground
+    fontFamily: root.contentFontFamily
+    onClicked: {
+      root.toggleRow(rowName)
+      if (!focusTarget || !root.rowOpen(rowName)) return
+      // NotesField wraps its editor, so it focuses through a method of its own.
+      if (typeof focusTarget.focusInput === "function") focusTarget.focusInput()
+      else focusTarget.forceActiveFocus()
+    }
+  }
+
+  // One optional part of the entry — location, notes, alert, repeat,
+  // priority. The pill above opens it, the phrase opens it by mentioning it,
+  // and the × takes the part back off the entry.
   component EntryRow: Item {
     id: entryRow
     property string rowName: ""
@@ -808,7 +874,7 @@ Panel {
   function requestAddressSuggestions(text) {
     var query = String(text || "")
     if (!Model.shouldSuggestAddress(query)) { root.closeAddressSuggestions(); return }
-    root.locationSuggestQuery = query.replace(/^\s+|\s+$/g, "")
+    root.locationSuggestQuery = query.trim()
     suggestTimer.restart()
   }
 
@@ -901,7 +967,6 @@ Panel {
   function ensureCalendarForKind() {
     if (root.formCalendar !== "" && root.calendarValidForKind(root.formCalendar)) return
     root.formCalendar = root.calendarChoices.length ? root.calendarChoices[0].value : ""
-    root.formCalendarChosen = false
   }
 
   // ---- The when-card. End day is only stored when it differs from the
@@ -951,7 +1016,7 @@ Panel {
     if (!value) {
       // Emptying the start empties the span with it: an end alone would be
       // an event that finishes without starting.
-      if (String(text || "").replace(/^\s+|\s+$/g, "") === "") {
+      if (String(text || "").trim() === "") {
         root.formStart = ""
         root.formEnd = ""
         root.formEndNextDay = false
@@ -970,7 +1035,7 @@ Panel {
     }
     var value = Model.parseTimeInput(text)
     if (!value) {
-      if (String(text || "").replace(/^\s+|\s+$/g, "") === "") root.formEnd = ""
+      if (String(text || "").trim() === "") root.formEnd = ""
       return
     }
     root.formEnd = value
@@ -1075,11 +1140,9 @@ Panel {
     root.openRows = []
     root.editingSegment = ""
     root.entryStatus = ""
-    root.lastBuiltRequest = null
     // A calendar chosen last time must not outlive the pane: it may belong
     // to the other kind entirely.
     root.formCalendar = ""
-    root.formCalendarChosen = false
     root.nlApplied = ({})
     // mergeEntryDraft falls back to whatever this already holds whenever
     // neither a typed phrase nor the draft names a date explicitly via a
@@ -1122,7 +1185,6 @@ Panel {
     root.resetEntryState(event.dateKey)
     root.editingEventId = event.objectId
     root.applyDraft(Model.draftFromAgendaEvent(event))
-    root.formCalendarChosen = true
     root.entryOpen = true
     Qt.callLater(function() {
       if (nlField) nlField.setPhrase("")
@@ -1191,7 +1253,6 @@ Panel {
     // tasks only, so it is ignored rather than silently mis-filed.
     if (d.calendarName && root.calendarValidForKind(d.calendarName)) {
       root.formCalendar = d.calendarName
-      root.formCalendarChosen = true
     }
     root.ensureCalendarForKind()
   }
@@ -1209,8 +1270,8 @@ Panel {
   }
 
   function assembleDraft() {
-    var start = String(root.formStart || "").replace(/^\s+|\s+$/g, "")
-    var end = String(root.formEnd || "").replace(/^\s+|\s+$/g, "")
+    var start = String(root.formStart || "").trim()
+    var end = String(root.formEnd || "").trim()
     var wrap = root.formEndNextDay
     if (!wrap && start && end && end <= start) wrap = true
     return {
@@ -1234,13 +1295,16 @@ Panel {
     }
   }
 
+  // What Create would write, or why it cannot — one build for the error line
+  // and the button, since two calls are two Date.now()s and twice the work.
+  readonly property var entryCheck: Model.buildQuickAddRequest(root.assembleDraft(), Date.now())
+
   function commitEntry() {
     var built = Model.buildQuickAddRequest(root.assembleDraft(), Date.now())
     if (!built.ok) {
       root.entryStatus = built.error || "could not create"
       return
     }
-    root.lastBuiltRequest = built.request
     root.entryStatus = root.editingEventId ? "Saving…" : "Adding…"
     var sent = Model.requestToArgs(built.request)
     if (!sent) {
@@ -1253,6 +1317,7 @@ Panel {
         return
       }
       root.entryStatus = "✓  " + Model.formatEntrySummary(built.request)
+      entryStatusTimer.restart()
       // The daemon pushes event.changed as the write lands; the re-ask
       // below is the read that shows it.
       root.askCalendar()
@@ -1361,8 +1426,7 @@ Panel {
   // on. Nothing left to parse: it is a list of objects, not a document.
   function applyRoster(list) {
     root.tbCalendars = list || []
-    if (!root.formCalendar && root.calendarChoices.length)
-      root.formCalendar = root.calendarChoices[0].value
+    root.ensureCalendarForKind()
   }
 
   function applyDocument(doc) {
@@ -1596,6 +1660,16 @@ Panel {
     onTriggered: root.fetchAddressSuggestions()
   }
 
+  // Confirmation reads, then the pane returns to the overview on its own.
+  Timer {
+    id: entryStatusTimer
+    interval: 900
+    repeat: false
+    onTriggered: {
+      if (root.entryOpen && root.entryStatus.indexOf("✓") === 0) root.closeEntry()
+    }
+  }
+
   Process {
     id: suggestProc
     running: false
@@ -1768,7 +1842,7 @@ Panel {
               y: Style.space(6)
               anchors.horizontalCenter: parent.horizontalCenter
               width: gridColumn.width
-              height: Math.max(yearLabel.implicitHeight, Style.space(10))
+              height: yearRail.height
 
               TapHandler {
                 enabled: !root.editingLife
@@ -1826,49 +1900,12 @@ Panel {
                 }
               }
 
-              Text {
-                id: yearLabel
+              ProgressRail {
+                id: yearRail
                 visible: !root.editingLife
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                text: root.today.getFullYear()
-                color: Qt.darker(root.contentForeground, 1.5)
-                font.family: root.contentFontFamily
-                font.pixelSize: Style.font.bodySmall
-                font.letterSpacing: 1
-              }
-
-              Text {
-                id: yearPercent
-                visible: !root.editingLife
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                text: root.yearDonePercent + "%"
-                color: root.contentForeground
-                font.family: root.contentFontFamily
-                font.pixelSize: Style.font.bodySmall
-              }
-
-              Rectangle {
-                id: yearTrack
-                visible: !root.editingLife
-                anchors.left: yearLabel.right
-                anchors.right: yearPercent.left
-                anchors.leftMargin: Style.space(12)
-                anchors.rightMargin: Style.space(12)
-                anchors.verticalCenter: parent.verticalCenter
-                height: Style.space(6)
-                radius: Style.cornerRadius > 0 ? height / 2 : 0
-                color: Qt.rgba(root.contentForeground.r, root.contentForeground.g, root.contentForeground.b, 0.12)
-
-                Rectangle {
-                  width: Math.round(parent.width * root.yearDone)
-                  height: parent.height
-                  radius: parent.radius
-                  color: Style.selectedStateColor(root.contentForeground, Color.accent)
-
-                  Behavior on width { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
-                }
+                label: root.today.getFullYear()
+                fraction: root.yearDone
+                percent: root.yearDonePercent
               }
             }
           }
@@ -1885,47 +1922,13 @@ Panel {
               id: lifeBlock
               anchors.horizontalCenter: parent.horizontalCenter
               width: gridColumn.width
-              height: Math.max(lifeLabel.implicitHeight, Style.space(10))
+              height: lifeRail.height
 
-              Text {
-                id: lifeLabel
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                text: "LIFE"
-                color: Qt.darker(root.contentForeground, 1.5)
-                font.family: root.contentFontFamily
-                font.pixelSize: Style.font.bodySmall
-                font.letterSpacing: 1
-              }
-
-              Text {
-                id: lifePercent
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                text: root.lifeDonePercent + "%"
-                color: root.contentForeground
-                font.family: root.contentFontFamily
-                font.pixelSize: Style.font.bodySmall
-              }
-
-              Rectangle {
-                anchors.left: lifeLabel.right
-                anchors.right: lifePercent.left
-                anchors.leftMargin: Style.space(12)
-                anchors.rightMargin: Style.space(12)
-                anchors.verticalCenter: parent.verticalCenter
-                height: Style.space(6)
-                radius: Style.cornerRadius > 0 ? height / 2 : 0
-                color: Qt.rgba(root.contentForeground.r, root.contentForeground.g, root.contentForeground.b, 0.12)
-
-                Rectangle {
-                  width: Math.round(parent.width * root.lifeDone)
-                  height: parent.height
-                  radius: parent.radius
-                  color: Style.selectedStateColor(root.contentForeground, Color.accent)
-
-                  Behavior on width { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
-                }
+              ProgressRail {
+                id: lifeRail
+                label: "LIFE"
+                fraction: root.lifeDone
+                percent: root.lifeDonePercent
               }
 
               TapHandler {
@@ -2666,7 +2669,7 @@ Panel {
                 options: root.calendarChoices
                 foreground: root.contentForeground
                 fontFamily: root.contentFontFamily
-                onChanged: function(v) { root.formCalendar = v; root.formCalendarChosen = true }
+                onChanged: function(v) { root.formCalendar = v }
               }
 
               // No roster yet (add-on missing or old): a typed name still
@@ -2682,7 +2685,7 @@ Panel {
                 foreground: root.contentForeground
                 font.family: root.contentFontFamily
                 text: root.formCalendar
-                onTextEdited: { root.formCalendar = text; root.formCalendarChosen = true }
+                onTextEdited: root.formCalendar = text
                 Keys.onPressed: function(event) { root.handleEntryKey(event) }
               }
             }
@@ -2903,83 +2906,47 @@ Panel {
               anchors.horizontalCenter: parent.horizontalCenter
               spacing: Style.space(6)
 
-              Button {
+              Pill {
+                rowName: "link"
                 iconText: "󰌹"
                 // The pill names the service once a link is in, so the row
                 // does not have to be open to see what it is.
                 text: root.formLink !== "" ? Model.linkProviderLabel(root.formLink) : "Link"
-                bordered: true
-                horizontalPadding: Style.space(7)
-                selected: root.rowOpen("link")
-                foreground: root.contentForeground
-                fontFamily: root.contentFontFamily
-                onClicked: {
-                  root.toggleRow("link")
-                  if (root.rowOpen("link")) linkField.forceActiveFocus()
-                }
+                focusTarget: linkField
               }
 
-              Button {
+              Pill {
+                rowName: "location"
                 iconText: "󰍎"
                 text: "Location"
-                bordered: true
-                horizontalPadding: Style.space(7)
-                selected: root.rowOpen("location")
-                foreground: root.contentForeground
-                fontFamily: root.contentFontFamily
-                onClicked: {
-                  root.toggleRow("location")
-                  if (root.rowOpen("location")) locationField.forceActiveFocus()
-                }
+                focusTarget: locationField
               }
 
-              Button {
+              Pill {
+                rowName: "notes"
                 iconText: "󰦨"
                 text: "Notes"
-                bordered: true
-                horizontalPadding: Style.space(7)
-                selected: root.rowOpen("notes")
-                foreground: root.contentForeground
-                fontFamily: root.contentFontFamily
-                onClicked: {
-                  root.toggleRow("notes")
-                  if (root.rowOpen("notes")) notesField.focusInput()
-                }
+                focusTarget: notesField
               }
 
-              Button {
+              Pill {
+                rowName: "alert"
                 iconText: "󰂚"
                 text: "Notify me"
-                bordered: true
-                horizontalPadding: Style.space(7)
                 visible: root.entryKind === "event"
-                selected: root.rowOpen("alert")
-                foreground: root.contentForeground
-                fontFamily: root.contentFontFamily
-                onClicked: root.toggleRow("alert")
               }
 
-              Button {
+              Pill {
+                rowName: "repeat"
                 iconText: "󰑐"
                 text: "Repeat"
-                bordered: true
-                horizontalPadding: Style.space(7)
-                selected: root.rowOpen("repeat")
-                foreground: root.contentForeground
-                fontFamily: root.contentFontFamily
-                onClicked: root.toggleRow("repeat")
               }
 
-              Button {
+              Pill {
+                rowName: "priority"
                 iconText: "󰈻"
                 text: "Priority"
-                bordered: true
-                horizontalPadding: Style.space(7)
                 visible: root.entryKind === "task"
-                selected: root.rowOpen("priority")
-                foreground: root.contentForeground
-                fontFamily: root.contentFontFamily
-                onClicked: root.toggleRow("priority")
               }
             }
 
@@ -3184,11 +3151,8 @@ Panel {
             Text {
               width: entryColumn.rowWidth
               anchors.horizontalCenter: parent.horizontalCenter
-              visible: {
-                if (root.nlText === "") return false
-                return !Model.buildQuickAddRequest(root.assembleDraft(), Date.now()).ok
-              }
-              text: Model.buildQuickAddRequest(root.assembleDraft(), Date.now()).error || ""
+              visible: root.nlText !== "" && !root.entryCheck.ok
+              text: root.entryCheck.error || ""
               color: Qt.darker(root.contentForeground, 1.3)
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.bodySmall
@@ -3205,15 +3169,7 @@ Panel {
               foreground: root.contentForeground
               fontFamily: root.contentFontFamily
               onClicked: root.commitEntry()
-              Keys.onPressed: function(event) {
-                if (event.key === Qt.Key_Escape) {
-                  root.closeEntry()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                  root.commitEntry()
-                  event.accepted = true
-                }
-              }
+              Keys.onPressed: function(event) { root.handleEntryKey(event) }
             }
 
             // Deleting is a click that arms it and a second click that
