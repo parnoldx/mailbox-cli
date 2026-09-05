@@ -30,7 +30,10 @@ Item {
         countdown.stop(); barAnim.stop()
         root.phase = ""; root.pending = null
         Mailbox.call(p.cmd, p.args, function (r) {
-            win.flash(r.ok ? "Sent" : Fmt.errText(r, "Send failed"))
+            var text = "Sent"
+            if (r.ok && r.data && r.data.state === "scheduled")
+                text = "Scheduled for " + r.data.scheduled
+            win.flash(r.ok ? text : Fmt.errText(r, "Send failed"))
         })
     }
     function undo() {

@@ -54,6 +54,10 @@ type Item struct {
 	FiledAt    time.Time
 	Box        string // where the copy was filed
 	UID        uint32
+	// NotBefore is a "send later": queued but not handed to SMTP until this
+	// instant. Zero means send it as soon as a drain sees it, which is every
+	// mail before this existed.
+	NotBefore time.Time
 }
 
 // Outbox is the queue.
@@ -65,7 +69,7 @@ type Outbox struct {
 // schemaVersion is the Outbox's own. Unlike the Mirror's, a mismatch here is an
 // error rather than a reason to delete the file: this is not derived state, and
 // there is nowhere to fetch it from again.
-const schemaVersion = 1
+const schemaVersion = 2
 
 const schema = `
 CREATE TABLE meta (
@@ -88,7 +92,8 @@ CREATE TABLE outbox (
   sent_at     TEXT,
   filed_at    TEXT,
   box         TEXT    NOT NULL DEFAULT '',
-  uid         INTEGER NOT NULL DEFAULT 0
+  uid         INTEGER NOT NULL DEFAULT 0,
+  not_before  TEXT
 );
 
 CREATE INDEX outbox_state ON outbox(state, id);
@@ -105,9 +110,20 @@ func Open(path string) (*Outbox, error) {
 	switch {
 	case err == nil && version == schemaVersion:
 		return &Outbox{db: db, path: path}, nil
+	case err == nil && version == 1 && schemaVersion == 2:
+		// Never deleted, so this is where a migration goes: schema 2 only adds
+		// a "send later" instant, nothing existing changes meaning.
+		if _, aerr := db.Exec(`ALTER TABLE outbox ADD COLUMN not_before TEXT`); aerr != nil {
+			db.Close()
+			return nil, fmt.Errorf("migrate outbox %s to schema 2: %w", path, aerr)
+		}
+		if _, aerr := db.Exec(`UPDATE meta SET value = ? WHERE key = 'schema_version'`, schemaVersion); aerr != nil {
+			db.Close()
+			return nil, fmt.Errorf("migrate outbox %s to schema 2: %w", path, aerr)
+		}
+		return &Outbox{db: db, path: path}, nil
 	case err == nil:
 		db.Close()
-		// Never deleted, so this is where a migration would go.
 		return nil, fmt.Errorf("outbox %s is at schema %d, this build speaks %d", path, version, schemaVersion)
 	}
 	if _, execErr := db.Exec(schema); execErr != nil {
@@ -131,11 +147,15 @@ var ErrNotFound = errors.New("not found")
 // committed: a mail that is lost because the daemon died between "accepted" and
 // "sent" is the one failure this queue exists to prevent.
 func (o *Outbox) Enqueue(it Item) (int64, error) {
+	var notBefore any
+	if !it.NotBefore.IsZero() {
+		notBefore = it.NotBefore.UTC().Format(time.RFC3339)
+	}
 	res, err := o.db.Exec(`
-		INSERT INTO outbox (account, message_key, from_addr, recipients, subject, raw, state, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO outbox (account, message_key, from_addr, recipients, subject, raw, state, created_at, not_before)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		it.Account, it.MessageKey, it.From, strings.Join(it.Recipients, " "), it.Subject,
-		it.Raw, string(Queued), now())
+		it.Raw, string(Queued), now(), notBefore)
 	if err != nil {
 		return 0, err
 	}
@@ -235,7 +255,9 @@ func (o *Outbox) byStateAndAccount(s State, account string) ([]Item, error) {
 	if account == "" {
 		return o.byState(s)
 	}
-	return o.query(`WHERE state = ? AND account = ? ORDER BY id`, string(s), account)
+	return o.query(
+		`WHERE state = ? AND account = ? AND (not_before IS NULL OR not_before <= ?) ORDER BY id`,
+		string(s), account, now())
 }
 
 // Retry puts a held mail back in the queue. Being told to send it is the only
@@ -280,7 +302,7 @@ func (o *Outbox) List(limit int) ([]Item, error) {
 }
 
 func (o *Outbox) byState(s State) ([]Item, error) {
-	return o.query(`WHERE state = ? ORDER BY id`, string(s))
+	return o.query(`WHERE state = ? AND (not_before IS NULL OR not_before <= ?) ORDER BY id`, string(s), now())
 }
 
 // move applies a state transition, refusing one that does not start where it
@@ -310,7 +332,7 @@ func (o *Outbox) move(id int64, from []State, stmt string) error {
 func (o *Outbox) query(where string, args ...any) ([]Item, error) {
 	rows, err := o.db.Query(`
 		SELECT id, account, message_key, from_addr, recipients, subject, raw, state,
-		       attempts, last_error, created_at, sent_at, filed_at, box, uid
+		       attempts, last_error, created_at, sent_at, filed_at, box, uid, not_before
 		  FROM outbox `+where, args...)
 	if err != nil {
 		return nil, err
@@ -320,10 +342,10 @@ func (o *Outbox) query(where string, args ...any) ([]Item, error) {
 	for rows.Next() {
 		var it Item
 		var rcpt, state, created string
-		var sentAt, filedAt sql.NullString
+		var sentAt, filedAt, notBefore sql.NullString
 		if err := rows.Scan(&it.ID, &it.Account, &it.MessageKey, &it.From, &rcpt, &it.Subject,
 			&it.Raw, &state, &it.Attempts, &it.LastError, &created, &sentAt, &filedAt,
-			&it.Box, &it.UID); err != nil {
+			&it.Box, &it.UID, &notBefore); err != nil {
 			return nil, err
 		}
 		it.State = State(state)
@@ -336,6 +358,9 @@ func (o *Outbox) query(where string, args ...any) ([]Item, error) {
 		}
 		if filedAt.Valid {
 			it.FiledAt, _ = time.Parse("2006-01-02 15:04:05", filedAt.String)
+		}
+		if notBefore.Valid {
+			it.NotBefore, _ = time.Parse(time.RFC3339, notBefore.String)
 		}
 		out = append(out, it)
 	}

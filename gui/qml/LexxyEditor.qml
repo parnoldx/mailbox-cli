@@ -210,6 +210,9 @@ Item {
     // end — what a reply wants, so you type above the quoted parent. Lexxy is
     // Lexical underneath; its editor takes focus({defaultSelection:'rootStart'}).
     function focusStart() {
+        // Focus inside the page only moves the caret — QML's active focus must
+        // be on the WebEngineView first, or keystrokes stay in the TextField.
+        web.forceActiveFocus()
         web.runJavaScript(
             "(function(){var e=document.getElementById('ed');if(!e)return;" +
             "try{e.editor.focus(null,{defaultSelection:'rootStart'});return;}catch(x){}" +

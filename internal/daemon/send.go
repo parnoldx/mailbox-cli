@@ -31,6 +31,9 @@ type sent struct {
 	ID  string `json:"id,omitempty"`
 	Box string `json:"box,omitempty"`
 	UID uint32 `json:"uid,omitempty"`
+	// Scheduled is set instead of ID/Box/UID when the mail is a "send later":
+	// it is durable in the Outbox but has not gone to SMTP yet.
+	Scheduled string `json:"scheduled,omitempty"`
 }
 
 // handleSend composes a mail, makes it durable, and sends it. The order is the
@@ -239,6 +242,16 @@ func (d *Daemon) deliver(ctx context.Context, a *Account, draft compose.Draft, r
 	if err != nil {
 		return resp.usage(err.Error())
 	}
+	sendAt, err := d.sendAt(req)
+	if err != nil {
+		return resp.usage(err.Error())
+	}
+	if watch && sendAt.After(time.Now()) {
+		// The watch keyword is written once the mail is actually out (below);
+		// a scheduled send skips that whole path today rather than firing the
+		// reminder against a mail that has not gone anywhere yet.
+		return resp.usage("if-no-reply and send-at cannot be combined yet")
+	}
 	raw, err := draft.Build()
 	if err != nil {
 		return resp.usage(err.Error())
@@ -246,9 +259,20 @@ func (d *Daemon) deliver(ctx context.Context, a *Account, draft compose.Draft, r
 	id, err := d.Outbox.Enqueue(outbox.Item{
 		Account: a.Name, MessageKey: draft.MessageID, From: draft.From.Addr,
 		Recipients: draft.Recipients(), Subject: draft.Subject, Raw: raw,
+		NotBefore: sendAt,
 	})
 	if err != nil {
 		return resp.api(err.Error())
+	}
+	if sendAt.After(time.Now()) {
+		// Held in the Outbox until sendAt: nothing to hand to SMTP yet. The
+		// next drain that runs after that instant sends it like any other
+		// queued mail (Courier.Drain filters on not_before).
+		return resp.ok(sent{
+			OutboxID: id, MessageID: draft.MessageID, State: "scheduled",
+			Subject: draft.Subject, Recipients: draft.Recipients(),
+			Scheduled: sendAt.Local().Format("2006-01-02 15:04"),
+		})
 	}
 	it, err := a.Courier.Deliver(ctx, id)
 	if err != nil {

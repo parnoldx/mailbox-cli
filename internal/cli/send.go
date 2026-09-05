@@ -59,6 +59,7 @@ func withReplyWatch(args map[string]any, in *input) map[string]any {
 	args["tomorrow"] = in.Bool("tomorrow")
 	args["weekend"] = in.Bool("weekend")
 	args["next_week"] = in.Bool("next-week")
+	args["send_at"] = in.Str("send-at")
 	return args
 }
 
@@ -200,6 +201,10 @@ func printSent(stdout, stderr io.Writer, resp daemon.Response) {
 	}
 	if state := str(m["state"]); state == "cancelled" {
 		fmt.Fprintf(stdout, "cancelled #%v\n", m["id"])
+		return
+	}
+	if state := str(m["state"]); state == "scheduled" {
+		fmt.Fprintf(stdout, "scheduled for %s, to %s\n", m["scheduled"], strings.Join(strs(asAny(m["recipients"])), ", "))
 		return
 	}
 	fmt.Fprintf(stdout, "sent to %s\n", strings.Join(strs(asAny(m["recipients"])), ", "))

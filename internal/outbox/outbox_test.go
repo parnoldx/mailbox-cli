@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 )
 
 // stubTransport is an SMTP server that can be told to refuse, and that counts
@@ -272,6 +273,41 @@ func TestAWrongSchemaIsRefusedRatherThanDeleted(t *testing.T) {
 	var n int
 	if err := db.QueryRow(`SELECT count(*) FROM outbox`).Scan(&n); err != nil || n != 1 {
 		t.Fatalf("rows = %d (%v)", n, err)
+	}
+}
+
+func TestAScheduledMailWaitsUntilItsTime(t *testing.T) {
+	c, tr, _ := courier(t)
+	id, err := c.Box.Enqueue(Item{
+		Account: "primary", MessageKey: "later@local", From: "me@example.org",
+		Recipients: []string{"you@example.com"}, Subject: "Send later",
+		Raw:       []byte("Subject: Send later\r\n\r\nhello\r\n"),
+		NotBefore: time.Now().Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Drain(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if tr.count() != 0 {
+		t.Fatalf("a mail scheduled an hour out went out early, sent %d times", tr.count())
+	}
+	if it, _ := c.Box.Get(id); it.State != Queued {
+		t.Fatalf("state = %s, want queued", it.State)
+	}
+
+	// Once its instant has passed, the next drain finds it like any other
+	// queued mail — this is what a periodic drain tick does on its own.
+	past := time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
+	if _, err := c.Box.db.Exec(`UPDATE outbox SET not_before = ? WHERE id = ?`, past, id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Drain(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if tr.count() != 1 {
+		t.Fatalf("a mail whose time has come was not sent, sent %d times", tr.count())
 	}
 }
 

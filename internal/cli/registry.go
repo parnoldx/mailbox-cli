@@ -156,6 +156,8 @@ var replyWatchFlags = []Flag{
 	{Name: "tomorrow", Kind: KindBool, Desc: "08:00 tomorrow"},
 	{Name: "weekend", Kind: KindBool, Desc: "08:00 the coming Saturday"},
 	{Name: "next-week", Kind: KindBool, Desc: "08:00 the coming Monday"},
+	{Name: "send-at", Kind: KindString, Arg: "WHEN",
+		Desc: "hold it in the outbox and send it later, e.g. 2026-09-06T14:00"},
 }
 
 // tree is the whole command surface. Everything printed as help, everything

@@ -284,6 +284,23 @@ Item {
             })
         })
     }
+    // Same send, held in the outbox until sendAtIso instead of going out now
+    // (internal/daemon/send.go, sendAt) — the reply, forward and if-no-reply
+    // shapes above all still apply, this only adds when.
+    function doSendLater(sendAtIso) {
+        if (!root.canSend) return
+        lexxy.getHtml(function (html) {
+            var args = root.collectArgs(false, html)
+            args.send_at = sendAtIso
+            win.beginSend({
+                cmd: root.sendCmd(),
+                args: args,
+                label: root.summaryLabel(),
+                warnAttachment: root._mentionsAttachment(html),
+                form: root.snapshot(html)
+            })
+        })
+    }
     function doSaveDraft() {
         lexxy.getHtml(function (html) {
             // A re-opened draft is written back in place (edit); a fresh one is
@@ -383,6 +400,7 @@ Item {
                 // step.
                 y: -height - 4
                 onSend: function (timing) { root.doSendWithWatch(timing) }
+                onSendLater: function (sendAtIso) { root.doSendLater(sendAtIso) }
             }
             AppButton { kind: "ghost"; text: "Save draft"; onClicked: root.doSaveDraft() }
             // Attach — a paperclip, right of Save draft.

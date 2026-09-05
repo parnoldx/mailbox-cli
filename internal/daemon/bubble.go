@@ -391,6 +391,24 @@ func (d *Daemon) replyWatch(acct *Account, req Request) (when time.Time, ok bool
 	return when, true, nil
 }
 
+// sendAt resolves an optional "send later" instant off a send, reply, forward
+// or draft-send request. Zero time means send it now, which is every request
+// before this existed. The GUI's composer picks a date and an hour and hands
+// them over already combined, in the local wall clock, the same convention
+// the `bubble` keyword uses (package bubble) — no timezone, both machines are
+// assumed to agree on one.
+func (d *Daemon) sendAt(req Request) (time.Time, error) {
+	raw := strings.TrimSpace(req.Str("send_at"))
+	if raw == "" {
+		return time.Time{}, nil
+	}
+	t, err := time.ParseInLocation("2006-01-02T15:04", raw, time.Local)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("send_at takes a local date and time like 2026-09-06T14:00 — got %q", raw)
+	}
+	return t, nil
+}
+
 // bubbleHours is the configured morning and evening hours, or 8 and 18.
 func (d *Daemon) bubbleHours() (morning, evening int) {
 	morning, evening = d.BubbleMorning, d.BubbleEvening
