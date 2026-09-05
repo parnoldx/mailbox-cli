@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -125,6 +126,112 @@ func TestBubbleReturnsOnTheFirstTickAfterTheInstant(t *testing.T) {
 		if _, ok := bubble.Of(r.Placement.Flags); ok {
 			t.Errorf("the returned message still carries a $bubble-* keyword: %v", r.Placement.Flags)
 		}
+	}
+}
+
+// A Thread that already bubbled and came back must not bounce out of Aside
+// again just because some other placement of it still shows up as due — a
+// stale record a second Daemon has not caught up on yet (ADR-0025), or a
+// leftover row a Mirror rebuild has not cleared. Filing the returned mail
+// aside afterwards, for reasons that have nothing to do with the bubble, must
+// not be undone by the next tick: only a member that itself still carries the
+// `$bubble-*` keyword is due.
+func TestReturnDueLeavesAnUnrelatedAsideAlone(t *testing.T) {
+	d, _ := seedScreener(t)
+	ctx := context.Background()
+	deliverInbox(t, d, "n1@example.com", "Plan", "news@example.com",
+		time.Date(2026, 9, 1, 9, 0, 0, 0, time.UTC))
+
+	yesterday := startOfDay(time.Now()).AddDate(0, 0, -1).Format("2006-01-02")
+	mustAsk(t, d, []string{"bubble"}, map[string]any{"positional": "1", "on": yesterday})
+	d.returnDue(ctx, d.primaryAccount())
+	inbox := boxView(t, d, "inbox")
+	if len(inbox) != 1 {
+		t.Fatalf("inbox = %+v, want the returned thread", inbox)
+	}
+
+	// A stale record of that same bubble, as a second Daemon's Mirror would
+	// still hold it: another placement of the same Message, still carrying the
+	// keyword that this Mirror already cleared everywhere else.
+	msgID := placement(t, d, routing.BoxInbox, inbox[0].UID).Message.ID
+	tx, err := d.Mirror.Begin("primary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.PutPlacement(mirror.Placement{
+		Folder: "INBOX/Sent", UID: 99, MessageID: msgID,
+		Flags: []string{bubble.Keyword(time.Now().AddDate(0, 0, -1))},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Now the mail is filed aside for its own reason, unconnected to any bubble.
+	mustAsk(t, d, []string{"aside"}, map[string]any{"positional": inbox[0].ID})
+	if len(boxView(t, d, "Aside")) != 1 {
+		t.Fatal("the thread did not move to Aside")
+	}
+
+	d.returnDue(ctx, d.primaryAccount())
+
+	if got := boxView(t, d, "Aside"); len(got) != 1 {
+		t.Fatalf("Aside = %+v, the stale bubble record pulled it back out", got)
+	}
+	if got := boxView(t, d, "inbox"); len(got) != 0 {
+		t.Fatalf("inbox = %+v, the Aside thread bounced back", got)
+	}
+}
+
+// A second Daemon on the account (ADR-0025) — the VPS Daemon, with its own
+// Mirror — is caught up on every Box except Aside when a plain "aside", never
+// bubbled at all, gets filed on the home machine. The VPS Daemon's next
+// ordinary incremental sync of Aside discovers that placement for the first
+// time and reports it as a "new" Thread — exactly what a genuine reply landing
+// on a piled Thread looks like from where it sits. cycle's reclaimPiled call
+// must not confuse the two: a Thread with no bubble and no reply, freshly
+// filed aside, must survive the VPS Daemon's next cycle.
+func TestASecondDaemonsFirstLookAtAsideDoesNotReclaimIt(t *testing.T) {
+	d, _ := seedScreener(t)
+	ctx := context.Background()
+	deliverInbox(t, d, "n1@example.com", "Plan", "news@example.com",
+		time.Date(2026, 9, 1, 9, 0, 0, 0, time.UTC))
+
+	// A second Daemon on the same account and the same server, with its own
+	// Mirror — already caught up on everything, before the aside happens.
+	m, err := mirror.Open(filepath.Join(t.TempDir(), "mirror.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	vps := New("primary", m,
+		&mailsync.Reconciler{Account: "primary", Mirror: m, Driver: fakeOf(d)},
+		d.Mirrored, nil, nil)
+	vps.cycle(ctx, vps.primaryAccount(), "startup")
+	if got := boxView(t, vps, "inbox"); len(got) != 1 {
+		t.Fatalf("inbox on the second Daemon = %+v, want the newsletter already synced", got)
+	}
+
+	inbox := boxView(t, d, "inbox")
+	if len(inbox) != 1 {
+		t.Fatalf("inbox = %+v", inbox)
+	}
+	mustAsk(t, d, []string{"aside"}, map[string]any{"positional": inbox[0].ID})
+	if len(boxView(t, d, routing.BoxAside)) != 1 {
+		t.Fatal("the thread did not move to Aside")
+	}
+
+	// The VPS Daemon's next ordinary cycle: an incremental sync, not a resync —
+	// it already knew this account, it just had not looked at Aside since the
+	// move.
+	vps.cycle(ctx, vps.primaryAccount(), "next tick")
+
+	if got := boxView(t, vps, routing.BoxAside); len(got) != 1 {
+		t.Fatalf("Aside on the second Daemon = %+v, its first look at Aside reclaimed the thread", got)
+	}
+	if got := boxView(t, vps, "inbox"); len(got) != 0 {
+		t.Fatalf("inbox on the second Daemon = %+v, the Aside thread bounced back", got)
 	}
 }
 

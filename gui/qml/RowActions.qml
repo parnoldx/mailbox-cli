@@ -63,6 +63,48 @@ Menu {
         }
     }
 
+    // The row that opens a submenu is created by Controls itself, from this
+    // delegate — not by us — so without it the Bubble Up submenu below lands as
+    // an unstyled, empty item with a stray arrow floating under "Bubble up".
+    // Same look as Action, with the arrow that says it opens onto something.
+    delegate: MenuItem {
+        id: sub
+        height: visible ? 34 : 0
+        visible: !menu.inScreener
+        contentItem: Row {
+            spacing: 10
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                leftPadding: 14
+                text: ""
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+                color: Theme.textDim
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: sub.text
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+                color: Theme.textPrimary
+            }
+        }
+        arrow: Text {
+            anchors.verticalCenter: sub.verticalCenter
+            anchors.right: sub.right
+            anchors.rightMargin: 12
+            visible: sub.subMenu
+            text: ""
+            font.family: Theme.fontFamily
+            font.pixelSize: 12
+            color: Theme.textDim
+        }
+        background: Rectangle {
+            color: sub.highlighted ? Theme.selection : "transparent"
+            Behavior on color { ColorAnimation { duration: Theme.anim } }
+        }
+    }
+
     component Rule: MenuSeparator {
         contentItem: Rectangle {
             implicitHeight: 1
@@ -136,15 +178,16 @@ Menu {
         visible: !menu.inScreener && !menu.inAside
         onTriggered: Triage.dispatch(win, "aside", menu.row.id)
     }
-    Action {
-        text: "Bubble up"
-        glyph: ""
-        visible: !menu.inScreener
-        onTriggered: bubbleMenu.popup()
-    }
+    // Bubble Up is the one move that asks a second question — when. It opens
+    // sideways as a submenu (the delegate above styles the row that opens it)
+    // rather than popping a second menu over this one.
     BubbleMenu {
         id: bubbleMenu
-        onChosen: function (timing) { win.bubbleId(menu.row.id, timing, "Bubbled up") }
+        title: "Bubble up"
+        onChosen: function (timing) {
+            menu.dismiss()
+            win.bubbleId(menu.row.id, timing, "Bubbled up")
+        }
     }
 
     Rule {}

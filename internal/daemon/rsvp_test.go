@@ -2,10 +2,13 @@ package daemon
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"mailbox/internal/mirror"
+	"mailbox/internal/sync/davsync"
 	"mailbox/internal/vcal"
 )
 
@@ -59,6 +62,76 @@ func seedInvite(t *testing.T) (*Daemon, *stubTransport, string) {
 		t.Fatal(err)
 	}
 	return d, tr, d.primaryAccount().messageID("INBOX", msg.UID)
+}
+
+func seedInviteDAV(t *testing.T) (*Daemon, *davsync.Fake, string) {
+	t.Helper()
+	d, _, id := seedInvite(t)
+	f := davsync.NewFake("Kalender", testCalURL)
+	f.AddCollection(davsync.Collection{Kind: "events", URL: "https://sogo.example.org/work/", Name: "Work"})
+	r := &davsync.Reconciler{Account: "primary", Mirror: d.Mirror, Driver: f, Location: time.Local}
+	if _, err := r.Discover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	d.DAV = r
+	d.DAVWriter = &davsync.Writer{Account: "primary", Mirror: d.Mirror, Driver: f, Reconciler: r}
+	d.DAVHost = "dav.example.org"
+	d.CalendarEmail = map[string]string{
+		"me@example.com": "",
+		"me@work.test":   "Work",
+	}
+	return d, f, id
+}
+
+func TestInviteToTheAccountAddressPicksTheHomeCalendar(t *testing.T) {
+	d, _, id := seedInviteDAV(t)
+	resp := mustAsk(t, d, []string{"message", "view"}, map[string]any{"positional": id})
+	got := resp.Data.(message).Invite
+	if got == nil || got.Calendar != "Kalender" {
+		t.Fatalf("calendar = %+v", got)
+	}
+}
+
+func TestInviteToAWorkAddressPicksWork(t *testing.T) {
+	d, _, _ := seedInviteDAV(t)
+	in := vcal.Invite{Attendees: []string{"me@work.test"}}
+	name, names := d.inviteTarget(in, "", d.primaryAccount())
+	if name != "Work" {
+		t.Fatalf("got %q from %v", name, names)
+	}
+}
+
+func TestInviteToAnUnknownAddressNeedsAChoice(t *testing.T) {
+	d, _, _ := seedInviteDAV(t)
+	in := vcal.Invite{Attendees: []string{"stranger@example.org"}}
+	name, names := d.inviteTarget(in, "", d.primaryAccount())
+	if name != "" {
+		t.Fatalf("guessed %q", name)
+	}
+	if len(names) < 2 {
+		t.Fatalf("choices = %v", names)
+	}
+}
+
+func TestRSVPAcceptPutsTheEventOnTheHomeCalendar(t *testing.T) {
+	d, f, id := seedInviteDAV(t)
+	mustAsk(t, d, []string{"rsvp"}, map[string]any{"positional": id, "accept": true})
+	raw := eventNamed(t, f, "Design review")
+	if !strings.Contains(raw, "PARTSTAT=ACCEPTED") {
+		t.Errorf("accepted event missing PARTSTAT:\n%s", raw)
+	}
+}
+
+func TestThreadViewSurfacesAnInvite(t *testing.T) {
+	d, _, id := seedInvite(t)
+	resp := mustAsk(t, d, []string{"thread", "view"}, map[string]any{"positional": id})
+	rows, ok := resp.Data.([]message)
+	if !ok || len(rows) != 1 || rows[0].Invite == nil {
+		t.Fatalf("thread = %T %+v", resp.Data, resp.Data)
+	}
+	if rows[0].Invite.Summary != "Design review" {
+		t.Errorf("summary = %q", rows[0].Invite.Summary)
+	}
 }
 
 func TestRSVPAcceptSendsIMIPToTheOrganizer(t *testing.T) {

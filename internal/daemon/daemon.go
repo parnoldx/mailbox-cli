@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -59,6 +60,14 @@ type Daemon struct {
 	// DAVHome can create the one collection this program owns rather than
 	// finds: the habits calendar (ADR-0018).
 	DAVHome CalendarMaker
+	// DAVHost is the host of the account's own CalDAV. An invite to the
+	// account's own address goes here (Kalender), not onto a hand-added
+	// calendar (Work, …).
+	DAVHost string
+	// CalendarEmail maps an attendee address to a calendar name. An empty
+	// name means the account's own CalDAV (DAVHost). A work address maps to
+	// Work; an address that is not here makes the RSVP ask which calendar.
+	CalendarEmail map[string]string
 	// TaskList is where a Todo goes when the caller does not say. With one task
 	// list it is unnecessary; with several, naming one is better than guessing.
 	TaskList string
@@ -356,7 +365,15 @@ func (d *Daemon) cycle(ctx context.Context, a *Account, reason string) {
 		// ADR-0019). Read from this cycle's outcomes before anything else looks
 		// at them.
 		d.inferScreenerDecisions(ctx, a, outcomes)
-		for _, out := range outcomes {
+		for folder, out := range outcomes {
+			// Aside and Reply Later's own sync reports a Thread "new" the first
+			// time this Daemon ever sees it filed there — a cold start, a Mirror
+			// rebuild (ADR-0013), or simply this Daemon's first look at the pile.
+			// That is not a reply landing, and reclaiming on it would drag a
+			// conversation right back out of the pile it was just filed into.
+			if strings.EqualFold(folder, routing.BoxAside) || strings.EqualFold(folder, routing.BoxReplyLater) {
+				continue
+			}
 			if out.Action == mailsync.ActionIncremental {
 				d.reclaimPiled(ctx, a, out.NewThreads)
 			}

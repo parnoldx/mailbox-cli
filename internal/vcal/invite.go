@@ -21,6 +21,7 @@ type Invite struct {
 	Summary   string
 	Location  string
 	Organizer string // bare address
+	Attendees []string
 	Start     time.Time
 	End       time.Time
 	AllDay    bool
@@ -54,6 +55,11 @@ func ParseInvite(raw string, loc *time.Location) (Invite, error) {
 	if org := master.Props.Get(ical.PropOrganizer); org != nil {
 		in.Organizer = mailtoAddr(org.Value)
 	}
+	for _, p := range master.Props[ical.PropAttendee] {
+		if a := mailtoAddr(p.Value); a != "" {
+			in.Attendees = append(in.Attendees, a)
+		}
+	}
 	if in.UID == "" {
 		return Invite{}, fmt.Errorf("this meeting has no UID")
 	}
@@ -81,6 +87,9 @@ func Reply(in Invite, attendee, partstat string) (string, error) {
 	ev.Props.SetDateTime(ical.PropDateTimeStamp, time.Now().UTC())
 	if in.Summary != "" {
 		ev.Props.SetText(ical.PropSummary, in.Summary)
+	}
+	if in.Location != "" {
+		ev.Props.SetText(ical.PropLocation, in.Location)
 	}
 	if !in.Start.IsZero() {
 		end := in.End

@@ -36,11 +36,12 @@ Panel {
   property int selectedIndex: 0
   property bool cursorActive: false
   property double nowMs: Date.now()
+  property double openedAtMs: 0
   property string accountFilter: ""
   property string tabFilter: "unread" // "unread" | "previous" | "screener"
   property bool settingsOpen: false
 
-  readonly property color foreground: bar ? bar.barForeground : Color.foreground
+  readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
@@ -149,6 +150,21 @@ Panel {
     root.close()
   }
 
+  // Top-left header icon: opens the full desktop client on the inbox, same
+  // launch path as openMail() but with no message to jump to. Guarded against
+  // the click that opened the panel itself: the bar button's press opens the
+  // popup immediately, so the matching release can land on this icon if it
+  // ends up under the still-down pointer, firing a phantom click here too.
+  function openGui() {
+    if (Date.now() - root.openedAtMs < 300) return
+    if (root.bar && typeof root.bar.run === "function") {
+      root.bar.run("mailbox-gui")
+    } else {
+      Quickshell.execDetached(["bash", "-lc", "mailbox-gui"])
+    }
+    root.close()
+  }
+
   function moveSelection(delta) {
     var count = tabFilter === "screener" ? screenerCards.length : filteredMessages.length
     if (count === 0) return
@@ -232,6 +248,7 @@ Panel {
   onOpenedChanged: if (opened) {
     cursorActive = false
     nowMs = Date.now()
+    openedAtMs = nowMs
     if (panelFlick) panelFlick.contentY = 0
     service.refresh()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
@@ -307,6 +324,13 @@ Panel {
               anchors.verticalCenter: parent.verticalCenter
               iconSize: Style.font.display
               color: root.foreground
+
+              MouseArea {
+                anchors.fill: parent
+                anchors.margins: -Style.space(4)
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.openGui()
+              }
             }
 
             Column {

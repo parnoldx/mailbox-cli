@@ -189,7 +189,7 @@ func (d *Daemon) draftFrom(acct *Account, row mirror.Row, req Request) (compose.
 		draft.Body = v
 	}
 	if raw := req.Str("body_html"); raw != "" {
-		draft.BodyHTML = raw
+		draft.BodyHTML = htmlmd.StyleCallouts(raw)
 	} else if strings.TrimSpace(draft.Body) != "" {
 		// An edited draft is sent like any other: its body is Markdown and
 		// carries a rendered text/html twin (see draftOf).

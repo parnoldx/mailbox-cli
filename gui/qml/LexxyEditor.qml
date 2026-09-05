@@ -55,7 +55,113 @@ Item {
             "display:flex;flex-direction:column;flex:1 1 auto;min-height:0;border:0;border-radius:0;}" +
             "lexxy-editor .lexxy-editor__content{flex:1 1 auto;min-block-size:0;overflow-y:auto;}" +
             "lexxy-editor [contenteditable]{padding:14px 6px;font-size:14px;line-height:1.6;}" +
-            "lexxy-editor ::selection{background:" + Theme.selection + ";}"
+            "lexxy-editor ::selection{background:" + Theme.selection + ";}" +
+            root.calloutCss()
+    }
+
+    // Colored aside boxes. Lexxy strips table-cell backgrounds and custom
+    // attributes, so the editor paints [data-mailbox-callout] that the boot
+    // script tags onto blockquotes/tables whose first line is Note/Tip/Warning.
+    function calloutCss() {
+        return "lexxy-editor [data-mailbox-callout]{" +
+            "font-style:normal!important;margin:0.75em 0;padding:12px 16px;" +
+            "border-radius:6px;border-inline-start-width:4px;border-inline-start-style:solid;}" +
+            "lexxy-editor [data-mailbox-callout] p:first-child{font-weight:700;margin-block-end:0.35em;}" +
+            "lexxy-editor [data-mailbox-callout=note]{" +
+            "background:color-mix(in srgb,var(--lexxy-color-blue) 22%,var(--lexxy-color-canvas));" +
+            "border-inline-start-color:var(--lexxy-color-blue);}" +
+            "lexxy-editor [data-mailbox-callout=tip]{" +
+            "background:color-mix(in srgb,var(--lexxy-color-green) 22%,var(--lexxy-color-canvas));" +
+            "border-inline-start-color:var(--lexxy-color-green);}" +
+            "lexxy-editor [data-mailbox-callout=warning]{" +
+            "background:color-mix(in srgb,var(--lexxy-color-red) 18%,var(--lexxy-color-canvas));" +
+            "border-inline-start-color:var(--lexxy-color-red);}" +
+            "lexxy-editor table[data-mailbox-callout]{width:100%;border:0;}" +
+            "lexxy-editor table[data-mailbox-callout] td{border:0!important;padding:0!important;background:transparent!important;}" +
+            ".mailbox-callout-swatch{display:inline-block;inline-size:1em;block-size:1em;border-radius:3px;flex:none;}"
+    }
+
+    function calloutBootJS() {
+        return [
+            "(function(){",
+            "var kinds=[",
+            "{kind:'note',label:'Note',bg:'#dbeafe',fg:'#1e3a8a'},",
+            "{kind:'tip',label:'Tip',bg:'#dcfce7',fg:'#14532d'},",
+            "{kind:'warning',label:'Warning',bg:'#fef3c7',fg:'#78350f'}",
+            "];",
+            "function htmlFor(k){",
+            "return '<blockquote><p><strong>'+k.label+'</strong></p><p><br></p></blockquote><p><br></p>';",
+            "}",
+            "function tagCallouts(){",
+            "var ed=document.getElementById('ed');if(!ed)return;",
+            "var labels={note:1,tip:1,warning:1};",
+            "function kindOf(el){",
+            "var p=el.querySelector('p');if(!p)return '';",
+            "var t=(p.textContent||'').trim().split('\\n')[0].trim().toLowerCase();",
+            "return labels[t]?t:'';",
+            "}",
+            "ed.querySelectorAll('blockquote,table').forEach(function(el){",
+            "var k=kindOf(el);",
+            "if(k)el.setAttribute('data-mailbox-callout',k);",
+            "else el.removeAttribute('data-mailbox-callout');",
+            "});",
+            "}",
+            "function icon(){",
+            "return '<svg viewBox=\"0 0 16 16\" xmlns=\"http://www.w3.org/2000/svg\"><rect x=\"2\" y=\"2\" width=\"12\" height=\"12\" rx=\"2\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"/><path d=\"M8 5v4\" stroke=\"currentColor\" stroke-width=\"1.5\"/><circle cx=\"8\" cy=\"11\" r=\"0.85\" fill=\"currentColor\"/></svg>';",
+            "}",
+            "function install(){",
+            "var ed=document.getElementById('ed');",
+            "var tb=ed&&ed.querySelector('lexxy-toolbar');",
+            "if(!tb)return false;",
+            "if(tb.querySelector('[name=callout]'))return true;",
+            "var wrap=document.createElement('lexxy-toolbar-dropdown');",
+            "wrap.className='lexxy-editor__toolbar-dropdown';",
+            "var btn=document.createElement('button');",
+            "btn.type='button';btn.name='callout';",
+            "btn.className='lexxy-editor__toolbar-button lexxy-editor__toolbar-button--chevron';",
+            "btn.setAttribute('data-dropdown-trigger','');",
+            "btn.setAttribute('title','Insert a colored note');",
+            "btn.setAttribute('aria-haspopup','menu');",
+            "btn.setAttribute('aria-expanded','false');",
+            "btn.innerHTML=icon();",
+            "var panel=document.createElement('div');",
+            "panel.setAttribute('data-dropdown-panel','');",
+            "panel.setAttribute('role','menu');",
+            "panel.className='lexxy-editor__toolbar-dropdown-list';",
+            "panel.hidden=true;",
+            "kinds.forEach(function(k){",
+            "var b=document.createElement('button');",
+            "b.type='button';b.setAttribute('role','menuitem');",
+            "b.setAttribute('data-callout-insert',k.kind);",
+            "b.innerHTML='<span class=\"mailbox-callout-swatch\" style=\"background:'+k.bg+'\"></span><span>'+k.label+'</span>';",
+            "b.addEventListener('click',function(ev){",
+            "ev.preventDefault();ev.stopPropagation();",
+            "if(ed.contents)ed.contents.insertHtml(htmlFor(k));",
+            "panel.hidden=true;btn.setAttribute('aria-expanded','false');",
+            "if(ed.focus)ed.focus();",
+            "setTimeout(function(){",
+            "tagCallouts();",
+            "var boxes=ed.querySelectorAll('[data-mailbox-callout]');",
+            "var box=boxes[boxes.length-1];if(!box)return;",
+            "var ps=box.querySelectorAll('p');",
+            "var inner=ps.length?ps[ps.length-1]:box;",
+            "var r=document.createRange();r.selectNodeContents(inner);r.collapse(true);",
+            "var s=window.getSelection();s.removeAllRanges();s.addRange(r);",
+            "},0);",
+            "});",
+            "panel.appendChild(b);",
+            "});",
+            "wrap.appendChild(btn);wrap.appendChild(panel);",
+            "var quote=tb.querySelector('[name=quote]');",
+            "if(quote&&quote.parentNode)quote.parentNode.insertBefore(wrap,quote.nextSibling);else tb.appendChild(wrap);",
+            "if(ed.editor&&ed.editor.registerUpdateListener)",
+            "ed.editor.registerUpdateListener(function(){tagCallouts();});",
+            "tagCallouts();",
+            "return true;",
+            "}",
+            "var n=0;function tick(){if(install()||++n>40)return;setTimeout(tick,50);}tick();",
+            "})();"
+        ].join("")
     }
 
     function document_() {
@@ -153,6 +259,7 @@ Item {
         onLoadingChanged: function (req) {
             if (req.status === WebEngineView.LoadSucceededStatus) {
                 root.loaded = true
+                web.runJavaScript(root.calloutBootJS())
                 if (root.pendingHtml.length > 0) root._applyPending()
                 root.ready()
             }

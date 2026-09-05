@@ -241,12 +241,15 @@ ApplicationWindow {
             win.refreshStacks()
         })
     }
-    function rsvpId(id, status, label) {
+    function rsvpId(id, status, label, calendar, done) {
         if (!id) return
         var args = { positional: id }
         args[status] = true
+        if (calendar) args.calendar = calendar
         Mailbox.call(["rsvp"], args, function (r) {
-            win.flash(r && r.ok ? label : win._failMsg(label, r))
+            var ok = !!(r && r.ok)
+            win.flash(ok ? label : win._failMsg(label, r))
+            if (typeof done === "function") done(ok)
         })
     }
     // Bubble Up (ADR-0023): set a Thread aside with a return time, or re-time

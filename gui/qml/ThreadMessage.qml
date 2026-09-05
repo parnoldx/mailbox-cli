@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Window
+import QtQml
 import QtWebEngine
 import "MailFormat.js" as Fmt
 
@@ -18,6 +19,29 @@ Item {
     property var attachments: []
     property bool expanded: false
     readonly property bool unseen: root.msg.seen === false
+    readonly property var invite: root.msg.invite || null
+    readonly property string msgId: (root.msg && root.msg.id) ? root.msg.id : ""
+    property string rsvpState: ""
+    property string pickedCalendar: ""
+    onMsgIdChanged: { root.rsvpState = ""; root.pickedCalendar = "" }
+    readonly property string targetCalendar: root.pickedCalendar
+        || ((root.invite && root.invite.calendar) ? root.invite.calendar : "")
+    readonly property bool needCalendarPick: !!(root.invite && !root.invite.calendar
+        && root.invite.calendars && root.invite.calendars.length > 1)
+    readonly property var shownAttachments: {
+        var atts = root.attachments || []
+        if (!root.invite) return atts
+        var out = []
+        for (var i = 0; i < atts.length; i++) {
+            var a = atts[i]
+            var mime = String(a.mime_type || "").toLowerCase()
+            var name = String(a.filename || "").toLowerCase()
+            if (mime.indexOf("calendar") >= 0 || mime.indexOf("/ics") >= 0 || name.endsWith(".ics"))
+                continue
+            out.push(a)
+        }
+        return out
+    }
 
     // Set by ReadingView when this is the only Message in the Thread: the
     // HTML sheet then stretches to fill `viewportHeight` (the reader's
@@ -34,6 +58,7 @@ Item {
             - senderRow.height
             - rule.height
             - body.spacing * 2
+            - (inviteBlock.visible ? inviteBlock.height + body.spacing : 0)
             - (attachBlock.visible ? attachBlock.height + body.spacing : 0))
 
     // One of several expanded Messages sharing the accordion: the HTML sheet
@@ -95,8 +120,35 @@ Item {
     // One line of taste for the collapsed row — not a rendering of the body,
     // just enough to remember what this Message said without opening it.
     function snippet() {
+        if (root.invite && root.invite.summary)
+            return "Invite · " + root.invite.summary
         var t = String(root.msg.body || "").replace(/\s+/g, " ").trim()
         return t.length > 140 ? t.slice(0, 140) + "…" : t
+    }
+    function inviteWhen(inv) {
+        if (!inv || !inv.start) return ""
+        var s = new Date(inv.start)
+        if (isNaN(s.getTime())) return ""
+        if (inv.all_day)
+            return Qt.formatDateTime(s, "ddd d MMM yyyy")
+        var line = Qt.formatDateTime(s, "ddd d MMM yyyy · HH:mm")
+        if (!inv.end) return line
+        var e = new Date(inv.end)
+        if (isNaN(e.getTime())) return line
+        if (s.toDateString() === e.toDateString())
+            return line + "–" + Qt.formatDateTime(e, "HH:mm")
+        return line + " – " + Qt.formatDateTime(e, "ddd d MMM yyyy · HH:mm")
+    }
+    function rsvp(status, label) {
+        if (!root.msg.id || root.rsvpState === "busy") return
+        if (status !== "decline" && root.needCalendarPick && !root.targetCalendar) {
+            win.flash("Pick a calendar")
+            return
+        }
+        root.rsvpState = "busy"
+        win.rsvpId(root.msg.id, status, label, root.targetCalendar, function (ok) {
+            root.rsvpState = ok ? status : ""
+        })
     }
     function bodyText() {
         var b = root.msg.body || ""
@@ -148,6 +200,8 @@ Item {
           "font-size:14px;line-height:1.6;overflow-x:hidden !important;" +
           "word-wrap:break-word;overflow-wrap:break-word;}" +
           "table{table-layout:fixed !important;width:100% !important;max-width:100% !important;}" +
+          "table[data-callout]{border-collapse:collapse !important;margin:1em 0 !important;}" +
+          "table[data-callout] td{border-radius:6px;}" +
           "td,th{overflow-wrap:break-word;word-break:break-word;}" +
           "pre{white-space:pre-wrap !important;word-break:break-word;}" +
           "img{max-width:100% !important;height:auto !important;}" +
@@ -415,18 +469,176 @@ Item {
                 }
             }
 
+            Rectangle {
+                id: inviteBlock
+                visible: !!root.invite
+                width: parent.width
+                implicitHeight: inviteInner.implicitHeight + 28
+                height: implicitHeight
+                radius: Theme.radiusSmall
+                color: Theme.cardBg
+                border.width: 1
+                border.color: Theme.hairline
+                Behavior on color { ColorAnimation { duration: Theme.anim } }
+                Behavior on border.color { ColorAnimation { duration: Theme.anim } }
+
+                Column {
+                    id: inviteInner
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 14
+                    spacing: 8
+
+                    Row {
+                        spacing: 10
+                        width: parent.width
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "\uf073"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 16
+                            color: Theme.accent
+                            Behavior on color { ColorAnimation { duration: Theme.anim } }
+                        }
+                        Text {
+                            width: parent.width - 26
+                            text: (root.invite && root.invite.summary) ? root.invite.summary : "Meeting"
+                            wrapMode: Text.Wrap
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 14
+                            font.weight: Font.DemiBold
+                            color: Theme.textPrimary
+                            Behavior on color { ColorAnimation { duration: Theme.anim } }
+                        }
+                    }
+                    Text {
+                        visible: text.length > 0
+                        width: parent.width
+                        text: root.inviteWhen(root.invite)
+                        wrapMode: Text.Wrap
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 12
+                        color: Theme.textDim
+                        Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    }
+                    Text {
+                        visible: !!(root.invite && root.invite.location)
+                        width: parent.width
+                        text: root.invite ? (root.invite.location || "") : ""
+                        wrapMode: Text.Wrap
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 12
+                        color: Theme.textDim
+                        Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    }
+                    Text {
+                        visible: !!(root.invite && root.invite.organizer)
+                        width: parent.width
+                        text: root.invite ? ("from " + root.invite.organizer) : ""
+                        wrapMode: Text.Wrap
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 12
+                        color: Theme.textDim
+                        Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    }
+                    Row {
+                        spacing: 8
+                        visible: root.needCalendarPick || root.targetCalendar.length > 0
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "on"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 12
+                            color: Theme.textDim
+                        }
+                        Text {
+                            visible: !root.needCalendarPick
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: root.targetCalendar
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 12
+                            font.weight: Font.DemiBold
+                            color: Theme.textPrimary
+                        }
+                        Rectangle {
+                            visible: root.needCalendarPick
+                            width: calLabel.implicitWidth + 28
+                            height: 24
+                            radius: 12
+                            color: calHover.hovered ? Theme.cardHover : Theme.selection
+                            Behavior on color { ColorAnimation { duration: Theme.anim } }
+                            Text {
+                                id: calLabel
+                                anchors.centerIn: parent
+                                text: (root.pickedCalendar || "Calendar") + "  \uf0d7"
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 11
+                                color: Theme.textPrimary
+                            }
+                            HoverHandler { id: calHover; cursorShape: Qt.PointingHandCursor }
+                            TapHandler { onTapped: calMenu.popup() }
+                            Menu {
+                                id: calMenu
+                                Instantiator {
+                                    model: (root.invite && root.invite.calendars) ? root.invite.calendars : []
+                                    onObjectAdded: function (i, obj) { calMenu.insertItem(i, obj) }
+                                    onObjectRemoved: function (i, obj) { calMenu.removeItem(obj) }
+                                    delegate: MenuItem {
+                                        text: modelData
+                                        onTriggered: root.pickedCalendar = modelData
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Text {
+                        visible: root.rsvpState === "accept" || root.rsvpState === "tentative" || root.rsvpState === "decline"
+                        text: root.rsvpState === "accept" ? "Accepted"
+                            : root.rsvpState === "tentative" ? "Maybe"
+                            : "Declined"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 12
+                        font.weight: Font.DemiBold
+                        color: root.rsvpState === "decline" ? Theme.red : Theme.green
+                        Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    }
+                    Row {
+                        spacing: 8
+                        visible: root.rsvpState === "" || root.rsvpState === "busy"
+                        opacity: root.rsvpState === "busy" ? 0.45 : 1
+                        Behavior on opacity { NumberAnimation { duration: Theme.anim } }
+                        AppButton {
+                            kind: "primary"; text: "Accept"
+                            active: root.rsvpState !== "busy" && (!root.needCalendarPick || root.targetCalendar !== "")
+                            onClicked: root.rsvp("accept", "Accepted")
+                        }
+                        AppButton {
+                            kind: "soft"; text: "Maybe"
+                            active: root.rsvpState !== "busy" && (!root.needCalendarPick || root.targetCalendar !== "")
+                            onClicked: root.rsvp("tentative", "Tentative")
+                        }
+                        AppButton {
+                            kind: "danger"; text: "Decline"
+                            active: root.rsvpState !== "busy"
+                            onClicked: root.rsvp("decline", "Declined")
+                        }
+                    }
+                }
+            }
+
             // Attachments — collapsed behind a toggle when every part is an
             // inline image the body already shows, same as before.
             Column {
                 id: attachBlock
                 width: parent.width
                 spacing: 10
-                visible: root.attachments.length > 0
+                visible: root.shownAttachments.length > 0
 
                 readonly property bool allInline: {
-                    if (root.attachments.length === 0) return false
-                    for (var i = 0; i < root.attachments.length; i++) {
-                        var a = root.attachments[i]
+                    if (root.shownAttachments.length === 0) return false
+                    for (var i = 0; i < root.shownAttachments.length; i++) {
+                        var a = root.shownAttachments[i]
                         if (a.disposition !== "inline") return false
                         if (String(a.mime_type || "").indexOf("image") !== 0) return false
                     }
@@ -447,8 +659,8 @@ Item {
                         anchors.centerIn: parent
                         spacing: 6
                         Text {
-                            text: root.attachments.length
-                                  + (root.attachments.length === 1 ? " inline image" : " inline images")
+                            text: root.shownAttachments.length
+                                  + (root.shownAttachments.length === 1 ? " inline image" : " inline images")
                             font.family: Theme.fontFamily
                             font.pixelSize: 10
                             color: Theme.textDim
@@ -464,7 +676,7 @@ Item {
                     spacing: 10
                     visible: !attachBlock.allInline || attachBlock.showInline
                     Repeater {
-                        model: root.attachments
+                        model: root.shownAttachments
                         AttachmentChip { att: modelData }
                     }
                 }

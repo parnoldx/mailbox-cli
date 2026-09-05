@@ -206,6 +206,7 @@ func markdownBlockStart(line string) bool {
 	return strings.HasPrefix(line, "```") ||
 		mdHeadingRe.MatchString(line) ||
 		strings.HasPrefix(line, "> ") ||
+		isCalloutMarkerLine(line) ||
 		mdULRe.MatchString(line) ||
 		mdOLRe.MatchString(line)
 }
@@ -240,11 +241,20 @@ func MarkdownToHTML(value string) string {
 			i++
 			continue
 		}
+		if html, next, ok := consumeCallout(lines, i); ok {
+			blocks = append(blocks, html)
+			i = next
+			continue
+		}
 		if strings.HasPrefix(line, "> ") {
 			var quote []string
 			for i < len(lines) && strings.HasPrefix(lines[i], "> ") {
 				quote = append(quote, lines[i][2:])
 				i++
+			}
+			if html, ok := consumeQuotedCallout(quote); ok {
+				blocks = append(blocks, html)
+				continue
 			}
 			blocks = append(blocks, "<blockquote>"+MarkdownToHTML(strings.Join(quote, "\n"))+"</blockquote>")
 			continue
@@ -600,6 +610,10 @@ func (m *markdownizer) element(n *node) {
 	case contains([]string{"p", "div", "section", "article", "header", "footer", "tbody", "thead"}, tag):
 		m.block(func() { m.children(n) })
 	case tag == "blockquote":
+		if kind, inner := calloutFromBlock(n); kind != "" {
+			m.emitCallout(kind, inner)
+			return
+		}
 		m.blockquote(n)
 	case tag == "ul" || tag == "ol":
 		m.list(n)
@@ -608,6 +622,9 @@ func (m *markdownizer) element(n *node) {
 	case tag == "pre":
 		m.codeBlock(n)
 	case tag == "table":
+		if m.tableCallout(n) {
+			return
+		}
 		m.table(n)
 	case tag == "strong" || tag == "b":
 		m.emphasis(n, "**")

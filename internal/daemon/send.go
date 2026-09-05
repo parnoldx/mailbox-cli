@@ -205,9 +205,9 @@ func (d *Daemon) draftOf(a *Account, req Request) (compose.Draft, error) {
 	// body is Markdown — plain prose is valid Markdown too — and we render it.
 	// Either way draft.Body stays the text/plain part, untouched.
 	if raw := req.Str("body_html"); raw != "" {
-		draft.BodyHTML = raw
+		draft.BodyHTML = htmlmd.StyleCallouts(raw)
 		if draft.Body == "" {
-			draft.Body = htmlmd.HTMLToMarkdown(raw)
+			draft.Body = htmlmd.HTMLToMarkdown(draft.BodyHTML)
 		}
 	} else if draft.Body != "" {
 		draft.BodyHTML = htmlmd.MarkdownToHTML(draft.Body)

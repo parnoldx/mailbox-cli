@@ -288,18 +288,21 @@ func (d *Daemon) returnDue(ctx context.Context, a *Account) {
 		}
 		var refs []mailsync.Ref
 		for _, m := range members {
-			ref := mailsync.Ref{Folder: m.Placement.Folder, UID: m.Placement.UID}
-			switch m.Placement.Folder {
-			case routing.BoxAside, routing.BoxReplyLater:
-				refs = append(refs, ref)
-			case routing.BoxInbox:
+			if m.Placement.Folder == routing.BoxInbox {
 				// Already home.
-			default:
-				// A reply-watched Sent copy, or anywhere else a keyword landed:
-				// bringBack below Moves anything that isn't already in Inbox.
-				if bubble.KeywordOf(m.Placement.Flags) != "" {
-					refs = append(refs, ref)
-				}
+				continue
+			}
+			ref := mailsync.Ref{Folder: m.Placement.Folder, UID: m.Placement.UID}
+			// Only a member that still carries the keyword is due: one placement
+			// of the Thread landed in the "due" scan above, but a Thread can grow
+			// an Aside or Reply Later member later that has nothing to do with
+			// that bubble (the mail is filed there for its own reason, after an
+			// earlier bubble on this Thread already returned). Sweeping every
+			// Aside/Reply Later member unconditionally would drag that unrelated
+			// mail back to the Inbox the moment any stale bubble_at on the Thread
+			// next comes due.
+			if bubble.KeywordOf(m.Placement.Flags) != "" {
+				refs = append(refs, ref)
 			}
 		}
 		if len(refs) == 0 {

@@ -139,6 +139,130 @@ func TestMarkdownToHTMLListAndFence(t *testing.T) {
 	}
 }
 
+func TestMarkdownToHTMLCallout(t *testing.T) {
+	got := MarkdownToHTML("[!note]\nInvoice is already paid.")
+	for _, want := range []string{`data-callout="note"`, "Invoice is already paid", "#dbeafe", "<strong>Note</strong>"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("%q missing from %q", want, got)
+		}
+	}
+	if strings.Contains(got, "<blockquote>") {
+		t.Fatalf("callout should not be a quote: %q", got)
+	}
+}
+
+func TestMarkdownToHTMLCalloutCustomTitle(t *testing.T) {
+	got := MarkdownToHTML("[!warning] Don't send this\nInternal only.")
+	for _, want := range []string{`data-callout="warning"`, "Don't send this", "Internal only", "#fef3c7"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("%q missing from %q", want, got)
+		}
+	}
+}
+
+func TestCalloutRoundTrip(t *testing.T) {
+	src := "[!note]\nInvoice is already paid."
+	got := HTMLToMarkdown(MarkdownToHTML(src))
+	if got != src {
+		t.Fatalf("got %q want %q", got, src)
+	}
+}
+
+func TestCalloutRoundTripCustomTitle(t *testing.T) {
+	src := "[!tip] Pro tip\nUse the toolbar."
+	got := HTMLToMarkdown(MarkdownToHTML(src))
+	if got != src {
+		t.Fatalf("got %q want %q", got, src)
+	}
+}
+
+func TestMarkdownToHTMLCalloutAcceptsGitHubQuote(t *testing.T) {
+	got := MarkdownToHTML("> [!note]\n> still works")
+	if !strings.Contains(got, `data-callout="note"`) || !strings.Contains(got, "still works") {
+		t.Fatalf("got %q", got)
+	}
+	if strings.Contains(got, "<blockquote>") {
+		t.Fatalf("github-style callout should not stay a quote: %q", got)
+	}
+}
+
+func TestUnknownBangIsNotACallout(t *testing.T) {
+	got := MarkdownToHTML("[!unknown]\nstill a paragraph")
+	if strings.Contains(got, "data-callout") {
+		t.Fatalf("unknown marker became a callout: %q", got)
+	}
+}
+
+func TestStyleCalloutsRestoresEmailBox(t *testing.T) {
+	raw := `<p>hi</p><table><tbody><tr><td style="background-color: rgb(219, 234, 254);"><p><strong>Note</strong></p><p>paid</p></td></tr></tbody></table>`
+	got := StyleCallouts(raw)
+	for _, want := range []string{`data-callout="note"`, "border-left", "paid", "hi"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("%q missing from %q", want, got)
+		}
+	}
+}
+
+func TestStyleCalloutsLeavesOrdinaryHTML(t *testing.T) {
+	raw := `<p>Hallo <em>Welt</em></p>`
+	if got := StyleCallouts(raw); got != raw {
+		t.Fatalf("rewrote ordinary html: %q", got)
+	}
+}
+
+func TestStyleCalloutsRoundTripToMarkdown(t *testing.T) {
+	raw := `<table><tbody><tr><td style="background-color: rgb(219, 234, 254);"><p><strong>Note</strong></p><p>paid</p></td></tr></tbody></table>`
+	got := HTMLToMarkdown(StyleCallouts(raw))
+	if got != "[!note]\npaid" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestStyleCalloutsLexxyStrippedTable(t *testing.T) {
+	// Lexxy's TableCellNode transform clears cell backgrounds, so the
+	// exported HTML is a 1-cell table whose only signal is the "Note" label.
+	raw := `<table><colgroup><col></colgroup><tbody><tr><td><p><strong>Note</strong></p><p>Beachte das auf jeden Fall sonst wird es problematisch</p></td></tr></tbody></table>`
+	got := StyleCallouts(raw)
+	for _, want := range []string{`data-callout="note"`, "border-left", "Beachte das", "#dbeafe"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("%q missing from %q", want, got)
+		}
+	}
+}
+
+func TestStyleCalloutsCalloutBlockquote(t *testing.T) {
+	raw := `<p>intro</p><blockquote><p><strong>Warning</strong></p><p>Don't send this</p></blockquote>`
+	got := StyleCallouts(raw)
+	if !strings.Contains(got, `data-callout="warning"`) || !strings.Contains(got, "#fef3c7") {
+		t.Fatalf("blockquote was not promoted to a callout box: %q", got)
+	}
+	if strings.Contains(got, "<blockquote>") {
+		t.Fatalf("callout blockquote left in place: %q", got)
+	}
+	if !strings.Contains(got, "send this") || !strings.Contains(got, "intro") {
+		t.Fatalf("lost surrounding content: %q", got)
+	}
+}
+
+func TestHTMLToMarkdownCalloutBlockquote(t *testing.T) {
+	got := HTMLToMarkdown(`<blockquote><p><strong>Note</strong></p><p>Beachte das</p></blockquote>`)
+	if got != "[!note]\nBeachte das" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestOrdinaryQuoteIsNotACallout(t *testing.T) {
+	raw := `<blockquote><p>On Tuesday, Jamie wrote:</p><p>hello</p></blockquote>`
+	got := StyleCallouts(raw)
+	if got != raw {
+		t.Fatalf("rewrote an ordinary quote: %q", got)
+	}
+	md := HTMLToMarkdown(raw)
+	if !strings.Contains(md, "> hello") || strings.Contains(md, "[!note]") {
+		t.Fatalf("ordinary quote became a callout: %q", md)
+	}
+}
+
 func TestCleanMarkdownStripsInvisibleChars(t *testing.T) {
 	got := HTMLToMarkdown("<p>Hi\u200b there\u00ad</p>")
 	if got != "Hi there" {

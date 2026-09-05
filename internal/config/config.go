@@ -71,6 +71,9 @@ type Calendar struct {
 	Color    string `toml:"color"`
 	// Kind is "events" or "tasks"; empty means events.
 	Kind string `toml:"kind"`
+	// Email is the address whose meeting invites belong on this calendar. Empty
+	// means the calendar is only a choice when an RSVP cannot tell which one.
+	Email string `toml:"email"`
 }
 
 // Collections says which discovered Collections are not mirrored. The decision

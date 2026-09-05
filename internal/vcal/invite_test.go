@@ -34,6 +34,9 @@ func TestParseInviteReadsTheOrganizer(t *testing.T) {
 	if in.Method != "REQUEST" {
 		t.Errorf("method = %q", in.Method)
 	}
+	if len(in.Attendees) != 1 || in.Attendees[0] != "me@example.com" {
+		t.Errorf("attendees = %v", in.Attendees)
+	}
 }
 
 func TestReplyCarriesPARTSTATAndMETHOD(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -265,6 +266,10 @@ func runDaemon(systemdSocket bool) error {
 			Account: "primary", Mirror: m, Driver: davdrv.NewSet(clients...), Reconciler: d.DAV,
 		}
 		d.DAVHome = primaryDAV
+		if u, err := url.Parse(cfg.Account.DAVEndpoint); err == nil {
+			d.DAVHost = u.Host
+		}
+		d.CalendarEmail = calendarEmailMap(cfg)
 		d.TaskList = cfg.Account.TaskList
 		d.AddressBook = cfg.Account.AddressBook
 	} else {
@@ -353,6 +358,38 @@ func boxes(ctx context.Context, drv *imapdrv.Driver, watch []string) (mirrored, 
 		}
 	}
 	return firstOrder(mirrored), watched, nil
+}
+
+// calendarEmailMap is which of our addresses an invite belongs on. The account
+// address is the home CalDAV (empty name); a hand-added calendar with an
+// email, or a Secondary Account, names its calendar. Unmapped addresses make
+// the RSVP ask.
+func calendarEmailMap(cfg *config.Config) map[string]string {
+	out := map[string]string{}
+	if cfg.Account.Email != "" {
+		out[strings.ToLower(cfg.Account.Email)] = ""
+	}
+	for key, cal := range cfg.CalDAV {
+		if cal.Email == "" {
+			continue
+		}
+		name := cal.Name
+		if name == "" {
+			name = key
+		}
+		out[strings.ToLower(cal.Email)] = name
+	}
+	for name, a := range cfg.Secondary {
+		addr := strings.ToLower(a.Email)
+		if addr == "" {
+			continue
+		}
+		if _, ok := out[addr]; ok {
+			continue
+		}
+		out[addr] = name
+	}
+	return out
 }
 
 // sortedNames keeps the order of accounts stable across runs, so a log read

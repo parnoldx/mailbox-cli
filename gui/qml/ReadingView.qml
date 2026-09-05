@@ -43,11 +43,6 @@ Item {
             out.push({ act: "set-aside",   glyph: "", label: "Set aside",   accentGlyph: true })
             out.push({ act: "bubble",      glyph: "", label: "Bubble up",   accentGlyph: true })
         }
-        if (m && win.openMsg.invite) {
-            out.push({ act: "rsvp-accept",    glyph: "", label: "Accept",    accentGlyph: true })
-            out.push({ act: "rsvp-tentative", glyph: "", label: "Maybe",     accentGlyph: true })
-            out.push({ act: "rsvp-decline",   glyph: "", label: "Decline",   danger: true })
-        }
         if (m && scr) {
             out.push({ act: "route-inbox",   glyph: "", label: "Inbox", accentGlyph: true })
             out.push({ act: "route-block",   glyph: "", label: "Block", danger: true })
@@ -68,9 +63,6 @@ Item {
         else if (act === "route-inbox") Triage.dispatch(win, "inbox", id)
         else if (act === "route-block") Triage.dispatch(win, "block", id)
         else if (act === "set-aside") Triage.dispatch(win, "aside", id)
-        else if (act === "rsvp-accept") win.rsvpId(id, "accept", "Accepted")
-        else if (act === "rsvp-tentative") win.rsvpId(id, "tentative", "Tentative")
-        else if (act === "rsvp-decline") win.rsvpId(id, "decline", "Declined")
         else Triage.dispatch(win, act, id)   // reply-later | trash
     }
 

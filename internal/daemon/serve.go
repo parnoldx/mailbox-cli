@@ -208,10 +208,7 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 		if err != nil {
 			return resp.api(err.Error())
 		}
-		m := viewMessage(acct, folder, r, places)
-		if card := d.inviteCardOf(ctx, acct, folder, uid, r.Message.ID); card != nil {
-			m.Invite = card
-		}
+		m := d.withInvite(ctx, acct, folder, uid, r.Message.ID, r.To, viewMessage(acct, folder, r, places))
 		return resp.ok(m)
 
 	case "attachment list":
@@ -300,7 +297,8 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 		}
 		out := make([]message, 0, len(rows))
 		for _, row := range rows {
-			out = append(out, viewMessage(acct, row.Placement.Folder, row, nil))
+			m := viewMessage(acct, row.Placement.Folder, row, nil)
+			out = append(out, d.withInvite(ctx, acct, row.Placement.Folder, row.Placement.UID, row.Message.ID, row.To, m))
 		}
 		return resp.ok(out)
 
