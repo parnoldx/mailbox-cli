@@ -124,23 +124,7 @@ func (d *Daemon) answer(a *Account, draft *compose.Draft, parent mirror.Message,
 		draft.To = to
 	}
 	if all {
-		// Everyone the mail was addressed to, minus ourselves and minus the
-		// people already on the To line. Replying to all should not mean
-		// mailing yourself a copy every time.
-		var cc []compose.Address
-		for _, group := range []string{parent.To, parent.Cc} {
-			list, err := compose.ParseAddressList(group)
-			if err != nil {
-				continue
-			}
-			for _, addr := range list {
-				if sameAddress(addr.Addr, a.From.Addr) || containsAddress(draft.To, addr.Addr) || containsAddress(cc, addr.Addr) {
-					continue
-				}
-				cc = append(cc, addr)
-			}
-		}
-		draft.Cc = append(draft.Cc, cc...)
+		draft.Cc = append(draft.Cc, replyAllCc(a, parent, draft.To, draft.Cc)...)
 	}
 	if draft.Subject == "" {
 		draft.Subject = replySubject(parent.Subject)
@@ -155,6 +139,32 @@ func (d *Daemon) answer(a *Account, draft *compose.Draft, parent mirror.Message,
 	}
 	draft.References = append(append([]string(nil), chain...), parent.Key)
 	return nil
+}
+
+// replyAllCc is the Cc line a reply-to-all gets: everyone the parent was
+// addressed to, minus ourselves, minus the people already on `to`, and minus
+// whoever is on `have` already. Replying to all should not mean mailing
+// yourself a copy every time, nor anyone twice.
+//
+// Read twice: `reply --all` builds the outgoing Cc from it, and a Message read
+// carries it (reply_all) so a client can show who a reply-all would reach
+// before it is sent.
+func replyAllCc(a *Account, parent mirror.Message, to, have []compose.Address) []compose.Address {
+	var cc []compose.Address
+	for _, group := range []string{parent.To, parent.Cc} {
+		list, err := compose.ParseAddressList(group)
+		if err != nil {
+			continue
+		}
+		for _, addr := range list {
+			if sameAddress(addr.Addr, a.From.Addr) || containsAddress(to, addr.Addr) ||
+				containsAddress(have, addr.Addr) || containsAddress(cc, addr.Addr) {
+				continue
+			}
+			cc = append(cc, addr)
+		}
+	}
+	return cc
 }
 
 // replySubject prefixes Re: exactly once. "Re: Re: Re:" is somebody's client

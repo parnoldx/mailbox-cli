@@ -23,6 +23,9 @@ Item {
     property string forwardId: ""
     property string draftId: ""
     property bool replyAll: false
+    // Everyone else the parent was addressed to ({name, addr}), as the daemon
+    // works them out (message.reply_all). Reply all puts these on the Cc row.
+    property var replyAllCc: []
     property string replyFrom: ""
     property string baseSubject: ""
     property bool showCc: false
@@ -63,7 +66,7 @@ Item {
 
     function resetForm() {
         root.mode = "new"; root.replyId = ""; root.forwardId = ""; root.draftId = ""
-        root.replyAll = false
+        root.replyAll = false; root.replyAllCc = []
         root.replyFrom = ""; root.baseSubject = ""; root.showCc = false
         root.attachments = []
         toPills.recipients = []; ccPills.recipients = []; bccPills.recipients = []
@@ -76,18 +79,19 @@ Item {
         Qt.callLater(function () { toPills.focusInput() })
     }
 
-    // ctx: { id, all, from, subject, date, quote }
+    // ctx: { id, all, replyAllCc, from, subject, date, quote }
     function openReply(ctx) {
         resetForm()
         root.mode = "reply"
         root.replyId = String(ctx.id || "")
-        root.replyAll = !!ctx.all
+        root.replyAllCc = ctx.replyAllCc || []
         root.replyFrom = ctx.from || ""
         root.baseSubject = ctx.subject || ""
         if (ctx.from) {
             var a = Fmt.parseAddress(ctx.from)
             toPills.addRecipient(a.name, a.addr)
         }
+        root.setReplyAll(!!ctx.all)
         subjectField.text = /^re:/i.test(root.baseSubject) ? root.baseSubject : ("Re: " + root.baseSubject)
         // Seed the editor with an empty first line and the quoted parent, and
         // land the caret above it (atStart) so the reply is written on top.
@@ -96,6 +100,28 @@ Item {
             lexxy.setHtml(root._replyDoc(quote, root._attribution(ctx.from || "", ctx.date || "")), true)
         else
             Qt.callLater(function () { lexxy.focusStart() })
+    }
+
+    // Reply all is a toggle on the Cc row rather than a hidden flag: turning it
+    // on reveals Cc/Bcc and drops everyone else the parent reached in as pills,
+    // so who the answer goes to is on screen and editable before it is sent.
+    // Turning it off takes exactly those pills back out and leaves any
+    // hand-added Cc alone. The pills are what gets sent — collectArgs never
+    // passes --all, or the daemon would put its own list back.
+    function setReplyAll(on) {
+        root.replyAll = on
+        if (on) {
+            if (root.replyAllCc.length > 0) root.showCc = true
+            for (var i = 0; i < root.replyAllCc.length; i++)
+                ccPills.addRecipient(root.replyAllCc[i].name || "", root.replyAllCc[i].addr)
+            return
+        }
+        var drop = {}
+        for (var j = 0; j < root.replyAllCc.length; j++)
+            drop[String(root.replyAllCc[j].addr).trim().toLowerCase()] = true
+        ccPills.recipients = ccPills.recipients.filter(function (r) {
+            return !drop[String(r.email).trim().toLowerCase()]
+        })
     }
 
     // ctx: { id, subject } — a forward carries no recipient (forward needs
@@ -200,7 +226,6 @@ Item {
         }
         if (root.mode === "reply" && !forDraft) {
             a.positional = root.replyId
-            a.all = root.replyAll
         } else if (root.mode === "forward" && !forDraft) {
             // forward quotes the original server-side from its text/plain and
             // ignores body_html — send only the plain note.
@@ -227,7 +252,7 @@ Item {
         var n = toPills.recipients.length
         var who = n === 0 ? "" : (toPills.recipients[0].name || toPills.recipients[0].email)
         if (n > 1) who += " +" + (n - 1)
-        var verb = root.mode === "reply" ? "Reply to "
+        var verb = root.mode === "reply" ? (root.replyAll ? "Reply all to " : "Reply to ")
                  : root.mode === "forward" ? "Forward to "
                  : "Message to "
         return verb + who
@@ -236,7 +261,7 @@ Item {
     function snapshot(html) {
         return {
             mode: root.mode, replyId: root.replyId, forwardId: root.forwardId,
-            draftId: root.draftId, replyAll: root.replyAll,
+            draftId: root.draftId, replyAll: root.replyAll, replyAllCc: root.replyAllCc,
             replyFrom: root.replyFrom, baseSubject: root.baseSubject, showCc: root.showCc,
             to: toPills.recipients.slice(), cc: ccPills.recipients.slice(), bcc: bccPills.recipients.slice(),
             subject: subjectField.text, bodyHtml: html || "", attachments: root.attachments.slice()
@@ -245,7 +270,7 @@ Item {
     function restore(s) {
         root.mode = s.mode; root.replyId = s.replyId
         root.forwardId = s.forwardId || ""; root.draftId = s.draftId || ""
-        root.replyAll = s.replyAll
+        root.replyAll = s.replyAll; root.replyAllCc = s.replyAllCc || []
         root.replyFrom = s.replyFrom; root.baseSubject = s.baseSubject; root.showCc = s.showCc
         toPills.recipients = s.to; ccPills.recipients = s.cc; bccPills.recipients = s.bcc
         subjectField.text = s.subject; root.attachments = s.attachments
@@ -492,14 +517,35 @@ Item {
         anchors.topMargin: 18
         spacing: 12
 
-        // To, with the Cc/Bcc reveal sitting at its right edge.
+        // To, with the Reply all and Cc/Bcc toggles sitting at its right edge.
         Item {
+            id: toRow
             width: parent.width
             height: Math.max(34, toPills.implicitHeight)
+            // What the toggles at the right edge take off the To field.
+            readonly property real reserve: (root.showCc ? 0 : ccToggle.width + 12)
+                + (replyAllToggle.visible ? replyAllToggle.width + 10 : 0)
+
+            // Reply vs reply all is one decision made here, with the answer in
+            // front of you, rather than two chips in the reading view — see
+            // setReplyAll for what it does to the Cc row.
+            Chip {
+                id: replyAllToggle
+                // Nobody else on the parent, nothing to toggle.
+                visible: root.mode === "reply" && root.replyAllCc.length > 0
+                anchors.top: parent.top
+                anchors.right: root.showCc ? parent.right : ccToggle.left
+                anchors.rightMargin: root.showCc ? 0 : 12
+                height: 26; radius: 13
+                glyph: ""; label: "Reply all"
+                accentGlyph: true
+                on: root.replyAll
+                onClicked: root.setReplyAll(!root.replyAll)
+            }
             RecipientPills {
                 id: toPills
                 label: "To"
-                width: parent.width - (root.showCc ? 0 : ccToggle.width + 12)
+                width: parent.width - toRow.reserve
                 tabNext: function () { root.showCc ? ccPills.focusInput() : subjectField.forceActiveFocus() }
             }
             Rectangle {

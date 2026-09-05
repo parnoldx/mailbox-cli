@@ -313,6 +313,23 @@ func TestReplyAllCopiesEveryoneExceptUs(t *testing.T) {
 			t.Fatalf("recipients = %v", out.Recipients)
 		}
 	}
+
+	// The same people, offered on the read so a client can show the Cc a
+	// reply-all would carry before it goes: everyone but us and the sender,
+	// who belongs on the To line.
+	read := d.handle(context.Background(), Request{ID: "2", Cmd: []string{"message", "view"}, Args: map[string]any{
+		"positional": "11",
+	}})
+	if !read.OK {
+		t.Fatalf("message view: %s (%s)", read.Error, read.Code)
+	}
+	var cc []string
+	for _, a := range read.Data.(message).ReplyAll {
+		cc = append(cc, a.Addr)
+	}
+	if len(cc) != 2 || cc[0] != "kollege@example.com" || cc[1] != "assistenz@example.com" {
+		t.Fatalf("reply_all = %v", cc)
+	}
 }
 
 func TestASendSMTPRefusedIsQueuedNotLost(t *testing.T) {

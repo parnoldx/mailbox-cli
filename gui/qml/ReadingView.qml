@@ -36,8 +36,8 @@ Item {
                        glyph: root.allExpanded() ? "" : "",
                        label: root.allExpanded() ? "Collapse all" : "Expand all" })
         if (m && !scr) {
+            // One Reply. To-all is a toggle in the composer, not a second chip.
             out.push({ act: "reply",       glyph: "", label: "Reply",       accentGlyph: true })
-            out.push({ act: "reply-all",   glyph: "", label: "Reply all",   accentGlyph: true })
             out.push({ act: "forward",     glyph: "", label: "Forward",     accentGlyph: true })
             out.push({ act: "reply-later", glyph: "", label: "Reply later", accentGlyph: true })
             out.push({ act: "set-aside",   glyph: "", label: "Set aside",   accentGlyph: true })
@@ -56,7 +56,6 @@ Item {
         var id = win.openMsg ? win.openMsg.id : ""
         if (act === "toggle-all") win.setAllExpanded(!root.allExpanded())
         else if (act === "reply") win.startReply(false)
-        else if (act === "reply-all") win.startReply(true)
         else if (act === "forward") win.startForward()
         else if (act === "screener-move") scMoveMenu.popup(chipItem, 0, chipItem.height + 4)
         else if (act === "bubble") bubbleMenu.popup(chipItem, 0, chipItem.height + 4)

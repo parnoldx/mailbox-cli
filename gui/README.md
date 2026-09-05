@@ -62,10 +62,14 @@ instant you switch Omarchy themes.
   attachment is one of these inline images, the cards collapse behind a small
   `N inline images` toggle instead of a wall of chips.
 - **Compose.** The `Compose` button (top-right of a bucket), `c` or `Ctrl+N`
-  opens a full-screen composer; `Reply` / `Reply all` in a message's header open
-  it prefilled with the sender, an `Re:` subject and the thread id. Recipients
-  are tokenised pills with address-book autocomplete (`contact search`) and a
-  `+ Cc / Bcc` reveal at the right of the `To` row. The body is **Basecamp's
+  opens a full-screen composer; `Reply` in a message's header opens it prefilled
+  with the sender, an `Re:` subject and the thread id. Recipients are tokenised
+  pills with address-book autocomplete (`contact search`) and a `+ Cc / Bcc`
+  reveal at the right of the `To` row. Reply-to-all is a `Reply all` toggle next
+  to that reveal rather than a second header chip: switching it on opens the
+  Cc/Bcc rows and fills Cc with everyone else the parent reached (the read's
+  `reply_all`), so the recipients are on screen and editable before sending;
+  switching it off takes exactly those pills back out. The body is **Basecamp's
   [Lexxy](https://github.com/basecamp/lexxy)** editor — the real thing, its
   self-contained bundle vendored in `qml/vendor/lexxy.{js,css}` and inlined into
   a WebEngine document by `LexxyEditor.qml`, retinted to the live Omarchy

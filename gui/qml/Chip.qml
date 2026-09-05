@@ -18,6 +18,9 @@ Rectangle {
     property bool danger: false
     property bool accentGlyph: false
     property color glyphColor: Theme.textDim
+    // on: true → the chip is a two-state toggle that is currently on (filled
+    // accent, e.g. the composer's Reply all).
+    property bool on: false
 
     signal clicked()
 
@@ -25,6 +28,7 @@ Rectangle {
     radius: 10
     width: row.implicitWidth + 18
     color: !interactive ? Theme.selection
+         : on ? Theme.accent
          : hh.hovered ? (danger ? Theme.red : Theme.cardHover)
          : Theme.selection
     Behavior on color { ColorAnimation { duration: Theme.anim } }
@@ -39,7 +43,8 @@ Rectangle {
             text: chip.glyph
             font.family: Theme.fontFamily
             font.pixelSize: 10
-            color: chip.danger && hh.hovered ? "#ffffff"
+            color: chip.on ? Theme.onAccent
+                 : chip.danger && hh.hovered ? "#ffffff"
                  : chip.accentGlyph && hh.hovered ? Theme.accent
                  : chip.glyphColor
             Behavior on color { ColorAnimation { duration: Theme.anim } }
@@ -49,7 +54,8 @@ Rectangle {
             text: chip.label
             font.family: Theme.fontFamily
             font.pixelSize: 10
-            color: chip.danger && hh.hovered ? "#ffffff" : Theme.textDim
+            color: chip.on ? Theme.onAccent
+                 : chip.danger && hh.hovered ? "#ffffff" : Theme.textDim
             Behavior on color { ColorAnimation { duration: Theme.anim } }
         }
     }

@@ -104,6 +104,9 @@ ApplicationWindow {
         composer().openReply({
             id: win.openMsg.id,
             all: !!all,
+            // Who a reply-all would also reach, as the daemon works it out
+            // (message.reply_all) — the composer shows them as Cc pills.
+            replyAllCc: win.openMsg.reply_all || [],
             from: win.openMsg.from || "",
             subject: win.openMsg.subject || "",
             // The parent's own words, for the quote block the composer keeps

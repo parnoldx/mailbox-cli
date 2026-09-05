@@ -18,6 +18,7 @@ import (
 
 	"mailbox/internal/bubble"
 	"mailbox/internal/htmlmd"
+	compose "mailbox/internal/message"
 	"mailbox/internal/mirror"
 	"mailbox/internal/routing"
 	"mailbox/internal/sync/mailsync"
@@ -930,7 +931,11 @@ type message struct {
 	Flags      []string `json:"flags"`
 	Size       int64    `json:"size"`
 	MessageKey string   `json:"message_key"`
-	Body       string   `json:"body"`
+	// ReplyAll is the Cc line `reply --all` would build from this Message —
+	// everyone on its To/Cc except us — so a client can show the recipients
+	// before the reply goes out. See replyAllCc.
+	ReplyAll []compose.Address `json:"reply_all,omitempty"`
+	Body     string            `json:"body"`
 	BodyFormat string   `json:"body_format"` // "plain" | "markdown" | "none"
 	// BodyHTML is the raw HTML part, untouched, for a client that renders it
 	// itself (a desktop reading pane). Empty when the message had no HTML part.
@@ -955,6 +960,9 @@ func viewMessage(a *Account, folder string, r mirror.Row, places []mirror.Placem
 		Body: body, BodyFormat: format, BodyState: r.BodyState,
 		BodyHTML: r.Message.TextHTML,
 		Trackers: trackers.InHTML(r.Message.TextHTML),
+	}
+	if to, err := compose.ParseAddressList(r.From); err == nil {
+		m.ReplyAll = replyAllCc(a, r.Message, to, nil)
 	}
 	if !r.Message.Date.IsZero() {
 		m.Date = r.Message.Date.Format(time.RFC3339)
