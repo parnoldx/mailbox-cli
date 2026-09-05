@@ -8,11 +8,14 @@ import "Model.js" as Model
 // Panel.qml — Dropdown popup panel for Mailbox email notifications and screening.
 //
 // Features:
-// - New for you (unread) vs Previously seen tabs
-// - Dedicated in-panel Screener with 1-click triage (Inbox, Block, Trash)
+// - One reverse-chron stream of everything new: unread mail and screener
+//   senders interleaved. Read mail is not shown — that is the desktop client.
+// - All / Mail / Screener chips filter the one list; they are not modes you
+//   have to pick before the panel can answer "did anything arrive?"
+// - 1-click screener triage (Inbox, Block, Trash) inline on the row
 // - Sender initials in deterministic colored avatars
 // - Account filtering with per-account unread badges
-// - Keyboard navigation (S, U, P, I, T, B, R, N, arrows, Enter, Esc)
+// - Keyboard navigation (1/2/3, U, S, I, B, T, A, M, R, arrows, Enter, Esc)
 // - Flip settings page for open command, toast alerts, and bar visibility
 Panel {
   id: root
@@ -36,8 +39,9 @@ Panel {
   property bool cursorActive: false
   property double nowMs: Date.now()
   property double openedAtMs: 0
+  property double closedAtMs: 0
   property string accountFilter: ""
-  property string tabFilter: "unread" // "unread" | "previous" | "screener"
+  property string filterMode: "all" // "all" | "mail" | "screener"
   property bool settingsOpen: false
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
@@ -45,11 +49,10 @@ Panel {
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
-  readonly property var filteredMessages: Model.filterMessages(service.messages, accountFilter, tabFilter)
-  readonly property var screenerCards: Model.screenerCards(service.screenerList, avatarPalette.length)
-
-  // Whichever list the cursor and the keyboard actions are currently walking.
-  readonly property var activeList: tabFilter === "screener" ? screenerCards : filteredMessages
+  // The one list. Everything — cursor, keys, scrolling — walks this.
+  readonly property var feed: Model.feedItems(service.messages, service.screenerList,
+                                              accountFilter, filterMode, avatarPalette.length)
+  readonly property int unreadShown: Model.filterMessages(service.messages, accountFilter, "unread").length
 
   readonly property var avatarPalette: [
     "#E06C75", "#98C379", "#E5C07B", "#61AFEF",
@@ -115,8 +118,8 @@ Panel {
     if (panelFlick) panelFlick.contentY = 0
   }
 
-  function setTab(tab) {
-    tabFilter = tab
+  function setMode(mode) {
+    filterMode = mode
     resetSelection()
   }
 
@@ -163,8 +166,11 @@ Panel {
   // the click that opened the panel itself: the bar button's press opens the
   // popup immediately, so the matching release can land on this icon if it
   // ends up under the still-down pointer, firing a phantom click here too.
+  // Same phantom on close: the bar button's press closes the panel and the
+  // release lands here, so ignore clicks shortly after a close as well.
   function openGui() {
     if (Date.now() - root.openedAtMs < 300) return
+    if (Date.now() - root.closedAtMs < 300) return
     if (root.bar && typeof root.bar.run === "function") {
       root.bar.run("mailbox-gui")
     } else {
@@ -174,11 +180,16 @@ Panel {
   }
 
   function selectedItem() {
-    return selectedIndex >= 0 && selectedIndex < activeList.length ? activeList[selectedIndex] : null
+    return selectedIndex >= 0 && selectedIndex < feed.length ? feed[selectedIndex] : null
+  }
+
+  function selectedOfKind(kind) {
+    var item = selectedItem()
+    return item && item.kind === kind ? item : null
   }
 
   function moveSelection(delta) {
-    var count = activeList.length
+    var count = feed.length
     if (count === 0) return
     if (!cursorActive) {
       selectedIndex = 0
@@ -189,16 +200,14 @@ Panel {
     scrollSelectionIntoView()
   }
 
+  // Enter reads the item in both cases — a screener row opens that sender's
+  // newest mail. Routing a sender is never the accidental key; i / b only.
   function activateSelection() {
-    var item = selectedItem()
-    if (!item) return
-    // Default action on a screener item is to route the sender to the inbox.
-    if (tabFilter === "screener") service.routeSender(item.address, "inbox")
-    else openMail(item)
+    openMail(selectedItem())
   }
 
   function routeSelected(destination) {
-    var item = tabFilter === "screener" ? selectedItem() : null
+    var item = selectedOfKind("screener")
     if (item) service.routeSender(item.address, destination)
   }
 
@@ -208,20 +217,19 @@ Panel {
   }
 
   function setAsideSelected() {
-    var item = tabFilter === "screener" ? null : selectedItem()
+    var item = selectedOfKind("mail")
     if (item) service.setAside(item.id)
   }
 
   function markSeenSelected() {
-    var item = tabFilter === "screener" ? null : selectedItem()
+    var item = selectedOfKind("mail")
     if (item) service.setSeen(item.id, !item.seen)
   }
 
   function scrollSelectionIntoView() {
     // Delegates are parented to the Column, not to the Repeater, so ask the
     // Repeater for them by index rather than walking its children.
-    var repeater = tabFilter === "screener" ? screenerRepeater : mailRepeater
-    var wrapper = selectedIndex >= 0 ? repeater.itemAt(selectedIndex) : null
+    var wrapper = selectedIndex >= 0 ? feedRepeater.itemAt(selectedIndex) : null
     if (!wrapper) return
     Qt.callLater(function() {
       if (!wrapper || !panelFlick) return
@@ -244,6 +252,8 @@ Panel {
     if (panelFlick) panelFlick.contentY = 0
     service.refresh()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+  } else {
+    closedAtMs = Date.now()
   }
 
   PointerMoveGate {
@@ -283,16 +293,18 @@ Panel {
       }
       onTextKey: function(text) {
         var t = String(text || "").toLowerCase()
+        // Actions dispatch on the selected row's kind, not on a global mode,
+        // so the same keys work in the mixed list.
         if (t === "r") service.refresh()
-        else if (t === "1" || t === "u") root.setTab("unread")
-        else if (t === "2" || t === "p") root.setTab("previous")
-        else if (t === "3" || t === "s") root.setTab("screener")
+        else if (t === "1") root.setMode("all")
+        else if (t === "2" || t === "u") root.setMode("mail")
+        else if (t === "3" || t === "s") root.setMode("screener")
         else if (t === ",") root.settingsOpen = !root.settingsOpen
         else if (t === "t") root.trashSelected()
-        else if (t === "a" && root.tabFilter !== "screener") root.setAsideSelected()
-        else if (t === "m" && root.tabFilter !== "screener") root.markSeenSelected()
-        else if (t === "i" && root.tabFilter === "screener") root.routeSelected("inbox")
-        else if (t === "b" && root.tabFilter === "screener") root.routeSelected("block")
+        else if (t === "a") root.setAsideSelected()
+        else if (t === "m") root.markSeenSelected()
+        else if (t === "i") root.routeSelected("inbox")
+        else if (t === "b") root.routeSelected("block")
       }
 
       ColumnLayout {
@@ -388,43 +400,8 @@ Panel {
             foreground: root.foreground
           }
 
-          // Screener Alert Banner (when mail is waiting in screener)
-          Rectangle {
-            id: screenerAlertBanner
-            visible: !root.settingsOpen && service.screenerCount > 0 && root.tabFilter !== "screener"
-            width: parent.width
-            height: Style.space(32)
-            radius: Style.space(6)
-            color: Qt.rgba(root.urgent.r, root.urgent.g, root.urgent.b, 0.15)
-            border.color: Qt.rgba(root.urgent.r, root.urgent.g, root.urgent.b, 0.4)
-            border.width: 1
-
-            MouseArea {
-              anchors.fill: parent
-              cursorShape: Qt.PointingHandCursor
-              onClicked: root.setTab("screener")
-            }
-
-            Row {
-              anchors.centerIn: parent
-              spacing: Style.space(6)
-
-              Text {
-                text: "󰍉"
-                color: root.urgent
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.body
-              }
-
-              Text {
-                text: service.screenerCount + " sender" + (service.screenerCount === 1 ? "" : "s") + " waiting to be screened"
-                color: root.foreground
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.bodySmall
-                font.bold: true
-              }
-            }
-          }
+          // No screener alert banner: screener senders now sit in the stream
+          // itself, so pointing at them from the header would say it twice.
 
           // Account Dropdown (if multiple accounts)
           Dropdown {
@@ -444,25 +421,27 @@ Panel {
             }
           }
 
-          // Tab Bar. The screener tab wears the urgent colour while senders
-          // are waiting; the other two are plain.
+          // Filter chips over the one stream — narrowing, not modes. "All" is
+          // the default and is what the panel opens on, so arriving here always
+          // answers "what is new?" without a choice first. The screener chip
+          // wears the urgent colour while senders are waiting.
           Row {
             visible: !root.settingsOpen
             spacing: Style.space(4)
 
             Repeater {
               model: [
-                { tab: "unread", label: "NEW FOR YOU" },
-                { tab: "previous", label: "PREVIOUSLY SEEN" },
-                { tab: "screener", label: service.screenerCount > 0 ? "SCREENER (" + service.screenerCount + ")" : "SCREENER" }
+                { mode: "all", label: "ALL" },
+                { mode: "mail", label: root.unreadShown > 0 ? "MAIL (" + root.unreadShown + ")" : "MAIL" },
+                { mode: "screener", label: service.screenerCount > 0 ? "SCREENER (" + service.screenerCount + ")" : "SCREENER" }
               ]
 
               Button {
                 required property var modelData
-                readonly property bool isScreener: modelData.tab === "screener"
+                readonly property bool isScreener: modelData.mode === "screener"
 
                 text: modelData.label
-                selected: root.tabFilter === modelData.tab
+                selected: root.filterMode === modelData.mode
                 foreground: isScreener && service.screenerCount > 0 ? root.urgent : root.foreground
                 background: "transparent"
                 accent: isScreener ? root.urgent : Color.accent
@@ -470,7 +449,7 @@ Panel {
                 fontSize: Style.font.caption
                 horizontalPadding: Style.space(8)
                 verticalPadding: Style.space(2)
-                onClicked: root.setTab(modelData.tab)
+                onClicked: root.setMode(modelData.mode)
               }
             }
           }
@@ -547,202 +526,62 @@ Panel {
                 }
               }
 
-              // 2. SCREENER VIEW
+              // 2. THE FEED — unread mail and screener senders in one
+              // reverse-chron stream. One delegate renders both kinds: a
+              // screener row is a mail row plus a hairline, a SCREENER tag and
+              // its routing buttons, so a decision never looks like a whole
+              // different species of card mid-scroll.
               Column {
-                id: screenerView
-                visible: !root.settingsOpen && root.tabFilter === "screener"
-                width: parent.width
-                spacing: Style.space(8)
-
-                Text {
-                  visible: root.screenerCards.length === 0
-                  width: parent.width
-                  horizontalAlignment: Text.AlignHCenter
-                  topPadding: Style.space(24)
-                  bottomPadding: Style.space(24)
-                  text: "No senders waiting in Screener."
-                  color: root.dim
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.body
-                }
-
-                Repeater {
-                  id: screenerRepeater
-                  model: root.screenerCards
-
-                  Rectangle {
-                    id: screenerCard
-                    required property var modelData
-                    required property int index
-
-                    width: contentColumn.width
-                    implicitHeight: cardContent.implicitHeight + Style.space(16)
-                    radius: Style.space(8)
-                    color: index === root.selectedIndex && root.cursorActive
-                      ? Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.12)
-                      : Color.popups.background
-                    border.color: index === root.selectedIndex && root.cursorActive
-                      ? Color.accent
-                      : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.1)
-                    border.width: 1
-
-                    Column {
-                      id: cardContent
-                      anchors.left: parent.left
-                      anchors.right: parent.right
-                      anchors.top: parent.top
-                      anchors.margins: Style.space(8)
-                      spacing: Style.space(8)
-
-                      // Top Row: Avatar + Info + Count & Time
-                      RowLayout {
-                        width: parent.width
-                        spacing: Style.space(8)
-
-                        Avatar {
-                          item: screenerCard.modelData
-                          diameter: Style.space(32)
-                          fontSize: Style.font.bodySmall
-                        }
-
-                        Column {
-                          Layout.fillWidth: true
-                          spacing: Style.space(2)
-
-                          Text {
-                            text: screenerCard.modelData.name
-                            color: root.foreground
-                            font.family: root.fontFamily
-                            font.pixelSize: Style.font.body
-                            font.bold: true
-                            elide: Text.ElideRight
-                          }
-
-                          Text {
-                            text: screenerCard.modelData.address
-                            color: root.dim
-                            font.family: root.fontFamily
-                            font.pixelSize: Style.font.caption
-                            elide: Text.ElideRight
-                          }
-                        }
-
-                        Column {
-                          spacing: Style.space(2)
-                          Text {
-                            anchors.right: parent.right
-                            text: screenerCard.modelData.count + " email" + (screenerCard.modelData.count === 1 ? "" : "s")
-                            color: root.urgent
-                            font.family: root.fontFamily
-                            font.pixelSize: Style.font.caption
-                            font.bold: true
-                          }
-                          Text {
-                            anchors.right: parent.right
-                            text: screenerCard.modelData.time
-                            color: root.dim
-                            font.family: root.fontFamily
-                            font.pixelSize: Style.font.caption
-                          }
-                        }
-                      }
-
-                      // Subject line
-                      Text {
-                        width: parent.width
-                        text: screenerCard.modelData.subject
-                        color: root.foreground
-                        font.family: root.fontFamily
-                        font.pixelSize: Style.font.bodySmall
-                        elide: Text.ElideRight
-                      }
-
-                      // Action buttons: Inbox, Block, Trash. Feed and Paper
-                      // Trail are deliberately not here — this widget only
-                      // screens a sender in or out; sorting them into a bucket
-                      // is a decision for the full client.
-                      Row {
-                        spacing: Style.space(4)
-
-                        Button {
-                          text: "📥 INBOX (I)"
-                          foreground: root.foreground
-                          background: Color.accent
-                          fontFamily: root.fontFamily
-                          fontSize: Style.font.caption
-                          horizontalPadding: Style.space(6)
-                          verticalPadding: Style.space(4)
-                          onClicked: service.routeSender(screenerCard.modelData.address, "inbox")
-                        }
-
-                        Button {
-                          text: "🚫 BLOCK (B)"
-                          foreground: "#FFFFFF"
-                          background: root.urgent
-                          fontFamily: root.fontFamily
-                          fontSize: Style.font.caption
-                          horizontalPadding: Style.space(6)
-                          verticalPadding: Style.space(4)
-                          onClicked: service.routeSender(screenerCard.modelData.address, "block")
-                        }
-
-                        Button {
-                          text: "🗑 TRASH (T)"
-                          foreground: root.foreground
-                          background: Qt.darker(root.urgent, 1.5)
-                          fontFamily: root.fontFamily
-                          fontSize: Style.font.caption
-                          horizontalPadding: Style.space(6)
-                          verticalPadding: Style.space(4)
-                          onClicked: service.trashMessage(screenerCard.modelData.id)
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-
-              // 3. MAIL LIST VIEW (Unread & Previous)
-              Column {
-                id: mailListView
-                visible: !root.settingsOpen && root.tabFilter !== "screener"
+                id: feedView
+                visible: !root.settingsOpen
                 width: parent.width
                 spacing: Style.space(4)
 
                 Text {
-                  visible: root.filteredMessages.length === 0
+                  visible: root.feed.length === 0
                   width: parent.width
                   horizontalAlignment: Text.AlignHCenter
                   topPadding: Style.space(24)
                   bottomPadding: Style.space(24)
-                  text: root.tabFilter === "unread" ? "You're all caught up." : "No previously seen email."
+                  text: root.filterMode === "screener"
+                    ? "No senders waiting in Screener."
+                    : "You're all caught up."
                   color: root.dim
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.body
                 }
 
                 Repeater {
-                  id: mailRepeater
-                  model: root.filteredMessages
+                  id: feedRepeater
+                  model: root.feed
 
                   Rectangle {
-                    id: mailRow
+                    id: feedRow
                     required property var modelData
                     required property int index
+
+                    readonly property bool isScreener: modelData.kind === "screener"
+                    readonly property bool current: index === root.selectedIndex && root.cursorActive
+                    readonly property bool showActions: rowHover.containsMouse || current
 
                     width: contentColumn.width
                     implicitHeight: rowLayout.implicitHeight + Style.space(12)
                     radius: Style.space(6)
-                    color: index === root.selectedIndex && root.cursorActive
+                    color: current
                       ? Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.12)
                       : (rowHover.containsMouse ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.05) : "transparent")
+                    border.width: isScreener ? 1 : 0
+                    border.color: Qt.rgba(root.urgent.r, root.urgent.g, root.urgent.b, current ? 0.6 : 0.25)
 
+                    // Click reads it, both kinds: a screener row opens that
+                    // sender's newest mail in the desktop client. Routing is
+                    // only ever an explicit button.
                     MouseArea {
                       id: rowHover
                       anchors.fill: parent
                       hoverEnabled: true
                       cursorShape: Qt.PointingHandCursor
-                      onClicked: root.openMail(mailRow.modelData)
+                      onClicked: root.openMail(feedRow.modelData)
                     }
 
                     RowLayout {
@@ -753,28 +592,39 @@ Panel {
                       anchors.margins: Style.space(6)
                       spacing: Style.space(10)
 
-                      Avatar { item: mailRow.modelData }
+                      Avatar { item: feedRow.modelData }
 
-                      // Main Content
                       Column {
                         Layout.fillWidth: true
                         spacing: Style.space(2)
 
                         RowLayout {
                           width: parent.width
+                          spacing: Style.space(6)
 
                           Text {
                             Layout.fillWidth: true
-                            text: mailRow.modelData.name
+                            text: feedRow.modelData.name
                             color: root.foreground
                             font.family: root.fontFamily
                             font.pixelSize: Style.font.bodySmall
-                            font.bold: !mailRow.modelData.seen
+                            font.bold: feedRow.isScreener || !feedRow.modelData.seen
                             elide: Text.ElideRight
                           }
 
                           Text {
-                            text: Model.formatRelativeTime(mailRow.modelData.date, root.nowMs)
+                            visible: feedRow.isScreener
+                            text: "SCREENER"
+                            color: root.urgent
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                            font.bold: true
+                          }
+
+                          Text {
+                            text: feedRow.modelData.sortMs > 0
+                              ? Model.formatRelativeTime(feedRow.modelData.sortMs, root.nowMs)
+                              : ""
                             color: root.dim
                             font.family: root.fontFamily
                             font.pixelSize: Style.font.caption
@@ -783,44 +633,97 @@ Panel {
 
                         Text {
                           width: parent.width
-                          text: mailRow.modelData.subject
+                          text: feedRow.modelData.subject
                           color: root.foreground
                           font.family: root.fontFamily
                           font.pixelSize: Style.font.body
-                          font.bold: !mailRow.modelData.seen
+                          font.bold: feedRow.isScreener || !feedRow.modelData.seen
                           elide: Text.ElideRight
+                        }
+
+                        // Screener rows earn a third line: you are deciding
+                        // about a sender, so the address and how much they
+                        // have already sent are the decision, not decoration.
+                        Text {
+                          visible: feedRow.isScreener
+                          width: parent.width
+                          text: feedRow.modelData.address + "  ·  " + feedRow.modelData.count
+                            + " email" + (feedRow.modelData.count === 1 ? "" : "s")
+                          color: root.dim
+                          font.family: root.fontFamily
+                          font.pixelSize: Style.font.caption
+                          elide: Text.ElideRight
+                        }
+
+                        // Screening actions: Inbox, Block, Trash. Feed and
+                        // Paper Trail are deliberately not here — this widget
+                        // only screens a sender in or out; sorting them into a
+                        // bucket is a decision for the full client.
+                        Row {
+                          visible: feedRow.isScreener && feedRow.showActions
+                          topPadding: Style.space(4)
+                          spacing: Style.space(4)
+
+                          Button {
+                            text: "📥 INBOX (I)"
+                            foreground: root.foreground
+                            background: Color.accent
+                            fontFamily: root.fontFamily
+                            fontSize: Style.font.caption
+                            horizontalPadding: Style.space(6)
+                            verticalPadding: Style.space(4)
+                            onClicked: service.routeSender(feedRow.modelData.address, "inbox")
+                          }
+
+                          Button {
+                            text: "🚫 BLOCK (B)"
+                            foreground: "#FFFFFF"
+                            background: root.urgent
+                            fontFamily: root.fontFamily
+                            fontSize: Style.font.caption
+                            horizontalPadding: Style.space(6)
+                            verticalPadding: Style.space(4)
+                            onClicked: service.routeSender(feedRow.modelData.address, "block")
+                          }
+
+                          Button {
+                            text: "🗑 TRASH (T)"
+                            foreground: root.foreground
+                            background: Qt.darker(root.urgent, 1.5)
+                            fontFamily: root.fontFamily
+                            fontSize: Style.font.caption
+                            horizontalPadding: Style.space(6)
+                            verticalPadding: Style.space(4)
+                            onClicked: service.trashMessage(feedRow.modelData.id)
+                          }
                         }
                       }
 
-                      // Quick Action Buttons on Hover
+                      // Mail quick actions, on hover or under the cursor.
                       Row {
-                        visible: rowHover.containsMouse || (mailRow.index === root.selectedIndex && root.cursorActive)
+                        visible: !feedRow.isScreener && feedRow.showActions
                         spacing: Style.space(2)
 
-                        // Mark read (only on unread mail)
                         PanelActionButton {
-                          visible: !mailRow.modelData.seen
                           iconText: "󰄬"
                           foreground: root.foreground
                           tooltipText: "Mark read"
-                          onClicked: service.setSeen(mailRow.modelData.id, true)
+                          onClicked: service.setSeen(feedRow.modelData.id, true)
                         }
 
-                        // Set aside
                         PanelActionButton {
                           iconText: "󰔛"
                           foreground: root.foreground
                           tooltipText: "Set aside"
-                          onClicked: service.setAside(mailRow.modelData.id)
+                          onClicked: service.setAside(feedRow.modelData.id)
                         }
 
-                        // Move to trash
                         PanelActionButton {
                           iconText: "󰆴"
                           foreground: root.foreground
                           hoverColor: root.urgent
                           tooltipText: "Move to Trash"
-                          onClicked: service.trashMessage(mailRow.modelData.id)
+                          onClicked: service.trashMessage(feedRow.modelData.id)
                         }
                       }
                     }

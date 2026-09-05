@@ -62,6 +62,32 @@ test("filterMessages filters by account and seen status", () => {
   assert.deepEqual(unreadWork.map(m => m.id), ["3"])
 })
 
+test("feedItems interleaves unread mail and screener senders, newest first", () => {
+  const msgs = [
+    { id: "m1", account: "primary", seen: false, subject: "M1", from: "a@x.com", date: "2026-08-30 09:00" },
+    { id: "m2", account: "primary", seen: true, subject: "read", from: "b@x.com", date: "2026-08-30 15:00" },
+    { id: "m3", account: "work", seen: false, subject: "M3", from: "c@x.com", date: "2026-08-30 12:00" }
+  ]
+  const screener = [
+    { address: "news@sub.com", name: "Digest", count: 2, newest: "2026-08-30 10:00", subject: "#42", id: "Screener:1" }
+  ]
+
+  const all = Model.feedItems(msgs, screener, "", "all", 8)
+  assert.deepEqual(all.map(i => i.id), ["m3", "Screener:1", "m1"])
+  assert.deepEqual(all.map(i => i.kind), ["mail", "screener", "mail"])
+
+  // Read mail never shows up in the stream, in any mode.
+  assert.equal(all.some(i => i.id === "m2"), false)
+
+  assert.deepEqual(Model.feedItems(msgs, screener, "", "mail", 8).map(i => i.id), ["m3", "m1"])
+  assert.deepEqual(Model.feedItems(msgs, screener, "", "screener", 8).map(i => i.id), ["Screener:1"])
+  assert.deepEqual(Model.feedItems(msgs, screener, "work", "all", 8).map(i => i.id), ["m3", "Screener:1"])
+
+  // Undated entries sort last instead of jumping to the top.
+  const undated = Model.feedItems([{ id: "m9", seen: false, from: "d@x.com" }], screener, "", "all", 8)
+  assert.deepEqual(undated.map(i => i.id), ["Screener:1", "m9"])
+})
+
 test("screenerCards shapes daemon screener response into display cards", () => {
   const raw = [
     {

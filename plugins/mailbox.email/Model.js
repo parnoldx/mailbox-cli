@@ -161,6 +161,41 @@ function filterMessages(messages, accountFilter, stateFilter) {
   return out
 }
 
+// One reverse-chron stream of everything new: unread mail and screener senders
+// waiting on a decision, interleaved. Replaces the old unread/previous/screener
+// tabs — read mail is not shown here at all, that is the desktop client's job.
+// `mode` is "all" | "mail" | "screener". Each entry carries a `kind` so a single
+// row delegate can render both, and a `sortMs` so both sort on one axis.
+function feedItems(messages, screenerData, accountFilter, mode, paletteLength) {
+  var m = String(mode || "all")
+  var out = []
+
+  if (m !== "screener") {
+    var msgs = filterMessages(messages, accountFilter, "unread")
+    for (var i = 0; i < msgs.length; i++) {
+      out.push(feedEntry(msgs[i], "mail", parseTimestamp(msgs[i].date)))
+    }
+  }
+  if (m !== "mail") {
+    var cards = screenerCards(screenerData, paletteLength)
+    for (var j = 0; j < cards.length; j++) {
+      out.push(feedEntry(cards[j], "screener", parseTimestamp(cards[j].rawTime)))
+    }
+  }
+
+  // Undated entries sort last rather than jumping to the top of the stream.
+  out.sort(function(a, b) { return b.sortMs - a.sortMs })
+  return out
+}
+
+function feedEntry(item, kind, sortMs) {
+  var out = {}
+  for (var key in item) out[key] = item[key]
+  out.kind = kind
+  out.sortMs = typeof sortMs === "number" && isFinite(sortMs) ? sortMs : 0
+  return out
+}
+
 function screenerCards(screenerData, paletteLength) {
   var list = Array.isArray(screenerData) ? screenerData : []
   var paletteLen = paletteLength || 8
@@ -231,6 +266,7 @@ if (typeof module !== "undefined" && module.exports) {
     parseTimestamp: parseTimestamp,
     formatRelativeTime: formatRelativeTime,
     filterMessages: filterMessages,
+    feedItems: feedItems,
     screenerCards: screenerCards,
     accountFilterOptions: accountFilterOptions,
     shellQuote: shellQuote,

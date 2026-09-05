@@ -65,7 +65,7 @@ test("screener cards are properly prepared for 1-click routing", () => {
   assert.equal(cards[1].initials, "DS")
 })
 
-test("inbox messages split into the unread and previously-seen tabs", () => {
+test("inbox messages split by seen state (the panel only streams the unread half)", () => {
   const msgs = MOCK_MESSAGES.map(m => ({
     id: m.id,
     account: "primary",

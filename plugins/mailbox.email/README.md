@@ -13,20 +13,26 @@ A Quickshell bar widget and dropdown panel for Omarchy, powered directly by the 
   - Plays the system new-email notification sound effect when a new message arrives while running (silent on initial startup/reloads).
   - Optional desktop toast notifications.
   - Both audio and visual notifications can be toggled in Settings.
-- **Dropdown Email & Screener Panel**:
+- **Dropdown Email & Screener Panel** — one stream, not tabs:
+  - Everything **new** in one reverse-chron list: unread mail and screener
+    senders interleaved in the order they arrived. Read mail is never listed —
+    that is the desktop client's job.
+  - `ALL` / `MAIL` / `SCREENER` chips narrow that one list. `ALL` is the
+    default, so opening the panel answers "what's new?" with no mode choice.
+  - Screener rows are the same row shape as mail, marked with a hairline, a
+    `SCREENER` tag and a sender/volume line — a decision, not a different card.
   - Account switcher with per-account unread count badges.
-  - Split tabs: `New for you` (unread), `Previously seen` (read), and `Screener`.
   - Colored sender avatars with initials deterministically derived from sender addresses.
   - 1-click action buttons on hover/selection:
-    - **In "New for you"**: `󰄬` Mark read, `󰔛` Set aside, `󰆴` Move to Trash.
-    - **In "Previously seen"**: `󰔛` Set aside, `󰆴` Move to Trash.
+    - **Mail**: `󰄬` Mark read, `󰔛` Set aside, `󰆴` Move to Trash.
+    - **Screener**: 📥 Inbox, 🚫 Block, 🗑 Trash.
 - **Opens in the desktop client**: Clicking a message (or <kbd>Enter</kbd>) hands
   it to the mailbox desktop client — `mailbox-gui --open <id>`. That is the
   only mail client we ship, so it is the only target; there is no setting.
 
 - **In-Panel Screening**:
-  - Dedicated screener tab listing pending senders waiting for routing decisions.
-  - One-click screening actions on each sender card — screen a sender **in** or
+  - Pending senders appear inline in the stream, in arrival order, alongside mail.
+  - One-click screening actions on each sender row — screen a sender **in** or
     **out**, nothing more; sorting mail into Feed / Paper Trail is a decision for
     the full desktop client:
     - 📥 **Inbox** (`I`): Route future mail to Inbox and move existing Screener mail to Inbox.
@@ -42,21 +48,25 @@ A Quickshell bar widget and dropdown panel for Omarchy, powered directly by the 
 - <kbd>Super</kbd> + <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>E</kbd>: Open / toggle the Mailbox panel from anywhere.
 
 ### In-Panel Navigation & Actions
+
+Action keys apply to whatever the cursor is on, so they work anywhere in the
+mixed stream: mail keys are ignored on a screener row and vice versa.
+
 | Key | Context | Action |
 |---|---|---|
-| <kbd>1</kbd> / <kbd>U</kbd> | Global | Switch to **New for you** (Unread tab) |
-| <kbd>2</kbd> / <kbd>P</kbd> | Global | Switch to **Previously seen** (Read tab) |
-| <kbd>3</kbd> / <kbd>S</kbd> | Global | Switch to **Screener** tab |
+| <kbd>1</kbd> | Global | Chip: **All** (mail + screener) |
+| <kbd>2</kbd> / <kbd>U</kbd> | Global | Chip: **Mail** (unread only) |
+| <kbd>3</kbd> / <kbd>S</kbd> | Global | Chip: **Screener** only |
 | <kbd>R</kbd> | Global | Refresh mail from daemon |
 | <kbd>,</kbd> (comma) | Global | Toggle Settings view |
 | <kbd>Escape</kbd> | Global | Close panel or exit settings |
-| <kbd>j</kbd> / <kbd>k</kbd> / <kbd>↑</kbd> / <kbd>↓</kbd> | List | Navigate messages / screener cards |
-| <kbd>Enter</kbd> / <kbd>Space</kbd> | List | Open selected email (in the mailbox desktop client) |
-| <kbd>T</kbd> | List / Screener | **Move to Trash** |
-| <kbd>A</kbd> | Mail List | **Set aside** (read later pile) |
-| <kbd>M</kbd> | Mail List | **Toggle read / unread** |
-| <kbd>I</kbd> | Screener | Route sender to **Inbox** |
-| <kbd>B</kbd> | Screener | **Block** sender |
+| <kbd>j</kbd> / <kbd>k</kbd> / <kbd>↑</kbd> / <kbd>↓</kbd> | Stream | Navigate the stream |
+| <kbd>Enter</kbd> / <kbd>Space</kbd> | Stream | **Open** in the desktop client (a screener row opens that sender's newest mail) |
+| <kbd>T</kbd> | Any row | **Move to Trash** |
+| <kbd>A</kbd> | Mail row | **Set aside** (read later pile) |
+| <kbd>M</kbd> | Mail row | **Toggle read / unread** |
+| <kbd>I</kbd> | Screener row | Route sender to **Inbox** |
+| <kbd>B</kbd> | Screener row | **Block** sender |
 
 ---
 

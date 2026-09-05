@@ -34,8 +34,8 @@ test("Screening and routing are wired in Panel.qml", () => {
     "service.routeSender",
     "inbox",
     "block",
-    "screenerCards",
-    "filteredMessages",
+    "Model.feedItems",
+    "root.feed",
     "service.setSeen",
     "service.setAside",
     "service.trashMessage"
@@ -45,10 +45,16 @@ test("Screening and routing are wired in Panel.qml", () => {
 })
 
 test("Panel.qml screener offers only inbox / block / trash, not feed / paper trail", () => {
-  assert.equal(panelSrc.indexOf('routeSender(screenerCard.modelData.address, "feed")'), -1)
-  assert.equal(panelSrc.indexOf('routeSender(screenerCard.modelData.address, "paper trail")'), -1)
-  assert.ok(panelSrc.indexOf('routeSender(screenerCard.modelData.address, "inbox")') !== -1)
-  assert.ok(panelSrc.indexOf('routeSender(screenerCard.modelData.address, "block")') !== -1)
+  assert.equal(panelSrc.indexOf('routeSender(feedRow.modelData.address, "feed")'), -1)
+  assert.equal(panelSrc.indexOf('routeSender(feedRow.modelData.address, "paper trail")'), -1)
+  assert.ok(panelSrc.indexOf('routeSender(feedRow.modelData.address, "inbox")') !== -1)
+  assert.ok(panelSrc.indexOf('routeSender(feedRow.modelData.address, "block")') !== -1)
+})
+
+test("Panel.qml has one stream, no previously-seen tab", () => {
+  assert.equal(panelSrc.indexOf('tabFilter'), -1)
+  assert.equal(panelSrc.indexOf('"previous"'), -1)
+  assert.equal(panelSrc.match(/id: feedRepeater/g).length, 1)
 })
 
 test("Dynamic visibility is implemented in BarWidget.qml", () => {
