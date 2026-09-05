@@ -44,6 +44,7 @@ QVariant MailModel::data(const QModelIndex &index, int role) const {
     case DateRawRole: return r.dateRaw;
     case SeenRole: return r.seen;
     case CountRole: return r.count;
+    case LabelsRole: return r.labels;
     }
     return {};
 }
@@ -52,7 +53,7 @@ QHash<int, QByteArray> MailModel::roleNames() const {
     return {
         {IdRole, "msgId"},   {FromNameRole, "fromName"}, {FromAddrRole, "fromAddr"},
         {SubjectRole, "subject"}, {DateRole, "date"},    {DateRawRole, "dateRaw"},
-        {SeenRole, "seen"},  {CountRole, "count"},
+        {SeenRole, "seen"},  {CountRole, "count"},   {LabelsRole, "labels"},
     };
 }
 
@@ -70,6 +71,7 @@ void MailModel::setRows(const QVariantList &rows) {
         r.date = shortDate(r.dateRaw);
         r.seen = m.value("seen").toBool();
         r.count = m.value("count").toInt();
+        r.labels = m.value("labels").toStringList();
         splitFrom(m.value("from").toString(), r.fromName, r.fromAddr);
         m_rows.push_back(r);
     }
@@ -80,7 +82,7 @@ void MailModel::setRows(const QVariantList &rows) {
 QVariantMap MailModel::rowMap(const Row &r) {
     return {{"id", r.id}, {"fromName", r.fromName}, {"fromAddr", r.fromAddr},
             {"subject", r.subject}, {"date", r.date}, {"dateRaw", r.dateRaw},
-            {"seen", r.seen}, {"count", r.count}};
+            {"seen", r.seen}, {"count", r.count}, {"labels", r.labels}};
 }
 
 QVariantMap MailModel::get(int i) const {

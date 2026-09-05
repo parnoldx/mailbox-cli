@@ -904,6 +904,10 @@ type row struct {
 	// is read.
 	Due     string `json:"due,omitempty"`
 	Bubbled bool   `json:"bubbled,omitempty"`
+	// Labels is every label on the Thread, not just on the Message shown: a
+	// label is something the conversation carries, so a listing that badged
+	// only its newest mail would hide the one put on the reply before it.
+	Labels []string `json:"labels,omitempty"`
 }
 
 // formatMessageID is the id a caller hands back to message view. The Inbox is
@@ -946,6 +950,9 @@ type message struct {
 	// Trackers are the named open-tracking pixels in the HTML, a projection
 	// of the stored part (ADR-0003): the HTML is not rewritten.
 	Trackers []string `json:"trackers,omitempty"`
+	// Labels are the keywords somebody chose, out of the Flags above: the
+	// server's own ones are not labels and are left out (mirror.LabelsOf).
+	Labels []string `json:"labels,omitempty"`
 	// Invite is a meeting request this Message carries, when a text/calendar
 	// or .ics part is present. Details may be empty until the part is fetched.
 	Invite *inviteCard `json:"invite,omitempty"`
@@ -960,6 +967,7 @@ func viewMessage(a *Account, folder string, r mirror.Row, places []mirror.Placem
 		Body: body, BodyFormat: format, BodyState: r.BodyState,
 		BodyHTML: r.Message.TextHTML,
 		Trackers: trackers.InHTML(r.Message.TextHTML),
+		Labels:   mirror.LabelsOf(r.Placement.Flags),
 	}
 	if to, err := compose.ParseAddressList(r.From); err == nil {
 		m.ReplyAll = replyAllCc(a, r.Message, to, nil)
@@ -1026,6 +1034,7 @@ func viewRows(a *Account, folder string, rows []mirror.Row, threadSizes map[int6
 			if !r.Seen() {
 				out[i].Seen = false
 			}
+			out[i].Labels = mergeLabels(out[i].Labels, mirror.LabelsOf(r.Placement.Flags))
 			continue
 		}
 		date := ""
@@ -1037,6 +1046,7 @@ func viewRows(a *Account, folder string, rows []mirror.Row, threadSizes map[int6
 		newRow := row{
 			ID: a.messageID(folder, r.UID), UID: r.UID, Date: date, From: r.From,
 			Subject: r.Subject, Seen: r.Seen(), Body: r.BodyState, Count: 1,
+			Labels: mirror.LabelsOf(r.Placement.Flags),
 		}
 		if when, ok := bubble.Of(r.Placement.Flags); ok {
 			newRow.Due = when.Format("2006-01-02 15:04")
@@ -1061,6 +1071,18 @@ func viewRows(a *Account, folder string, rows []mirror.Row, threadSizes map[int6
 		sort.SliceStable(out, func(i, j int) bool { return out[i].Bubbled && !out[j].Bubbled })
 	}
 	return out
+}
+
+// mergeLabels folds a second Message's labels into a Thread's, sorted and
+// without repeating one two Messages both carry.
+func mergeLabels(have, add []string) []string {
+	for _, name := range add {
+		if !hasFlag(have, name) {
+			have = append(have, name)
+		}
+	}
+	sort.Strings(have)
+	return have
 }
 
 // threadSizesFor is the whole-conversation size of every Thread in a listing,

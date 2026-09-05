@@ -612,6 +612,25 @@ func tree(l Locals) []*Command {
 					Examples: []string{"mailbox label create learn", "mailbox label create learn 36722"},
 					Run:      runLabelCreate,
 				},
+				{
+					Name: "rename", Short: "Rename a label everywhere", Needs: true,
+					Usage: []string{"mailbox label rename OLD --to NEW"},
+					Long: "The new keyword goes on every message carrying the old one, and the " +
+						"old one comes off.",
+					Flags: []Flag{
+						{Name: "to", Kind: KindString, Arg: "NAME", Desc: "the name it takes"},
+					},
+					Examples: []string{"mailbox label rename learn --to lernen"},
+					Run:      runLabelRename,
+				},
+				{
+					Name: "delete", Short: "Take a label off everything", Needs: true,
+					Usage: []string{"mailbox label delete NAME"},
+					Long: "The keyword comes off every message carrying it and the name leaves " +
+						"the list. The mail itself is not touched.",
+					Examples: []string{"mailbox label delete learn"},
+					Run:      runLabelDelete,
+				},
 			},
 		},
 		{

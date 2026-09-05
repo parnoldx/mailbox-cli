@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"mailbox/internal/mirror"
+	"mailbox/internal/sync/mailsync"
 )
 
 // handleLabel is the keyword half of filing mail. A label is an IMAP keyword,
@@ -48,9 +51,11 @@ func (d *Daemon) handleLabel(ctx context.Context, req Request, resp Response) Re
 		if err != nil {
 			return resp.api(err.Error())
 		}
-		out := []message{}
+		// A listing, not a read: the same row a Box listing gives, one Box at a
+		// time because a label crosses them (the shape viewHits uses).
+		out := []row{}
 		for _, r := range rows {
-			out = append(out, viewMessage(acct, r.Placement.Folder, r, nil))
+			out = append(out, viewRows(acct, r.Placement.Folder, []mirror.Row{r}, nil)[0])
 		}
 		return resp.ok(out)
 
@@ -73,6 +78,19 @@ func (d *Daemon) handleLabel(ctx context.Context, req Request, resp Response) Re
 			return resp.usage(fmt.Sprintf("label %s needs a label", verb))
 		}
 		return d.applyLabel(ctx, name, verb == "add", req, resp)
+
+	case "rename":
+		to := labelName(req.Str("to"))
+		if name == "" || to == "" {
+			return resp.usage("label rename needs both names: OLD --to NEW")
+		}
+		return d.sweepLabel(ctx, name, to, resp)
+
+	case "delete":
+		if name == "" {
+			return resp.usage("label delete needs a label")
+		}
+		return d.sweepLabel(ctx, name, "", resp)
 	}
 	return resp.usage(fmt.Sprintf("unknown label command %q", verb))
 }
@@ -94,6 +112,54 @@ func (d *Daemon) applyLabel(ctx context.Context, name string, add bool, req Requ
 	}
 	results, err := acct.Writer.SetLabel(ctx, refs, name, add)
 	return d.wrote(acct, resp, results, err)
+}
+
+// labelSweep is how much mail a rename or a delete will take the keyword off in
+// one go.
+// ponytail: one pass, no paging — page the sweep if a label ever holds more.
+const labelSweep = 5000
+
+// sweepLabel renames a label onto `to`, or deletes it when `to` is empty. Both
+// are the same walk: every Message carrying the keyword, restamped or stripped
+// on the server, and then the remembered name brought in line.
+//
+// A label nobody has applied yet has no mail to walk, and is only the remembered
+// name — so that path writes nothing to the server and still holds.
+func (d *Daemon) sweepLabel(ctx context.Context, name, to string, resp Response) Response {
+	rows, err := d.Mirror.Labelled(d.Account, name, labelSweep)
+	if err != nil {
+		return resp.api(err.Error())
+	}
+	refs := make([]mailsync.Ref, 0, len(rows))
+	for _, r := range rows {
+		refs = append(refs, mailsync.Ref{Folder: r.Placement.Folder, UID: r.Placement.UID})
+	}
+	acct := d.primaryAccount()
+	var results []mailsync.Result
+	if len(refs) > 0 {
+		if acct.Writer == nil {
+			return resp.usage("this daemon cannot write: no server connection")
+		}
+		if to != "" {
+			// The new keyword goes on before the old one comes off, so a failure
+			// half way leaves the mail carrying both rather than neither.
+			if results, err = acct.Writer.SetLabel(ctx, refs, to, true); err != nil {
+				return resp.api(err.Error())
+			}
+		}
+		if results, err = acct.Writer.SetLabel(ctx, refs, name, false); err != nil {
+			return resp.api(err.Error())
+		}
+	}
+	if to != "" {
+		if err := d.Mirror.RememberLabel(to); err != nil {
+			return resp.api(err.Error())
+		}
+	}
+	if err := d.Mirror.ForgetLabel(name); err != nil {
+		return resp.api(err.Error())
+	}
+	return d.wrote(acct, resp, results, nil)
 }
 
 // labelRow is one label in a listing: the name, and how much mail carries it.

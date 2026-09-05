@@ -65,7 +65,7 @@ Item {
                 width: parent.width
                 spacing: 14
                 Text {
-                    text: win.buckets[win.bucketIndex].glyph
+                    text: win.viewGlyph()
                     font.family: Theme.fontFamily
                     font.pixelSize: 30
                     color: Theme.accent
@@ -79,7 +79,7 @@ Item {
                         spacing: 12
                         Text {
                             id: bucketTitle
-                            text: win.buckets[win.bucketIndex].label
+                            text: win.viewTitle()
                             font.family: Theme.fontFamily
                             font.pixelSize: 30
                             font.weight: Font.Bold
@@ -208,6 +208,39 @@ Item {
         glyph: "\uf040"
         text: "Compose"
         onClicked: win.startCompose()
+    }
+
+    // A label is managed from the view of it: renamed through the launcher's
+    // own field, deleted behind one confirming second press — deleting takes
+    // the keyword off every message carrying it, and there is no undo.
+    AppButton {
+        id: renameBtn
+        anchors { right: parent.right; top: parent.top; margins: 24 }
+        visible: win.labelView !== ""
+        kind: "soft"
+        glyph: ""
+        text: "Rename"
+        onClicked: win.openLabelRename()
+    }
+    AppButton {
+        id: deleteBtn
+        property bool armed: false
+        anchors { right: renameBtn.left; rightMargin: 10; verticalCenter: renameBtn.verticalCenter }
+        visible: win.labelView !== ""
+        kind: "danger"
+        glyph: ""
+        text: armed ? "Really delete?" : "Delete label"
+        onClicked: {
+            if (!armed) { armed = true; disarm.restart(); return }
+            armed = false
+            win.deleteLabel(win.labelView)
+        }
+        Timer { id: disarm; interval: 3000; onTriggered: deleteBtn.armed = false }
+        // Leaving the label view puts the safety back on.
+        Connections {
+            target: win
+            function onLabelViewChanged() { deleteBtn.armed = false }
+        }
     }
 
     // The Screener lives here: a button just left of Compose, shown only when

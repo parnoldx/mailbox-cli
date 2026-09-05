@@ -127,6 +127,15 @@ Thread's size — every Message wherever it sits, the same number the reader
 shows — not just the part of it in the Box being listed.
 _Avoid_: conversation, IMAP thread (that is per-folder and narrower)
 
+**Label**:
+An IMAP keyword on a Placement. A Message carries as many as you like and keeps
+all of them when it moves, which is the whole difference between labelling
+something and putting it in a Box. The list is derived from the mail carrying
+them; only a Label created and not yet used is remembered in the Mirror. A
+listing shows the Labels of the whole Thread, one word each — a space would
+reach the server as two keywords.
+_Avoid_: tag, folder, category
+
 **Search**:
 A ranked full-text query answered entirely from the Mirror, over the sender,
 recipients, subject and text of every Message outside Trash. Never a server

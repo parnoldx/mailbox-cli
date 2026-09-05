@@ -452,6 +452,21 @@ func systemKeyword(name string) bool {
 	return false
 }
 
+// LabelsOf is the labels among one Placement's flags: the keywords somebody
+// chose, sorted, with the server's own left out. Labels above reads the packed
+// flag string straight out of the table; this is for a caller that already holds
+// a Placement and wants to say what it carries.
+func LabelsOf(flags []string) []string {
+	out := make([]string, 0, len(flags))
+	for _, f := range flags {
+		if f != "" && !systemKeyword(f) {
+			out = append(out, f)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // LabelCounts is how much mail carries each label, in one query: the distinct
 // flag strings and how many Placements hold each, tallied per keyword here. A
 // count per label read by listing that label's mail would be a query per label

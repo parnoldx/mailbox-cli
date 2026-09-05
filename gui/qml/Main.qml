@@ -88,7 +88,20 @@ ApplicationWindow {
     function composer() { win._composerLoaded = true; return composerLoader.item }
     function feed() { win._feedLoaded = true; return feedLoader.item }
 
-    function currentKey() { return buckets[bucketIndex].key }
+    // The label being browsed as its own view, or "". A label is not a Box, so
+    // it is not a bucket — but it lists like one, and while it is up
+    // currentKey() answers "Label" rather than the bucket underneath, which is
+    // what keeps the Drafts, Feed and Screener behaviour out of it.
+    property string labelView: ""
+    function openLabel(name) {
+        launcher.close()
+        win.labelView = name
+        win.loadBucket()
+    }
+    function currentKey() { return win.labelView !== "" ? "Label" : buckets[bucketIndex].key }
+    // What the bucket header and the reader's crumb call the view we are in.
+    function viewTitle() { return win.labelView !== "" ? win.labelView : buckets[bucketIndex].label }
+    function viewGlyph() { return win.labelView !== "" ? "\uf02c" : buckets[bucketIndex].glyph }
     // The Screener asks for a decision about a *sender*, not a read about a
     // mail, so it carries its own triage (route in / block / move) and hides
     // the reply actions — you screen someone in before you answer them.
@@ -283,6 +296,71 @@ ApplicationWindow {
             win.refreshStacks()
         })
     }
+    // ---- labels -----------------------------------------------------------
+    // A label is an imap keyword, not a Box: putting one on does not move the
+    // mail, so nothing leaves the reader or the list — only the pills change.
+    function labelId(id, name, add) {
+        if (!id || !name) return
+        Mailbox.call(["label", add ? "add" : "remove"], { positional: id, name: name }, function (r) {
+            var ok = !!(r && r.ok)
+            win.flash(ok ? (add ? "Labelled " + name : "Unlabelled " + name)
+                         : win._failMsg(add ? "Label" : "Unlabel", r))
+            win.refreshBucket()
+            // The reader shows the labels of the Thread it has in hand, so it
+            // has to be re-read for its pills to catch up.
+            if (ok && win.openId) win.openMessage(win.openId, true)
+        })
+    }
+    // What a Thread is labelled with, for the picker's ticks — from the reader
+    // when one is open on it, otherwise from its row in the list.
+    function labelsOn(id) {
+        if (win._actsOnOpenThread(id)) {
+            // The Thread's labels, not the newest Message's — the same union a
+            // list row shows, because a label is put on the conversation.
+            var seen = []
+            for (var t = 0; t < win.openThread.length; t++) {
+                var ls = win.openThread[t].labels || []
+                for (var j = 0; j < ls.length; j++)
+                    if (seen.indexOf(ls[j]) < 0) seen.push(ls[j])
+            }
+            return seen
+        }
+        var rows = listModel.rows
+        for (var i = 0; i < rows.length; i++)
+            if (rows[i].id === id) return rows[i].labels || []
+        return []
+    }
+    // Every label there is, with its count — `{ label, count }` rows.
+    function loadLabels(cb) {
+        Mailbox.call(["label", "list"], {}, function (r) {
+            cb(r.ok && r.data ? r.data : [])
+        })
+    }
+    function renameLabel(from, to) {
+        if (!from || !to || from === to) return
+        Mailbox.call(["label", "rename"], { name: from, to: to }, function (r) {
+            if (!(r && r.ok)) { win.flash(win._failMsg("Rename", r)); return }
+            win.flash("Renamed to " + to)
+            // Follow the label to its new name: the view we are in is that label.
+            if (win.labelView === from) win.openLabel(to)
+            else win.refreshBucket()
+        })
+    }
+    // Takes the keyword off every message carrying it. The mail stays where it
+    // is — this ends the label, not the mail — so it drops back to the Inbox.
+    function deleteLabel(name) {
+        if (!name) return
+        Mailbox.call(["label", "delete"], { name: name }, function (r) {
+            win.flash(r && r.ok ? "Deleted label " + name : win._failMsg("Delete label", r))
+            if (win.labelView === name) { win.labelView = ""; win.switchToKey("INBOX") }
+            else win.refreshBucket()
+        })
+    }
+    // The launcher's label picker, opened on one Thread — from the row menu,
+    // the reader toolbar or the launcher itself.
+    function openLabelPicker(id) { launcher.openLabelPicker(id) }
+    function openLabelRename() { launcher.openLabelRename() }
+
     // Every Box the account holds, archive tree included. `cb` gets the raw
     // rows ({ box, count, unseen, ... }); the launcher filters them down.
     function loadArchiveBoxes(cb) {
@@ -342,6 +420,12 @@ ApplicationWindow {
 
     // Re-pull the open bucket's rows in place, without disturbing the reader.
     function refreshBucket() {
+        if (win.labelView !== "") {
+            Mailbox.call(["label", "view"], { name: win.labelView, limit: 200 }, function (r) {
+                listModel.setRows(r.ok && r.data ? r.data : [])
+            })
+            return
+        }
         if (win.isDraftsBucket()) {
             Mailbox.call(["draft", "list"], { limit: 200 }, function (r) {
                 listModel.setRows(r.ok && r.data ? r.data : [])
@@ -395,6 +479,7 @@ ApplicationWindow {
     function switchTo(i) {
         launcher.close()
         if (i < 0 || i >= buckets.length) return
+        win.labelView = ""
         bucketIndex = i
         loadBucket()
     }

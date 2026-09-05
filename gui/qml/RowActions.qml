@@ -178,6 +178,13 @@ Menu {
         visible: !menu.inScreener && !menu.inAside
         onTriggered: Triage.dispatch(win, "aside", menu.row.id)
     }
+    // A label is not a move: it stays where it is and carries the keyword.
+    Action {
+        text: "Label as…"
+        glyph: ""
+        visible: !menu.inScreener
+        onTriggered: win.openLabelPicker(menu.row.id)
+    }
     // Bubble Up is the one move that asks a second question — when. It opens
     // sideways as a submenu (the delegate above styles the row that opens it)
     // rather than popping a second menu over this one.

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QAbstractListModel>
+#include <QStringList>
 #include <QVariantList>
 
 // MailModel holds one box's worth of message summaries. The daemon returns a
@@ -24,6 +25,7 @@ public:
         DateRawRole,
         SeenRole,
         CountRole,
+        LabelsRole,
     };
 
     using QAbstractListModel::QAbstractListModel;
@@ -48,6 +50,9 @@ private:
         // sit — 0 for a Message on its own (the daemon already collapsed the
         // listing to one row per Thread; this is just its badge).
         int count = 0;
+        // The labels on this row's Thread — keywords somebody chose, already
+        // filtered of the server's own by the daemon.
+        QStringList labels;
     };
     static QVariantMap rowMap(const Row &r);
     QList<Row> m_rows;

@@ -75,6 +75,8 @@ Item {
             color: root.fresh ? Theme.textPrimary : Theme.textDim
             Behavior on color { ColorAnimation { duration: Theme.anim } }
         }
+        // What this Thread is labelled, under the subject it belongs to.
+        LabelPills { labels: root.row.labels || [] }
     }
 
     // How many Messages are in this conversation — pinned top-right, the way

@@ -46,6 +46,7 @@ qt_add_resources(mailbox-gui "qml"
         qml/PileStack.qml
         qml/SectionLabel.qml
         qml/Avatar.qml
+        qml/LabelPills.qml
         qml/Pill.qml
         qml/Chip.qml
         qml/Kbd.qml

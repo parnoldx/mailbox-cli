@@ -42,6 +42,7 @@ Item {
             out.push({ act: "reply-later", glyph: "", label: "Reply later", accentGlyph: true })
             out.push({ act: "set-aside",   glyph: "", label: "Set aside",   accentGlyph: true })
             out.push({ act: "bubble",      glyph: "", label: "Bubble up",   accentGlyph: true })
+            out.push({ act: "label",       glyph: "", label: "Label",      accentGlyph: true })
         }
         if (m && scr) {
             out.push({ act: "route-inbox",   glyph: "", label: "Inbox", accentGlyph: true })
@@ -57,6 +58,7 @@ Item {
         if (act === "toggle-all") win.setAllExpanded(!root.allExpanded())
         else if (act === "reply") win.startReply(false)
         else if (act === "forward") win.startForward()
+        else if (act === "label") win.openLabelPicker(id)
         else if (act === "screener-move") scMoveMenu.popup(chipItem, 0, chipItem.height + 4)
         else if (act === "bubble") bubbleMenu.popup(chipItem, 0, chipItem.height + 4)
         else if (act === "route-inbox") Triage.dispatch(win, "inbox", id)
@@ -94,7 +96,7 @@ Item {
             }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: win.buckets[win.bucketIndex].label
+                text: win.viewTitle()
                 font.family: Theme.fontFamily
                 font.pixelSize: 12
                 color: Theme.textDim
@@ -168,6 +170,12 @@ Item {
                     Behavior on color { ColorAnimation { duration: Theme.anim } }
                 }
             }
+        }
+
+        // What the Thread is labelled — the same pills its row in the list
+        // carries, hidden entirely when it carries none.
+        LabelPills {
+            labels: win.labelsOn(win.openId)
         }
 
         Rectangle {

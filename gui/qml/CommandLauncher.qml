@@ -12,12 +12,21 @@ Item {
     property bool opened: false
     property int active: 0
 
-    // "" is the switcher. "archive" is the second pane the Archive action opens
-    // over it: every archive box, fuzzy-filtered, Enter moves the target Thread
-    // into the highlighted one.
+    // "" is the switcher. Everything else is a second pane opened over it, each
+    // one a list the field filters and Enter picks from:
+    //   archive       every archive box — Enter moves the target Thread there
+    //   labels        every label — Enter opens it as a view
+    //   label-apply   every label — Enter puts one on the target, or takes it off
+    //   label-rename  no list: the field is the new name for the label being viewed
     property string pane: ""
     property string archiveTargetId: ""
     property var archiveBoxes: []
+    // The Thread the label picker is labelling, and the labels it already
+    // carries — kept here rather than re-read after every toggle so the ticks
+    // answer at once and the pane can stay open for a second label.
+    property string labelTargetId: ""
+    property var labelsOnTarget: []
+    property var labelRows: []
     // The boxes mail already moves through — dropped from the archive picker,
     // which is only for the tree behind them. Matches `routingOrder` server-side.
     readonly property var routingKeys: [
@@ -39,6 +48,8 @@ Item {
     function close() {
         opened = false
         pane = ""
+        labelTargetId = ""
+        labelsOnTarget = []
         // Hand keyboard focus back to the bucket view. Otherwise the search
         // field keeps active focus while hidden and claims the bucket-jump
         // number keys (1–7) as text input before the window Shortcuts can see
@@ -50,7 +61,7 @@ Item {
     function toggle() { opened ? close() : open() }
 
     function results() {
-        if (pane === "archive") return []
+        if (pane !== "") return []
         var q = query.text.trim().toLowerCase()
         var out = []
         for (var i = 0; i < win.buckets.length; i++) {
@@ -98,19 +109,73 @@ Item {
         win.loadArchiveBoxes(function (list) { root.archiveBoxes = list; root.active = 0 })
         Qt.callLater(function () { query.forceActiveFocus() })
     }
-    function exitArchive() {
+    function exitPane() {
         root.pane = ""
         root.active = 0
         query.text = ""
         Qt.callLater(function () { query.forceActiveFocus() })
     }
 
+    // ---- label panes ---------------------------------------------------------
+    // The same list of labels serves both: browsing them and putting one on a
+    // Thread. It is re-read on every opening, because a label comes into being
+    // by being used and the last one applied may be new.
+    function enterLabels() {
+        root.pane = "labels"
+        root.active = 0
+        query.text = ""
+        root.labelRows = []
+        win.loadLabels(function (list) { root.labelRows = list; root.active = 0 })
+        if (!root.opened) { root.opened = true }
+        Qt.callLater(function () { query.forceActiveFocus() })
+    }
+    function openLabelPicker(id) {
+        root.labelTargetId = id
+        if (!root.labelTargetId) { root.close(); return }
+        root.labelsOnTarget = win.labelsOn(id)
+        root.pane = "label-apply"
+        root.active = 0
+        query.text = ""
+        root.labelRows = []
+        win.loadLabels(function (list) { root.labelRows = list; root.active = 0 })
+        if (!root.opened) { root.opened = true }
+        Qt.callLater(function () { query.forceActiveFocus() })
+    }
+    // Rename the label being viewed. The field is the whole dialogue: it opens
+    // on the old name, and Enter is the rename.
+    function openLabelRename() {
+        if (win.labelView === "") return
+        root.pane = "label-rename"
+        root.active = 0
+        root.opened = true
+        query.text = win.labelView
+        Qt.callLater(function () { query.forceActiveFocus(); query.selectAll() })
+    }
+    function onTarget(name) { return root.labelsOnTarget.indexOf(name) >= 0 }
+    // The labels the field has narrowed to. In the apply pane a query matching
+    // no label offers to make it: applying is how a label comes to exist.
+    function labelResults() {
+        if (pane !== "labels" && pane !== "label-apply") return []
+        var q = query.text.trim()
+        var out = [], exact = false
+        for (var i = 0; i < labelRows.length; i++) {
+            var l = labelRows[i]
+            if (q && !root.fuzzy(q, l.label)) continue
+            if (l.label === q) exact = true
+            out.push({ label: l.label, count: l.count || 0, create: false })
+        }
+        if (pane === "label-apply" && q !== "" && !exact)
+            out.push({ label: q, count: 0, create: true })
+        return out
+    }
+    property var labelShown: (query.text, pane, labelRows, labelResults())
+
     // The action rows: Compose is always here (it needs no target), the triage
     // rows only when there is a message to act on. Context-aware — the pile you
     // are already in offers "Move to Inbox" instead of a move onto itself.
     // `kbd` is the matching global key, where there is one.
     function actionResults() {
-        if (!opened || pane === "archive") return []
+        if (!opened || pane !== "") return []
         var _q = query.text.trim().toLowerCase()
         // Compose needs no target, so it is always offered — and answers to C
         // here, the key that opens it everywhere else. `_f` appends it and then
@@ -121,8 +186,10 @@ Item {
         // Search needs no target either, and answers to / here — the key that
         // opens the search overlay everywhere else.
         var _search = [ { id: "search", label: "Search all mail", glyph: "\uf002", kbd: "/" } ]
+        // Labels needs no target either: it is the way into browsing one.
+        var _labels = [ { id: "labels", label: "Labels\u2026", glyph: "\uf02c", kbd: "" } ]
         function _f(list) {
-            var all = list.concat(_compose).concat(_search)
+            var all = list.concat(_compose).concat(_search).concat(_labels)
             return _q ? all.filter(function (a) { return a.label.toLowerCase().indexOf(_q) >= 0 }) : all
         }
         if (win.actionTargetId() === "") return _f([])
@@ -153,6 +220,7 @@ Item {
         else
             out.push({ id: "reply-later", label: "Reply later", glyph: "\uf017", kbd: "R" })
         // Archive opens the second pane rather than acting straight away.
+        out.push({ id: "label", label: "Label as\u2026", glyph: "\uf02c", kbd: "" })
         out.push({ id: "archive", label: "Archive to\u2026", glyph: "\uf187", kbd: "" })
         out.push({ id: "trash", label: "Trash", glyph: "\uf1f8", kbd: "T", danger: true })
         return _f(out)
@@ -160,6 +228,32 @@ Item {
     property var acts: (query.text, opened, win.openId, win.bucketIndex, actionResults())
 
     function choose(listPos) {
+        if (pane === "label-rename") {
+            var to = query.text.trim()
+            var from = win.labelView
+            root.close()
+            win.renameLabel(from, to)
+            return
+        }
+        if (pane === "labels") {
+            var chosen = labelShown[listPos]
+            if (chosen) win.openLabel(chosen.label)
+            return
+        }
+        if (pane === "label-apply") {
+            var l = labelShown[listPos]
+            if (!l) return
+            // A new name is only ever put on; an existing one toggles, so the
+            // same Enter takes off a label that is already there.
+            var add = l.create || !root.onTarget(l.label)
+            win.labelId(root.labelTargetId, l.label, add)
+            // Answer at once rather than waiting for the listing to come back.
+            root.labelsOnTarget = add
+                ? root.labelsOnTarget.concat([l.label])
+                : root.labelsOnTarget.filter(function (n) { return n !== l.label })
+            query.text = ""
+            return
+        }
         if (pane === "archive") {
             var ab = archRows[listPos]
             if (!ab) return
@@ -183,6 +277,9 @@ Item {
         if (a.id === "search") { root.close(); win.openSearch(); return }
         // Archive swaps the launcher into its box picker instead of firing now.
         if (a.id === "archive") { root.enterArchive(); return }
+        // Labels needs no target; the picker takes the one the switcher has.
+        if (a.id === "labels") { root.enterLabels(); return }
+        if (a.id === "label") { root.openLabelPicker(win.actionTargetId()); return }
         var id = win.actionTargetId()
         root.close()
         if (!id) return
@@ -193,6 +290,8 @@ Item {
     }
     function total() {
         if (pane === "archive") return archRows.length
+        if (pane === "labels" || pane === "label-apply") return labelShown.length
+        if (pane === "label-rename") return 0
         return rows.length + acts.length
     }
 
@@ -249,7 +348,8 @@ Item {
                     spacing: 10
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: root.pane === "archive" ? "\uf187" : "\uf002"
+                        text: root.pane === "archive" ? "\uf187"
+                            : root.pane === "" ? "\uf002" : "\uf02c"
                         font.family: Theme.fontFamily
                         font.pixelSize: 13
                         color: Theme.textDim
@@ -259,7 +359,11 @@ Item {
                         id: query
                         width: parent.width - 34
                         anchors.verticalCenter: parent.verticalCenter
-                        placeholderText: root.pane === "archive" ? "Archive to…" : "Jump to…"
+                        placeholderText: root.pane === "archive" ? "Archive to…"
+                                       : root.pane === "labels" ? "Open a label…"
+                                       : root.pane === "label-apply" ? "Label as…"
+                                       : root.pane === "label-rename" ? "New name…"
+                                       : "Jump to…"
                         color: Theme.textPrimary
                         placeholderTextColor: Theme.textDim
                         font.family: Theme.fontFamily
@@ -270,11 +374,11 @@ Item {
                         Keys.onDownPressed: root.active = Math.min(root.total() - 1, root.active + 1)
                         Keys.onUpPressed: root.active = Math.max(0, root.active - 1)
                         Keys.onReturnPressed: root.choose(root.active)
-                        Keys.onEscapePressed: root.pane === "archive" ? root.exitArchive() : root.close()
+                        Keys.onEscapePressed: root.pane !== "" ? root.exitPane() : root.close()
                         Keys.onPressed: function (e) {
-                            // In the archive picker every key is filter text —
-                            // no compose/search/digit shortcuts to steal it.
-                            if (root.pane === "archive") return
+                            // In a second pane every key is filter text — no
+                            // compose/search/digit shortcuts to steal it.
+                            if (root.pane !== "") return
                             // C on an empty field is the compose shortcut, the
                             // same as `c` everywhere else; once a query is being
                             // typed it is just a letter to match on.
@@ -423,6 +527,93 @@ Item {
                     HoverHandler { id: actHover }
                     TapHandler { onTapped: root.fire(modelData) }
                 }
+            }
+
+            // ---- Labels: browse one, or put one on this Thread -------------
+            Text {
+                visible: root.pane === "labels" || root.pane === "label-apply"
+                leftPadding: 4
+                text: root.pane === "labels" ? "Open a label" : "Label this conversation"
+                font.family: Theme.fontFamily
+                font.pixelSize: 10
+                font.weight: Font.DemiBold
+                color: Theme.textDim
+                Behavior on color { ColorAnimation { duration: Theme.anim } }
+            }
+            Text {
+                visible: (root.pane === "labels" || root.pane === "label-apply")
+                         && root.labelShown.length === 0
+                leftPadding: 4
+                topPadding: 4
+                text: root.pane === "labels" ? "No labels yet — put one on a message first"
+                                             : "Type a name to make one"
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+                color: Theme.textDim
+                Behavior on color { ColorAnimation { duration: Theme.anim } }
+            }
+            Repeater {
+                model: root.labelShown
+                Rectangle {
+                    width: content.width - 24
+                    height: 40
+                    radius: Theme.radiusSmall
+                    color: index === root.active ? Theme.selection
+                         : labelHover.hovered ? Theme.cardHover : "transparent"
+                    Behavior on color { ColorAnimation { duration: Theme.anim } }
+
+                    Row {
+                        anchors.fill: parent
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
+                        spacing: 12
+
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 16
+                            horizontalAlignment: Text.AlignHCenter
+                            // A tick on a label this Thread already carries:
+                            // Enter on it takes it off again.
+                            text: modelData.create ? "\uf067"
+                                : root.onTarget(modelData.label) ? "\uf00c" : "\uf02b"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 13
+                            color: root.onTarget(modelData.label) ? Theme.green
+                                 : index === root.active ? Theme.accent : Theme.textDim
+                            Behavior on color { ColorAnimation { duration: Theme.anim } }
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: modelData.create ? "Create “" + modelData.label + "”" : modelData.label
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 13
+                            font.weight: index === root.active ? Font.DemiBold : Font.Normal
+                            color: Theme.textPrimary
+                            Behavior on color { ColorAnimation { duration: Theme.anim } }
+                        }
+                    }
+
+                    Pill {
+                        visible: !modelData.create && (modelData.count || 0) > 0
+                        anchors { verticalCenter: parent.verticalCenter; right: parent.right; rightMargin: 14 }
+                        value: modelData.count || 0
+                    }
+
+                    HoverHandler { id: labelHover }
+                    TapHandler { onTapped: root.choose(index) }
+                }
+            }
+
+            // ---- Rename the label being viewed ----------------------------
+            Text {
+                visible: root.pane === "label-rename"
+                leftPadding: 4
+                text: "Rename “" + win.labelView + "” — Enter to rename"
+                font.family: Theme.fontFamily
+                font.pixelSize: 10
+                font.weight: Font.DemiBold
+                color: Theme.textDim
+                Behavior on color { ColorAnimation { duration: Theme.anim } }
             }
 
             // ---- Archive picker -------------------------------------------

@@ -50,6 +50,28 @@ func runLabelCreate(in *input, stdout, stderr io.Writer) int {
 	}, in.JSON(), render, stdout, stderr)
 }
 
+// runLabelRename and runLabelDelete are about the label rather than about any
+// mail, so the word is the label itself — `mailbox label rename learn --to
+// lernen` — where add and remove take ids and name the label in a flag.
+func runLabelRename(in *input, stdout, stderr io.Writer) int {
+	to := in.Str("to")
+	if to == "" {
+		fmt.Fprint(stderr, "label rename needs the new name: --to NAME\n")
+		return ExitUsage
+	}
+	return request(daemon.Request{
+		ID: "1", Cmd: []string{"label", "rename"},
+		Args: map[string]any{"name": in.Text(), "to": to},
+	}, in.JSON(), printChanges, stdout, stderr)
+}
+
+func runLabelDelete(in *input, stdout, stderr io.Writer) int {
+	return request(daemon.Request{
+		ID: "1", Cmd: []string{"label", "delete"},
+		Args: map[string]any{"name": in.Text()},
+	}, in.JSON(), printChanges, stdout, stderr)
+}
+
 func runLabelList(in *input, stdout, stderr io.Writer) int {
 	return request(daemon.Request{ID: "1", Cmd: []string{"label", "list"}},
 		in.JSON(), printLabels, stdout, stderr)
