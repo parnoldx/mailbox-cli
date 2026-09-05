@@ -84,35 +84,22 @@ test("screenerCards shapes daemon screener response into display cards", () => {
   assert.ok(cards[0].colorIndex >= 0 && cards[0].colorIndex < 8)
 })
 
-test("requestToArgs maps UI actions to daemon socket command format", () => {
-  assert.deepEqual(
-    Model.requestToArgs({ kind: "seen", id: "123", seen: true }),
-    { cmd: ["seen"], args: { positional: "123" } }
-  )
+test("accountFilterOptions suffixes unread counts when messages are supplied", () => {
+  const msgs = [
+    { account: "primary", seen: false },
+    { account: "primary", seen: true },
+    { account: "work", seen: false }
+  ]
 
   assert.deepEqual(
-    Model.requestToArgs({ kind: "seen", id: "123", seen: false }),
-    { cmd: ["unseen"], args: { positional: "123" } }
+    Model.accountFilterOptions(["primary", "work"], msgs).map(o => o.label),
+    ["All accounts (2)", "primary (1)", "work (1)"]
   )
 
+  // No messages: plain labels, no "(0)" noise.
   assert.deepEqual(
-    Model.requestToArgs({ kind: "aside", id: "123" }),
-    { cmd: ["aside"], args: { positional: "123" } }
-  )
-
-  assert.deepEqual(
-    Model.requestToArgs({ kind: "aside_done", id: "123" }),
-    { cmd: ["aside", "done"], args: { positional: "123" } }
-  )
-
-  assert.deepEqual(
-    Model.requestToArgs({ kind: "route", target: "alice@example.com", to: "inbox" }),
-    { cmd: ["route"], args: { positional: "alice@example.com", to: "inbox" } }
-  )
-
-  assert.deepEqual(
-    Model.requestToArgs({ kind: "route", target: "spam@bad.com", to: "block" }),
-    { cmd: ["route"], args: { positional: "spam@bad.com", to: "block" } }
+    Model.accountFilterOptions(["primary"], []).map(o => o.label),
+    ["All accounts", "primary"]
   )
 })
 

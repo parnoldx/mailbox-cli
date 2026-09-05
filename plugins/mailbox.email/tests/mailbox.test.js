@@ -2,14 +2,6 @@ const test = require("node:test")
 const assert = require("node:assert/strict")
 const Model = require("../Model.js")
 
-const MOCK_BOXES = [
-  { account: "primary", box: "inbox", count: 120, folder: "INBOX", unseen: 4, watched: true },
-  { account: "primary", box: "feed", count: 45, folder: "INBOX/Feed", unseen: 0, watched: false },
-  { account: "primary", box: "paper trail", count: 88, folder: "INBOX/Paper Trail", unseen: 0, watched: false },
-  { account: "primary", box: "screener", count: 3, folder: "INBOX/Screener", unseen: 3, watched: true },
-  { account: "work", box: "inbox", count: 15, folder: "INBOX", unseen: 1, watched: true }
-]
-
 const MOCK_SCREENER = [
   {
     address: "newsletter@sub.com",
@@ -69,22 +61,18 @@ test("screener cards are properly prepared for 1-click routing", () => {
   assert.equal(cards[0].address, "newsletter@sub.com")
   assert.equal(cards[0].count, 2)
   assert.equal(cards[0].initials, "TD")
-
-  // Generate route commands for each destination
-  const routeInbox = Model.requestToArgs({ kind: "route", target: cards[0].address, to: "inbox" })
-  assert.deepEqual(routeInbox, { cmd: ["route"], args: { positional: "newsletter@sub.com", to: "inbox" } })
-
-  const routeFeed = Model.requestToArgs({ kind: "route", target: cards[0].address, to: "feed" })
-  assert.deepEqual(routeFeed, { cmd: ["route"], args: { positional: "newsletter@sub.com", to: "feed" } })
-
-  const routeBlock = Model.requestToArgs({ kind: "route", target: cards[0].address, to: "block" })
-  assert.deepEqual(routeBlock, { cmd: ["route"], args: { positional: "newsletter@sub.com", to: "block" } })
+  assert.equal(cards[1].address, "stranger@unknown.org")
+  assert.equal(cards[1].initials, "DS")
 })
 
-test("message seen and aside requests generate valid daemon commands", () => {
-  const seenReq = Model.requestToArgs({ kind: "seen", id: MOCK_MESSAGES[0].id, seen: true })
-  assert.deepEqual(seenReq, { cmd: ["seen"], args: { positional: "1001" } })
+test("inbox messages split into the unread and previously-seen tabs", () => {
+  const msgs = MOCK_MESSAGES.map(m => ({
+    id: m.id,
+    account: "primary",
+    seen: m.seen,
+    subject: m.subject
+  }))
 
-  const asideReq = Model.requestToArgs({ kind: "aside", id: MOCK_MESSAGES[0].id })
-  assert.deepEqual(asideReq, { cmd: ["aside"], args: { positional: "1001" } })
+  assert.deepEqual(Model.filterMessages(msgs, "", "unread").map(m => m.id), ["1001"])
+  assert.deepEqual(Model.filterMessages(msgs, "", "previous").map(m => m.id), ["1002"])
 })

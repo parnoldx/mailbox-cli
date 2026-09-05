@@ -186,61 +186,29 @@ function screenerCards(screenerData, paletteLength) {
   return out
 }
 
-function accountFilterOptions(accounts) {
+// Dropdown entries for the account filter. `messages` is optional: when given,
+// each entry is suffixed with its unread count ("work (3)").
+function accountFilterOptions(accounts, messages) {
   var list = Array.isArray(accounts) ? accounts : []
-  var out = [{ value: "", label: "All accounts" }]
-  for (var i = 0; i < list.length; i++) {
-    var a = list[i]
+  var msgs = Array.isArray(messages) ? messages : []
+
+  function entry(value, label) {
+    var unread = 0
+    for (var i = 0; i < msgs.length; i++) {
+      var m = msgs[i]
+      if (m && !m.seen && (value === "" || String(m.account) === value)) unread++
+    }
+    return { value: value, label: unread > 0 ? label + " (" + unread + ")" : label }
+  }
+
+  var out = [entry("", "All accounts")]
+  for (var j = 0; j < list.length; j++) {
+    var a = list[j]
     if (!a) continue
     var name = typeof a === "string" ? a : (a.name || a.id || String(a))
-    out.push({
-      value: name,
-      label: name
-    })
+    out.push(entry(name, name))
   }
   return out
-}
-
-function requestToArgs(action) {
-  if (!action || typeof action !== "object") return null
-  var kind = String(action.kind || "")
-
-  switch (kind) {
-    case "seen":
-      return {
-        cmd: [action.seen === false ? "unseen" : "seen"],
-        args: { positional: String(action.id || "") }
-      }
-    case "aside":
-      return {
-        cmd: ["aside"],
-        args: { positional: String(action.id || "") }
-      }
-    case "aside_done":
-      return {
-        cmd: ["aside", "done"],
-        args: { positional: String(action.id || "") }
-      }
-    case "route":
-      return {
-        cmd: ["route"],
-        args: {
-          positional: String(action.target || action.address || action.id || ""),
-          to: String(action.to || "inbox")
-        }
-      }
-    case "trash":
-      return {
-        cmd: ["trash"],
-        args: { positional: String(action.id || "") }
-      }
-    case "spam":
-      return {
-        cmd: ["spam"],
-        args: { positional: String(action.id || "") }
-      }
-  }
-  return null
 }
 
 function shellQuote(value) {
@@ -265,7 +233,6 @@ if (typeof module !== "undefined" && module.exports) {
     filterMessages: filterMessages,
     screenerCards: screenerCards,
     accountFilterOptions: accountFilterOptions,
-    requestToArgs: requestToArgs,
     shellQuote: shellQuote,
     buildOpenCommand: buildOpenCommand
   }

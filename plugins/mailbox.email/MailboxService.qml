@@ -29,17 +29,13 @@ Item {
 
   property var accounts: []
   property int accountCount: accounts.length
-  property var boxList: []
   property var messages: []
   property var screenerList: []
 
   property int unreadCount: 0
   property int screenerCount: 0
-  readonly property int totalUnseenCount: unreadCount + screenerCount
 
-  signal pushed(var message)
   signal connected()
-  signal mailReceived(var newMessages)
 
   property int _seq: 0
   property var _pending: ({})
@@ -84,7 +80,7 @@ Item {
       return
     }
     if (message.id === undefined) {
-      root._handlePush(message)
+      if (message.event === "mail.changed") refreshDebounce.restart()
       return
     }
     if (message.ok === false) {
@@ -92,13 +88,6 @@ Item {
       return
     }
     _settle(message.id, "", message.data)
-  }
-
-  function _handlePush(push) {
-    root.pushed(push)
-    if (push.event === "mail.changed") {
-      refreshDebounce.restart()
-    }
   }
 
   function _abandon(reason) {
@@ -125,13 +114,13 @@ Item {
         if (callback) callback(errBoxes)
         return
       }
-      root.boxList = Array.isArray(boxes) ? boxes : []
+      var boxList = Array.isArray(boxes) ? boxes : []
 
       // Extract distinct accounts
       var accMap = {}
       var totalUnread = 0
-      for (var i = 0; i < root.boxList.length; i++) {
-        var b = root.boxList[i]
+      for (var i = 0; i < boxList.length; i++) {
+        var b = boxList[i]
         if (b && b.account) accMap[b.account] = true
         // Count unseen in inbox and watched boxes
         if (b && (b.box === "inbox" || b.box === "INBOX" || b.folder === "INBOX" || b.watched)) {
@@ -197,13 +186,8 @@ Item {
 
             // If new unread mail arrived while running (suppressed on initial startup sync)
             if (!isInitial && newUnreadList.length > 0) {
-              root.mailReceived(newUnreadList)
-              if (root.sound) {
-                root._playNewMailSound()
-              }
-              if (root.notify) {
-                root._notifyNewMail(newUnreadList)
-              }
+              if (root.sound) root._playNewMailSound()
+              if (root.notify) root._notifyNewMail(newUnreadList)
             }
           }
           if (callback) callback(null)
@@ -221,10 +205,7 @@ Item {
     soundProcess.running = true
   }
 
-  Process {
-    id: soundProcess
-    command: ["canberra-gtk-play", "-i", "message-new-email"]
-  }
+  Process { id: soundProcess }
 
   function _notifyNewMail(newMsgs) {
     if (!newMsgs || newMsgs.length === 0) return
@@ -246,10 +227,7 @@ Item {
     toastProcess.running = true
   }
 
-  Process {
-    id: toastProcess
-    command: ["notify-send", "Mailbox", "New email"]
-  }
+  Process { id: toastProcess }
 
   Timer {
     id: refreshDebounce
@@ -258,44 +236,36 @@ Item {
     onTriggered: root.refresh()
   }
 
-  // Action methods
-  function routeSender(target, destination, done) {
-    root.actionStatus = "Filing sender to " + destination + "…"
-    root.call(["route"], { positional: target, to: destination }, function(err, result) {
+  // Every panel action is the same shape: fire one daemon command, report the
+  // outcome in actionStatus (which actionTimer clears), resync on success.
+  function _action(cmd, args, okStatus, done) {
+    root.call(cmd, args, function(err, result) {
       if (err) {
         root.actionStatus = "Error: " + err
       } else {
-        root.actionStatus = "Routed to " + destination
+        root.actionStatus = okStatus
         root.refresh()
       }
-      actionTimer.restart()
+      if (err || okStatus !== "") actionTimer.restart()
       if (done) done(err, result)
     })
+  }
+
+  function routeSender(target, destination, done) {
+    root.actionStatus = "Filing sender to " + destination + "…"
+    _action(["route"], { positional: target, to: destination }, "Routed to " + destination, done)
   }
 
   function setSeen(id, seen, done) {
-    root.call([seen === false ? "unseen" : "seen"], { positional: id }, function(err, result) {
-      if (!err) root.refresh()
-      if (done) done(err, result)
-    })
+    _action([seen === false ? "unseen" : "seen"], { positional: id }, "", done)
   }
 
   function setAside(id, done) {
-    root.actionStatus = "Set aside"
-    root.call(["aside"], { positional: id }, function(err, result) {
-      if (!err) root.refresh()
-      actionTimer.restart()
-      if (done) done(err, result)
-    })
+    _action(["aside"], { positional: id }, "Set aside", done)
   }
 
   function trashMessage(id, done) {
-    root.actionStatus = "Moved to Trash"
-    root.call(["trash"], { positional: id }, function(err, result) {
-      if (!err) root.refresh()
-      actionTimer.restart()
-      if (done) done(err, result)
-    })
+    _action(["trash"], { positional: id }, "Moved to Trash", done)
   }
 
   Timer {

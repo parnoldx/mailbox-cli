@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
 import qs.Commons
@@ -49,22 +48,8 @@ Panel {
   readonly property var filteredMessages: Model.filterMessages(service.messages, accountFilter, tabFilter)
   readonly property var screenerCards: Model.screenerCards(service.screenerList, avatarPalette.length)
 
-  readonly property var accountDropdownOptions: {
-    var opts = Model.accountFilterOptions(service.accounts)
-    var out = []
-    for (var i = 0; i < opts.length; i++) {
-      var count = 0
-      for (var j = 0; j < service.messages.length; j++) {
-        var m = service.messages[j]
-        if (!m.seen && (opts[i].value === "" || String(m.account) === opts[i].value)) count++
-      }
-      out.push({
-        value: opts[i].value,
-        label: count > 0 ? opts[i].label + " (" + count + ")" : opts[i].label
-      })
-    }
-    return out
-  }
+  // Whichever list the cursor and the keyboard actions are currently walking.
+  readonly property var activeList: tabFilter === "screener" ? screenerCards : filteredMessages
 
   readonly property var avatarPalette: [
     "#E06C75", "#98C379", "#E5C07B", "#61AFEF",
@@ -77,6 +62,29 @@ Panel {
       ? item.colorIndex
       : Model.avatarColorIndex(item.address || item.from || item.name, avatarPalette.length)
     return avatarPalette[idx % avatarPalette.length]
+  }
+
+  // Circular sender initials, shared by the mail rows and the screener cards.
+  component Avatar: Rectangle {
+    id: avatar
+
+    property var item: null
+    property real diameter: Style.space(30)
+    property real fontSize: Style.font.caption
+
+    implicitWidth: diameter
+    implicitHeight: diameter
+    radius: diameter / 2
+    color: root.avatarColor(item)
+
+    Text {
+      anchors.centerIn: parent
+      text: avatar.item ? avatar.item.initials : "?"
+      color: "#FFFFFF"
+      font.family: root.fontFamily
+      font.pixelSize: avatar.fontSize
+      font.bold: true
+    }
   }
 
   property int phraseIndex: 0
@@ -165,8 +173,12 @@ Panel {
     root.close()
   }
 
+  function selectedItem() {
+    return selectedIndex >= 0 && selectedIndex < activeList.length ? activeList[selectedIndex] : null
+  }
+
   function moveSelection(delta) {
-    var count = tabFilter === "screener" ? screenerCards.length : filteredMessages.length
+    var count = activeList.length
     if (count === 0) return
     if (!cursorActive) {
       selectedIndex = 0
@@ -178,59 +190,39 @@ Panel {
   }
 
   function activateSelection() {
-    if (tabFilter === "screener") {
-      if (selectedIndex >= 0 && selectedIndex < screenerCards.length) {
-        // Default action on screener item enter: route to inbox
-        service.routeSender(screenerCards[selectedIndex].address, "inbox")
-      }
-    } else {
-      if (selectedIndex >= 0 && selectedIndex < filteredMessages.length) {
-        openMail(filteredMessages[selectedIndex])
-      }
-    }
+    var item = selectedItem()
+    if (!item) return
+    // Default action on a screener item is to route the sender to the inbox.
+    if (tabFilter === "screener") service.routeSender(item.address, "inbox")
+    else openMail(item)
   }
 
   function routeSelected(destination) {
-    if (tabFilter !== "screener") return
-    if (selectedIndex >= 0 && selectedIndex < screenerCards.length) {
-      var item = screenerCards[selectedIndex]
-      service.routeSender(item.address, destination)
-    }
+    var item = tabFilter === "screener" ? selectedItem() : null
+    if (item) service.routeSender(item.address, destination)
   }
 
   function trashSelected() {
-    if (tabFilter === "screener") {
-      if (selectedIndex >= 0 && selectedIndex < screenerCards.length) {
-        var card = screenerCards[selectedIndex]
-        service.trashMessage(card.id)
-      }
-      return
-    }
-    if (selectedIndex >= 0 && selectedIndex < filteredMessages.length) {
-      var item = filteredMessages[selectedIndex]
-      service.trashMessage(item.id)
-    }
+    var item = selectedItem()
+    if (item) service.trashMessage(item.id)
   }
 
   function setAsideSelected() {
-    if (tabFilter === "screener") return
-    if (selectedIndex >= 0 && selectedIndex < filteredMessages.length) {
-      var item = filteredMessages[selectedIndex]
-      service.setAside(item.id)
-    }
+    var item = tabFilter === "screener" ? null : selectedItem()
+    if (item) service.setAside(item.id)
   }
 
   function markSeenSelected() {
-    if (tabFilter === "screener") return
-    if (selectedIndex >= 0 && selectedIndex < filteredMessages.length) {
-      var item = filteredMessages[selectedIndex]
-      service.setSeen(item.id, !item.seen)
-    }
+    var item = tabFilter === "screener" ? null : selectedItem()
+    if (item) service.setSeen(item.id, !item.seen)
   }
 
   function scrollSelectionIntoView() {
-    if (!listColumn || selectedIndex < 0 || selectedIndex >= listColumn.children.length) return
-    var wrapper = listColumn.children[selectedIndex]
+    // Delegates are parented to the Column, not to the Repeater, so ask the
+    // Repeater for them by index rather than walking its children.
+    var repeater = tabFilter === "screener" ? screenerRepeater : mailRepeater
+    var wrapper = selectedIndex >= 0 ? repeater.itemAt(selectedIndex) : null
+    if (!wrapper) return
     Qt.callLater(function() {
       if (!wrapper || !panelFlick) return
       var point = wrapper.mapToItem(panelFlick.contentItem, 0, 0)
@@ -440,7 +432,7 @@ Panel {
             visible: !root.settingsOpen && service.accountCount > 1
             width: parent.width
             showLabel: false
-            options: root.accountDropdownOptions
+            options: Model.accountFilterOptions(service.accounts, service.messages)
             foreground: root.foreground
             background: Color.popups.background
             accent: Color.accent
@@ -452,48 +444,34 @@ Panel {
             }
           }
 
-          // Tab Bar
+          // Tab Bar. The screener tab wears the urgent colour while senders
+          // are waiting; the other two are plain.
           Row {
             visible: !root.settingsOpen
             spacing: Style.space(4)
 
-            Button {
-              text: "NEW FOR YOU"
-              selected: root.tabFilter === "unread"
-              foreground: root.foreground
-              background: "transparent"
-              accent: Color.accent
-              fontFamily: root.fontFamily
-              fontSize: Style.font.caption
-              horizontalPadding: Style.space(8)
-              verticalPadding: Style.space(2)
-              onClicked: root.setTab("unread")
-            }
+            Repeater {
+              model: [
+                { tab: "unread", label: "NEW FOR YOU" },
+                { tab: "previous", label: "PREVIOUSLY SEEN" },
+                { tab: "screener", label: service.screenerCount > 0 ? "SCREENER (" + service.screenerCount + ")" : "SCREENER" }
+              ]
 
-            Button {
-              text: "PREVIOUSLY SEEN"
-              selected: root.tabFilter === "previous"
-              foreground: root.foreground
-              background: "transparent"
-              accent: Color.accent
-              fontFamily: root.fontFamily
-              fontSize: Style.font.caption
-              horizontalPadding: Style.space(8)
-              verticalPadding: Style.space(2)
-              onClicked: root.setTab("previous")
-            }
+              Button {
+                required property var modelData
+                readonly property bool isScreener: modelData.tab === "screener"
 
-            Button {
-              text: service.screenerCount > 0 ? "SCREENER (" + service.screenerCount + ")" : "SCREENER"
-              selected: root.tabFilter === "screener"
-              foreground: service.screenerCount > 0 ? root.urgent : root.foreground
-              background: "transparent"
-              accent: root.urgent
-              fontFamily: root.fontFamily
-              fontSize: Style.font.caption
-              horizontalPadding: Style.space(8)
-              verticalPadding: Style.space(2)
-              onClicked: root.setTab("screener")
+                text: modelData.label
+                selected: root.tabFilter === modelData.tab
+                foreground: isScreener && service.screenerCount > 0 ? root.urgent : root.foreground
+                background: "transparent"
+                accent: isScreener ? root.urgent : Color.accent
+                fontFamily: root.fontFamily
+                fontSize: Style.font.caption
+                horizontalPadding: Style.space(8)
+                verticalPadding: Style.space(2)
+                onClicked: root.setTab(modelData.tab)
+              }
             }
           }
         }
@@ -523,97 +501,48 @@ Panel {
                 id: settingsView
                 visible: root.settingsOpen
                 width: parent.width
-                spacing: Style.space(12)
+                spacing: Style.space(8)
 
-                Text {
+                PanelSectionHeader {
                   text: "SETTINGS"
-                  color: root.dim
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  font.bold: true
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
                 }
 
-                // Hide bar icon toggle
-                RowLayout {
-                  width: parent.width
-
-                  Column {
-                    Layout.fillWidth: true
-                    spacing: Style.space(2)
-
-                    Text {
-                      text: "Hide bar icon when no new mail"
-                      color: root.foreground
-                      font.family: root.fontFamily
-                      font.pixelSize: Style.font.bodySmall
+                Repeater {
+                  model: [
+                    {
+                      key: "hideWhenEmpty", fallback: true,
+                      label: "Hide bar icon when no new mail",
+                      description: "Icon appears only when unread mail or screener items arrive"
+                    },
+                    {
+                      key: "notify", fallback: false,
+                      label: "Desktop toast notifications",
+                      description: "Show brief toast notification when new email arrives"
+                    },
+                    {
+                      key: "sound", fallback: true,
+                      label: "Notification sound",
+                      description: "Play sound effect when new email arrives"
                     }
-                    Text {
-                      text: "Icon appears only when unread mail or screener items arrive"
-                      color: root.dim
-                      font.family: root.fontFamily
-                      font.pixelSize: Style.font.caption
+                  ]
+
+                  Toggle {
+                    required property var modelData
+
+                    width: contentColumn.width
+                    label: modelData.label
+                    description: modelData.description
+                    checked: root.setting(modelData.key, modelData.fallback)
+                    foreground: root.foreground
+                    fontFamily: root.fontFamily
+                    titleSize: Style.font.bodySmall
+                    onClicked: {
+                      var change = {}
+                      change[modelData.key] = !checked
+                      root.persistSettings(change)
                     }
-                  }
-
-                  CheckBox {
-                    checked: root.setting("hideWhenEmpty", true)
-                    onToggled: root.persistSettings({ hideWhenEmpty: checked })
-                  }
-                }
-
-                // Notifications toggle
-                RowLayout {
-                  width: parent.width
-
-                  Column {
-                    Layout.fillWidth: true
-                    spacing: Style.space(2)
-
-                    Text {
-                      text: "Desktop toast notifications"
-                      color: root.foreground
-                      font.family: root.fontFamily
-                      font.pixelSize: Style.font.bodySmall
-                    }
-                    Text {
-                      text: "Show brief toast notification when new email arrives"
-                      color: root.dim
-                      font.family: root.fontFamily
-                      font.pixelSize: Style.font.caption
-                    }
-                  }
-
-                  CheckBox {
-                    checked: service.notify
-                    onToggled: root.persistSettings({ notify: checked })
-                  }
-                }
-
-                // Notification sound toggle
-                RowLayout {
-                  width: parent.width
-
-                  Column {
-                    Layout.fillWidth: true
-                    spacing: Style.space(2)
-
-                    Text {
-                      text: "Notification sound"
-                      color: root.foreground
-                      font.family: root.fontFamily
-                      font.pixelSize: Style.font.bodySmall
-                    }
-                    Text {
-                      text: "Play sound effect when new email arrives"
-                      color: root.dim
-                      font.family: root.fontFamily
-                      font.pixelSize: Style.font.caption
-                    }
-                  }
-
-                  CheckBox {
-                    checked: service.sound
-                    onToggled: root.persistSettings({ sound: checked })
                   }
                 }
               }
@@ -638,6 +567,7 @@ Panel {
                 }
 
                 Repeater {
+                  id: screenerRepeater
                   model: root.screenerCards
 
                   Rectangle {
@@ -669,21 +599,10 @@ Panel {
                         width: parent.width
                         spacing: Style.space(8)
 
-                        // Colored Initial Avatar
-                        Rectangle {
-                          width: Style.space(32)
-                          height: Style.space(32)
-                          radius: Style.space(16)
-                          color: root.avatarColor(screenerCard.modelData)
-
-                          Text {
-                            anchors.centerIn: parent
-                            text: screenerCard.modelData.initials
-                            color: "#FFFFFF"
-                            font.family: root.fontFamily
-                            font.pixelSize: Style.font.bodySmall
-                            font.bold: true
-                          }
+                        Avatar {
+                          item: screenerCard.modelData
+                          diameter: Style.space(32)
+                          fontSize: Style.font.bodySmall
                         }
 
                         Column {
@@ -803,7 +722,7 @@ Panel {
                 }
 
                 Repeater {
-                  id: listColumn
+                  id: mailRepeater
                   model: root.filteredMessages
 
                   Rectangle {
@@ -834,22 +753,7 @@ Panel {
                       anchors.margins: Style.space(6)
                       spacing: Style.space(10)
 
-                      // Avatar
-                      Rectangle {
-                        width: Style.space(30)
-                        height: Style.space(30)
-                        radius: Style.space(15)
-                        color: root.avatarColor(mailRow.modelData)
-
-                        Text {
-                          anchors.centerIn: parent
-                          text: mailRow.modelData.initials
-                          color: "#FFFFFF"
-                          font.family: root.fontFamily
-                          font.pixelSize: Style.font.caption
-                          font.bold: true
-                        }
-                      }
+                      Avatar { item: mailRow.modelData }
 
                       // Main Content
                       Column {
