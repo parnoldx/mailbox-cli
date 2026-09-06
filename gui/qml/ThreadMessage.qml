@@ -85,7 +85,16 @@ Item {
         webLoader.item.runJavaScript(
             "(function(){var e=document.getElementById('__mb');" +
             "return e?Math.ceil(e.getBoundingClientRect().height)+44:0;})()",
-            function (h) { if (h && h > 0) root.htmlContentHeight = h })
+            function (h) {
+                if (!h || h <= 0) return
+                root.htmlContentHeight = h
+                // A positive measurement means the document has laid out and
+                // DarkReader (a synchronous <script> in the body) has already
+                // re-tinted it, so the mail is safe to show. Waiting for
+                // LoadSucceededStatus instead means waiting for every remote
+                // image in a newsletter — seconds after the text is readable.
+                if (root.webCovered && !root.reviving) root.restoreScroll()
+            })
     }
     onWidthChanged: if (root.htmlMode) root.measureHtml()
 
@@ -210,8 +219,23 @@ Item {
           "::-webkit-scrollbar:horizontal{height:0 !important;display:none !important;}" +
           "::-webkit-scrollbar-thumb{background:" + sbThumb + ";border-radius:5px;}"
 
+        // The mail's HTML is the raw part off the wire — the daemon does not
+        // sanitise it, by design — so a <script> it carried would otherwise run
+        // in this page. script-src with a per-render nonce stops that, plus
+        // inline on*= handlers and javascript: URLs; only the two DarkReader
+        // scripts below carry the nonce. 'strict-dynamic' then lets a script
+        // that is already trusted inject further ones — DarkReader appends its
+        // own CSSStyleSheet proxy unconditionally, and would log a refusal on
+        // every mail without it — while parser-inserted script, which is all a
+        // mail can carry, stays blocked. Mail CSS and images are left alone,
+        // and runJavaScript() from QML is browser-initiated, so measuring and
+        // cid-patching are unaffected. Nothing here reaches other mail (this is
+        // a whole WebEngineView per Message, not a same-origin frame like the
+        // Feed's cards), but a script could still phone home on its own.
+        var nonce = Qt.md5(String(Math.random()) + root.msg.id + Date.now())
         var head =
           "<!DOCTYPE html><html><head><meta charset='utf-8'>" +
+          "<meta http-equiv='Content-Security-Policy' content=\"script-src 'nonce-" + nonce + "' 'strict-dynamic'\">" +
           "<meta name='viewport' content='width=device-width, initial-scale=1'>" +
           "<meta name='color-scheme' content='" + (dark ? "dark" : "light") + "'>" +
           "<style>" + css + "</style></head>"
@@ -227,8 +251,8 @@ Item {
                     selectionColor: String(Theme.selection)
                 })
                 tail =
-                  "<scr" + "ipt>" + lib + "</scr" + "ipt>" +
-                  "<scr" + "ipt>try{DarkReader.enable(" + opts + ");}" +
+                  "<scr" + "ipt nonce='" + nonce + "'>" + lib + "</scr" + "ipt>" +
+                  "<scr" + "ipt nonce='" + nonce + "'>try{DarkReader.enable(" + opts + ");}" +
                   "catch(e){console.warn('DarkReader:',e);}</scr" + "ipt>"
             }
         }
@@ -262,10 +286,10 @@ Item {
         if (root.applyDark) root.webCovered = true
         webLoader.item.loadHtml(root.themedHtml(), "about:blank")
     }
-    function reloadHtml() {
-        if (!root.htmlMode) return
-        root.cidMap = ({})
-        root.renderHtml()
+    // Fetch every inline image the page still refers to by cid and patch it
+    // into the live DOM. inlineNeeds() skips what cidMap already holds, so this
+    // is safe to call again every time the attachment list moves.
+    function fetchCids() {
         root.inlineNeeds().forEach(function (need) {
             Mailbox.call(["attachment", "bytes"], { positional: need.id }, function (r) {
                 if (r && r.ok && r.data && r.data.base64) {
@@ -276,9 +300,20 @@ Item {
             })
         })
     }
+    function reloadHtml() {
+        if (!root.htmlMode) return
+        root.cidMap = ({})
+        root.renderHtml()
+        root.fetchCids()
+    }
     onHtmlModeChanged: reloadHtml()
     onApplyDarkChanged: renderHtml()
-    onAttachmentsChanged: reloadHtml()
+    // The attachment list arriving does not change the page: inline images are
+    // patched into the DOM, and themedHtml() never reads `attachments`. It used
+    // to re-render here, which threw the in-flight load away ~50ms in and
+    // doubled time-to-first-paint — and fired once per row per response,
+    // because attachmentsFor() hands back a fresh [] on every map change.
+    onAttachmentsChanged: root.fetchCids()
     Connections { target: Theme; function onChanged() { root.renderHtml() } }
 
     // --- QtWebEngine leaves a black GPU surface behind once its Wayland surface
@@ -316,10 +351,13 @@ Item {
     function restoreScroll() {
         var y = root.savedScroll
         root.savedScroll = 0
-        if (y > 1 && webLoader.item)
-            webLoader.item.runJavaScript(
-                "(function(){var n=0,iv=setInterval(function(){window.scrollTo(0," + y +
-                ");if(++n>16)clearInterval(iv);},60);})()")
+        // Nothing to put back — an ordinary open, where the cover is only the
+        // dark-mail anti-flash. Uncover now: waiting out the timer below was a
+        // fifth of a second of blank sheet on every single mail.
+        if (y <= 1 || !webLoader.item) { root.webCovered = false; return }
+        webLoader.item.runJavaScript(
+            "(function(){var n=0,iv=setInterval(function(){window.scrollTo(0," + y +
+            ");if(++n>16)clearInterval(iv);},60);})()")
         uncoverTimer.restart()
     }
     Timer { id: uncoverTimer; interval: 220; onTriggered: root.webCovered = false }
@@ -735,7 +773,7 @@ Item {
                                 if (root.webCovered) root.restoreScroll()
                             } else if (req.status === WebEngineView.LoadFailedStatus) {
                                 // Never leave the mail stuck behind the cover.
-                                if (root.webCovered && !root.reviving && !root.webDirty)
+                                if (root.webCovered && !root.reviving)
                                     root.webCovered = false
                             }
                         }

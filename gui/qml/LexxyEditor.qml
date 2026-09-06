@@ -251,12 +251,12 @@ Item {
                 // A file dropped onto the editor: Chromium wants to open it.
                 // Keep the editor put and pass the path up to be attached.
                 root.fileDropped(u)
-                req.action = WebEngineNavigationRequest.IgnoreRequest
+                req.reject()
                 return
             }
             if (req.navigationType === WebEngineNavigationRequest.LinkClickedNavigation) {
                 Qt.openUrlExternally(req.url)
-                req.action = WebEngineNavigationRequest.IgnoreRequest
+                req.reject()
             }
         }
         onLoadingChanged: function (req) {

@@ -247,7 +247,7 @@ Item {
             onNavigationRequested: function (req) {
                 var u = "" + req.url
                 if (u.indexOf("feed:") === 0) {
-                    req.action = WebEngineNavigationRequest.IgnoreRequest
+                    req.reject()
                     if (u.indexOf("feed:openfull/") === 0)
                         win.openMessage(decodeURIComponent(u.substring(14)))
                     else if (u.indexOf("feed:trash/") === 0)
@@ -260,7 +260,7 @@ Item {
                 }
                 if (req.navigationType === WebEngineNavigationRequest.LinkClickedNavigation) {
                     Qt.openUrlExternally(req.url)
-                    req.action = WebEngineNavigationRequest.IgnoreRequest
+                    req.reject()
                 }
             }
             onNewWindowRequested: function (req) { Qt.openUrlExternally(req.requestedUrl) }

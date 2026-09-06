@@ -105,7 +105,13 @@ ApplicationWindow {
     // The Screener asks for a decision about a *sender*, not a read about a
     // mail, so it carries its own triage (route in / block / move) and hides
     // the reply actions — you screen someone in before you answer them.
-    readonly property bool inScreener: currentKey() === "Screener"
+    // With a reader open this is read off that Message's own Box, not the
+    // bucket behind it: `--open Screener:42` from the notification widget (and
+    // a search hit) opens Screener mail while the bucket is still the Inbox,
+    // and used to land in the plain reader with no decision chips at all.
+    readonly property bool inScreener: win.openMsg
+        ? /(^|[\/.])screener$/i.test(String(win.openMsg.box || ""))
+        : currentKey() === "Screener"
 
     // ---- compose -------------------------------------------------------
     function startCompose() {

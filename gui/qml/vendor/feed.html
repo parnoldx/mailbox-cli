@@ -95,7 +95,7 @@
      entering the Feed doesn't show a column of cards growing as bodies load in. */
   .bodyhost { height:200px; overflow:hidden; }
   .card.open .bodyhost { height:auto; }
-  /* Hidden until DarkReader has re-tinted the article (see onIframeLoad) so a
+  /* Hidden until DarkReader has re-tinted the article (see armIframe) so a
      newsletter's own light backgrounds never flash before the invert. The
      .sheet behind it is already the themed colour, so the swap is seamless —
      no fade, which would just composite the light frame at partial opacity. */
@@ -340,7 +340,15 @@
   }
 
   // ---------- the article iframe ----------
-  function bodyDoc(row, b) {
+  // A fresh CSP nonce per article document. `crypto.getRandomValues` (unlike
+  // crypto.randomUUID) needs no secure context, which a qrc: page is not.
+  function newNonce() {
+    var a = crypto.getRandomValues(new Uint8Array(12)), s = "";
+    for (var i = 0; i < a.length; i++) s += (a[i] + 256).toString(16).slice(1);
+    return s;
+  }
+
+  function bodyDoc(row, b, id, nonce) {
     var dark = !!THEME.dark;
     var bg = dark ? (THEME.sheet || "#1a1b26") : "#ffffff";
     var fg = dark ? (THEME.fg || "#a9b1d6") : "#1b1b1b";
@@ -378,12 +386,41 @@
       "td,th{overflow-wrap:break-word;word-break:break-word;}" +
       "pre{white-space:pre-wrap!important;word-break:break-word;}" +
       "a{color:" + (THEME.accent || "#7aa2f7") + ";}";
-    return '<!DOCTYPE html><html><head><meta charset="utf-8">' +
+    // The last thing in the document tells us it has finished parsing. That is
+    // the moment the article is readable and safe to dark-reader — the iframe's
+    // own `load` event is much later, because it also waits for every remote
+    // image the newsletter pulls. srcdoc is same-origin with this page (the
+    // whole file already relies on that: it reaches into contentDocument to
+    // measure and to inject), so `parent` is simply reachable.
+    var ping = "<scr" + "ipt nonce=\"" + nonce + "\">try{parent.__frameReady(" +
+               JSON.stringify(id) + ")}catch(e){}</scr" + "ipt>";
+    // This iframe is same-origin with the feed page, so a <script> the mail
+    // carried would run with `parent` in reach — every other card's sender,
+    // subject and rendered body, plus this page's own globals. The mail's HTML
+    // is the raw part straight off the wire (the daemon does not sanitise it,
+    // by design), so the block has to happen here. script-src with a nonce
+    // stops mail script, inline on*= handlers and javascript: URLs in one go;
+    // only the two scripts we inject ourselves carry the nonce. Mail CSS and
+    // images are deliberately left alone.
+    var csp = '<meta http-equiv="Content-Security-Policy" ' +
+              "content=\"script-src 'nonce-" + nonce + "' 'strict-dynamic'\">";
+    return '<!DOCTYPE html><html><head><meta charset="utf-8">' + csp +
            '<meta name="viewport" content="width=device-width,initial-scale=1">' +
            '<meta name="color-scheme" content="' + (dark ? "dark" : "light") + '">' +
            "<style>" + css + "</style></head><body><div id=\"__mb\">" +
-           article + "</div></body></html>";
+           article + "</div>" + ping + "</body></html>";
   }
+
+  // Called from inside a card's iframe the moment its document is parsed.
+  // Deferred a tick so the inner parser is off the stack before we start
+  // injecting scripts into that same document.
+  window.__frameReady = function (id) {
+    setTimeout(function () {
+      var card = cardById(id);
+      var f = card && card.querySelector(".bodyhost iframe");
+      if (f) armIframe(card, f);
+    }, 0);
+  };
 
   function ensureIframe(card) {
     var b = BODIES[card.dataset.id];
@@ -394,13 +431,19 @@
     var row = DATA.rows[+card.dataset.idx] || {};
     var f = document.createElement("iframe");
     f.setAttribute("scrolling", "no");
-    f.addEventListener("load", function () { onIframeLoad(card, f); });
-    f.srcdoc = bodyDoc(row, b);
+    // The ping in bodyDoc() normally gets here first; `load` stays as the
+    // backstop for a document that somehow never ran it.
+    f.addEventListener("load", function () { armIframe(card, f); });
+    // Kept on the element so armIframe() can nonce the scripts it injects.
+    f.dataset.nonce = newNonce();
+    f.srcdoc = bodyDoc(row, b, card.dataset.id, f.dataset.nonce);
     host.innerHTML = "";
     host.appendChild(f);
   }
 
-  function onIframeLoad(card, f) {
+  function armIframe(card, f) {
+    if (f.dataset.armed === "1") return;
+    f.dataset.armed = "1";
     var w = f.contentWindow, d = f.contentDocument;
     // Dark Reader, per iframe — same call ReadingView/the old FeedArticle made,
     // just injected after load so the 340 KB source lives once in this page.
@@ -408,13 +451,16 @@
     try {
       if (THEME.dark && DR && d) {
         darkening = true;
-        var s1 = d.createElement("script"); s1.textContent = DR; d.head.appendChild(s1);
+        var s1 = d.createElement("script");
+        s1.setAttribute("nonce", f.dataset.nonce);
+        s1.textContent = DR; d.head.appendChild(s1);
         var s2 = d.createElement("script");
+        s2.setAttribute("nonce", f.dataset.nonce);
         // immediateModify: run the full re-tint synchronously inside enable().
         // Without it DarkReader sees this still-hidden iframe as "not visible"
         // and defers the dynamic pass until after we've revealed it — which is
         // the white-then-dark flash. With it, the iframe is already fully dark
-        // by the time onIframeLoad returns.
+        // by the time armIframe returns.
         s2.textContent = "try{DarkReader.enable(" + JSON.stringify({
           mode: 1, brightness: 100, contrast: 90, sepia: 0, immediateModify: true,
           darkSchemeBackgroundColor: THEME.sheet, darkSchemeTextColor: THEME.fg,
