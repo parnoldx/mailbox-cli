@@ -721,7 +721,7 @@ Item {
                         onNavigationRequested: function (req) {
                             if (req.navigationType === WebEngineNavigationRequest.LinkClickedNavigation) {
                                 Qt.openUrlExternally(req.url)
-                                req.action = WebEngineNavigationRequest.IgnoreRequest
+                                req.reject()
                             }
                         }
                         onNewWindowRequested: function (req) { Qt.openUrlExternally(req.requestedUrl) }
