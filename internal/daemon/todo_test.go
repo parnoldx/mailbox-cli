@@ -174,6 +174,60 @@ func TestDroppingATodoRemovesIt(t *testing.T) {
 	}
 }
 
+func TestEditingATodoChangesTheFieldsNamedAndLeavesTheRest(t *testing.T) {
+	d, _, _ := seedTasks(t)
+	added := addTodo(t, d, map[string]any{
+		"positional": "Entwurf", "due": "tomorrow", "priority": "low",
+	})
+
+	resp := d.handle(context.Background(), Request{ID: "1", Cmd: []string{"todo", "edit"},
+		Args: map[string]any{
+			"positional": added.ID, "title": "Abgabe",
+			"due": "2026-09-01 17:00", "priority": "high",
+			"notes": "letzte Fassung", "url": "https://example.com/doc",
+		}})
+	if !resp.OK {
+		t.Fatalf("todo edit: %s (%s)", resp.Error, resp.Code)
+	}
+
+	view := func() todo {
+		r := d.handle(context.Background(), Request{ID: "1", Cmd: []string{"todo", "view"},
+			Args: map[string]any{"positional": added.ID}})
+		if !r.OK {
+			t.Fatalf("todo view: %s (%s)", r.Error, r.Code)
+		}
+		return r.Data.(todo)
+	}
+
+	got := view()
+	if got.Summary != "Abgabe" || got.Priority != "high" || got.Due != "2026-09-01 17:00" {
+		t.Fatalf("after edit: %+v", got)
+	}
+	if got.Description != "letzte Fassung" || got.URL != "https://example.com/doc" {
+		t.Fatalf("notes/url not stored: %+v", got)
+	}
+
+	// An edit that names only the title leaves due, priority and the link be.
+	if resp := d.handle(context.Background(), Request{ID: "1", Cmd: []string{"todo", "edit"},
+		Args: map[string]any{"positional": added.ID, "title": "Endabgabe"}}); !resp.OK {
+		t.Fatalf("second edit: %s", resp.Error)
+	}
+	got = view()
+	if got.Summary != "Endabgabe" || got.Priority != "high" || got.Due != "2026-09-01 17:00" || got.URL == "" {
+		t.Fatalf("unnamed fields were touched: %+v", got)
+	}
+
+	// The "none" spellings take a value off.
+	if resp := d.handle(context.Background(), Request{ID: "1", Cmd: []string{"todo", "edit"},
+		Args: map[string]any{"positional": added.ID, "priority": "none", "url": "none", "due": "none"}}); !resp.OK {
+		t.Fatalf("clearing edit: %s", resp.Error)
+	}
+	got = view()
+	if got.Priority != "" || got.URL != "" || got.Due != "" {
+		t.Fatalf("none did not clear: %+v", got)
+	}
+}
+
 func habits(t *testing.T, d *Daemon, verb string, args map[string]any) []habitRow {
 	t.Helper()
 	resp := d.handle(context.Background(), Request{ID: "1", Cmd: []string{"habit", verb}, Args: args})

@@ -1291,6 +1291,37 @@ function draftFromEventDetail(detail, dayKey) {
   return draft
 }
 
+// What the entry pane shows first when a task chip is clicked open for
+// editing: the fields the chip already carried. The notes and the link are
+// not on it -- they come from `todo view` and draftFromTaskDetail patches
+// them in on top.
+function draftFromTask(task) {
+  var draft = emptyDraft("task", (task && task.dueKey) || "")
+  if (!task) return draft
+  draft.title = task.title || ""
+  draft.calendarName = task.calendarName || null
+  // The chip carries the priority word ("high"/"medium"/"low");
+  // buildQuickAddRequest turns it back into the number iCalendar wants.
+  draft.priority = task.priority || null
+  if (task.time) {
+    draft.startTime = task.time
+    draft.allDay = false
+  } else {
+    draft.allDay = true
+  }
+  draft.editingId = String(task.id || "")
+  return draft
+}
+
+// The rest of draftFromTask's picture, once `todo view` answers.
+function draftFromTaskDetail(detail) {
+  var draft = emptyDraft("task", "")
+  if (!detail) return draft
+  draft.description = detail.description || null
+  draft.link = safeLinkUrl(detail.url) || null
+  return draft
+}
+
 // The daemon hands back an RRULE; the form's recurrence pill only knows
 // FREQ and INTERVAL, so anything richer (BYDAY and the like) is left for
 // the raw rule to keep meaning rather than guessed at.
@@ -1464,6 +1495,7 @@ function buildQuickAddRequest(draft, nowMs) {
       ok: true,
       request: {
         kind: "task",
+        id: draft.editingId || null,
         title: title,
         dueMs: dueMs,
         dueHasTime: dueHasTime,
@@ -1756,7 +1788,19 @@ function requestToArgs(request) {
     if (!request.id) return null
     return { cmd: ["todo", request.done ? "done" : "undone"], args: { positional: String(request.id) } }
   }
-  if (request.kind === "task") {
+  if (request.kind === "task" && request.action !== "delete") {
+    if (request.id) {
+      // An edit names every field the pane can hold: what the user left
+      // blank is sent as the "none" the daemon reads as "take it off", so a
+      // cleared priority or link actually clears. Notes are the exception —
+      // an empty box leaves whatever is there, matching event edits.
+      var editArgs = { positional: String(request.id), title: String(request.title || "") }
+      if (request.dueMs) editArgs.due = stampLocal(request.dueMs, !!request.dueHasTime)
+      editArgs.priority = request.priority ? priorityWord(request.priority) : "none"
+      if (request.description) editArgs.notes = String(request.description)
+      editArgs.url = request.link ? String(request.link) : "none"
+      return { cmd: ["todo", "edit"], args: editArgs }
+    }
     var taskArgs = { positional: String(request.title || "") }
     if (request.calendarName) taskArgs.list = String(request.calendarName)
     if (request.dueMs) taskArgs.due = stampLocal(request.dueMs, !!request.dueHasTime)
@@ -1765,6 +1809,8 @@ function requestToArgs(request) {
   }
   if (request.action === "delete") {
     if (!request.id) return null
+    if (request.kind === "task")
+      return { cmd: ["todo", "drop"], args: { positional: String(request.id) } }
     return { cmd: ["event", "delete"], args: { positional: String(request.id) } }
   }
   if (!request.title || !request.startMs) return null
@@ -2210,6 +2256,8 @@ if (typeof module !== "undefined") {
     fallbackDraft: fallbackDraft,
     draftFromAgendaEvent: draftFromAgendaEvent,
     draftFromEventDetail: draftFromEventDetail,
+    draftFromTask: draftFromTask,
+    draftFromTaskDetail: draftFromTaskDetail,
     buildQuickAddRequest: buildQuickAddRequest,
     buildQuickTodoRequest: buildQuickTodoRequest,
     firstTaskCalendarName: firstTaskCalendarName,

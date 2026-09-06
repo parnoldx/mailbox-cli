@@ -24,6 +24,7 @@ func todoVerb(verb string) func(*input, io.Writer, io.Writer) int {
 				"positional": in.Text(), "list": in.Str("list"), "all": in.Bool("all"),
 				"due": in.Str("due"), "title": in.Str("title"),
 				"priority": in.Str("priority"),
+				"notes":    in.Str("notes"), "url": in.Str("url"),
 			},
 		}, in.JSON(), render, stdout, stderr)
 	}
@@ -92,6 +93,12 @@ func printTodo(stdout, stderr io.Writer, resp daemon.Response) {
 		state = v + " priority, " + state
 	}
 	fmt.Fprintf(stdout, "%v  %s%s  (%s, %s)\n", m["id"], str(m["summary"]), due, str(m["list"]), state)
+	if v := str(m["url"]); v != "" {
+		fmt.Fprintf(stdout, "  %s\n", v)
+	}
+	if v := str(m["description"]); v != "" {
+		fmt.Fprintf(stdout, "  %s\n", v)
+	}
 }
 
 // priorityMark is the column a priority gets in a list. Only the two ends are

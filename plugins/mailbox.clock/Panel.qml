@@ -133,6 +133,10 @@ Panel {
   //      add`, and the calendar chooser to go read-only -- an edit cannot
   //      move an event to another calendar.
   property var editingEventId: null
+  // Same, for a todo opened by clicking its chip. Only one of the two is ever
+  // set: the pane edits one entry of one kind at a time.
+  property var editingTaskId: null
+  readonly property bool editingEntry: root.editingEventId !== null || root.editingTaskId !== null
   property bool deleteConfirming: false
 
   // The colour Omarchy's fastfetch logo is painted in — ANSI "green",
@@ -239,6 +243,9 @@ Panel {
       font.pixelSize: slotText.font.pixelSize
       font.bold: slotText.font.bold
       text: slot.editValue
+      // Write through on every keystroke. The Add button does not take
+      // focus, so accept/blur alone would lose a field left mid-edit.
+      onTextEdited: slot.commitText(text)
       onAccepted: {
         slot.commitText(text)
         root.editingSegment = ""
@@ -617,11 +624,28 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
         width: Math.max(0, taskRow.width - taskBox.width - chip.spacing - taskRow.noteReserve)
         text: (taskRow.task && taskRow.task.title) || ""
-        color: root.contentForeground
+        color: taskTitleMouse.containsMouse ? taskRow.tint : root.contentForeground
         font.family: root.contentFontFamily
         font.pixelSize: Style.font.body
         font.bold: !!(taskRow.task && taskRow.task.priority === "high")
         elide: Text.ElideRight
+
+        // Clicking the text opens the todo in the entry pane — the box next
+        // to it still just ticks it off.
+        MouseArea {
+          id: taskTitleMouse
+          anchors.fill: parent
+          enabled: !taskRow.waiting
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: root.openTaskEdit(taskRow.task)
+
+          PanelToolTip {
+            visible: taskTitleMouse.containsMouse
+            text: "Edit todo"
+            fontFamily: root.contentFontFamily
+          }
+        }
       }
 
       Text {
@@ -1133,6 +1157,7 @@ Panel {
     if (dayKey) root.selectedDayKey = String(dayKey)
     root.entryKind = "event"
     root.editingEventId = null
+    root.editingTaskId = null
     root.deleteConfirming = false
     root.nlText = ""
     root.nlSegments = []
@@ -1203,11 +1228,36 @@ Panel {
     })
   }
 
+  // The todo counterpart of openEventEdit: opened by clicking a chip's text.
+  // The chip carries title, due and priority; the notes and the link live
+  // only on the full object, so they arrive from `todo view` and are patched
+  // straight in rather than through a second applyDraft.
+  function openTaskEdit(task) {
+    if (!task || !task.id) return
+    root.resetEntryState(task.dueKey || root.selectedDayKey)
+    root.entryKind = "task"
+    root.editingTaskId = String(task.id)
+    root.applyDraft(Model.draftFromTask(task))
+    root.entryOpen = true
+    Qt.callLater(function() {
+      if (nlField) nlField.setPhrase("")
+    })
+    var editingId = String(task.id)
+    mailbox.call(["todo", "view"], { positional: editingId }, function (error, data) {
+      if (root.editingTaskId !== editingId) return
+      if (error) { root.entryStatus = error; return }
+      var detail = Model.draftFromTaskDetail(data)
+      if (detail.description) root.formDescription = detail.description
+      if (detail.link) root.formLink = detail.link
+    })
+  }
+
   function closeEntry() {
     root.closeAddressSuggestions()
     root.entryOpen = false
     root.entryStatus = ""
     root.editingEventId = null
+    root.editingTaskId = null
     root.deleteConfirming = false
     Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
   }
@@ -1291,7 +1341,8 @@ Panel {
       alertMinutes: root.formAlertMinutes || null,
       recurrence: root.formRecurrence,
       priority: root.formPriority || null,
-      editingId: root.entryKind === "event" ? root.editingEventId : null
+      editingId: root.entryKind === "task" ? root.editingTaskId
+        : (root.entryKind === "event" ? root.editingEventId : null)
     }
   }
 
@@ -1305,7 +1356,7 @@ Panel {
       root.entryStatus = built.error || "could not create"
       return
     }
-    root.entryStatus = root.editingEventId ? "Saving…" : "Adding…"
+    root.entryStatus = root.editingEntry ? "Saving…" : "Adding…"
     var sent = Model.requestToArgs(built.request)
     if (!sent) {
       root.entryStatus = "could not create"
@@ -1327,13 +1378,15 @@ Panel {
   // The delete button is a two-click confirm rather than a native dialog —
   // Escape or clicking anywhere else in the pane backs out of it the same
   // way it backs out of everything else here.
-  function deleteEditingEvent() {
-    if (!root.editingEventId) return
+  function deleteEditingEntry() {
+    var id = root.editingTaskId || root.editingEventId
+    if (!id) return
     if (!root.deleteConfirming) {
       root.deleteConfirming = true
       return
     }
-    var sent = Model.requestToArgs({ kind: "event", action: "delete", id: root.editingEventId })
+    var kind = root.editingTaskId ? "task" : "event"
+    var sent = Model.requestToArgs({ kind: kind, action: "delete", id: id })
     if (!sent) return
     root.entryStatus = "Deleting…"
     mailbox.call(sent.cmd, sent.args, function (error) {
@@ -1343,8 +1396,8 @@ Panel {
         return
       }
       root.closeEntry()
-      // The daemon pushes event.changed as the delete lands; the re-ask
-      // below is the read that drops it from the day list.
+      // The daemon pushes event.changed / todo.changed as the delete lands;
+      // the re-ask below is the read that drops it from the day list.
       root.askCalendar()
     })
   }
@@ -1363,9 +1416,9 @@ Panel {
   }
 
   function setEntryKind(kind) {
-    // Editing one specific event has nothing to switch to; the tabs are
+    // Editing one specific entry has nothing to switch to; the tabs are
     // hidden for it, but the shortcuts that drive them are still live.
-    if (root.editingEventId) return
+    if (root.editingEntry) return
     root.entryKind = kind === "task" ? "task" : "event"
     if (root.nlText) root.applyPhrase()
     root.ensureCalendarForKind()
@@ -2605,7 +2658,7 @@ Panel {
 
               Row {
                 id: kindTabs
-                visible: !root.editingEventId
+                visible: !root.editingEntry
                 anchors.left: backButton.right
                 anchors.leftMargin: Style.space(10)
                 anchors.verticalCenter: parent.verticalCenter
@@ -2627,11 +2680,11 @@ Panel {
               // Nothing to switch to while editing one specific event: the
               // tabs above give way to saying plainly what the pane is for.
               Text {
-                visible: root.editingEventId !== null
+                visible: root.editingEntry
                 anchors.left: backButton.right
                 anchors.leftMargin: Style.space(10)
                 anchors.verticalCenter: parent.verticalCenter
-                text: "EDIT EVENT"
+                text: root.editingTaskId ? "EDIT TODO" : "EDIT EVENT"
                 color: root.contentForeground
                 font.family: root.contentFontFamily
                 font.pixelSize: Style.font.bodySmall
@@ -2654,11 +2707,11 @@ Panel {
               Dropdown {
                 id: calDropdown
                 visible: root.calendarChoices.length > 0
-                // An edit cannot move an event to another calendar — the
-                // daemon has no verb for that — so the chooser goes
+                // An edit cannot move an entry to another calendar or list —
+                // the daemon has no verb for that — so the chooser goes
                 // read-only rather than offering a change that would be
                 // silently dropped.
-                enabled: !root.editingEventId
+                enabled: !root.editingEntry
                 opacity: enabled ? 1 : 0.55
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
@@ -2676,7 +2729,7 @@ Panel {
               // gets matched at create time, so entry never blocks on it.
               TextField {
                 visible: root.calendarChoices.length === 0
-                enabled: !root.editingEventId
+                enabled: !root.editingEntry
                 opacity: enabled ? 1 : 0.55
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
@@ -3163,7 +3216,7 @@ Panel {
             Button {
               width: entryColumn.rowWidth
               anchors.horizontalCenter: parent.horizontalCenter
-              text: root.editingEventId ? "Save changes"
+              text: root.editingEntry ? "Save changes"
                 : (root.entryKind === "task" ? "Add this todo" : "Add this event")
               selected: true
               foreground: root.contentForeground
@@ -3176,15 +3229,16 @@ Panel {
             // does it — no native dialog, same as everything else here,
             // but a mistaken single click must not be the whole story.
             Button {
-              visible: root.editingEventId !== null
+              visible: root.editingEntry
               width: entryColumn.rowWidth
               anchors.horizontalCenter: parent.horizontalCenter
-              text: root.deleteConfirming ? "Click again to delete" : "Delete this event"
+              text: root.deleteConfirming ? "Click again to delete"
+                : (root.editingTaskId ? "Delete this todo" : "Delete this event")
               bordered: true
               accent: "#d9534f"
               foreground: root.deleteConfirming ? "#d9534f" : root.contentForeground
               fontFamily: root.contentFontFamily
-              onClicked: root.deleteEditingEvent()
+              onClicked: root.deleteEditingEntry()
             }
 
             Text {

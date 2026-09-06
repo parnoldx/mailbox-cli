@@ -253,3 +253,46 @@ test("a tick names the todo by id, and an untick undoes it", () => {
     { cmd: ["todo", "undone"], args: { positional: "1796" } })
   assert.equal(Model.requestToArgs({ kind: "complete", done: true }), null)
 })
+
+test("a todo edit names the id and sends every field the pane can hold", () => {
+  const full = Model.requestToArgs({
+    kind: "task", id: 1796, title: "Abgabe", dueMs: 1756654200000,
+    dueHasTime: true, priority: 1, description: "letzte Fassung",
+    link: "https://example.com/doc" })
+  assert.deepEqual(full, {
+    cmd: ["todo", "edit"],
+    args: {
+      positional: "1796", title: "Abgabe", due: "2025-08-31 17:30",
+      priority: "high", notes: "letzte Fassung", url: "https://example.com/doc"
+    }
+  })
+
+  // Blank priority and link go out as "none" so a cleared field clears; an
+  // untouched due is simply not named.
+  const cleared = Model.requestToArgs({
+    kind: "task", id: 1796, title: "Abgabe", dueMs: null, priority: null, link: null })
+  assert.deepEqual(cleared.args, { positional: "1796", title: "Abgabe", priority: "none", url: "none" })
+
+  assert.deepEqual(
+    Model.requestToArgs({ kind: "task", action: "delete", id: 1796 }),
+    { cmd: ["todo", "drop"], args: { positional: "1796" } })
+})
+
+test("draftFromTask fills the pane from a chip, timed and undated", () => {
+  const timed = Model.draftFromTask({
+    id: 1796, title: "Abgabe", calendarName: "Aufgaben", priority: "high",
+    dueKey: "2026-09-01", time: "17:00" })
+  assert.equal(timed.title, "Abgabe")
+  assert.equal(timed.dateKey, "2026-09-01")
+  assert.equal(timed.startTime, "17:00")
+  assert.equal(timed.priority, "high")
+  assert.equal(timed.editingId, "1796")
+
+  const undated = Model.draftFromTask({ id: 5, title: "Someday", dueKey: "", time: "" })
+  assert.equal(undated.startTime, null)
+  assert.equal(undated.allDay, true)
+
+  const detail = Model.draftFromTaskDetail({ description: "notes", url: "https://example.com" })
+  assert.equal(detail.description, "notes")
+  assert.equal(detail.link, "https://example.com")
+})

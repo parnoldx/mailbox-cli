@@ -25,6 +25,10 @@ type todo struct {
 	Priority string `json:"priority,omitempty"`
 	Status   string `json:"status,omitempty"`
 	Done     bool   `json:"done"`
+	// Description and URL are only filled in by `todo view` — a list would
+	// pay to parse the raw of every row for two fields it never shows.
+	Description string `json:"description,omitempty"`
+	URL        string `json:"url,omitempty"`
 	// Overdue is worth saying rather than leaving to the caller to work out
 	// from a date it would have to parse.
 	Overdue bool `json:"overdue,omitempty"`
@@ -77,7 +81,26 @@ func (d *Daemon) handleTodo(ctx context.Context, req Request, resp Response) Res
 		}
 		return resp.ok(viewTodo(object))
 
-	case "done", "undone", "rename", "drop":
+	case "view":
+		id, err := objectID(req, "todo")
+		if err != nil {
+			return resp.usage(err.Error())
+		}
+		o, err := d.Mirror.Object(d.Account, id)
+		if errors.Is(err, mirror.ErrNotFound) {
+			return resp.notFound(fmt.Sprintf("no todo %d in the mirror", id))
+		}
+		if err != nil {
+			return resp.api(err.Error())
+		}
+		row := viewTodo(o)
+		row.Description = o.Description
+		if p, perr := vcal.Parse(o.Raw, time.Local); perr == nil {
+			row.URL = p.URL
+		}
+		return resp.ok(row)
+
+	case "done", "undone", "rename", "drop", "edit":
 		return d.changeTodo(ctx, verb, req, resp)
 	}
 	return resp.usage(fmt.Sprintf("unknown todo command %q", verb))
@@ -110,6 +133,28 @@ func (d *Daemon) changeTodo(ctx context.Context, verb string, req Request, resp 
 			return resp.usage("rename needs --title")
 		}
 		raw, err = vcal.Rename(object.Raw, title)
+	case "edit":
+		edit := vcal.TodoEdit{
+			Summary:     strings.TrimSpace(req.Str("title")),
+			Description: req.Str("notes"),
+			URL:         strings.TrimSpace(req.Str("url")),
+			Priority:    -1,
+		}
+		if strings.EqualFold(strings.TrimSpace(req.Str("due")), "none") {
+			edit.ClearDue = true
+		} else {
+			due, isDate, derr := dueDate(req)
+			if derr != nil {
+				return resp.usage(derr.Error())
+			}
+			edit.Due, edit.DueIsDate = due, isDate
+		}
+		prio, perr := vcal.PriorityNumber(req.Str("priority"))
+		if perr != nil {
+			return resp.usage(perr.Error())
+		}
+		edit.Priority = prio
+		raw, err = vcal.SetTodo(object.Raw, edit)
 	}
 	if err != nil {
 		return resp.api(err.Error())
