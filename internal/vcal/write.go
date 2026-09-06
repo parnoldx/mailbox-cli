@@ -100,6 +100,43 @@ func SetPriority(raw string, priority int) (string, error) {
 	})
 }
 
+// TodoEdit is what an edit says about a VTODO. An empty string field is one
+// the caller did not name and is left as it is; setURL's "none" takes a link
+// off, ClearDue takes the date off, and Priority is -1 to leave alone, 0 to
+// clear, 1-9 to set (RFC 5545 §3.8.1.9).
+type TodoEdit struct {
+	Summary     string
+	Description string
+	URL         string
+	Due         time.Time
+	DueIsDate   bool
+	ClearDue    bool
+	Priority    int
+}
+
+// SetTodo applies an edit to a VTODO already on the server. It edits rather
+// than rebuilds for the reason SetEvent does: the server keeps SEQUENCE and
+// LAST-MODIFIED on what it stored, and a freshly built object without them is
+// refused as an outdated update.
+func SetTodo(raw string, e TodoEdit) (string, error) {
+	return edit(raw, func(c *ical.Component) {
+		if e.Summary != "" {
+			c.Props.SetText(ical.PropSummary, e.Summary)
+		}
+		if e.Description != "" {
+			c.Props.SetText(ical.PropDescription, e.Description)
+		}
+		setURL(c, e.URL)
+		switch {
+		case e.ClearDue:
+			c.Props.Del(ical.PropDue)
+		case !e.Due.IsZero():
+			setDue(c, e.Due, e.DueIsDate)
+		}
+		setPriority(c, e.Priority)
+	})
+}
+
 // PriorityWord says which of the three buckets an iCalendar PRIORITY falls in.
 // The format has nine levels and every client that shows them shows three
 // (RFC 5545 §3.8.1.9), so the number is the record and the word is what a

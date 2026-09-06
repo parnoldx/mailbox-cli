@@ -274,6 +274,8 @@ func (d *Daemon) davCycle(ctx context.Context, reason string, kinds ...string) {
 			continue
 		}
 		d.push(Push{Event: "calendar.changed", Account: d.Account, Box: name})
+		// And the same thing described, for whoever asked to watch (ADR-0027).
+		d.watchObjects(name, out)
 	}
 }
 
@@ -299,9 +301,19 @@ func (d *Daemon) davLoop(ctx context.Context) {
 	var lastCards time.Time
 
 	run := func(k davKick) {
-		if _, err := d.DAV.Discover(ctx); err != nil {
+		// What discovery is about to change, for the watch: a calendar created
+		// or removed in webmail is a change like any other, and this is the only
+		// place that sees it.
+		var before []mirror.Collection
+		watched := d.watching()
+		if watched {
+			before, _ = d.Mirror.Collections(d.Account, "")
+		}
+		if now, err := d.DAV.Discover(ctx); err != nil {
 			d.logf("dav discover: %v", err)
 			d.setDAVConnected(false)
+		} else if watched {
+			d.watchCollections(before, now)
 		}
 		kinds := k.kinds
 		if len(kinds) == 0 {
@@ -316,6 +328,7 @@ func (d *Daemon) davLoop(ctx context.Context) {
 			}
 		}
 		d.davCycle(ctx, k.reason, kinds...)
+		d.watchReady()
 	}
 
 	run(davKick{reason: "startup"})

@@ -102,8 +102,12 @@ func TestEveryCommandIsComplete(t *testing.T) {
 		if strings.HasSuffix(c.Short, ".") {
 			t.Errorf("%s: a short description is a gloss, not a sentence: %q", where, c.Short)
 		}
-		if n := len(strings.Fields(c.Short)); n > 6 {
-			t.Errorf("%s: short is %d words, the overview has room for 6: %q", where, n, c.Short)
+		// The overview prints the name in a column and the short beside it, so
+		// what a gloss has to fit is the rest of an 80-column line. Counting
+		// words instead put "as they change" over the limit while leaving a
+		// six-word one twice as wide alone.
+		if n := len(c.Short); n > 60 {
+			t.Errorf("%s: short is %d columns, the overview has room for 60: %q", where, n, c.Short)
 		}
 
 		switch {

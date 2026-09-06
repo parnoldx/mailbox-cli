@@ -107,8 +107,12 @@ type Daemon struct {
 	// answer.
 	davTrigger chan davKick
 
-	mu        sync.Mutex
-	clients   map[chan Push]struct{}
+	mu      sync.Mutex
+	clients map[chan Push]struct{}
+	// watchers are the connections that asked for the change feed with `watch`.
+	// They are a subscription and the Pushes above are not, which is the whole
+	// difference between the two (ADR-0027).
+	watchers  map[chan Change]*watcher
 	inferred  []InferredDecision
 	connected bool
 	reachable map[string]bool
@@ -146,6 +150,7 @@ func New(account string, m *mirror.Mirror, r *mailsync.Reconciler, mirrored, wat
 		trigger:    make(chan string, 1),
 		davTrigger: make(chan davKick, 1),
 		clients:    map[chan Push]struct{}{},
+		watchers:   map[chan Change]*watcher{},
 	}
 	if r != nil {
 		d.Writer = &mailsync.Writer{
@@ -277,6 +282,9 @@ func (d *Daemon) cycleLoop(ctx context.Context, a *Account) {
 				d.reloadConfig("the file changed")
 			}
 			d.cycle(ctx, a, reason)
+			// After the cycle, not inside it: "ready" means caught up, and
+			// setSyncing has not been undone until cycle returns.
+			d.watchReady()
 		}
 	}
 }
@@ -355,6 +363,10 @@ func (d *Daemon) cycle(ctx context.Context, a *Account, reason string) {
 		}
 		d.push(Push{Event: "mail.changed", Account: a.Name, Box: folder})
 	}
+	// The same cycle, described rather than named, for whoever asked to watch
+	// (ADR-0027). It is one call for the whole cycle because a move shows up as
+	// two Boxes' outcomes.
+	d.watchMail(a, outcomes)
 	// A reply that lands in a conversation half-filed in Aside or Reply Later
 	// pulls the filed half back to the Inbox: the piles are decided one mail at
 	// a time, but a live thread is not something to keep hidden (matches how
@@ -455,10 +467,14 @@ func (d *Daemon) setSyncing(delta int) {
 // nobody has reached for an hour is Behind however healthy IMAP is.
 func (d *Daemon) setDAVConnected(ok bool) {
 	d.mu.Lock()
-	defer d.mu.Unlock()
+	dropped := d.davReachable && !ok
 	d.davReachable = ok
 	if ok {
 		d.davLastSync = time.Now()
+	}
+	d.mu.Unlock()
+	if dropped {
+		d.watchDropped()
 	}
 }
 
@@ -475,7 +491,7 @@ func (d *Daemon) setDAVSyncing(running bool) {
 // "current" when one account's Inbox has not been looked at for an hour.
 func (d *Daemon) setConnected(account string, ok bool) {
 	d.mu.Lock()
-	defer d.mu.Unlock()
+	was := d.connected
 	if d.reachable == nil {
 		d.reachable = map[string]bool{}
 	}
@@ -489,6 +505,11 @@ func (d *Daemon) setConnected(account string, ok bool) {
 	d.connected = all
 	if ok {
 		d.lastSync = time.Now()
+	}
+	dropped := was && !d.connected
+	d.mu.Unlock()
+	if dropped {
+		d.watchDropped()
 	}
 }
 

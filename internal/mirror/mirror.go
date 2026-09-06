@@ -112,10 +112,12 @@ var ErrNotFound = errors.New("not found")
 // rowFields is every column scanRow reads, in the order it reads them. It is
 // written once because three queries scan it and a fourth column added to one
 // copy is a scan-count error in the other two.
-const rowFields = `p.uid, p.flags, p.internaldate, p.size,
-		       m.id, m.message_key, m.date, m.subject, m.from_addr, m.to_addr,
+const messageFields = `m.id, m.message_key, m.date, m.subject, m.from_addr, m.to_addr,
 		       m.cc_addr, m.text_plain, m.text_html, m.body_state, m.thread_id,
 		       m.in_reply_to, m.references_`
+
+const rowFields = `p.uid, p.flags, p.internaldate, p.size,
+		       ` + messageFields
 
 const rowColumns = `
 		SELECT ` + rowFields + `
@@ -148,6 +150,25 @@ func (m *Mirror) Rows(account, folder string, limit int) ([]Row, error) {
 func (m *Mirror) Row(account, folder string, uid uint32) (Row, error) {
 	row := m.db.QueryRow(rowColumns+`
 		 WHERE p.account = ? AND p.folder = ? AND p.uid = ?`, account, folder, uid)
+	r, err := scanRow(row.Scan, folder)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Row{}, ErrNotFound
+	}
+	return r, err
+}
+
+// Changed is the Message a cycle reported as moved, with its Placement in one
+// Box when it still has one. The join is a left one because a Message outlives
+// the Placement pointing at it (ADR-0007): an expunge leaves the row behind, and
+// a watcher told something went away still has to be able to say what it was.
+func (m *Mirror) Changed(account, folder string, messageID int64) (Row, error) {
+	row := m.db.QueryRow(`
+		SELECT COALESCE(p.uid, 0), COALESCE(p.flags, ''), p.internaldate, COALESCE(p.size, 0),
+		       `+messageFields+`
+		  FROM messages m
+		  LEFT JOIN placements p
+		    ON p.message_id = m.id AND p.account = m.account AND p.folder = ?
+		 WHERE m.account = ? AND m.id = ?`, folder, account, messageID)
 	r, err := scanRow(row.Scan, folder)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Row{}, ErrNotFound

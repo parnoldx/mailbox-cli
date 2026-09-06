@@ -1095,3 +1095,37 @@ box); `mailbox setup` reads piped answers and the config is hand-writable TOML,
 so there is no `--headless` mode to build. With no user session the service is a
 hand-written system unit, and `mailbox daemon` already binds its own socket path
 when it is not handed one under socket activation (ADR-0012).
+
+### The nineteenth slice
+
+`mailbox watch`. The changes as they happen, one JSON object per line, until it
+is interrupted — HEY's `hey watch`, against the Mirror instead of a server feed.
+A line names what moved: the Box, the Thread, the subject and sender, whether it
+is new mail; a Collection's line names the Collection, the kind and the object.
+`--box` and `--events` narrow it, `--exit-on-first` and `--timeout` end it, and
+`--run-sync` or `--run-async` hand each change to a shell command with the JSON
+on its stdin and in its environment.
+
+Nothing new is detected. The deltas already exist: the mail reconciler's
+`Outcome` carries `Added`, `Gone` and now `Flagged`, the DAV one carries the
+objects a sync wrote and deleted, and discovery sees a calendar appear. What the
+slice adds is a way to say them out loud — a subscription per connection, so a
+widget's Push stays the dataless nudge ADR-0011 describes and a script gets the
+description it has no query to replace (ADR-0027).
+
+Nothing is remembered either. There is no `--since`: a watch reports what
+happens while it is connected. A dropped connection is a `disconnected` line and
+a redial, and the `ready` after it says the Mirror is caught up again.
+
+Done when all five hold:
+
+1. Mail arriving is one `added` line with `new` true; reading it elsewhere is an
+   `updated` line that is not new.
+2. A move made in another client is a `deleted` and an `added`, and new mail in
+   neither.
+3. A connection that never sent `watch` is told nothing, and the widgets' Push
+   is unchanged.
+4. A Box that resynced is one `resync` line, not one line per Message; a
+   Collection read from nothing is one `collection_resync`.
+5. `--events new --run-async` runs the command once per new mail, with
+   `MAILBOX_NEW=1` set, and never for `ready` or `disconnected`.

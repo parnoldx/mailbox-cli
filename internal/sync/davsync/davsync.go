@@ -64,6 +64,19 @@ type Outcome struct {
 	// Full says this was a sync from nothing, either the first one or because
 	// the server refused our token.
 	Full bool
+	// Objects is what moved, one entry each, for a caller that reports the
+	// change rather than counting it. It is empty on a full sync: everything
+	// would look new, and what a caller is owed there is "start again".
+	Objects []ObjectChange
+}
+
+// ObjectChange is one object a sync wrote or deleted, as the Mirror holds it
+// afterwards — or as it last held it, for a deletion. Added and Deleted are
+// exclusive; neither means the object was already there and changed.
+type ObjectChange struct {
+	Object  mirror.Object
+	Added   bool
+	Deleted bool
 }
 
 // Reconciler brings one account's collections up to date. Like the mail
@@ -244,6 +257,18 @@ func (r *Reconciler) Sync(ctx context.Context, c mirror.Collection) (Outcome, er
 		}
 	}
 
+	// What each change is about to do to what the Mirror holds, read before the
+	// transaction writes over it: whether an object is arriving or changing, and
+	// what a deleted one was. A full sync is not described object by object —
+	// every one of them would look new — so it costs nothing there.
+	var deltas []ObjectChange
+	if !full {
+		deltas, err = r.describe(c, changes.Items)
+		if err != nil {
+			return Outcome{}, err
+		}
+	}
+
 	tx, err := r.Mirror.Begin(r.Account)
 	if err != nil {
 		return Outcome{}, err
@@ -277,7 +302,50 @@ func (r *Reconciler) Sync(ctx context.Context, c mirror.Collection) (Outcome, er
 	if err := tx.SetSyncToken(c.ID, changes.Token); err != nil {
 		return Outcome{}, err
 	}
-	return out, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return Outcome{}, err
+	}
+	// An object that has just arrived only has its Mirror id now that the
+	// transaction is committed, and an id is what a caller acts on.
+	for i, d := range deltas {
+		if !d.Added {
+			continue
+		}
+		if o, err := r.Mirror.ObjectByHref(r.Account, c.ID, d.Object.Href); err == nil {
+			deltas[i].Object = o
+		}
+	}
+	out.Objects = deltas
+	return out, nil
+}
+
+// describe says what each change will do to the Mirror, by asking what is there
+// now. One read per changed object, and none at all on a cycle that found
+// nothing — which is nearly all of them.
+func (r *Reconciler) describe(c mirror.Collection, items []Change) ([]ObjectChange, error) {
+	var out []ObjectChange
+	for _, it := range items {
+		if !it.Deleted && it.Data == "" {
+			continue
+		}
+		had, err := r.Mirror.ObjectByHref(r.Account, c.ID, it.Href)
+		switch {
+		case errors.Is(err, mirror.ErrNotFound):
+			// A deletion of something never held changes nothing here.
+			if !it.Deleted {
+				out = append(out, ObjectChange{Object: r.Project(c, it), Added: true})
+			}
+		case err != nil:
+			return nil, err
+		case it.Deleted:
+			out = append(out, ObjectChange{Object: had, Deleted: true})
+		default:
+			o := r.Project(c, it)
+			o.ID = had.ID
+			out = append(out, ObjectChange{Object: o})
+		}
+	}
+	return out, nil
 }
 
 // Project turns a raw object into the row the Mirror stores. An object we

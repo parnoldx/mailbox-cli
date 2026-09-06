@@ -447,6 +447,62 @@ func tree(l Locals) []*Command {
 			},
 		},
 
+		{
+			Name: "watch", Section: SectionMail, Short: "Follow email threads and calendars as they change",
+			Usage: []string{
+				"mailbox watch [--box BOX] [--events LIST] [--exit-on-first] [--timeout D]",
+				"              [--run-sync CMD | --run-async CMD]",
+			},
+			Long: "One JSON object per line, until it is interrupted. The mirror is what " +
+				"is being watched, so a change is reported once the daemon has it: a " +
+				"watched box is sub-second, the rest ride the poll.\n\n" +
+				"Changes can drive a command instead of being printed, and that is a " +
+				"choice between two behaviours: --run-async spawns the command per change " +
+				"and reads on, so a slow one never holds up the watch and two can overlap; " +
+				"--run-sync waits for each and runs them in order. The change is on the " +
+				"command's stdin and in its environment as MAILBOX_EVENT, MAILBOX_BOX, " +
+				"MAILBOX_THREAD and the rest.\n\n" +
+				"Every added and updated line says whether the mail is new: unseen, in a " +
+				"box where unread means something, and an arrival rather than a move " +
+				"landing from another client. Reading, labelling or filing a message is " +
+				"not new activity; a reply on a known thread is. --events new selects the " +
+				"new ones, alone or alongside added, updated and deleted, and a command " +
+				"sees MAILBOX_NEW=1 for them.\n\n" +
+				"The calendars, task lists and address books are followed too, by default: " +
+				"object_added, object_updated and object_deleted are the events, todos, " +
+				"habits and contacts they hold, each line naming its collection; " +
+				"collection_added, collection_updated and collection_deleted are the " +
+				"collections themselves coming and going. The mail flags switch them off: " +
+				"--box scopes the watch to mail, and an --events list naming only mail " +
+				"changes does the same.\n\n" +
+				"Besides the changes, three lines describe the watch itself: \"ready\" once " +
+				"every box and collection is caught up, \"disconnected\" when the daemon " +
+				"stops answering, and \"resync\" when a box changed more than the mirror " +
+				"could follow one message at a time — re-read that box. A resync is a " +
+				"change of its own: reported by default, commands run for it and " +
+				"--exit-on-first counts it. A collection resyncs the same way, and " +
+				"collection_resync is the same word for it. Ready and disconnected are " +
+				"printed rather than run.",
+			Flags: []Flag{
+				{Name: "box", Kind: KindList, Arg: "BOX",
+					Desc: "box whose changes to report (repeatable, defaults to all; every box is watched either way, so new mail is judged across all of them)"},
+				{Name: "events", Kind: KindList, Arg: "LIST",
+					Desc: "changes to report: added, updated, deleted, resync, new; object_added, object_updated, object_deleted, collection_added, collection_updated, collection_deleted, collection_resync (default all but new)"},
+				{Name: "exit-on-first", Kind: KindBool, Desc: "exit after the first change"},
+				{Name: "timeout", Kind: KindString, Arg: "D", Desc: "give up waiting after this long, e.g. 30m"},
+				{Name: "run-async", Kind: KindString, Arg: "CMD", Desc: "shell command to spawn per change, without waiting for it"},
+				{Name: "run-sync", Kind: KindString, Arg: "CMD", Desc: "shell command to run per change, one at a time, waiting for each"},
+			},
+			Examples: []string{
+				"mailbox watch",
+				"mailbox watch --box inbox --events added",
+				"mailbox watch --box inbox --events new --exit-on-first",
+				`mailbox watch --box inbox --events new --run-async 'notify-send "$MAILBOX_SUBJECT"'`,
+				"mailbox watch --run-sync ./triage.sh",
+			},
+			Run: runWatch,
+		},
+
 		// ORGANIZE ───────────────────────────────────────────────────────
 		{
 			Name: "screener", Section: SectionOrganize, Short: "Senders waiting for a decision",
@@ -797,6 +853,25 @@ func tree(l Locals) []*Command {
 						`mailbox todo add Abgabe --due "2026-09-01 17:00" --priority high`,
 					},
 					Run: todoVerb("add"),
+				},
+				{
+					Name: "view", Short: "Read one todo", Needs: true,
+					Usage: []string{"mailbox todo view ID"}, Run: todoVerb("view"),
+				},
+				{
+					Name: "edit", Short: "Change a todo", Needs: true,
+					Usage: []string{"mailbox todo edit ID [--title TEXT] [--due WHEN] [--priority P] [--notes TEXT] [--url LINK]"},
+					Long: "An unnamed field is left as it is. --priority none clears it, " +
+						"--url none takes a link off, --due none takes the date off.",
+					Flags: []Flag{
+						{Name: "title", Kind: KindString, Arg: "TEXT", Desc: "the new text"},
+						{Name: "due", Kind: KindString, Arg: "WHEN",
+							Desc: "when it is wanted: 2026-09-01, 2026-09-01 17:00, today, tomorrow, none"},
+						{Name: "priority", Kind: KindString, Arg: "P", Desc: "high, medium, low or none"},
+						{Name: "notes", Kind: KindString, Arg: "TEXT", Desc: "a longer description"},
+						{Name: "url", Kind: KindString, Arg: "LINK", Desc: "a link, or none to remove one"},
+					},
+					Run: todoVerb("edit"),
 				},
 				{
 					Name: "done", Short: "Mark a todo complete", Needs: true,

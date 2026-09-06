@@ -216,3 +216,31 @@ type Push struct {
 	Account string `json:"account"`
 	Box     string `json:"box,omitempty"`
 }
+
+// Change is one thing that moved, described rather than merely named. It goes
+// only to a connection that asked for it with `watch`, which is what keeps
+// ADR-0011 true of the Push a widget gets: a nudge is still a nudge, and this
+// is a feed somebody subscribed to (ADR-0027).
+//
+// One shape carries both halves of the program, because a watcher reads a
+// stream and not a schema: the mail fields are empty on a Collection's line and
+// the other way round.
+type Change struct {
+	Event   string `json:"event"`
+	At      string `json:"at"`
+	Account string `json:"account,omitempty"`
+
+	Box     string `json:"box,omitempty"`
+	Thread  int64  `json:"thread,omitempty"`
+	Message int64  `json:"message,omitempty"`
+	Subject string `json:"subject,omitempty"`
+	From    string `json:"from,omitempty"`
+	// New says this is new mail: unseen, in a Box where unread means something,
+	// and fresh activity rather than a move landing (see watch.go).
+	New bool `json:"new,omitempty"`
+
+	Collection string `json:"collection,omitempty"`
+	Kind       string `json:"kind,omitempty"`
+	Object     int64  `json:"object,omitempty"`
+	Summary    string `json:"summary,omitempty"`
+}

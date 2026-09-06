@@ -46,6 +46,10 @@ type Outcome struct {
 	// decision (docs/bubble-and-screener-handoff.md, supersedes ADR-0019).
 	Added []PlacementDelta
 	Gone  []PlacementDelta
+	// Flagged is the placements whose flags this cycle changed — a mail read,
+	// starred or labelled in another client. It is Added and Gone's third: a
+	// watcher reports it as an update, and nothing else here needs it.
+	Flagged []PlacementDelta
 }
 
 // PlacementDelta is one placement that appeared or vanished in a cycle, named
@@ -271,6 +275,12 @@ func (r *Reconciler) incremental(ctx context.Context, folder string, local mirro
 	for _, u := range changed {
 		if isNew[u.UID] {
 			continue
+		}
+		// Which Message this uid is, before the flags are written: the answer is
+		// the same either way, and a uid the Mirror does not hold is a placement
+		// that went away between the fetch and here, which is not an update.
+		if p, err := tx.Placement(folder, u.UID); err == nil {
+			out.Flagged = append(out.Flagged, PlacementDelta{MessageID: p.MessageID, Folder: folder})
 		}
 		if err := tx.SetFlags(folder, u.UID, u.Flags); err != nil {
 			return out, err

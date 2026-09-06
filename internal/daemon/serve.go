@@ -40,6 +40,11 @@ func (d *Daemon) serve(ctx context.Context, conn net.Conn) {
 		d.mu.Unlock()
 	}()
 
+	// The change feed is this connection's too, but nothing is sent down it
+	// until a `watch` request asks (ADR-0027).
+	changes := make(chan Change, 64)
+	defer d.unwatch(changes)
+
 	enc := json.NewEncoder(conn)
 	var wmu sync.Mutex
 	write := func(v any) error {
@@ -60,6 +65,11 @@ func (d *Daemon) serve(ctx context.Context, conn net.Conn) {
 					cancel()
 					return
 				}
+			case c := <-changes:
+				if err := write(c); err != nil {
+					cancel()
+					return
+				}
 			}
 		}
 	}()
@@ -70,6 +80,15 @@ func (d *Daemon) serve(ctx context.Context, conn net.Conn) {
 		var req Request
 		if err := json.Unmarshal(sc.Bytes(), &req); err != nil {
 			_ = write(Response{OK: false, Code: "usage", Error: "malformed request"})
+			continue
+		}
+		// `watch` is the one command that is about this connection rather than
+		// about the Mirror, so it is answered here where the connection's
+		// channel is, and not in handle with the rest.
+		if len(req.Cmd) > 0 && req.Cmd[0] == "watch" {
+			if err := write(d.subscribe(req, changes)); err != nil {
+				return
+			}
 			continue
 		}
 		if err := write(d.handle(ctx, req)); err != nil {

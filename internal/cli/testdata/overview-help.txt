@@ -15,6 +15,7 @@ MAIL
   draft         Mail written but not sent
   outbox        What is queued to go out
   attachment    The files a message carries
+  watch         Follow email threads and calendars as they change
 
 ORGANIZE
   screener      Senders waiting for a decision

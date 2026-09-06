@@ -277,7 +277,16 @@ func flagDefault(f Flag) string {
 }
 
 // wrap breaks a Long paragraph so a page reads at any terminal width.
+// wrap fills text to n columns, keeping the paragraphs it was written with: a
+// blank line between two of them survives, so a long page reads as prose rather
+// than as one block.
 func wrap(s string, n int) string {
+	if paras := strings.Split(s, "\n\n"); len(paras) > 1 {
+		for i, p := range paras {
+			paras[i] = wrap(p, n)
+		}
+		return strings.Join(paras, "\n\n")
+	}
 	var out []string
 	line := ""
 	for _, word := range strings.Fields(s) {
