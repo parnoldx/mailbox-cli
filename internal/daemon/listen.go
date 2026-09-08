@@ -26,6 +26,17 @@ func Listen(socket string, systemd bool) (net.Listener, error) {
 	if systemd {
 		return inherited()
 	}
+	// Someone answering on this path is a live daemon — most likely the
+	// socket-activated one. Removing the path below would unlink it out from
+	// under that daemon, which keeps its listening socket and its systemd
+	// unit: it looks healthy, logs that it is listening, and is reachable by
+	// nobody, because clients only ever find it by path.
+	if conn, err := net.Dial("unix", socket); err == nil {
+		conn.Close()
+		return nil, fmt.Errorf("listen %s: a daemon is already listening there", socket)
+	}
+	// Nothing answered, so the path is stale (a daemon that died without
+	// cleaning up) and taking it is safe.
 	if err := os.Remove(socket); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}

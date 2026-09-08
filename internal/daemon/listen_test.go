@@ -71,3 +71,31 @@ func TestAnEnvironmentFromAnotherProcessIsNotOurs(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// The socket-activated daemon is only ever found by path, so a second daemon
+// that takes the path away leaves it listening on an unlinked socket: alive,
+// logging that it listens, and talked to by nobody. Refuse instead.
+func TestItWillNotTakeThePathFromALiveDaemon(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mailbox.sock")
+	live, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer live.Close()
+
+	if _, err := Listen(path, false); err == nil ||
+		!strings.Contains(err.Error(), "already listening") {
+		t.Fatalf("err = %v", err)
+	}
+
+	// A stale path with nobody behind it is still fair game.
+	live.Close()
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ln, err := Listen(path, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln.Close()
+}
