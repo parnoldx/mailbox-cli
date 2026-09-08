@@ -12,9 +12,9 @@ import "Model.js" as Model
 // middle click opens the timezone picker.
 //
 // In the 5 minutes before a timed event, the clock keeps the time and
-// appends the reminder. The label stays the bar color until the last
-// minute, then turns urgent. Click opens the calendar popup (Join lives
-// there).
+// appends the reminder, and drops it a minute after the start. The label
+// keeps the bar color throughout and shakes twice on entering the last
+// minute. Click opens the calendar popup (Join lives there).
 BarWidget {
   id: root
   moduleName: "omarchy.clock"
@@ -39,7 +39,7 @@ BarWidget {
   readonly property var visibleEventList: panelLoader.item ? panelLoader.item.visibleEventList : []
   readonly property real nowMs: displayDate.getTime()
   readonly property int announceLeadMinutes: setting("announceLeadMinutes", 5)
-  readonly property int startedLeadMinutes: setting("startedLeadMinutes", 5)
+  readonly property int startedLeadMinutes: setting("startedLeadMinutes", 1)
   readonly property var upcomingEvent: Model.nextEvent(visibleEventList, nowMs)
   property string dismissedKey: ""
   readonly property bool announcing: announceLeadMinutes > 0
@@ -49,6 +49,11 @@ BarWidget {
   readonly property bool showReminder: announcing && !vertical
   readonly property bool reminderUrgent: showReminder
     && Model.isImminent(Model.millisUntil(upcomingEvent, nowMs))
+
+  // The last minute shakes the label twice instead of recoloring it — the
+  // motion reads at a glance without spending the theme's urgent color,
+  // which the mail widget already owns for the Screener.
+  onReminderUrgentChanged: if (reminderUrgent) shake.restart()
 
   readonly property string displayText: {
     var clockText = formatted(displayDate)
@@ -246,14 +251,23 @@ BarWidget {
     anchors.fill: parent
     bar: root.bar
     text: root.vertical ? "" : root.displayText
-    foreground: root.reminderUrgent
-      ? (root.bar ? root.bar.urgent : Color.urgent)
-      : (root.bar ? root.bar.barForeground : Color.foreground)
+    foreground: root.bar ? root.bar.barForeground : Color.foreground
     labelVisible: !root.vertical
     hasVisualContent: root.vertical ? root.verticalLines.length > 0 : text !== ""
     fixedHeight: root.vertical ? root.verticalLines.length * Style.bar.iconSlot : -1
     horizontalMargin: 6
     verticalPadding: 8.75
+
+    // A transform rather than x, so anchors.fill keeps owning the layout.
+    transform: Translate { id: shakeShift }
+
+    SequentialAnimation {
+      id: shake
+      loops: 2
+      NumberAnimation { target: shakeShift; property: "x"; to: 3; duration: 55 }
+      NumberAnimation { target: shakeShift; property: "x"; to: -3; duration: 55 }
+      NumberAnimation { target: shakeShift; property: "x"; to: 0; duration: 55 }
+    }
 
     onPressed: function(b) {
       if (b === Qt.RightButton) root.cycleFormat()

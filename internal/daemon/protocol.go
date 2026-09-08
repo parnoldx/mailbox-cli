@@ -238,6 +238,8 @@ type Change struct {
 	// New says this is new mail: unseen, in a Box where unread means something,
 	// and fresh activity rather than a move landing (see watch.go).
 	New bool `json:"new,omitempty"`
+	// Code is the login code taken out of a Pickup, on a `pickup` line only.
+	Code string `json:"code,omitempty"`
 
 	Collection string `json:"collection,omitempty"`
 	Kind       string `json:"kind,omitempty"`

@@ -601,6 +601,42 @@ func TestAReplyCancelsTheNoReplyWatch(t *testing.T) {
 	}
 }
 
+// A mail sent to yourself is delivered back as a second Placement of the very
+// Message that carries the watch — same Message-Id, same Thread, one copy in
+// Sent and one in the Inbox. The due scan must still bring the watched Sent
+// copy back: Mirror.Thread collapses a Message to one row and prefers its
+// Inbox Placement, which hid the Sent one that carries the keyword and made
+// every "mail yourself and wait" test of this feature do nothing.
+func TestANoReplyWatchOnAMailToYourselfStillReturns(t *testing.T) {
+	d, _ := seedSend(t)
+	a := d.primaryAccount()
+	ctx := context.Background()
+	if _, err := a.Reconciler.SyncAll(ctx, a.Mirrored); err != nil {
+		t.Fatal(err)
+	}
+	yesterday := startOfDay(time.Now()).AddDate(0, 0, -1).Format("2006-01-02")
+	out := send(t, d, map[string]any{
+		"to": []string{"me@example.com"}, "subject": "Angebot",
+		"body": "An mich selbst.", "if_no_reply": true, "on": yesterday,
+	})
+
+	f := fakeOf(d)
+	sentCopy := filedCopy(t, d, out.UID)
+	own := f.Deliver("INBOX", sentCopy.MessageID, "Angebot", "An mich selbst.")
+	own.From, own.To = "me@example.com", "me@example.com"
+	if _, err := a.Reconciler.SyncAll(ctx, a.Mirrored); err != nil {
+		t.Fatal(err)
+	}
+
+	d.returnDue(ctx, a)
+
+	for _, r := range boxView(t, d, "Sent") {
+		if r.Subject == "Angebot" {
+			t.Fatalf("the watched Sent copy never came back: %+v", r)
+		}
+	}
+}
+
 // With the deadline passed and no reply, the Sent copy comes back to the
 // Inbox exactly the way an Aside thread does: unread, $bubbled, keyword gone.
 func TestNoReplyWatchBringsTheSentCopyToTheInboxWhenDue(t *testing.T) {

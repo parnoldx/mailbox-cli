@@ -770,9 +770,11 @@ matches every address at that domain; a specific address always wins
 and their next mail is owed a decision again.
 
 Blocking is the asymmetric one. Their next mail is `discard`ed, because that is
-what blocking means; the mail already in the Screener goes to
-`INBOX/Screener/Block` rather than to Trash, so a block made by mistake can still
-be found while the evidence exists.
+what blocking means; the mail already here is marked read and moved to Trash —
+out of the Screener and out of `INBOX/Screener/Block` alike — where a block made
+by mistake can still be found while the evidence exists. That Box stays as the
+drop target another client drags into (ADR-0024), and emptying it is what says
+the drag was acted on: mail sitting in it is a block nobody wrote.
 
 Aside is a Box on this account and is not a Destination. "Always read this
 sender later, from now on" is a Feed, so `--to aside` is refused by name and
@@ -1129,3 +1131,45 @@ Done when all five hold:
    Collection read from nothing is one `collection_resync`.
 5. `--events new --run-async` runs the command once per new mail, with
    `MAILBOX_NEW=1` set, and never for `ready` or `disconnected`.
+
+### The twentieth slice
+
+Pickups. A login code arrives, the Daemon takes it out of the mail, puts it on
+the clipboard, raises a notification, marks the mail read and bins it a quarter
+of an hour later. Nothing about it reaches the Screener or the Inbox as news:
+the code is not mail to decide about, and the sender behind it is one you will
+never hear from again.
+
+The detection gates on the subject and extracts from the body, which is the
+opposite of every prior art and is the measured answer rather than a taste.
+Over the 1445 messages this Mirror held, a keyword net over bodies matched 116
+(German's "einmal" is an ordinary word), a lone code-shaped line 61, digits only
+22, an opaque-token URL 15 — one true positive between them, because order
+confirmations, booking references and BICs are indistinguishable from one-time
+codes once you stop reading the subject. The same subject gate matched one
+message, and it was the right one. Two free layers sit around it: only mail that
+arrived in the last quarter of an hour in the Inbox or the Screener is looked at
+at all, and the OTPHelper ignore list keeps a discount code from reading as a
+login.
+
+Nothing durable is added. The mail carries a `$pickup` IMAP keyword, the way a
+bubbled thread carries its return time (ADR-0023), so the record survives a
+Mirror rebuild and both Daemons see it; the expiry is derived from the arrival
+instant rather than written down, so shortening the window applies to mail
+already flagged. There is no schema change and no header fetch: the negative
+signal a `List-Unsubscribe` would give is not bought until a bulk sender
+actually trips the gate, and the Daemon logs every near miss so that day is
+visible.
+
+Done when all five hold:
+
+1. A code mail is on the clipboard and in a notification before it is anywhere
+   else, and the mail is left read and flagged.
+2. Its sender never appears in `screener`, and the widget's badge never counts
+   it.
+3. An order confirmation carrying a bare six-digit line is untouched and still
+   unread.
+4. A Pickup is in Trash once its window passes, and a Daemon that was down
+   across the instant bins it on the first tick after startup.
+5. A watch is told `pickup` with the code on it — `MAILBOX_CODE` to a
+   `--run-async` command — and never `added` with `new`.

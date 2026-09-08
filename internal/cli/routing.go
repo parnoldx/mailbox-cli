@@ -124,6 +124,10 @@ func printDecisions(stdout, stderr io.Writer, resp daemon.Response) {
 		default:
 			moved = fmt.Sprintf("moved %d, from %s", len(ids), ids[0])
 		}
+		// A block has no ids to show: what was here is read and in the Trash.
+		if n := int(numOf(m["binned"])); n > 0 {
+			moved = fmt.Sprintf("binned %d", n)
+		}
 		fmt.Fprintf(tw, "%v\t%v\t%v\n", str(m["address"]), what, moved)
 	}
 	_ = tw.Flush()

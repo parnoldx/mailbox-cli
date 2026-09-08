@@ -275,44 +275,33 @@ func (d *Daemon) returnDue(ctx context.Context, a *Account) {
 		d.logf("bubble scan: %v", err)
 		return
 	}
-	seen := map[int64]bool{}
+	// The due scan already names every Placement to bring back: setBubble writes
+	// the keyword onto every member of the Thread, so each one comes back due in
+	// its own right. Reading the Thread here instead was wrong — Mirror.Thread
+	// collapses a Message to one Row and prefers its Inbox Placement, so a mail
+	// sent to yourself (one copy in Sent carrying the keyword, one delivered to
+	// the Inbox) looked like it was already home and never returned. Working off
+	// the Placements also keeps the old guard for free: an Aside member the
+	// Thread grew later, for its own reasons, carries no keyword and so is not
+	// in `due`.
+	byThread := map[int64][]mailsync.Ref{}
+	var threads []int64
 	for _, b := range due {
-		if seen[b.ThreadID] {
+		if strings.EqualFold(b.Folder, routing.BoxInbox) {
+			// Already home.
 			continue
 		}
-		seen[b.ThreadID] = true
-		members, err := d.Mirror.Thread(a.Name, b.ThreadID)
-		if err != nil {
-			d.logf("bubble thread %d: %v", b.ThreadID, err)
-			continue
+		if _, ok := byThread[b.ThreadID]; !ok {
+			threads = append(threads, b.ThreadID)
 		}
-		var refs []mailsync.Ref
-		for _, m := range members {
-			if m.Placement.Folder == routing.BoxInbox {
-				// Already home.
-				continue
-			}
-			ref := mailsync.Ref{Folder: m.Placement.Folder, UID: m.Placement.UID}
-			// Only a member that still carries the keyword is due: one placement
-			// of the Thread landed in the "due" scan above, but a Thread can grow
-			// an Aside or Reply Later member later that has nothing to do with
-			// that bubble (the mail is filed there for its own reason, after an
-			// earlier bubble on this Thread already returned). Sweeping every
-			// Aside/Reply Later member unconditionally would drag that unrelated
-			// mail back to the Inbox the moment any stale bubble_at on the Thread
-			// next comes due.
-			if bubble.KeywordOf(m.Placement.Flags) != "" {
-				refs = append(refs, ref)
-			}
-		}
-		if len(refs) == 0 {
-			continue
-		}
-		if _, err := d.bringBack(ctx, a, refs); err != nil {
+		byThread[b.ThreadID] = append(byThread[b.ThreadID], mailsync.Ref{Folder: b.Folder, UID: b.UID})
+	}
+	for _, tid := range threads {
+		if _, err := d.bringBack(ctx, a, byThread[tid]); err != nil {
 			// The other Daemon got there first, most likely: it moved the uids
 			// this one is holding and the MOVE here finds nothing. Not an error
 			// worth a problem, just a note (gate 4).
-			d.logf("bubble return thread %d: %v", b.ThreadID, err)
+			d.logf("bubble return thread %d: %v", tid, err)
 		}
 	}
 }

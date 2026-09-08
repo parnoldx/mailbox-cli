@@ -206,6 +206,7 @@ func changeEnv(c daemon.Change) []string {
 		{"MAILBOX_COLLECTION", c.Collection},
 		{"MAILBOX_KIND", c.Kind},
 		{"MAILBOX_SUMMARY", c.Summary},
+		{"MAILBOX_CODE", c.Code},
 	}
 	for _, n := range []struct {
 		key string

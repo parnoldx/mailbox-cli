@@ -534,12 +534,13 @@ function formatCountdown(deltaMs) {
   return rest === 0 ? "in " + hours + "h" : "in " + hours + "h " + rest + "m"
 }
 
-// "starts in 5 minutes", then "starts now" in the last minute.
+// "starts in 5 minutes", then "starts now" once the start time is reached.
+// Minutes round up so the last partial minute still reads "starts in 1
+// minute" rather than jumping to "now" while there is time left.
 function formatStartsIn(deltaMs) {
   if (deltaMs === null || isNaN(deltaMs)) return ""
-  if (deltaMs < MINUTE_MS) return "starts now"
-  var minutes = Math.floor(deltaMs / MINUTE_MS)
-  if (minutes <= 0) return "starts now"
+  if (deltaMs <= 0) return "starts now"
+  var minutes = Math.ceil(deltaMs / MINUTE_MS)
   if (minutes === 1) return "starts in 1 minute"
   if (minutes < 60) return "starts in " + minutes + " minutes"
   var hours = Math.floor(minutes / 60)

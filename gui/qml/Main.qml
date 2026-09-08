@@ -777,6 +777,12 @@ ApplicationWindow {
         sequences: ["t", "Delete"]; enabled: win._rowActionable
         onActivated: Triage.dispatch(win, "trash", bucketView.currentRowId())
     }
+    // Same on the Feed's highlighted card — it is a web view with no row, so
+    // the page turns the highlight into a feed:trash/<id> for win.trashId().
+    Shortcut {
+        sequences: ["t", "Delete"]; enabled: win.feedActive && win.navKeys
+        onActivated: feed().trashHighlighted()
+    }
     Shortcut {
         sequence: "a"; enabled: win._rowActionable
         onActivated: Triage.dispatch(win, "aside", bucketView.currentRowId())

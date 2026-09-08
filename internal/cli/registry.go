@@ -173,7 +173,7 @@ func tree(l Locals) []*Command {
 				Usage: []string{"mailbox box list [--archive] [--unread]"},
 				Long: "The boxes mail moves through, in that order: inbox, feed, paper " +
 					"trail, screener, aside, reply later, sent, drafts, junk. Everything " +
-					"else — the archive tree, and the block pile under the screener — is " +
+					"else — the archive tree, and the block drop box under the screener — is " +
 					"behind --archive. Driven by what is held rather than by what has mail " +
 					"in it, so an empty box is a row saying so.",
 				Flags: []Flag{
@@ -468,6 +468,10 @@ func tree(l Locals) []*Command {
 				"not new activity; a reply on a known thread is. --events new selects the " +
 				"new ones, alone or alongside added, updated and deleted, and a command " +
 				"sees MAILBOX_NEW=1 for them.\n\n" +
+				"A code mail is a \"pickup\" line instead, never added and never new: the " +
+				"daemon has already copied the code to the clipboard, said so, and marked " +
+				"the mail read, and it bins it a quarter of an hour later. The line carries " +
+				"the code itself, as MAILBOX_CODE.\n\n" +
 				"The calendars, task lists and address books are followed too, by default: " +
 				"object_added, object_updated and object_deleted are the events, todos, " +
 				"habits and contacts they hold, each line naming its collection; " +
@@ -487,7 +491,7 @@ func tree(l Locals) []*Command {
 				{Name: "box", Kind: KindList, Arg: "BOX",
 					Desc: "box whose changes to report (repeatable, defaults to all; every box is watched either way, so new mail is judged across all of them)"},
 				{Name: "events", Kind: KindList, Arg: "LIST",
-					Desc: "changes to report: added, updated, deleted, resync, new; object_added, object_updated, object_deleted, collection_added, collection_updated, collection_deleted, collection_resync (default all but new)"},
+					Desc: "changes to report: added, updated, deleted, resync, new, pickup; object_added, object_updated, object_deleted, collection_added, collection_updated, collection_deleted, collection_resync (default all but new)"},
 				{Name: "exit-on-first", Kind: KindBool, Desc: "exit after the first change"},
 				{Name: "timeout", Kind: KindString, Arg: "D", Desc: "give up waiting after this long, e.g. 30m"},
 				{Name: "run-async", Kind: KindString, Arg: "CMD", Desc: "shell command to spawn per change, without waiting for it"},
@@ -537,7 +541,9 @@ func tree(l Locals) []*Command {
 						"whoever has just read something in the screener has its id and not " +
 						"its sender's address. A domain matches every address at that domain; " +
 						"a specific address always wins. BOX is inbox, feed, paper, block, or " +
-						"screener, which forgets the sender and puts their next mail back there.",
+						"screener, which forgets the sender and puts their next mail back there. " +
+						"Every box but block moves the sender's waiting mail there; block " +
+						"marks it read and moves it to Trash.",
 					Flags: []Flag{
 						{Name: "to", Kind: KindString, Arg: "BOX", Desc: "inbox, feed, paper, block, or screener"},
 					},

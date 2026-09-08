@@ -36,7 +36,7 @@ A Quickshell bar widget and dropdown panel for Omarchy, powered directly by the 
     **out**, nothing more; sorting mail into Feed / Paper Trail is a decision for
     the full desktop client:
     - 📥 **Inbox** (`I`): Route future mail to Inbox and move existing Screener mail to Inbox.
-    - 🚫 **Block** (`B`): Block sender and move existing mail to `Screener/Block`.
+    - 🚫 **Block** (`B`): Block sender; existing mail is marked read and binned.
     - 🗑 **Trash** (`T`): Move sender's screener mail directly to Trash.
 - **Live Push Updates**: Connects directly to `$XDG_RUNTIME_DIR/mailbox.sock`. Updates in real time whenever the daemon pushes `mail.changed`.
 

@@ -84,9 +84,23 @@ _Avoid_: PaperTrail, receipts, archive
 
 **Block**:
 A Destination and a Box. Blocking a sender discards their next mail; the mail
-already waiting goes to `INBOX/Screener/Block`, where a mistake can still be
-found.
+already waiting is marked read and moved to Trash, where a mistake can still be
+found. `INBOX/Screener/Block` is a drop target and not a pile: mail dragged into
+it from another client is a block that has not been written yet, and it is
+emptied once it has been.
 _Avoid_: spam, junk (those are the provider's), blacklist
+
+**Pickup**:
+Mail that is collected rather than read: a login code or a magic link, worth
+thirty seconds and then worth nothing. The Daemon takes the code out of it on
+arrival, puts it on the clipboard and says so, marks it read and bins it a
+quarter of an hour later. A Pickup owes no Routing decision and never reaches
+the Screener as one — the sender is a login form you used once, not somebody to
+route. Recognised from the subject, which is the only part of an auth mail that
+reliably announces the genre; the body is where the code is extracted, never
+where the mail is classified.
+_Avoid_: OTP, 2FA mail, verification email, code (that names what it carries,
+not what it is)
 
 **Aside**:
 Box `INBOX/Aside`, the read-later pile. A conversation is moved there and moved

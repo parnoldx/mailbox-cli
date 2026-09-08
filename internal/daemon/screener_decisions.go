@@ -127,8 +127,8 @@ func (d *Daemon) senderFor(a *Account, messageID int64) string {
 }
 
 // applyInferred writes the decisions into the script and sweeps each sender's
-// waiting Screener mail to the destination — the same two halves `mailbox
-// route` does, minus the human.
+// waiting Screener mail to the destination — or bins it, for a block — the same
+// two halves `mailbox route` does, minus the human.
 //
 // It is idempotent instead of trying to tell its own `route`-driven move from
 // an external one: a sender that already has the matching entry is a no-op, so
@@ -172,11 +172,23 @@ func (d *Daemon) applyInferred(ctx context.Context, a *Account, screener string,
 	}
 
 	for addr, dest := range want {
+		// A block bins what is already here, including the very mail whose drag
+		// into the Block Box said so: the script is the record of the decision,
+		// and an empty Block Box is the record that the drag was acted on.
+		if dest == routing.Block {
+			binned, berr := d.binBlocked(ctx, a, addr, st.lists)
+			if berr != nil {
+				d.logf("screener inference: binning %s: %v", addr, berr)
+			}
+			d.recordInferred(addr, string(dest), binned)
+			d.logf("screener decision inferred from a move: %s -> %s (%d mails binned)", addr, dest, binned)
+			continue
+		}
 		var refs []mailsync.Ref
 		pile := ""
 		if dest != routing.None {
 			var rerr error
-			if refs, rerr = d.screenerRefs(a, screener, addr, st.lists, dest); rerr != nil {
+			if refs, rerr = d.senderRefs(a, screener, addr, st.lists, dest); rerr != nil {
 				d.logf("screener inference: waiting mail for %s: %v", addr, rerr)
 			}
 			pile = pileFor(dest, len(refs))

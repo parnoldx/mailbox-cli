@@ -23,6 +23,11 @@ const (
 	eventDeleted = "deleted"
 	eventResync  = "resync"
 	eventNew     = "new"
+	// A code mail the Daemon collected: the code is already on the clipboard
+	// and the mail is already read, so this reports what was taken rather than
+	// that something arrived. It replaces the `added`+new line the same mail
+	// would otherwise have produced — a Pickup is never news.
+	eventPickup = "pickup"
 
 	eventObjectAdded       = "object_added"
 	eventObjectUpdated     = "object_updated"
@@ -39,7 +44,7 @@ const (
 // mailEvents and collectionEvents are the two halves an --events list can name.
 // A list naming only mail events switches the collections off, the way --box
 // does: both say "this watch is about mail" without a flag that says so.
-var mailEvents = []string{eventAdded, eventUpdated, eventDeleted, eventResync, eventNew}
+var mailEvents = []string{eventAdded, eventUpdated, eventDeleted, eventResync, eventNew, eventPickup}
 
 var collectionEvents = []string{
 	eventObjectAdded, eventObjectUpdated, eventObjectDeleted,
@@ -250,7 +255,7 @@ func (d *Daemon) tell(chans []chan Change, c Change) {
 // A resynced Box is one line and not a thousand: a UIDVALIDITY change replaces
 // every Placement in it, and calling that a thousand arrivals would be a lie a
 // script acts on. Re-read the Box.
-func (d *Daemon) watchMail(a *Account, outcomes map[string]mailsync.Outcome) {
+func (d *Daemon) watchMail(a *Account, outcomes map[string]mailsync.Outcome, pickups map[int64]string) {
 	if !d.watching() {
 		return
 	}
@@ -267,6 +272,15 @@ func (d *Daemon) watchMail(a *Account, outcomes map[string]mailsync.Outcome) {
 			continue
 		}
 		for _, delta := range out.Added {
+			if code, ok := pickups[delta.MessageID]; ok {
+				// Collected, not delivered. It carries the code so a script has
+				// the thing itself and not a pointer to a mail that is about to
+				// be binned.
+				c, _ := d.mailChange(a, eventPickup, box, folder, delta.MessageID)
+				c.Code = code
+				d.change(c)
+				continue
+			}
 			c, row := d.mailChange(a, eventAdded, box, folder, delta.MessageID)
 			// New mail: unseen, in a Box where unread means something, and an
 			// arrival rather than a move landing. Feed and Paper Trail need no

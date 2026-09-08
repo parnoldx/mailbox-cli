@@ -71,6 +71,10 @@ no confirmation. Three mitigations, all in force:
   visible.
 - **Always reversible by dragging back.** Block still parks waiting mail in
   `INBOX/Screener/Block`, not Trash.
+  **Amended 2026-09-07:** it does not. A block now marks that mail read and
+  moves it to Trash, so the Box is empty exactly when every drag into it has
+  been written to the script — a pile nobody empties told you nothing, and
+  Trash keeps a mistake findable for as long as the server holds it.
 
 ## What this does not do
 

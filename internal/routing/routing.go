@@ -59,10 +59,10 @@ type spec struct {
 	// what blocking a sender does.
 	files string
 	// lands is where mail already sitting in the Screener is moved to. It is
-	// the same Box as files, except for Block: mail is discarded before it
-	// arrives, but mail that is already here goes to a pile that can be looked
-	// at, because a mistaken block should be recoverable for as long as the
-	// evidence exists.
+	// the same Box as files, and empty for Block: a blocked sender's mail is
+	// not filed anywhere, it is marked read and binned. The Block Box outlives
+	// that as the drop target a phone drags into — what is emptied out of it is
+	// the record that the drag was processed.
 	lands string
 	// seen marks the mail read on arrival. Paper Trail and Feed are piles to
 	// skim, not things to be told about.
@@ -76,7 +76,7 @@ type spec struct {
 // match in: the first rule that matches wins and the rest are dead text. Block
 // is first because a blocked sender is blocked whatever else was decided.
 var order = []spec{
-	{dest: Block, files: "", lands: BoxBlock, aliases: []string{"block", "blocked", "blacklist"},
+	{dest: Block, files: "", lands: "", aliases: []string{"block", "blocked", "blacklist"},
 		title: "Blocked senders. Their mail is discarded, which is what blocking means."},
 	{dest: Inbox, files: BoxInbox, lands: BoxInbox, aliases: []string{"inbox", "in"},
 		title: "The Inbox: senders worth an interruption."},
@@ -109,7 +109,8 @@ func (d Destination) Box() string {
 }
 
 // Pile is where mail already in the Screener goes when this decision is made.
-// Empty for None: forgetting a sender leaves their mail where it is.
+// Empty for None, which leaves a forgotten sender's mail where it is, and for
+// Block, whose mail is binned rather than piled.
 func (d Destination) Pile() string {
 	s, ok := specOf(d)
 	if !ok {

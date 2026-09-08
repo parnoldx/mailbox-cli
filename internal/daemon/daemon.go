@@ -75,6 +75,9 @@ type Daemon struct {
 	// its timing flags to. Zero means the defaults, 8 and 18.
 	BubbleMorning int
 	BubbleEvening int
+	// PickupExpiry is how long a Pickup — mail the Daemon took a login code out
+	// of — waits before it is binned. Zero means DefaultPickupExpiry.
+	PickupExpiry time.Duration
 	// AddressBook is where a new Contact goes when the caller does not say.
 	AddressBook string
 	// Sieve is the ManageSieve connection that holds the Routing: the script
@@ -213,6 +216,7 @@ func (d *Daemon) Serve(ctx context.Context, ln net.Listener) error {
 	go d.davLoop(ctx)
 	go d.routingLoop(ctx)
 	go d.bubbleLoop(ctx)
+	go d.pickupLoop(ctx)
 
 	// Either a signal, or a config change this process cannot make in place
 	// (ADR-0021). The second is an ordinary exit: under socket activation the
@@ -357,6 +361,13 @@ func (d *Daemon) cycle(ctx context.Context, a *Account, reason string) {
 	// for. Draining here rather than on its own timer means a send that failed
 	// while the network was down goes out with the first cycle that works.
 	d.drain(ctx, a)
+	// Codes first, before anything says a word about this cycle. A Pickup is
+	// collected and marked read here, so the Box push below and the watch lines
+	// after it describe a mailbox that already has no code mail waiting in it.
+	var pickups map[int64]string
+	if a.Primary {
+		pickups = d.collectPickups(ctx, a, outcomes)
+	}
 	for folder, out := range outcomes {
 		if out.Action == mailsync.ActionNone {
 			continue
@@ -366,7 +377,7 @@ func (d *Daemon) cycle(ctx context.Context, a *Account, reason string) {
 	// The same cycle, described rather than named, for whoever asked to watch
 	// (ADR-0027). It is one call for the whole cycle because a move shows up as
 	// two Boxes' outcomes.
-	d.watchMail(a, outcomes)
+	d.watchMail(a, outcomes, pickups)
 	// A reply that lands in a conversation half-filed in Aside or Reply Later
 	// pulls the filed half back to the Inbox: the piles are decided one mail at
 	// a time, but a live thread is not something to keep hidden (matches how

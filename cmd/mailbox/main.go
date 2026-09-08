@@ -276,6 +276,13 @@ func runDaemon(systemdSocket bool) error {
 		logger.Printf("no_dav set: calendars, task lists and address books are skipped")
 	}
 	d.BubbleMorning, d.BubbleEvening = cfg.Bubble.Morning, cfg.Bubble.Evening
+	if cfg.Pickup.Expiry != "" {
+		expiry, err := time.ParseDuration(cfg.Pickup.Expiry)
+		if err != nil {
+			return fmt.Errorf("pickup.expiry %q: %w", cfg.Pickup.Expiry, err)
+		}
+		d.PickupExpiry = expiry
+	}
 
 	// The Routing: one Sieve script on the Primary Account's server, which is
 	// what puts mail in the Screener, the Feed and the Paper Trail before this

@@ -84,7 +84,9 @@ test("isDismissed matches one occurrence and then stays quiet", () => {
 })
 
 test("formatStartsIn spells the Basecamp reminder copy", () => {
-  assert.equal(Model.formatStartsIn(30 * 1000), "starts now")
+  assert.equal(Model.formatStartsIn(30 * 1000), "starts in 1 minute")
+  assert.equal(Model.formatStartsIn(0), "starts now")
+  assert.equal(Model.formatStartsIn(-5 * 1000), "starts now")
   assert.equal(Model.formatStartsIn(1 * MINUTE), "starts in 1 minute")
   assert.equal(Model.formatStartsIn(14 * MINUTE), "starts in 14 minutes")
   assert.equal(Model.formatStartsIn(60 * MINUTE), "starts in 1 hour")

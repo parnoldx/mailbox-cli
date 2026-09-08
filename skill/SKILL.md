@@ -90,8 +90,9 @@ rather than from you:
   daemon stopped and may already have been delivered. Report it and let the user
   pick `mailbox outbox retry` or `mailbox outbox cancel`.
 - **Blocking.** `mailbox route set ID --to block` discards that sender's next
-  mail; what is already waiting goes to `Screener/Block`, where a block made by
-  mistake can still be found. `--to screener` is the undo.
+  mail; what is already waiting is marked read and moved to Trash, where a block
+  made by mistake can still be found. `--to screener` is the undo for the
+  sender, but it does not bring binned mail back.
 - **Flags.** Reading a message leaves it unread, by design — the unread count
   belongs to whoever is looking at it in another client. Run `seen` and `unseen`
   when asked for them.

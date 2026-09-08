@@ -99,11 +99,23 @@ type Bubble struct {
 	Evening int `toml:"evening"`
 }
 
+// Pickup is the one knob on code mail. Detection itself is not configurable:
+// a phrase list somebody has to maintain by hand is a worse answer than a log
+// line saying what nearly matched.
+type Pickup struct {
+	// Expiry is how long a Pickup waits before it is binned, as a Go duration
+	// ("15m", "1h"). Empty means the Daemon's default. It is a knob because the
+	// right value depends on how fast you log in, which no default can know.
+	Expiry string `toml:"expiry"`
+}
+
 // Config is everything on disk.
 type Config struct {
 	Account Account `toml:"account"`
 	// Bubble is when a bubbled thread comes back.
 	Bubble Bubble `toml:"bubble"`
+	// Pickup is how long a collected login code's mail is kept.
+	Pickup Pickup `toml:"pickup"`
 	// Secondary accounts, keyed by the name their ids are prefixed with:
 	// `[accounts.gmx]` makes `gmx/INBOX:412` mean something (ADR-0005). They
 	// have an Inbox, Drafts and Sent and the ability to Send; the Screener and

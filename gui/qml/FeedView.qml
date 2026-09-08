@@ -196,6 +196,7 @@ Item {
     function move(d) { if (_ready) _js("__move(" + d + ")") }
     function openHighlighted() { if (_ready) _js("__toggleHi()") }
     function openFull() { if (_ready) _js("__openFullHi()") }
+    function trashHighlighted() { if (_ready) _js("__trashHi()") }
     function anyOpen() { return _anyOpen }
     function collapseAll() {
         _anyOpen = false

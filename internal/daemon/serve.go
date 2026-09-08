@@ -770,9 +770,9 @@ var routingOrder = []string{
 // and a scratch folder somebody's test left behind, and burying the eight that
 // matter in them is not a listing, it is a haystack.
 //
-// `Screener/Block` is left out too. It is where a blocked sender's waiting mail
-// went so that a mistake can still be found — worth having, not worth a line in
-// every listing.
+// `Screener/Block` is left out too. It is the drop target another client drags
+// a block into, and it is emptied as soon as the block is written — worth
+// having, not worth a line in every listing.
 func listedBoxes(a *Account, everything bool) []string {
 	byShort := map[string]string{}
 	for _, folder := range a.Mirrored {

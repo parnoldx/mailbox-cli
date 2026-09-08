@@ -210,6 +210,11 @@
       location.href = "feed:openfull/" + encodeURIComponent(DATA.rows[HI].id);
   };
 
+  window.__trashHi = function () {
+    if (HI >= 0 && HI < DATA.rows.length)
+      location.href = "feed:trash/" + encodeURIComponent(DATA.rows[HI].id);
+  };
+
   window.__state = function () {
     var open = [];
     var oc = WRAP.querySelectorAll(".card.open");

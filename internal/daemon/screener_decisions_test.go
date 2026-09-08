@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -84,6 +85,19 @@ func TestScreenerDragDestinationNamesTheDecision(t *testing.T) {
 			d.cycle(context.Background(), d.primaryAccount(), "drag")
 			if got := routing.Parse(sieve.scripts[routing.ScriptName]).Of("bills@example.com"); got != tc.want {
 				t.Fatalf("drag to %s decided %q, want %q", tc.folder, got, tc.want)
+			}
+			if tc.want != routing.Block {
+				return
+			}
+			// The drag into the Block Box is the decision, so the mail that
+			// carried it is binned once the script has it: an empty Block Box
+			// is how you see that a drag was acted on.
+			if left := fakeOf(d).Folder(routing.BoxBlock).Msgs; len(left) != 0 {
+				t.Errorf("%d mails left in the block box after the block was written", len(left))
+			}
+			trash := fakeOf(d).Folder("Trash").Msgs
+			if len(trash) != 1 || !slices.Contains(trash[0].Flags, `\Seen`) {
+				t.Errorf("the dragged mail is not read and in the trash: %+v", trash)
 			}
 		})
 	}

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"mailbox/internal/mirror"
+	"mailbox/internal/pickup"
 	"mailbox/internal/routing"
 	"mailbox/internal/sync/mailsync"
 )
@@ -187,6 +188,14 @@ func groupBySender(a *Account, box string, rows []mirror.Row) []waiting {
 	byAddr := map[string]*waiting{}
 	var order []string
 	for _, r := range rows {
+		// A Pickup owes no decision. The code has been taken out of it, it is
+		// already read, and the Daemon bins it within the quarter hour — the
+		// sender is a login form you used once, not somebody to route. Leaving
+		// it in would put a red badge on the widget for exactly as long as the
+		// mail took to expire.
+		if hasFlag(r.Placement.Flags, pickup.Keyword) {
+			continue
+		}
 		addr := routing.AddressOf(r.From)
 		if addr == "" {
 			addr = strings.TrimSpace(r.From)
@@ -274,6 +283,10 @@ type decision struct {
 	// arrived, and it applies to it.
 	Changed bool     `json:"changed"`
 	Moved   []string `json:"moved"`
+	// Binned is how many of their mails were marked read and moved to Trash,
+	// which is what a block does with what is already here. It has no ids to
+	// report: Trash is not Mirrored, so there is nothing left to name.
+	Binned int `json:"binned,omitempty"`
 }
 
 // handleRoute decides where a sender's mail goes. One command does both halves
@@ -332,13 +345,15 @@ func (d *Daemon) handleRoute(ctx context.Context, req Request, resp Response) Re
 	}
 
 	// What is already here, after the decision is in the lists: a domain key
-	// has to see Of() so a more specific address rule is not swept along.
+	// has to see Of() so a more specific address rule is not swept along. Block
+	// is not collected here — it bins out of two Boxes, once the script is
+	// stored, and files nothing.
 	screener, hasScreener := a.boxNamed(routing.BoxScreener)
 	waiting := map[string][]mailsync.Ref{}
 	total := 0
-	if hasScreener && to != routing.None {
+	if hasScreener && to != routing.None && to != routing.Block {
 		for _, addr := range addresses {
-			refs, err := d.screenerRefs(a, screener, addr, st.lists, to)
+			refs, err := d.senderRefs(a, screener, addr, st.lists, to)
 			if err != nil {
 				return resp.api(err.Error())
 			}
@@ -372,6 +387,17 @@ func (d *Daemon) handleRoute(ctx context.Context, req Request, resp Response) Re
 		}
 	}
 
+	if to == routing.Block {
+		for i, addr := range addresses {
+			binned, err := d.binBlocked(ctx, a, addr, st.lists)
+			if err != nil {
+				return resp.api(err.Error())
+			}
+			out[i].Binned = binned
+		}
+		return resp.ok(out)
+	}
+
 	if pile := pileFor(to, total); pile != "" {
 		box, _ := a.boxNamed(pile)
 		for i, addr := range addresses {
@@ -395,6 +421,45 @@ func (d *Daemon) handleRoute(ctx context.Context, req Request, resp Response) Re
 		d.push(Push{Event: "mail.changed", Account: a.Name, Box: box})
 	}
 	return resp.ok(out)
+}
+
+// binBlocked empties a blocked sender's mail out of the Screener and out of the
+// Block Box: marked read first, then moved to Trash. The sieve entry is the
+// record of the block, so the mail it was made about is rubbish; Trash already
+// keeps a mistake recoverable for as long as the server holds it, and a second
+// pile nobody empties buys nothing over that. What it does buy is a Block Box
+// that is empty exactly when every drag into it has been written to the script.
+func (d *Daemon) binBlocked(ctx context.Context, a *Account, addr string, lists *routing.Lists) (int, error) {
+	var refs []mailsync.Ref
+	for _, want := range []string{routing.BoxScreener, routing.BoxBlock} {
+		box, ok := a.boxNamed(want)
+		if !ok {
+			continue
+		}
+		found, err := d.senderRefs(a, box, addr, lists, routing.Block)
+		if err != nil {
+			return 0, err
+		}
+		refs = append(refs, found...)
+	}
+	if len(refs) == 0 {
+		return 0, nil
+	}
+	// \Seen first, while the uids we hold are still the mails': after the move
+	// they have new ones in Trash, which the Mirror never sees. `trash` sets it
+	// in the same order and for the same reason — a binned mail counts as
+	// unread for nobody.
+	if _, err := a.Writer.SetSeen(ctx, refs, true); err != nil {
+		return 0, err
+	}
+	results, err := a.Writer.Move(ctx, refs, "Trash")
+	if err != nil {
+		return 0, err
+	}
+	for _, box := range []string{routing.BoxScreener, routing.BoxBlock} {
+		d.push(Push{Event: "mail.changed", Account: a.Name, Box: box})
+	}
+	return len(results), nil
 }
 
 // pileFor is where mail already in the Screener goes for a decision, empty when
@@ -459,11 +524,12 @@ func (d *Daemon) senders(targets []string) ([]string, error) {
 	return out, nil
 }
 
-// screenerRefs is every Placement in the Screener that really is from address.
-// The Mirror narrows it with a substring match over the From header and the
+// senderRefs is every Placement in a Box that really is from address — the
+// Screener for a decision's sweep, and the Block Box too when the decision is a
+// block. The Mirror narrows it with a substring match over the From header and the
 // header is parsed here, because `bob@example.com` is a substring of
 // `notbob@example.com` and of any display name a sender cares to write.
-func (d *Daemon) screenerRefs(a *Account, box, key string, lists *routing.Lists, to routing.Destination) ([]mailsync.Ref, error) {
+func (d *Daemon) senderRefs(a *Account, box, key string, lists *routing.Lists, to routing.Destination) ([]mailsync.Ref, error) {
 	needle := key
 	if routing.IsDomain(key) {
 		needle = routing.DomainOf(key)

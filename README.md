@@ -36,6 +36,7 @@ Instead of hitting IMAP, SMTP, CalDAV, CardDAV, and ManageSieve servers on every
 - **Server-Side Sieve Routing**: Owns and compiles Sieve filtering scripts on the server to automatically route mail into `Inbox`, `Feed`, `Paper Trail`, `Screener`, or `Block`.
 - **First-Class Agent Support**: Built-in `--json` envelopes with mirror freshness metadata, self-describing command discovery (`mailbox commands`), predictable exit codes, and an agent skill (`skill/SKILL.md`).
 - **Unified Personal Data Surface**: Covers email threads and attachments alongside RFC 5545 iCalendar (events, todos, habits) and RFC 6350 vCard (contacts).
+- **Login Codes Collected, Not Delivered**: A one-time code or magic link is recognised on arrival, copied to the clipboard with a desktop notification, marked read so it never raises a new-mail alert or a screener decision, and binned a quarter of an hour later.
 
 ---
 
@@ -56,6 +57,36 @@ Mail routing uses a structured Sieve script managed directly on the server:
 - **Paper Trail**: Receipts, bills, delivery notices, and transactions (marked read on arrival).
 - **Screener**: Mail from first-time or unknown senders awaiting a routing decision.
 - **Block**: Unwanted senders dropped at the server.
+
+### 4. Pickups
+A login code is not mail to read, it is a token to collect: worth thirty seconds
+and then worth nothing. The daemon recognises one as it arrives in the Inbox or
+the Screener, copies the code to the clipboard (`wl-copy`), raises a
+notification (`notify-send`), marks the mail read, and moves it to Trash fifteen
+minutes after it landed.
+
+Nothing about a pickup asks for a decision. It never counts as unread, never
+appears in `mailbox screener`, and a watch is told `pickup` rather than
+`added`/`new` — the sender is a login form you used once, not somebody to route.
+
+Detection **gates on the subject** and only then reads the body. That is the
+opposite of the usual approach and it is a measured choice: over 1445 real
+messages, body-first matching on keywords, bare code-shaped lines or opaque
+token URLs produced 200+ hits and one true positive, because order
+confirmations and booking references are indistinguishable from one-time codes
+once you stop reading the subject line. English and German are both covered.
+Only mail that arrived in the last fifteen minutes is considered at all.
+
+A mail whose subject matched but which carried nothing to collect is logged
+rather than acted on, so the phrase list can be tuned against real arrivals:
+
+```bash
+journalctl --user -u mailbox.service -f | grep pickup
+```
+
+If there is a magic link but no code, the link is *not* opened and *not* copied
+— the notification says to open the mail. Expired pickups go to Trash, not
+oblivion, so a code you turn out to still need is recoverable.
 
 ---
 
@@ -97,6 +128,13 @@ mailbox setup
 ```
 
 Configuration is stored securely in `~/.config/mailbox/config.toml` (mode `0600`).
+
+Optional settings that the wizard does not ask about:
+
+```toml
+[pickup]
+expiry = "15m"   # how long a collected login code's mail is kept before Trash
+```
 
 ### Running the Daemon
 
@@ -159,6 +197,14 @@ mailbox spam 36722                 # Move message to Junk
 mailbox label add 36722 --to Rechnungen  # Put a label on a message
 mailbox label list                # Labels, and how much mail carries each
 mailbox label view Rechnungen     # Mail carrying a label
+```
+
+Login codes need no command: the daemon collects them by itself. To watch them
+happen, or to hand one to a script of your own:
+
+```bash
+mailbox watch --events pickup                     # One line per code collected
+mailbox watch --events pickup --run-async 'echo "$MAILBOX_CODE"'
 ```
 
 ### Calendars, Todos, Habits & Contacts

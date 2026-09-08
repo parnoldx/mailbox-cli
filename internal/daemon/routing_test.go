@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -242,10 +243,10 @@ func TestDecidingRoutesAndMovesWhatIsWaiting(t *testing.T) {
 	}
 }
 
-// Gate 3. Blocking discards what comes next and keeps what is already here: the
-// script never sees another mail from them, and the pile that is already in the
-// Screener goes somewhere a mistake can be found again.
-func TestBlockingDiscardsLaterAndPilesUpWhatIsHere(t *testing.T) {
+// Gate 3. Blocking discards what comes next and bins what is already here: the
+// script never sees another mail from them, and the mail that was waiting is
+// marked read and moved to Trash, so nothing is left sitting in the Block Box.
+func TestBlockingDiscardsLaterAndBinsWhatIsHere(t *testing.T) {
 	d, sieve := seedScreener(t)
 	resp := mustAsk(t, d, []string{"route"}, map[string]any{
 		"positional": []any{"spam@example.net"}, "to": "block",
@@ -254,8 +255,24 @@ func TestBlockingDiscardsLaterAndPilesUpWhatIsHere(t *testing.T) {
 	if got[0].Box != "" {
 		t.Errorf("a blocked sender files into %q; their mail is discarded", got[0].Box)
 	}
-	if len(got[0].Moved) != 1 || !strings.HasPrefix(got[0].Moved[0], "Screener/Block:") {
-		t.Errorf("moved = %v, want it in %s", got[0].Moved, routing.BoxBlock)
+	if got[0].Binned != 1 || len(got[0].Moved) != 0 {
+		t.Errorf("binned %d, moved %v: want the one waiting mail binned and nothing piled",
+			got[0].Binned, got[0].Moved)
+	}
+	// Out of the Screener, out of the Mirror — Trash is not Mirrored — and read
+	// on the way, so a binned mail counts as unread for nobody.
+	if rows, _ := d.Mirror.Rows("primary", routing.BoxScreener, 50); len(rows) != 3 {
+		t.Errorf("%d mails left in the screener, want the 3 from other senders", len(rows))
+	}
+	trash := fakeOf(d).Folder("Trash").Msgs
+	if len(trash) != 1 || trash[0].From != "spam@example.net" {
+		t.Fatalf("trash holds %d mails, want the blocked sender's one", len(trash))
+	}
+	if !slices.Contains(trash[0].Flags, `\Seen`) {
+		t.Errorf("the binned mail is still unread: flags %v", trash[0].Flags)
+	}
+	if len(fakeOf(d).Folder(routing.BoxBlock).Msgs) != 0 {
+		t.Errorf("the block box is not empty after the block was written")
 	}
 	script := sieve.scripts[routing.ScriptName]
 	if !strings.Contains(script, "discard") {
