@@ -728,3 +728,67 @@ func TestReturnDueSweepsAsideAndSentTogether(t *testing.T) {
 			boxView(t, d, "inbox"))
 	}
 }
+
+// A Sent copy carrying a watch is new mail to every Daemon but the one that
+// sent it: the VPS Daemon (ADR-0025) mirrors the same account and sees the
+// copy appear in Sent a minute later. That is not a reply landing in the
+// thread — it is the very mail the watch was set on — and cancelling on it is
+// what made every "if no reply by" reminder die within a minute of being set.
+func TestASentCopyArrivingFromAnotherDaemonKeepsItsWatch(t *testing.T) {
+	d, _ := seedSend(t)
+	a := d.primaryAccount()
+	ctx := context.Background()
+	if _, err := a.Reconciler.SyncAll(ctx, a.Mirrored); err != nil {
+		t.Fatal(err)
+	}
+
+	f := fakeOf(d)
+	keyword := bubble.Keyword(startOfDay(time.Now()).AddDate(0, 0, 1))
+	copy := f.Deliver("INBOX/Sent", "watched@example.com", "Angebot", "Anbei das Angebot.")
+	copy.From, copy.To = "me@example.com", "kunde@example.com"
+	copy.Flags = []string{`\Seen`, keyword}
+
+	d.cycle(ctx, a, "test")
+
+	if !hasFlag(copy.Flags, keyword) {
+		t.Fatalf("the watch was cancelled by the copy's own arrival: %v", copy.Flags)
+	}
+	row := placement(t, d, "INBOX/Sent", copy.UID)
+	if _, ok := bubble.Of(row.Placement.Flags); !ok {
+		t.Errorf("the Mirror lost the watch: %v", row.Placement.Flags)
+	}
+}
+
+// Answering a Message reclaims its thread out of the piles — and that reclaim
+// runs in the same request that just filed the reply. When the reply carries
+// its own "if no reply by" watch, the copy it filed is the watched mail, not
+// an answer to it, so the reclaim must leave the keyword alone.
+func TestReplyWithAWatchDoesNotCancelItsOwnWatch(t *testing.T) {
+	d, _ := seedSend(t)
+	a := d.primaryAccount()
+	ctx := context.Background()
+	f := fakeOf(d)
+	ask := f.Deliver("INBOX", "frage@example.com", "Angebot?", "Was kostet das?")
+	ask.From = "kunde@example.com"
+	if _, err := a.Reconciler.SyncAll(ctx, a.Mirrored); err != nil {
+		t.Fatal(err)
+	}
+	var id string
+	for _, r := range boxView(t, d, "inbox") {
+		if r.Subject == "Angebot?" {
+			id = r.ID
+		}
+	}
+	if id == "" {
+		t.Fatal("the question is not in the inbox")
+	}
+
+	resp := mustAsk(t, d, []string{"reply"}, map[string]any{
+		"positional": id, "body": "Kommt gleich.", "if_no_reply": true, "tomorrow": true,
+	})
+	out := resp.Data.(sent)
+	row := placement(t, d, out.Box, out.UID)
+	if _, ok := bubble.Of(row.Placement.Flags); !ok {
+		t.Fatalf("the reply cancelled its own watch: %v", row.Placement.Flags)
+	}
+}

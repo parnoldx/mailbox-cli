@@ -109,9 +109,25 @@ func (d *Daemon) handleReply(ctx context.Context, req Request, resp Response) Re
 	// not been answered yet, and the cycle that drains it reclaims the thread
 	// when the Sent copy lands.
 	if resp.OK && acct.Primary {
-		d.reclaimPiled(ctx, acct, []int64{parent.Message.ThreadID})
+		d.reclaimPiled(ctx, acct, []int64{parent.Message.ThreadID}, justFiled(d, acct, resp))
 	}
 	return resp
+}
+
+// justFiled names the Sent copy this very request filed, in the shape a cycle
+// reports a placement it just wrote. It is what keeps the reclaim above from
+// cancelling the reminder the same request just set: `reply --if-no-reply`
+// files a copy in Sent, and that copy is the watched mail, not an answer to it.
+func justFiled(d *Daemon, a *Account, resp Response) []mailsync.PlacementDelta {
+	out, ok := resp.Data.(sent)
+	if !ok || out.Box == "" || out.UID == 0 {
+		return nil
+	}
+	row, err := d.Mirror.Row(a.Name, out.Box, out.UID)
+	if err != nil {
+		return nil
+	}
+	return []mailsync.PlacementDelta{{MessageID: row.Message.ID, Folder: out.Box}}
 }
 
 // answer fills a draft in as a reply to a Message.

@@ -398,7 +398,7 @@ func (d *Daemon) cycle(ctx context.Context, a *Account, reason string) {
 				continue
 			}
 			if out.Action == mailsync.ActionIncremental {
-				d.reclaimPiled(ctx, a, out.NewThreads)
+				d.reclaimPiled(ctx, a, out.NewThreads, out.Added)
 			}
 		}
 	}
@@ -409,9 +409,24 @@ func (d *Daemon) cycle(ctx context.Context, a *Account, reason string) {
 // carry elsewhere (typically a Sent copy). It is called with the Threads a
 // cycle just added mail to, so an untouched pile — or an unanswered
 // reminder — is left alone.
-func (d *Daemon) reclaimPiled(ctx context.Context, a *Account, threadIDs []int64) {
+//
+// added is the placements that cycle wrote in the folder the Threads came
+// from. A watch is cancelled by mail that lands in the thread, and the watched
+// Sent copy is not that mail: to every Daemon but the one that sent it — the
+// VPS Daemon of ADR-0025 mirrors the same account — the copy shows up in Sent
+// as a new Message a minute after the send, which used to cancel the reminder
+// before it could ever come due.
+func (d *Daemon) reclaimPiled(ctx context.Context, a *Account, threadIDs []int64, added []mailsync.PlacementDelta) {
 	if len(threadIDs) == 0 {
 		return
+	}
+	type placed struct {
+		folder string
+		msg    int64
+	}
+	arrived := make(map[placed]bool, len(added))
+	for _, p := range added {
+		arrived[placed{p.Folder, p.MessageID}] = true
 	}
 	var refs []mailsync.Ref
 	var watched []mailsync.Ref
@@ -432,7 +447,10 @@ func (d *Daemon) reclaimPiled(ctx context.Context, a *Account, threadIDs []int64
 				// A reply landed, so a pending "if no reply by" reminder on this
 				// Thread's Sent copy is answered — cancel it, but leave the copy
 				// where it is: the reply itself is what shows up in the Inbox.
-				if bubble.KeywordOf(m.Placement.Flags) != "" {
+				// Unless this placement is itself what just arrived, in which
+				// case the "reply" is the watched copy and nothing is answered.
+				if bubble.KeywordOf(m.Placement.Flags) != "" &&
+					!arrived[placed{m.Placement.Folder, m.Message.ID}] {
 					watched = append(watched, ref)
 				}
 			}
