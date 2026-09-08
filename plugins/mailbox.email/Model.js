@@ -161,63 +161,22 @@ function filterMessages(messages, accountFilter, stateFilter) {
   return out
 }
 
-// One reverse-chron stream of everything new: unread mail and screener senders
-// waiting on a decision, interleaved. Replaces the old unread/previous/screener
-// tabs — read mail is not shown here at all, that is the desktop client's job.
-// `mode` is "all" | "mail" | "screener". Each entry carries a `kind` so a single
-// row delegate can render both, and a `sortMs` so both sort on one axis.
-function feedItems(messages, screenerData, accountFilter, mode, paletteLength) {
-  var m = String(mode || "all")
+// One reverse-chron stream of the unread inbox. Read mail is not shown here at
+// all, that is the desktop client's job — and neither is the Screener: mail in
+// there owes a decision whenever you next sit down, which is a client job too,
+// not something a notification widget should carry.
+function feedItems(messages, accountFilter) {
+  var msgs = filterMessages(messages, accountFilter, "unread")
   var out = []
-
-  if (m !== "screener") {
-    var msgs = filterMessages(messages, accountFilter, "unread")
-    for (var i = 0; i < msgs.length; i++) {
-      out.push(feedEntry(msgs[i], "mail", parseTimestamp(msgs[i].date)))
-    }
+  for (var i = 0; i < msgs.length; i++) {
+    var entry = {}
+    for (var key in msgs[i]) entry[key] = msgs[i][key]
+    var ms = parseTimestamp(msgs[i].date)
+    // Undated entries sort last rather than jumping to the top of the stream.
+    entry.sortMs = typeof ms === "number" && isFinite(ms) ? ms : 0
+    out.push(entry)
   }
-  if (m !== "mail") {
-    var cards = screenerCards(screenerData, paletteLength)
-    for (var j = 0; j < cards.length; j++) {
-      out.push(feedEntry(cards[j], "screener", parseTimestamp(cards[j].rawTime)))
-    }
-  }
-
-  // Undated entries sort last rather than jumping to the top of the stream.
   out.sort(function(a, b) { return b.sortMs - a.sortMs })
-  return out
-}
-
-function feedEntry(item, kind, sortMs) {
-  var out = {}
-  for (var key in item) out[key] = item[key]
-  out.kind = kind
-  out.sortMs = typeof sortMs === "number" && isFinite(sortMs) ? sortMs : 0
-  return out
-}
-
-function screenerCards(screenerData, paletteLength) {
-  var list = Array.isArray(screenerData) ? screenerData : []
-  var paletteLen = paletteLength || 8
-  var out = []
-  for (var i = 0; i < list.length; i++) {
-    var item = list[i]
-    if (!item) continue
-    var addr = cleanAddress(item.address || "")
-    var name = item.name || cleanSenderName(item.address || "") || addr
-    out.push({
-      address: addr,
-      name: name,
-      count: item.count || 1,
-      unread: item.unread || 0,
-      subject: item.subject || "(No Subject)",
-      time: item.newest ? formatRelativeTime(item.newest) : "",
-      rawTime: item.newest || "",
-      id: item.id || "",
-      initials: extractInitials(name || addr),
-      colorIndex: avatarColorIndex(addr || name, paletteLen)
-    })
-  }
   return out
 }
 
@@ -278,7 +237,6 @@ if (typeof module !== "undefined" && module.exports) {
     formatRelativeTime: formatRelativeTime,
     filterMessages: filterMessages,
     feedItems: feedItems,
-    screenerCards: screenerCards,
     accountFilterOptions: accountFilterOptions,
     shellQuote: shellQuote,
     buildOpenCommand: buildOpenCommand

@@ -7,7 +7,8 @@ import "Model.js" as Model
 //
 // Maintains the live mirror connection over $XDG_RUNTIME_DIR/mailbox.sock,
 // handling real-time push events (`mail.changed`) and exposing clean QML
-// models for unread mail, accounts, and the Screener.
+// models for unread mail and accounts. The Screener is not shown here: it owes
+// a decision when you next sit down, which is the desktop client's job.
 Item {
   id: root
 
@@ -30,10 +31,8 @@ Item {
   property var accounts: []
   property int accountCount: accounts.length
   property var messages: []
-  property var screenerList: []
 
   property int unreadCount: 0
-  property int screenerCount: 0
 
   signal connected()
 
@@ -98,7 +97,7 @@ Item {
     }
   }
 
-  // Refresh all state from the daemon: box counts, screener senders, and recent inbox messages
+  // Refresh all state from the daemon: box counts and recent inbox messages
   function refresh(callback) {
     if (!available) {
       if (callback) callback("daemon not available")
@@ -125,8 +124,8 @@ Item {
         // Count unseen in inbox and watched boxes — but never the Screener.
         // It is watched (that is how screening stays live), so without this it
         // lands in totalUnread and raises the bar icon as "unread mail", which
-        // is the same alarm by another name. Screener mail is counted once, as
-        // senders owing a decision, in screenerCount below.
+        // is the same alarm by another name. Screener mail is not counted or
+        // shown here at all; screening happens in the desktop client.
         if (b && !Model.isScreenerFolder(b.folder) &&
             (b.box === "inbox" || b.box === "INBOX" || b.folder === "INBOX" || b.watched)) {
           totalUnread += (b.unseen || 0)
@@ -137,66 +136,51 @@ Item {
       root.accounts = accList
       root.unreadCount = totalUnread
 
-      // 2. Screener list
-      root.call(["screener"], { limit: 50 }, function(errScreener, screenerData) {
-        if (!errScreener && Array.isArray(screenerData)) {
-          root.screenerList = screenerData
-          var sCount = 0
-          for (var j = 0; j < screenerData.length; j++) {
-            sCount += (screenerData[j].count || 1)
+      // 2. Inbox messages
+      root.call(["box", "view"], { positional: "inbox", limit: 50 }, function(errMsgs, msgs) {
+        root.refreshing = false
+        if (!errMsgs && Array.isArray(msgs)) {
+          var formatted = []
+          var newUnreadList = []
+          var known = root._knownUnreadIds
+          var nextKnown = {}
+
+          for (var k = 0; k < msgs.length; k++) {
+            var m = msgs[k]
+            var item = {
+              id: m.id,
+              uid: m.uid,
+              date: m.date,
+              from: m.from,
+              name: Model.cleanSenderName(m.from),
+              address: Model.cleanAddress(m.from),
+              subject: m.subject || "(No Subject)",
+              seen: m.seen === true,
+              body: m.body_state || "",
+              account: "primary",
+              initials: Model.extractInitials(m.from),
+              colorIndex: Model.avatarColorIndex(m.from, 8)
+            }
+            formatted.push(item)
+            if (!item.seen) {
+              nextKnown[item.id] = true
+              if (!known[item.id]) {
+                newUnreadList.push(item)
+              }
+            }
           }
-          root.screenerCount = sCount
-        } else {
-          root.screenerList = []
-          root.screenerCount = 0
+          var isInitial = !root._initialized
+          root.messages = formatted
+          root._knownUnreadIds = nextKnown
+          root._initialized = true
+
+          // If new unread mail arrived while running (suppressed on initial startup sync)
+          if (!isInitial && newUnreadList.length > 0) {
+            if (root.sound) root._playNewMailSound()
+            if (root.notify) root._notifyNewMail(newUnreadList)
+          }
         }
-
-        // 3. Inbox messages
-        root.call(["box", "view"], { positional: "inbox", limit: 50 }, function(errMsgs, msgs) {
-          root.refreshing = false
-          if (!errMsgs && Array.isArray(msgs)) {
-            var formatted = []
-            var newUnreadList = []
-            var known = root._knownUnreadIds
-            var nextKnown = {}
-
-            for (var k = 0; k < msgs.length; k++) {
-              var m = msgs[k]
-              var item = {
-                id: m.id,
-                uid: m.uid,
-                date: m.date,
-                from: m.from,
-                name: Model.cleanSenderName(m.from),
-                address: Model.cleanAddress(m.from),
-                subject: m.subject || "(No Subject)",
-                seen: m.seen === true,
-                body: m.body_state || "",
-                account: "primary",
-                initials: Model.extractInitials(m.from),
-                colorIndex: Model.avatarColorIndex(m.from, 8)
-              }
-              formatted.push(item)
-              if (!item.seen) {
-                nextKnown[item.id] = true
-                if (!known[item.id]) {
-                  newUnreadList.push(item)
-                }
-              }
-            }
-            var isInitial = !root._initialized
-            root.messages = formatted
-            root._knownUnreadIds = nextKnown
-            root._initialized = true
-
-            // If new unread mail arrived while running (suppressed on initial startup sync)
-            if (!isInitial && newUnreadList.length > 0) {
-              if (root.sound) root._playNewMailSound()
-              if (root.notify) root._notifyNewMail(newUnreadList)
-            }
-          }
-          if (callback) callback(null)
-        })
+        if (callback) callback(null)
       })
     })
   }
@@ -254,11 +238,6 @@ Item {
       if (err || okStatus !== "") actionTimer.restart()
       if (done) done(err, result)
     })
-  }
-
-  function routeSender(target, destination, done) {
-    root.actionStatus = "Filing sender to " + destination + "…"
-    _action(["route"], { positional: target, to: destination }, "Routed to " + destination, done)
   }
 
   function setSeen(id, seen, done) {

@@ -6,16 +6,15 @@ import qs.Ui
 
 // BarWidget.qml — Email notification bar icon and host for the Mailbox popup panel.
 //
-// Appears in the top bar when there is unread mail. When everything is read the
-// widget collapses and stays invisible, so it acts cleanly as a notification icon.
+// Appears in the top bar when there is unread inbox mail. When everything is
+// read the widget collapses and stays invisible, so it acts cleanly as a
+// notification icon.
 //
-// The Screener deliberately does not raise it. Screening is a decision owed
-// whenever you next sit down, not something to interrupt for — and since the
-// screener empties one sender at a time it was never empty, so an icon driven by
-// it was on permanently and meant nothing. What used to be urgent in there —
-// login codes and registration links — the daemon now collects by itself before
-// the widget ever sees it (see Pickups in the repo README). The screener count
-// still shows: in the tooltip, and as a chip inside the panel.
+// Unread inbox mail is the only thing it knows about. The Screener is not here
+// at all: screening is a decision owed whenever you next sit down, so it lives
+// in the desktop client. What used to be urgent in there — login codes and
+// registration links — the daemon now collects by itself (see Pickups in the
+// repo README).
 BarWidget {
   id: root
   moduleName: "mailbox.email"
@@ -30,10 +29,6 @@ BarWidget {
   }
 
   readonly property int unseenCount: service ? service.unreadCount : 0
-  readonly property int screenerCount: service ? service.screenerCount : 0
-  readonly property int totalAlertCount: unseenCount + screenerCount
-  // What makes the icon appear: unread mail only. Screener mail is counted and
-  // shown, never announced.
   readonly property bool hasNew: unseenCount > 0
 
   readonly property bool hideWhenEmpty: setting("hideWhenEmpty", true)
@@ -102,22 +97,15 @@ BarWidget {
     function toggle(): void { root.togglePanel() }
     function refresh(): string { if (service) service.refresh(); return "ok" }
     function unread(): int { return root.unseenCount }
-    function screener(): int { return root.screenerCount }
-    function total(): int { return root.totalAlertCount }
   }
 
   BarIconButton {
     id: button
     anchors.fill: parent
     bar: root.bar
-    tooltipText: {
-      var mail = root.unseenCount > 0
-        ? root.unseenCount + " unread email" + (root.unseenCount === 1 ? "" : "s")
-        : ""
-      var screen = root.screenerCount > 0 ? root.screenerCount + " to screen" : ""
-      if (mail && screen) return mail + ", " + screen
-      return mail || screen || "Mailbox"
-    }
+    tooltipText: root.unseenCount > 0
+      ? root.unseenCount + " unread email" + (root.unseenCount === 1 ? "" : "s")
+      : "Mailbox"
 
     iconComponent: Component {
       Item {

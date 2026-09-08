@@ -8,15 +8,14 @@ import "Model.js" as Model
 // Panel.qml — Dropdown popup panel for Mailbox email notifications and screening.
 //
 // Features:
-// - One reverse-chron stream of everything new: unread mail and screener
-//   senders interleaved. Read mail is not shown — that is the desktop client.
-// - All / Mail / Screener chips filter the one list; they are not modes you
-//   have to pick before the panel can answer "did anything arrive?"
-// - 1-click screener triage (Inbox, Block, Trash) inline on the row
+// - One reverse-chron stream of unread inbox mail. Read mail is not shown, and
+//   neither is the Screener — both are the desktop client's job. This panel
+//   only ever answers "did anything new arrive?"
+// - 1-click mail actions (mark read, set aside, trash) inline on the row
 // - Sender initials in deterministic colored avatars
 // - Account filtering with per-account unread badges
-// - Keyboard navigation (1/2/3, U, S, I, B, T, A, M, R, arrows, Enter, Esc)
-// - Flip settings page for open command, toast alerts, and bar visibility
+// - Keyboard navigation (T, A, M, R, arrows, Enter, Esc)
+// - Flip settings page for toast alerts and bar visibility
 Panel {
   id: root
   moduleName: "mailbox.email"
@@ -41,7 +40,6 @@ Panel {
   property double openedAtMs: 0
   property double closedAtMs: 0
   property string accountFilter: ""
-  property string filterMode: "all" // "all" | "mail" | "screener"
   property bool settingsOpen: false
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
@@ -50,9 +48,7 @@ Panel {
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
   // The one list. Everything — cursor, keys, scrolling — walks this.
-  readonly property var feed: Model.feedItems(service.messages, service.screenerList,
-                                              accountFilter, filterMode, avatarPalette.length)
-  readonly property int unreadShown: Model.filterMessages(service.messages, accountFilter, "unread").length
+  readonly property var feed: Model.feedItems(service.messages, accountFilter)
 
   readonly property var avatarPalette: [
     "#E06C75", "#98C379", "#E5C07B", "#61AFEF",
@@ -67,7 +63,7 @@ Panel {
     return avatarPalette[idx % avatarPalette.length]
   }
 
-  // Circular sender initials, shared by the mail rows and the screener cards.
+  // Circular sender initials.
   component Avatar: Rectangle {
     id: avatar
 
@@ -94,8 +90,7 @@ Panel {
   readonly property var loadingPhrases: [
     "Checking the mirror…",
     "Fetching new mail…",
-    "Syncing with server…",
-    "Screening new senders…"
+    "Syncing with server…"
   ]
   readonly property bool rotatingPhrases: service.refreshing
 
@@ -103,10 +98,6 @@ Panel {
     if (service.actionStatus !== "") return service.actionStatus
     if (service.lastError !== "") return service.lastError
     if (rotatingPhrases) return loadingPhrases[phraseIndex % loadingPhrases.length]
-    if (service.screenerCount > 0 && service.unreadCount > 0) {
-      return service.unreadCount + " UNREAD  ·  " + service.screenerCount + " TO SCREEN"
-    }
-    if (service.screenerCount > 0) return service.screenerCount + " TO SCREEN"
     if (service.unreadCount > 0) return service.unreadCount + " UNREAD"
     return "ALL CAUGHT UP"
   }
@@ -116,11 +107,6 @@ Panel {
     cursorActive = false
     pointerGate.reset()
     if (panelFlick) panelFlick.contentY = 0
-  }
-
-  function setMode(mode) {
-    filterMode = mode
-    resetSelection()
   }
 
   function setAccount(acc) {
@@ -183,11 +169,6 @@ Panel {
     return selectedIndex >= 0 && selectedIndex < feed.length ? feed[selectedIndex] : null
   }
 
-  function selectedOfKind(kind) {
-    var item = selectedItem()
-    return item && item.kind === kind ? item : null
-  }
-
   function moveSelection(delta) {
     var count = feed.length
     if (count === 0) return
@@ -200,15 +181,8 @@ Panel {
     scrollSelectionIntoView()
   }
 
-  // Enter reads the item in both cases — a screener row opens that sender's
-  // newest mail. Routing a sender is never the accidental key; i / b only.
   function activateSelection() {
     openMail(selectedItem())
-  }
-
-  function routeSelected(destination) {
-    var item = selectedOfKind("screener")
-    if (item) service.routeSender(item.address, destination)
   }
 
   function trashSelected() {
@@ -217,12 +191,12 @@ Panel {
   }
 
   function setAsideSelected() {
-    var item = selectedOfKind("mail")
+    var item = selectedItem()
     if (item) service.setAside(item.id)
   }
 
   function markSeenSelected() {
-    var item = selectedOfKind("mail")
+    var item = selectedItem()
     if (item) service.setSeen(item.id, !item.seen)
   }
 
@@ -293,18 +267,11 @@ Panel {
       }
       onTextKey: function(text) {
         var t = String(text || "").toLowerCase()
-        // Actions dispatch on the selected row's kind, not on a global mode,
-        // so the same keys work in the mixed list.
         if (t === "r") service.refresh()
-        else if (t === "1") root.setMode("all")
-        else if (t === "2" || t === "u") root.setMode("mail")
-        else if (t === "3" || t === "s") root.setMode("screener")
         else if (t === ",") root.settingsOpen = !root.settingsOpen
         else if (t === "t") root.trashSelected()
         else if (t === "a") root.setAsideSelected()
         else if (t === "m") root.markSeenSelected()
-        else if (t === "i") root.routeSelected("inbox")
-        else if (t === "b") root.routeSelected("block")
       }
 
       ColumnLayout {
@@ -400,9 +367,6 @@ Panel {
             foreground: root.foreground
           }
 
-          // No screener alert banner: screener senders now sit in the stream
-          // itself, so pointing at them from the header would say it twice.
-
           // Account Dropdown (if multiple accounts)
           Dropdown {
             id: accountDropdown
@@ -418,39 +382,6 @@ Panel {
 
             Binding on value {
               value: root.accountFilter
-            }
-          }
-
-          // Filter chips over the one stream — narrowing, not modes. "All" is
-          // the default and is what the panel opens on, so arriving here always
-          // answers "what is new?" without a choice first. The screener chip
-          // wears the urgent colour while senders are waiting.
-          Row {
-            visible: !root.settingsOpen
-            spacing: Style.space(4)
-
-            Repeater {
-              model: [
-                { mode: "all", label: "ALL" },
-                { mode: "mail", label: root.unreadShown > 0 ? "MAIL (" + root.unreadShown + ")" : "MAIL" },
-                { mode: "screener", label: service.screenerCount > 0 ? "SCREENER (" + service.screenerCount + ")" : "SCREENER" }
-              ]
-
-              Button {
-                required property var modelData
-                readonly property bool isScreener: modelData.mode === "screener"
-
-                text: modelData.label
-                selected: root.filterMode === modelData.mode
-                foreground: isScreener && service.screenerCount > 0 ? root.urgent : root.foreground
-                background: "transparent"
-                accent: isScreener ? root.urgent : Color.accent
-                fontFamily: root.fontFamily
-                fontSize: Style.font.caption
-                horizontalPadding: Style.space(8)
-                verticalPadding: Style.space(2)
-                onClicked: root.setMode(modelData.mode)
-              }
             }
           }
         }
@@ -493,7 +424,7 @@ Panel {
                     {
                       key: "hideWhenEmpty", fallback: true,
                       label: "Hide bar icon when no new mail",
-                      description: "Icon appears only when unread mail or screener items arrive"
+                      description: "Icon appears only when new inbox mail arrives"
                     },
                     {
                       key: "notify", fallback: false,
@@ -526,11 +457,7 @@ Panel {
                 }
               }
 
-              // 2. THE FEED — unread mail and screener senders in one
-              // reverse-chron stream. One delegate renders both kinds: a
-              // screener row is a mail row plus a hairline, a SCREENER tag and
-              // its routing buttons, so a decision never looks like a whole
-              // different species of card mid-scroll.
+              // 2. THE FEED — unread inbox mail, newest first.
               Column {
                 id: feedView
                 visible: !root.settingsOpen
@@ -543,9 +470,7 @@ Panel {
                   horizontalAlignment: Text.AlignHCenter
                   topPadding: Style.space(24)
                   bottomPadding: Style.space(24)
-                  text: root.filterMode === "screener"
-                    ? "No senders waiting in Screener."
-                    : "You're all caught up."
+                  text: "You're all caught up."
                   color: root.dim
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.body
@@ -560,7 +485,6 @@ Panel {
                     required property var modelData
                     required property int index
 
-                    readonly property bool isScreener: modelData.kind === "screener"
                     readonly property bool current: index === root.selectedIndex && root.cursorActive
                     readonly property bool showActions: rowHover.containsMouse || current
 
@@ -570,12 +494,7 @@ Panel {
                     color: current
                       ? Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.12)
                       : (rowHover.containsMouse ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.05) : "transparent")
-                    border.width: isScreener ? 1 : 0
-                    border.color: Qt.rgba(root.urgent.r, root.urgent.g, root.urgent.b, current ? 0.6 : 0.25)
 
-                    // Click reads it, both kinds: a screener row opens that
-                    // sender's newest mail in the desktop client. Routing is
-                    // only ever an explicit button.
                     MouseArea {
                       id: rowHover
                       anchors.fill: parent
@@ -608,17 +527,8 @@ Panel {
                             color: root.foreground
                             font.family: root.fontFamily
                             font.pixelSize: Style.font.bodySmall
-                            font.bold: feedRow.isScreener || !feedRow.modelData.seen
+                            font.bold: !feedRow.modelData.seen
                             elide: Text.ElideRight
-                          }
-
-                          Text {
-                            visible: feedRow.isScreener
-                            text: "SCREENER"
-                            color: root.urgent
-                            font.family: root.fontFamily
-                            font.pixelSize: Style.font.caption
-                            font.bold: true
                           }
 
                           Text {
@@ -637,71 +547,14 @@ Panel {
                           color: root.foreground
                           font.family: root.fontFamily
                           font.pixelSize: Style.font.body
-                          font.bold: feedRow.isScreener || !feedRow.modelData.seen
+                          font.bold: !feedRow.modelData.seen
                           elide: Text.ElideRight
-                        }
-
-                        // Screener rows earn a third line: you are deciding
-                        // about a sender, so the address and how much they
-                        // have already sent are the decision, not decoration.
-                        Text {
-                          visible: feedRow.isScreener
-                          width: parent.width
-                          text: feedRow.modelData.address + "  ·  " + feedRow.modelData.count
-                            + " email" + (feedRow.modelData.count === 1 ? "" : "s")
-                          color: root.dim
-                          font.family: root.fontFamily
-                          font.pixelSize: Style.font.caption
-                          elide: Text.ElideRight
-                        }
-
-                        // Screening actions: Inbox, Block, Trash. Feed and
-                        // Paper Trail are deliberately not here — this widget
-                        // only screens a sender in or out; sorting them into a
-                        // bucket is a decision for the full client.
-                        Row {
-                          visible: feedRow.isScreener && feedRow.showActions
-                          topPadding: Style.space(4)
-                          spacing: Style.space(4)
-
-                          Button {
-                            text: "📥 INBOX (I)"
-                            foreground: root.foreground
-                            background: Color.accent
-                            fontFamily: root.fontFamily
-                            fontSize: Style.font.caption
-                            horizontalPadding: Style.space(6)
-                            verticalPadding: Style.space(4)
-                            onClicked: service.routeSender(feedRow.modelData.address, "inbox")
-                          }
-
-                          Button {
-                            text: "🚫 BLOCK (B)"
-                            foreground: "#FFFFFF"
-                            background: root.urgent
-                            fontFamily: root.fontFamily
-                            fontSize: Style.font.caption
-                            horizontalPadding: Style.space(6)
-                            verticalPadding: Style.space(4)
-                            onClicked: service.routeSender(feedRow.modelData.address, "block")
-                          }
-
-                          Button {
-                            text: "🗑 TRASH (T)"
-                            foreground: root.foreground
-                            background: Qt.darker(root.urgent, 1.5)
-                            fontFamily: root.fontFamily
-                            fontSize: Style.font.caption
-                            horizontalPadding: Style.space(6)
-                            verticalPadding: Style.space(4)
-                            onClicked: service.trashMessage(feedRow.modelData.id)
-                          }
                         }
                       }
 
                       // Mail quick actions, on hover or under the cursor.
                       Row {
-                        visible: !feedRow.isScreener && feedRow.showActions
+                        visible: feedRow.showActions
                         spacing: Style.space(2)
 
                         PanelActionButton {

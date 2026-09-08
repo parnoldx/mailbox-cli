@@ -62,52 +62,26 @@ test("filterMessages filters by account and seen status", () => {
   assert.deepEqual(unreadWork.map(m => m.id), ["3"])
 })
 
-test("feedItems interleaves unread mail and screener senders, newest first", () => {
+test("feedItems streams unread inbox mail, newest first", () => {
   const msgs = [
     { id: "m1", account: "primary", seen: false, subject: "M1", from: "a@x.com", date: "2026-08-30 09:00" },
     { id: "m2", account: "primary", seen: true, subject: "read", from: "b@x.com", date: "2026-08-30 15:00" },
     { id: "m3", account: "work", seen: false, subject: "M3", from: "c@x.com", date: "2026-08-30 12:00" }
   ]
-  const screener = [
-    { address: "news@sub.com", name: "Digest", count: 2, newest: "2026-08-30 10:00", subject: "#42", id: "Screener:1" }
-  ]
 
-  const all = Model.feedItems(msgs, screener, "", "all", 8)
-  assert.deepEqual(all.map(i => i.id), ["m3", "Screener:1", "m1"])
-  assert.deepEqual(all.map(i => i.kind), ["mail", "screener", "mail"])
+  const all = Model.feedItems(msgs, "")
+  assert.deepEqual(all.map(i => i.id), ["m3", "m1"])
 
-  // Read mail never shows up in the stream, in any mode.
+  // Read mail never shows up in the stream.
   assert.equal(all.some(i => i.id === "m2"), false)
 
-  assert.deepEqual(Model.feedItems(msgs, screener, "", "mail", 8).map(i => i.id), ["m3", "m1"])
-  assert.deepEqual(Model.feedItems(msgs, screener, "", "screener", 8).map(i => i.id), ["Screener:1"])
-  assert.deepEqual(Model.feedItems(msgs, screener, "work", "all", 8).map(i => i.id), ["m3", "Screener:1"])
+  assert.deepEqual(Model.feedItems(msgs, "work").map(i => i.id), ["m3"])
 
   // Undated entries sort last instead of jumping to the top.
-  const undated = Model.feedItems([{ id: "m9", seen: false, from: "d@x.com" }], screener, "", "all", 8)
-  assert.deepEqual(undated.map(i => i.id), ["Screener:1", "m9"])
-})
-
-test("screenerCards shapes daemon screener response into display cards", () => {
-  const raw = [
-    {
-      address: "newsletter@sub.com",
-      name: "Weekly Digest",
-      count: 3,
-      unread: 3,
-      newest: "2026-08-30 14:00",
-      subject: "Issue #42",
-      id: "Screener:101"
-    }
-  ]
-
-  const cards = Model.screenerCards(raw, 8)
-  assert.equal(cards.length, 1)
-  assert.equal(cards[0].name, "Weekly Digest")
-  assert.equal(cards[0].address, "newsletter@sub.com")
-  assert.equal(cards[0].count, 3)
-  assert.equal(cards[0].initials, "WD")
-  assert.ok(cards[0].colorIndex >= 0 && cards[0].colorIndex < 8)
+  const undated = Model.feedItems(
+    [{ id: "m9", seen: false, from: "d@x.com" },
+     { id: "m8", seen: false, from: "e@x.com", date: "2026-08-30 09:00" }], "")
+  assert.deepEqual(undated.map(i => i.id), ["m8", "m9"])
 })
 
 test("accountFilterOptions suffixes unread counts when messages are supplied", () => {
@@ -138,8 +112,8 @@ test("buildOpenCommand always opens the desktop client, id shell-quoted", () => 
 
 // The Screener is a watched box, so a naive "unseen in watched boxes" count
 // picks it up and raises the bar icon for mail that owes a decision rather than
-// an answer. That is the alarm we deliberately took off the screener, arriving
-// by another name.
+// an answer. The widget shows no screener at all any more, so this filter is
+// the only thing keeping that mail from arriving as an alarm by another name.
 test("isScreenerFolder keeps screener mail out of the unread count", () => {
   assert.equal(Model.isScreenerFolder("INBOX/Screener"), true)
   assert.equal(Model.isScreenerFolder("INBOX/Screener/Block"), true)

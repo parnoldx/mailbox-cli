@@ -29,11 +29,8 @@ test("MailboxService.qml braces and parens are balanced", () => {
   assert.equal(count(serviceSrc, "["), count(serviceSrc, "]"))
 })
 
-test("Screening and routing are wired in Panel.qml", () => {
+test("Mail actions are wired in Panel.qml", () => {
   for (const needle of [
-    "service.routeSender",
-    "inbox",
-    "block",
     "Model.feedItems",
     "root.feed",
     "service.setSeen",
@@ -44,11 +41,15 @@ test("Screening and routing are wired in Panel.qml", () => {
   }
 })
 
-test("Panel.qml screener offers only inbox / block / trash, not feed / paper trail", () => {
-  assert.equal(panelSrc.indexOf('routeSender(feedRow.modelData.address, "feed")'), -1)
-  assert.equal(panelSrc.indexOf('routeSender(feedRow.modelData.address, "paper trail")'), -1)
-  assert.ok(panelSrc.indexOf('routeSender(feedRow.modelData.address, "inbox")') !== -1)
-  assert.ok(panelSrc.indexOf('routeSender(feedRow.modelData.address, "block")') !== -1)
+// The widget is a notification for new inbox mail and nothing else. Screening
+// is a decision owed when you next sit down, so it belongs to the desktop
+// client — a notification panel that also asks you to triage is two jobs.
+test("Panel.qml carries no screener UI at all", () => {
+  // Only the header comment may still say the word, explaining the absence.
+  const code = panelSrc.split("\n").filter(l => l.trim().indexOf("//") !== 0).join("\n")
+  for (const needle of ["screener", "Screener", "SCREENER", "routeSender", "filterMode"]) {
+    assert.equal(code.indexOf(needle), -1, "still references " + needle)
+  }
 })
 
 test("Panel.qml has one stream, no previously-seen tab", () => {
@@ -60,7 +61,6 @@ test("Panel.qml has one stream, no previously-seen tab", () => {
 test("Dynamic visibility is implemented in BarWidget.qml", () => {
   for (const needle of [
     "hideWhenEmpty",
-    "totalAlertCount",
     "widgetVisible",
     "BarIconButton"
   ]) {
@@ -68,22 +68,17 @@ test("Dynamic visibility is implemented in BarWidget.qml", () => {
   }
 })
 
-// The Screener is a decision owed whenever you next sit down, not an
-// interruption: it must not raise the bar icon and must not colour it urgent.
-// Login codes, the one genuinely urgent thing that used to land in there, are
-// collected by the daemon before the widget sees them (Pickups).
-test("BarWidget.qml is raised by unread mail alone, never by the screener", () => {
+// Unread inbox mail is the only thing that raises the icon. Login codes, the
+// one genuinely urgent thing that used to land in the screener, are collected
+// by the daemon before the widget sees them (Pickups).
+test("BarWidget.qml is raised by unread inbox mail alone", () => {
   assert.ok(
     /hasNew:\s*unseenCount > 0/.test(barSrc),
-    "hasNew must be driven by unread mail alone, not totalAlertCount"
+    "hasNew must be driven by unread mail alone"
   )
-  assert.ok(
-    barSrc.indexOf("root.urgent") === -1,
-    "the bar icon must not use the urgent colour: the screener no longer alarms"
-  )
-  assert.ok(
-    barSrc.indexOf("screenerCount") !== -1,
-    "the screener count is still shown, in the tooltip — only the alarm is gone"
+  assert.equal(
+    barSrc.indexOf("screenerCount"), -1,
+    "the widget must not track a screener count any more"
   )
 })
 
@@ -92,8 +87,6 @@ test("MailboxService.qml speaks daemon socket protocol", () => {
     "mailbox.sock",
     "box",
     "list",
-    "screener",
-    "route",
     "seen",
     "mail.changed"
   ]) {

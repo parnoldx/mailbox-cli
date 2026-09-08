@@ -93,9 +93,10 @@ Expired pickups go to Trash, not oblivion, so a code you turn out to still need
 is recoverable for as long as the server holds it.
 
 Because the daemon takes the urgent mail out of the Screener before anything
-else sees it, the bar widget's mail icon no longer lights up for screener mail
-at all — screening is a decision owed whenever you next sit down, not an
-interruption.
+else sees it, the bar widget has no screener in it at all — not an icon, not a
+count, not a triage row. Screening is a decision owed whenever you next sit
+down, so it lives in the desktop client. The widget only says "new inbox mail
+arrived".
 
 ---
 
@@ -266,7 +267,7 @@ Every command supports `--json`, returning a structured envelope:
 ### Skills & Plugins
 - **Agent Skill**: [`skill/SKILL.md`](file:///home/pa/Work/tries/2026-08-29-mailbox-cli/skill/SKILL.md) provides instruction mappings for AI coding assistants.
 - **Calendar Bar Widget**: [`plugins/mailbox.clock/`](file:///home/pa/Work/tries/2026-08-29-mailbox-cli/plugins/mailbox.clock) — Omarchy / Quickshell calendar and reminder widget backed directly by the daemon socket.
-- **Mail Notification Widget**: [`plugins/mailbox.email/`](file:///home/pa/Work/tries/2026-08-29-mailbox-cli/plugins/mailbox.email) — Omarchy bar widget and dropdown panel for new-mail alerts and sender screening, also on the daemon socket.
+- **Mail Notification Widget**: [`plugins/mailbox.email/`](file:///home/pa/Work/tries/2026-08-29-mailbox-cli/plugins/mailbox.email) — Omarchy bar widget and dropdown panel for new inbox mail alerts, also on the daemon socket.
 - **Desktop Client**: [`gui/`](file:///home/pa/Work/tries/2026-08-29-mailbox-cli/gui) — a HEY-style Qt desktop mail client that follows the live Omarchy theme.
 
 ---
