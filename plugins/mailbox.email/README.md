@@ -4,10 +4,17 @@ A Quickshell bar widget and dropdown panel for Omarchy, powered directly by the 
 
 ## Features
 
-- **Dynamic Bar Notification**: The email icon appears in the Omarchy top bar **only when there is new mail** (unread messages in watched boxes or pending screening decisions). When all mail is seen and screened, the icon collapses and hides completely.
+- **Dynamic Bar Notification**: The email icon appears in the Omarchy top bar **only when there is unread mail**. When everything is read, the icon collapses and hides completely.
+
+  The Screener deliberately does not raise it. Screening is a decision owed
+  whenever you next sit down, not an interruption — and because the screener
+  empties one sender at a time it was never empty, so an icon driven by it was
+  on permanently and said nothing. What used to be genuinely urgent in there,
+  login codes and registration links, the daemon now collects by itself before
+  the widget sees it (Pickups — see the repo README). The screener count still
+  appears in the tooltip and as a chip in the panel.
 - **Pure Vector GPU Icon**: Crisp vector envelope rendered with 4x MSAA antialiasing that adapts dynamically to your theme:
-  - **Vibrant Blue (`Color.accent`)** when unread mail is waiting in your inbox.
-  - **Urgent Red (`Color.urgent`)** when senders are waiting in the Screener.
+  - **Vibrant Blue (`Color.accent`)** when unread mail is waiting.
   - **Bar Foreground** when opened in rest state.
 - **Audio & Visual Alerts**:
   - Plays the system new-email notification sound effect when a new message arrives while running (silent on initial startup/reloads).

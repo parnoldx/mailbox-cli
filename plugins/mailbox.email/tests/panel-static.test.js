@@ -68,6 +68,25 @@ test("Dynamic visibility is implemented in BarWidget.qml", () => {
   }
 })
 
+// The Screener is a decision owed whenever you next sit down, not an
+// interruption: it must not raise the bar icon and must not colour it urgent.
+// Login codes, the one genuinely urgent thing that used to land in there, are
+// collected by the daemon before the widget sees them (Pickups).
+test("BarWidget.qml is raised by unread mail alone, never by the screener", () => {
+  assert.ok(
+    /hasNew:\s*unseenCount > 0/.test(barSrc),
+    "hasNew must be driven by unread mail alone, not totalAlertCount"
+  )
+  assert.ok(
+    barSrc.indexOf("root.urgent") === -1,
+    "the bar icon must not use the urgent colour: the screener no longer alarms"
+  )
+  assert.ok(
+    barSrc.indexOf("screenerCount") !== -1,
+    "the screener count is still shown, in the tooltip — only the alarm is gone"
+  )
+})
+
 test("MailboxService.qml speaks daemon socket protocol", () => {
   for (const needle of [
     "mailbox.sock",

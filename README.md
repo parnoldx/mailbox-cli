@@ -36,7 +36,7 @@ Instead of hitting IMAP, SMTP, CalDAV, CardDAV, and ManageSieve servers on every
 - **Server-Side Sieve Routing**: Owns and compiles Sieve filtering scripts on the server to automatically route mail into `Inbox`, `Feed`, `Paper Trail`, `Screener`, or `Block`.
 - **First-Class Agent Support**: Built-in `--json` envelopes with mirror freshness metadata, self-describing command discovery (`mailbox commands`), predictable exit codes, and an agent skill (`skill/SKILL.md`).
 - **Unified Personal Data Surface**: Covers email threads and attachments alongside RFC 5545 iCalendar (events, todos, habits) and RFC 6350 vCard (contacts).
-- **Login Codes Collected, Not Delivered**: A one-time code or magic link is recognised on arrival, copied to the clipboard with a desktop notification, marked read so it never raises a new-mail alert or a screener decision, and binned a quarter of an hour later.
+- **Login Codes Collected, Not Delivered**: A one-time code, magic link or registration link is recognised on arrival, copied to the clipboard with a desktop notification, marked read so it never raises a new-mail alert or a screener decision, and binned a quarter of an hour later.
 
 ---
 
@@ -61,9 +61,14 @@ Mail routing uses a structured Sieve script managed directly on the server:
 ### 4. Pickups
 A login code is not mail to read, it is a token to collect: worth thirty seconds
 and then worth nothing. The daemon recognises one as it arrives in the Inbox or
-the Screener, copies the code to the clipboard (`wl-copy`), raises a
-notification (`notify-send`), marks the mail read, and moves it to Trash fifteen
-minutes after it landed.
+the Screener, copies it to the clipboard (`wl-copy`), raises a notification
+(`notify-send`), marks the mail read, and moves it to Trash fifteen minutes
+after it landed.
+
+A magic link or a registration/activation link is the same errand and is treated
+the same way: the URL itself goes on the clipboard, and the notification names
+the host rather than the token. Copied, never followed — opening it would log
+you in, or confirm an address, from a notification you had not read yet.
 
 Nothing about a pickup asks for a decision. It never counts as unread, never
 appears in `mailbox screener`, and a watch is told `pickup` rather than
@@ -84,9 +89,13 @@ rather than acted on, so the phrase list can be tuned against real arrivals:
 journalctl --user -u mailbox.service -f | grep pickup
 ```
 
-If there is a magic link but no code, the link is *not* opened and *not* copied
-— the notification says to open the mail. Expired pickups go to Trash, not
-oblivion, so a code you turn out to still need is recoverable.
+Expired pickups go to Trash, not oblivion, so a code you turn out to still need
+is recoverable for as long as the server holds it.
+
+Because the daemon takes the urgent mail out of the Screener before anything
+else sees it, the bar widget's mail icon no longer lights up for screener mail
+at all — screening is a decision owed whenever you next sit down, not an
+interruption.
 
 ---
 

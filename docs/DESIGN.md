@@ -1164,9 +1164,13 @@ visible.
 Done when all five hold:
 
 1. A code mail is on the clipboard and in a notification before it is anywhere
-   else, and the mail is left read and flagged.
+   else, and the mail is left read and flagged. A registration or magic link
+   with no code beside it is the same errand: the URL is what is copied, and the
+   notification names its host rather than its token.
 2. Its sender never appears in `screener`, and the widget's badge never counts
-   it.
+   it. With the urgent mail taken out of the Screener before anything else sees
+   it, the bar icon stops being raised by screener mail at all: screening is a
+   decision owed whenever you next sit down, not an interruption.
 3. An order confirmation carrying a bare six-digit line is untouched and still
    unread.
 4. A Pickup is in Trash once its window passes, and a Daemon that was down

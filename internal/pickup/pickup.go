@@ -40,8 +40,21 @@ var subject = regexp.MustCompile(`(?i)` +
 	`|\bone[- ]?time[ -](code|password|passcode|link|pin)\b` +
 	`|\b(verification|security|confirmation|access|login|sign[- ]?in|auth\w*)[ -](code|link|pin)\b` +
 	`|\b(bestätigungs|sicherheits|verifizierungs|zugangs|anmelde|einmal)(code|link|pin|passwort|kennwort)\b` +
-	`|\b(verify|confirm|validate) (your |the |dein[er]? |deine )?(\S+ ){0,3}(e-?mail|account|identity|address|login|sign[- ]?in)\b` +
-	`|\b(bestätigen?|verifizieren?) (sie )?(ihre|deine|die) (\S+ ){0,3}(e-?mail|adresse|anmeldung|konto|registrierung)\b` +
+	`|\b(verify|confirm|validate|activate|complete|finish) (your |the |dein[er]? |deine )?(\S+ ){0,3}` +
+	`(e-?mail|account|identity|address|login|sign[- ]?in|sign[- ]?up|registration|subscription)\b` +
+	`|\b(bestätigen?|verifizieren?|aktivieren?|vervollständigen?) (sie )?(ihre|deine|die) (\S+ ){0,3}` +
+	`(e-?mail|adresse|anmeldung|konto|registrierung|zugang)\b` +
+	// German puts the verb last as often as first: "E-Mail-Adresse bestätigen",
+	// "Registrierung abschließen". Without this half the registration mail in a
+	// German mailbox reads as ordinary post.
+	`|\b(e-?mail|adresse|anmeldung|registrierung|konto|zugang)[^\n]{0,24}` +
+	`\b(bestätigen|verifizieren|aktivieren|abschließen|freischalten)\b` +
+	// The German noun form: "Aktivierung Ihres Benutzerkontos". The account word
+	// is required, and "Bestätigung" is left out on purpose — it is half of
+	// German commerce, and the compounds that carry it (Buchungsbestätigung,
+	// Bestellbestätigung) have no word boundary in front of it anyway.
+	`|\b(aktivierung|freischaltung|verifizierung)\b[^\n]{0,24}` +
+	`\b(konto|account|zugang|benutzer|registrierung|anmeldung|e-?mail)` +
 	`|\b(is|ist) (your|dein|ihr) (\S+ ){0,2}code\b` +
 	`|^[0-9]{4,8}\b.*\b(code|verif|login|sign)`)
 
@@ -66,7 +79,8 @@ var lone = regexp.MustCompile(`(?m)^[^\p{L}\p{N}\n]{0,4}([0-9]{4,8})[^\p{L}\p{N}
 // name the act — a bare opaque token is every tracking and unsubscribe link
 // ever sent.
 var link = regexp.MustCompile(`(?i)https?://[^\s<>"'\]]*` +
-	`(login|signin|sign-in|magic|verify|verifizier|confirm|bestaetig|activate|aktivier|token|auth|otp|passwordless)` +
+	`(login|signin|sign-in|magic|verify|verifizier|confirm|bestaetig|activate|aktivier|freischalt|` +
+	`token|auth|otp|passwordless|registr|anmeld)` +
 	`[^\s<>"'\]]*`)
 
 // ignore is the false-positive list OTPHelper learned the hard way, plus the

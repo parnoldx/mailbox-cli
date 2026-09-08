@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"net/url"
 	"os/exec"
 	"time"
 
@@ -95,33 +96,55 @@ func (d *Daemon) takePickup(ctx context.Context, a *Account, ref mailsync.Ref, r
 	return err
 }
 
-// handOver puts the code where a login form can take it and says so. The code
-// goes to the clipboard if there is one, and the link is only ever shown —
-// following it automatically would log you in from a notification you had not
-// read yet.
+// handOver puts the thing you are waiting for on the clipboard and says so.
+// A code if the mail carried one, otherwise the link — a registration or magic
+// link is the same errand as a code, and pasting a URL into the bar beats
+// opening a mail client to find it.
+//
+// Copied, never followed. Opening the link here would log you in, or confirm an
+// address, from a notification you had not read yet; that decision stays yours,
+// and it is one keystroke away once the URL is on the clipboard.
 //
 // Both tools are optional. The VPS Daemon (ADR-0025) runs this same code with
 // no display attached, and a missing wl-copy there is normal rather than an
 // error: it still marks the mail read and bins it on time, which is the half of
 // the job that has to happen somewhere.
 func (d *Daemon) handOver(from, code, link string) {
-	body := code
+	copied, body := code, code
 	if code == "" {
-		body = "login link — open the mail"
-	} else if err := run("wl-copy", code); err != nil {
-		d.logf("pickup: no clipboard: %v", err)
-	}
-	if link != "" && code != "" {
+		// A link on its own. The notification shows the host rather than the
+		// URL: a magic link is a screenful of opaque token, and the one thing
+		// worth reading before pasting it is who it logs you in to.
+		copied, body = link, "link copied · "+hostOf(link)
+	} else if link != "" {
 		body += " · login link in the mail"
+	}
+	if err := run("wl-copy", copied); err != nil {
+		d.logf("pickup: no clipboard: %v", err)
 	}
 	who := routing.NameOf(from)
 	if who == "" {
 		who = routing.AddressOf(from)
 	}
-	if err := run("notify-send", "-a", "mailbox", "-u", "critical", "Code from "+who, body); err != nil {
+	title := "Code from " + who
+	if code == "" {
+		title = "Link from " + who
+	}
+	if err := run("notify-send", "-a", "mailbox", "-u", "critical", title, body); err != nil {
 		d.logf("pickup: no notification: %v", err)
 	}
-	d.logf("pickup from %s: code %q", who, code)
+	d.logf("pickup from %s: code %q link %q", who, code, link)
+}
+
+// hostOf is the host a link points at, for a notification that has no room for
+// the token behind it. A URL that will not parse is shown as it is rather than
+// swallowed: something is better than an empty notification.
+func hostOf(link string) string {
+	u, err := url.Parse(link)
+	if err != nil || u.Host == "" {
+		return link
+	}
+	return u.Host
 }
 
 // run is a desktop side effect that is allowed to be unavailable. A var so a

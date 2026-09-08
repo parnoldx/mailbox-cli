@@ -220,6 +220,35 @@ func TestWatchReportsAPickupRatherThanNewMail(t *testing.T) {
 	}
 }
 
+// Gate 6. A registration or magic link is the same errand as a code: the URL
+// itself goes on the clipboard, and the notification names the host rather than
+// the token.
+func TestPickupCopiesARegistrationLink(t *testing.T) {
+	d, _ := seedScreener(t)
+	var h handedOver
+	h.install(t)
+
+	out := deliverScreener(t, d, "reg@example.com", "Bitte E-Mail-Adresse bestätigen",
+		"Elster <portal@example.de>",
+		"Guten Tag,\n\nzum Aktivieren:\nhttps://portal.example.de/eportal/auth/Registrierung?t=9f2ad91c4b\n")
+	got := d.collectPickups(context.Background(), d.primaryAccount(), out)
+	if len(got) != 1 {
+		t.Fatalf("collectPickups found %d pickups, want 1", len(got))
+	}
+
+	want := "https://portal.example.de/eportal/auth/Registrierung?t=9f2ad91c4b"
+	if c := h.arg("wl-copy"); len(c) != 1 || c[0] != want {
+		t.Errorf("clipboard got %v, want [%s]", c, want)
+	}
+	n := strings.Join(h.arg("notify-send"), " ")
+	if !strings.Contains(n, "portal.example.de") {
+		t.Errorf("notification %q does not name the host", n)
+	}
+	if strings.Contains(n, "9f2ad91c4b") {
+		t.Errorf("notification %q spells out the token; the host is the readable part", n)
+	}
+}
+
 func inScreener(t *testing.T, d *Daemon, subject string) bool {
 	t.Helper()
 	for _, r := range rowsIn(t, d, routing.BoxScreener) {
