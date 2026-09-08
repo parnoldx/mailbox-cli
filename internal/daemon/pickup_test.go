@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -257,4 +258,23 @@ func inScreener(t *testing.T, d *Daemon, subject string) bool {
 		}
 	}
 	return false
+}
+
+// The VPS Daemon (ADR-0025) mirrors the same account with no clipboard on it.
+// Whichever Daemon marks the mail read takes it off the other, so the one that
+// cannot show the code must leave it exactly as it found it.
+func TestADaemonWithNoClipboardLeavesThePickupForTheDesktop(t *testing.T) {
+	d, _ := seedScreener(t)
+	was := run
+	run = func(name string, args ...string) error { return exec.ErrNotFound }
+	t.Cleanup(func() { run = was })
+
+	out := deliverScreener(t, d, "otp5@example.com", "Your one-time code",
+		"Example <no-reply@example.org>", "Your code is 224466.\n")
+	if got := d.collectPickups(context.Background(), d.primaryAccount(), out); len(got) != 0 {
+		t.Fatalf("collectPickups took %v with nowhere to hand it over", got)
+	}
+	if !inScreener(t, d, "Your one-time code") {
+		t.Fatal("the Pickup was quietened by a Daemon that could not show it")
+	}
 }

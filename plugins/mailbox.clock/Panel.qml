@@ -1579,8 +1579,16 @@ Panel {
 
   // Summoning by hotkey moves no pointer, so a hover the bar was still
   // holding must not keep the center indicators revealed behind the panel.
+  //
+  // Omarchy 4.0.3 hands an installed plugin a PluginBarApi facade instead of
+  // the Bar itself, and there the property is readonly with a setter beside
+  // it. Assigning to it threw, which killed close() on its second line and
+  // left the panel up with no way out. Setter first, plain assignment for a
+  // bar that predates it.
   function setCenterHoverRevealSuppressed(value) {
-    if (root.bar && "centerHoverRevealSuppressed" in root.bar)
+    if (root.bar && typeof root.bar.setCenterHoverRevealSuppressed === "function")
+      root.bar.setCenterHoverRevealSuppressed(value)
+    else if (root.bar && "centerHoverRevealSuppressed" in root.bar)
       root.bar.centerHoverRevealSuppressed = value
   }
 

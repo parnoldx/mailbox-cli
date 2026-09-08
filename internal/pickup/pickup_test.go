@@ -38,6 +38,14 @@ func TestFindsCodesAndLinks(t *testing.T) {
 			wantCode: "552019",
 		},
 		{
+			// Verbatim from the Screener: the compound is why this one was
+			// missed — nothing in the subject starts with a code stem.
+			name:     "german compound noun",
+			subject:  "Ihr Doctrinus-Kontoprüfcode",
+			body:     "Kontoprüfcode:\n19624929\n\nDer Code funktioniert nur für 30 Minuten.",
+			wantCode: "19624929",
+		},
+		{
 			name:     "german verb phrase",
 			subject:  "Bitte bestätigen Sie Ihre E-Mail-Adresse",
 			body:     "Zum Aktivieren: https://example.de/konto/aktivieren/8f2ad91c4b\n",

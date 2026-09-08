@@ -73,8 +73,17 @@ func (d *Daemon) collectPickups(ctx context.Context, a *Account, outcomes map[st
 				continue
 			}
 			ref := mailsync.Ref{Folder: folder, UID: row.Placement.UID}
-			if err := d.takePickup(ctx, a, ref, row, code, link); err != nil {
+			taken, err := d.takePickup(ctx, a, ref, row, code, link)
+			if err != nil {
+				// The code is on the clipboard but the mail is still unread on
+				// the server: next cycle sees it again, which is the duplicate
+				// notification takePickup trades for never losing a code.
 				d.logf("pickup %s: %v", row.Message.Subject, err)
+				continue
+			}
+			if !taken {
+				// Left as it arrived, so it is ordinary new mail to whoever is
+				// watching this Daemon rather than a code already collected.
 				continue
 			}
 			found[delta.MessageID] = code
@@ -86,14 +95,22 @@ func (d *Daemon) collectPickups(ctx context.Context, a *Account, outcomes map[st
 // takePickup is what happens to one Pickup, in the order that matters: hand the
 // code over first, then quieten the mail. Flagging is last because a failure
 // there costs a duplicate notification next cycle, while doing it first would
-// cost the code entirely.
-func (d *Daemon) takePickup(ctx context.Context, a *Account, ref mailsync.Ref, row mirror.Row, code, link string) error {
-	d.handOver(row.Message.From, code, link)
+// cost the code entirely. Reports whether this Daemon took the mail at all.
+func (d *Daemon) takePickup(ctx context.Context, a *Account, ref mailsync.Ref, row mirror.Row, code, link string) (bool, error) {
+	if !d.handOver(row.Message.From, code, link) {
+		// Nowhere to hand it to, so this Daemon has no business quietening it.
+		// That is the whole of the VPS question (ADR-0025): two Daemons mirror
+		// this account and whichever quietens first takes the mail off the
+		// other, so the one that cannot show a code leaves it alone and the
+		// desktop collects it on its next cycle. No flag to set and no display
+		// to sniff for: a clipboard that is not there says so by failing.
+		return false, nil
+	}
 	// \Seen and the keyword in one round trip. \Seen is what stops the widget
 	// counting it and the phone buzzing for it; the keyword is what the expiry
 	// scan and the Screener listing read.
 	_, err := a.Writer.StoreFlags(ctx, []mailsync.Ref{ref}, []string{`\Seen`, pickup.Keyword}, nil)
-	return err
+	return true, err
 }
 
 // handOver puts the thing you are waiting for on the clipboard and says so.
@@ -105,11 +122,11 @@ func (d *Daemon) takePickup(ctx context.Context, a *Account, ref mailsync.Ref, r
 // address, from a notification you had not read yet; that decision stays yours,
 // and it is one keystroke away once the URL is on the clipboard.
 //
-// Both tools are optional. The VPS Daemon (ADR-0025) runs this same code with
-// no display attached, and a missing wl-copy there is normal rather than an
-// error: it still marks the mail read and bins it on time, which is the half of
-// the job that has to happen somewhere.
-func (d *Daemon) handOver(from, code, link string) {
+// Reports whether the clipboard took it, which is the caller's licence to mark
+// the mail read. The notification is not part of that answer: a desktop missing
+// notify-send still has the code where you need it, and half a hand-over beats
+// leaving the mail for a Daemon that may be the one without notify-send too.
+func (d *Daemon) handOver(from, code, link string) bool {
 	copied, body := code, code
 	if code == "" {
 		// A link on its own. The notification shows the host rather than the
@@ -121,6 +138,7 @@ func (d *Daemon) handOver(from, code, link string) {
 	}
 	if err := run("wl-copy", copied); err != nil {
 		d.logf("pickup: no clipboard: %v", err)
+		return false
 	}
 	who := routing.NameOf(from)
 	if who == "" {
@@ -134,6 +152,7 @@ func (d *Daemon) handOver(from, code, link string) {
 		d.logf("pickup: no notification: %v", err)
 	}
 	d.logf("pickup from %s: code %q link %q", who, code, link)
+	return true
 }
 
 // hostOf is the host a link points at, for a notification that has no room for

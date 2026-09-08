@@ -39,7 +39,11 @@ var subject = regexp.MustCompile(`(?i)` +
 	`\b(otp|magic ?link|passcode)\b` +
 	`|\bone[- ]?time[ -](code|password|passcode|link|pin)\b` +
 	`|\b(verification|security|confirmation|access|login|sign[- ]?in|auth\w*)[ -](code|link|pin)\b` +
-	`|\b(bestätigungs|sicherheits|verifizierungs|zugangs|anmelde|einmal)(code|link|pin|passwort|kennwort)\b` +
+	// No \b in front: German glues the code word onto whatever came before it
+	// ("Kontoprüfcode", "Microsoft-Zugriffscode"), so requiring the stem to
+	// start a word missed every compound. The stem list is what keeps this
+	// narrow — "Rabattcode" and "Bestellcode" are not in it.
+	`|(bestätigungs|sicherheits|verifizierungs|verifikations|zugangs|zugriffs|anmelde|einmal|prüf|aktivierungs|authentifizierungs)(code|link|pin|passwort|kennwort)` +
 	`|\b(verify|confirm|validate|activate|complete|finish) (your |the |dein[er]? |deine )?(\S+ ){0,3}` +
 	`(e-?mail|account|identity|address|login|sign[- ]?in|sign[- ]?up|registration|subscription)\b` +
 	`|\b(bestätigen?|verifizieren?|aktivieren?|vervollständigen?) (sie )?(ihre|deine|die) (\S+ ){0,3}` +
