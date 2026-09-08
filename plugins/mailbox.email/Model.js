@@ -257,8 +257,19 @@ function buildOpenCommand(messageId) {
   return "mailbox-gui --open " + shellQuote(String(messageId || "").trim())
 }
 
+// Is this folder the Screener, or the Block drop target under it? Screener mail
+// is never counted as unread mail: it is counted once, as senders owing a
+// decision. The Screener is a watched box, so anything that counts "unseen in
+// watched boxes" has to say so explicitly or it double-counts and raises the
+// bar icon for mail that is not waiting on you.
+function isScreenerFolder(folder) {
+  var f = String(folder || "")
+  return f === "INBOX/Screener" || f.indexOf("INBOX/Screener/") === 0
+}
+
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
+    isScreenerFolder: isScreenerFolder,
     cleanSenderName: cleanSenderName,
     cleanAddress: cleanAddress,
     extractInitials: extractInitials,

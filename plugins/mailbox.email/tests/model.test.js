@@ -135,3 +135,16 @@ test("buildOpenCommand always opens the desktop client, id shell-quoted", () => 
   assert.equal(Model.buildOpenCommand("a'b"), "mailbox-gui --open 'a'\\''b'")
   assert.equal(Model.buildOpenCommand(""), "mailbox-gui --open ''")
 })
+
+// The Screener is a watched box, so a naive "unseen in watched boxes" count
+// picks it up and raises the bar icon for mail that owes a decision rather than
+// an answer. That is the alarm we deliberately took off the screener, arriving
+// by another name.
+test("isScreenerFolder keeps screener mail out of the unread count", () => {
+  assert.equal(Model.isScreenerFolder("INBOX/Screener"), true)
+  assert.equal(Model.isScreenerFolder("INBOX/Screener/Block"), true)
+  assert.equal(Model.isScreenerFolder("INBOX"), false)
+  assert.equal(Model.isScreenerFolder("INBOX/Feed"), false)
+  assert.equal(Model.isScreenerFolder(""), false)
+  assert.equal(Model.isScreenerFolder(undefined), false)
+})

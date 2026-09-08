@@ -122,8 +122,13 @@ Item {
       for (var i = 0; i < boxList.length; i++) {
         var b = boxList[i]
         if (b && b.account) accMap[b.account] = true
-        // Count unseen in inbox and watched boxes
-        if (b && (b.box === "inbox" || b.box === "INBOX" || b.folder === "INBOX" || b.watched)) {
+        // Count unseen in inbox and watched boxes — but never the Screener.
+        // It is watched (that is how screening stays live), so without this it
+        // lands in totalUnread and raises the bar icon as "unread mail", which
+        // is the same alarm by another name. Screener mail is counted once, as
+        // senders owing a decision, in screenerCount below.
+        if (b && !Model.isScreenerFolder(b.folder) &&
+            (b.box === "inbox" || b.box === "INBOX" || b.folder === "INBOX" || b.watched)) {
           totalUnread += (b.unseen || 0)
         }
       }
