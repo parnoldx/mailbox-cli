@@ -79,6 +79,15 @@ instant you switch Omarchy themes.
   composer closes at once and a banner counts down with an `Undo` that reopens
   it with everything intact. If the body says "attached" and nothing is, the
   banner says so. Drives `send` / `reply` / `draft save` on the daemon.
+- **Draft with AI.** A robot button in the composer's action bar (replies only)
+  runs the default Omarchy agent (`pi -p`, non-interactive) with the parent's
+  text and recipient in the prompt; the agent reads one of two answering-style
+  skills — `~/.pi/agent/skills/mail-style-{personal,work}/SKILL.md` — and the
+  reply text replaces the editor above the quoted parent. The pi session id is
+  the replied-to message's id, so pressing the button again continues the same
+  conversation: a fresh attempt with memory, not a blank one. Nothing is ever
+  sent by the agent; the prompt forbids it and the text lands in the composer
+  for review like any other draft.
 - **Real data.** NDJSON to the daemon on `$XDG_RUNTIME_DIR/mailbox.sock`
   (`box list`, `box view`, `message view`, `thread view`, `search`,
   `attachment list`, `attachment save`, `attachment bytes`, `contact search`,

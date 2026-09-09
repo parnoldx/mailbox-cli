@@ -28,6 +28,12 @@ Item {
     property var replyAllCc: []
     property string replyFrom: ""
     property string baseSubject: ""
+    // The parent's plain text and date, kept from openReply — the agent draft
+    // reads them, and re-quotes them when it replaces the editor's text.
+    property string replyQuote: ""
+    property string replyDate: ""
+    property bool agentBusy: false
+    property int agentSeconds: 0
     property bool showCc: false
     property var attachments: []         // [{ name, path }]
 
@@ -51,15 +57,20 @@ Item {
         var when = isNaN(d.getTime()) ? "" : Qt.formatDateTime(d, "d MMM yyyy 'at' HH:mm")
         return when ? ("On " + when + ", " + who + " wrote:") : (who + " wrote:")
     }
+    // The paragraphs of a plain text block: double newlines split paragraphs,
+    // single ones become <br>, everything escaped.
+    function _parasHtml(text) {
+        return String(text || "").replace(/\r\n?/g, "\n").split(/\n{2,}/)
+            .map(function (p) { return "<p>" + p.split("\n").map(root._esc).join("<br>") + "</p>" })
+            .join("")
+    }
     // The reply's starting document: an empty line for the answer, then the
     // attribution and the parent's text in a real <blockquote>. Lexxy is
     // Lexical underneath and imports <blockquote> as a first-class node, so
     // this is just editor content the user can trim — nothing is stitched on
     // at send time.
     function _replyDoc(quote, attribution) {
-        var paras = String(quote || "").replace(/\r\n?/g, "\n").split(/\n{2,}/)
-            .map(function (p) { return "<p>" + p.split("\n").map(root._esc).join("<br>") + "</p>" })
-            .join("")
+        var paras = root._parasHtml(quote)
         if (paras.length === 0) paras = "<p></p>"
         return "<p><br></p><p>" + root._esc(attribution) + "</p><blockquote>" + paras + "</blockquote>"
     }
@@ -68,6 +79,7 @@ Item {
         root.mode = "new"; root.replyId = ""; root.forwardId = ""; root.draftId = ""
         root.replyAll = false; root.replyAllCc = []
         root.replyFrom = ""; root.baseSubject = ""; root.showCc = false
+        root.replyQuote = ""; root.replyDate = ""
         root.attachments = []
         toPills.recipients = []; ccPills.recipients = []; bccPills.recipients = []
         subjectField.text = ""
@@ -87,6 +99,8 @@ Item {
         root.replyAllCc = ctx.replyAllCc || []
         root.replyFrom = ctx.from || ""
         root.baseSubject = ctx.subject || ""
+        root.replyDate = ctx.date || ""
+        root.replyQuote = String(ctx.quote || "").trim()
         if (ctx.from) {
             var a = Fmt.parseAddress(ctx.from)
             toPills.addRecipient(a.name, a.addr)
@@ -342,6 +356,51 @@ Item {
         })
     }
 
+    // ---- Agent draft ----------------------------------------------------
+    // One button, non-interactive: the default pi agent (Omarchy's) writes a
+    // reply in the user's own voice from the mail-style skills it has
+    // installed, and the text replaces the editor above the quoted parent.
+    // The session id is the reply's message id, so pressing the button again
+    // continues the same conversation — a fresh attempt, not a blank one.
+    function agentSessionId() {
+        return "mail-reply-" + String(root.replyId).replace(/[^a-zA-Z0-9-]/g, "")
+    }
+    function agentPrompt() {
+        var to = toPills.recipients.length > 0 ? root._addr(toPills.recipients[0]) : "(none yet)"
+        return "Draft an email reply for me, in my own answering style.\n\n" +
+            "First read my style guide: pick the matching one and read the file —\n" +
+            "~/.pi/agent/skills/mail-style-work/SKILL.md when the recipient is a work address,\n" +
+            "~/.pi/agent/skills/mail-style-personal/SKILL.md otherwise.\n\n" +
+            "The mail I am replying to:\n" +
+            "From: " + (root.replyFrom || "unknown") + "\n" +
+            "To: " + to + "\n" +
+            "Subject: " + root.baseSubject + "\n\n" +
+            root.replyQuote + "\n\n" +
+            "Write only the text of my reply — no subject line, no attribution, no quote of the original, nothing else. Plain text."
+    }
+    function doAgentDraft() {
+        if (root.agentBusy || root.mode !== "reply") return
+        root.agentBusy = true
+        root.agentSeconds = 0
+        win.flash("Drafting reply…")
+        Mailbox.agentDraft(root.agentSessionId(), root.agentPrompt(), function (r) {
+            root.agentBusy = false
+            if (!r.ok || !String(r.data && r.data.text || "")) {
+                win.flash(Fmt.errText(r, "Agent draft failed"))
+                return
+            }
+            root.setAgentDraft(String(r.data.text))
+        })
+    }
+    // The agent's text above the quoted parent — the same shape openReply
+    // seeds, so the quote survives the replacement.
+    function setAgentDraft(text) {
+        var doc = root._parasHtml(text) +
+            "<p>" + root._esc(root._attribution(root.replyFrom, root.replyDate)) + "</p>" +
+            "<blockquote>" + (root._parasHtml(root.replyQuote) || "<p></p>") + "</blockquote>"
+        lexxy.setHtml(doc, true)
+    }
+
     // Drop a re-opened draft from the pile. The action bar's trash button does
     // this in draft mode instead of just closing the view.
     function doDiscardDraft() {
@@ -447,6 +506,19 @@ Item {
             AppButton {
                 kind: "ghost"; glyph: "\uf0c6"; text: ""
                 onClicked: attachDialog.open()
+            }
+            // AI draft progress lives here: the toolbar button starts the run,
+            // this counts it. Hidden while idle — the toolbar button is the
+            // entry point.
+            AppButton {
+                kind: "ghost"; glyph: "\ued11"
+                text: "Drafting… " + root.agentSeconds + "s"
+                visible: root.agentBusy
+            }
+            Timer {
+                interval: 1000; repeat: true
+                running: root.agentBusy
+                onTriggered: root.agentSeconds += 1
             }
         }
         // Discard — a trash can, far right. Only shown once there is a
@@ -649,6 +721,13 @@ Item {
             anchors.margins: 1
             // A file dropped straight onto the web view (past the DropArea).
             onFileDropped: function (url) { root.addAttachment(root._localPath(url)) }
+            // The AI button, first in Lexxy's own toolbar. A fresh compose has
+            // no parent mail to answer, so the button explains itself instead
+            // of doing nothing.
+            onAiDraft: {
+                if (root.mode === "reply") root.doAgentDraft()
+                else win.flash("AI drafts replies — open a reply first")
+            }
         }
 
         // Drop files onto the editor to attach them.

@@ -7,6 +7,7 @@
 #include <QVariantMap>
 
 class QTimer;
+class QProcess;
 class QJSEngine;
 
 // MailboxClient speaks the daemon's NDJSON line protocol over
@@ -43,6 +44,11 @@ public:
     Q_INVOKABLE QString stateGet(const QString &key, const QString &fallback = {});
     Q_INVOKABLE void stateSet(const QString &key, const QString &value);
 
+    // Draft a reply with the default agent: runs `pi -p` non-interactively and
+    // hands its stdout back as reply.data.text. One conversation per sessionId,
+    // so a second call with the same id continues the same draft.
+    Q_INVOKABLE void agentDraft(const QString &sessionId, const QString &prompt, const QJSValue &callback);
+
 signals:
     void onlineChanged();
     void mirrorChanged();
@@ -65,6 +71,9 @@ private:
     bool m_behind{false};
     int m_seq{0};
     QHash<QString, QJSValue> m_pending;
+
+    // The one agent draft running, if any — one at a time, no queue.
+    QProcess *m_agent{nullptr};
 
     QVariantMap m_state;
     bool m_stateLoaded{false};

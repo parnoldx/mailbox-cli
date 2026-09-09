@@ -18,6 +18,9 @@ Item {
     // the file; onNavigationRequested catches that and hands the path here for
     // ComposerView's attachment tray.
     signal fileDropped(string url)
+    // The toolbar's AI button (see calloutBootJS) — ComposerView starts the
+    // agent draft from it.
+    signal aiDraft()
 
     function _js(s) { return JSON.stringify(s === undefined ? "" : s) }
 
@@ -152,6 +155,20 @@ Item {
             "panel.appendChild(b);",
             "});",
             "wrap.appendChild(btn);wrap.appendChild(panel);",
+            // The AI button — first in the toolbar, before every Lexxy button.
+            // A plain button: clicking it just raises 'mailbox-ai:draft', which
+            // onNavigationRequested intercepts (the fileDropped trick) and
+            // turns into the aiDraft signal. Busy state is answered QML-side.
+            "var ai=document.createElement('button');",
+            "ai.type='button';ai.name='ai-draft';",
+            "ai.className='lexxy-editor__toolbar-button';",
+            "ai.setAttribute('title','Draft reply with AI');",
+            "ai.innerHTML='<svg viewBox=\"0 0 16 16\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M8 1.5l1.4 3.9 3.9 1.4-3.9 1.4L8 12.1 6.6 8.2 2.7 6.8l3.9-1.4z\" fill=\"currentColor\"/><path d=\"M12.6 9.6l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z\" fill=\"currentColor\"/></svg>';",
+            "ai.addEventListener('click',function(ev){",
+            "ev.preventDefault();ev.stopPropagation();",
+            "window.location='mailbox-ai:draft';",
+            "});",
+            "tb.insertBefore(ai,tb.firstChild);",
             "var quote=tb.querySelector('[name=quote]');",
             "if(quote&&quote.parentNode)quote.parentNode.insertBefore(wrap,quote.nextSibling);else tb.appendChild(wrap);",
             "if(ed.editor&&ed.editor.registerUpdateListener)",
@@ -251,6 +268,13 @@ Item {
                 // A file dropped onto the editor: Chromium wants to open it.
                 // Keep the editor put and pass the path up to be attached.
                 root.fileDropped(u)
+                req.reject()
+                return
+            }
+            if (u.indexOf("mailbox-ai:") === 0) {
+                // The toolbar's AI button (calloutBootJS). Same trick as the
+                // dropped file above: reject the navigation, raise a signal.
+                root.aiDraft()
                 req.reject()
                 return
             }

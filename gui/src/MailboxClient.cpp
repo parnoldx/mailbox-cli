@@ -5,6 +5,7 @@
 #include <QJsonObject>
 #include <QJSEngine>
 #include <QDateTime>
+#include <QProcess>
 #include <QProcessEnvironment>
 #include <QDir>
 #include <QFile>
@@ -119,6 +120,78 @@ void MailboxClient::deliver(const QString &id, const QVariantMap &reply) {
     m_pending.erase(it);
     if (cb.isCallable() && m_engine)
         cb.call({m_engine->toScriptValue(reply)});
+}
+
+// ---- agent draft -----------------------------------------------------------
+
+// ponytail: pi hardcoded — it is what `omarchy default agent` picks on this
+// machine, and omarchy-agent has no non-interactive spelling to lean on.
+// Revisit if Omarchy ever grows `omarchy default agent --print`.
+void MailboxClient::agentDraft(const QString &sessionId, const QString &prompt, const QJSValue &callback) {
+    const QString id = QString::number(++m_seq);
+    if (callback.isCallable())
+        m_pending.insert(id, callback);
+    auto fail = [this, id](const QString &msg) {
+        QTimer::singleShot(0, this, [this, id, msg] {
+            deliver(id, QVariantMap{{"ok", false}, {"error", msg}, {"data", QVariantMap{}}});
+        });
+    };
+
+    if (m_agent) {
+        fail("already drafting a reply");
+        return;
+    }
+
+    // A fixed working directory keeps the per-thread sessions in one place.
+    QString cwd = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+    if (cwd.isEmpty())
+        cwd = QDir::homePath() + "/.config/Mailbox";
+    QDir().mkpath(cwd);
+
+    m_agent = new QProcess(this);
+    QProcess *p = m_agent;
+    p->setWorkingDirectory(cwd);
+    p->setProgram("pi");
+    // Mail and instructions ride as one argv element (no shell, nothing to
+    // escape); `--` keeps a prompt opening with a dash from reading as an
+    // option. The same --session-id continues that conversation on re-run.
+    p->setArguments({"-p", "--session-id", sessionId, "--", prompt});
+
+    connect(p, &QProcess::finished, this, [this, id, p](int code, QProcess::ExitStatus st) {
+        if (m_agent == p)
+            m_agent = nullptr;
+        const QString out = QString::fromUtf8(p->readAllStandardOutput()).trimmed();
+        const QString err = QString::fromUtf8(p->readAllStandardError()).trimmed();
+        p->deleteLater();
+        if (st != QProcess::NormalExit || code != 0) {
+            deliver(id, QVariantMap{{"ok", false},
+                                    {"error", err.isEmpty() ? "pi exited with code " + QString::number(code) : err},
+                                    {"data", QVariantMap{}}});
+            return;
+        }
+        if (out.isEmpty()) {
+            deliver(id, QVariantMap{{"ok", false}, {"error", "the agent returned nothing"}, {"data", QVariantMap{}}});
+            return;
+        }
+        deliver(id, QVariantMap{{"ok", true}, {"data", QVariantMap{{"text", out}}}});
+    });
+    // Start failures (pi not on PATH) surface here; a second delivery after
+    // finished() is a no-op because deliver() consumes the pending callback.
+    connect(p, &QProcess::errorOccurred, this, [this, id, p](QProcess::ProcessError) {
+        if (m_agent == p)
+            m_agent = nullptr;
+        const QString err = p->errorString();
+        deliver(id, QVariantMap{{"ok", false},
+                                {"error", err.isEmpty() ? "could not run pi" : err},
+                                {"data", QVariantMap{}}});
+        p->deleteLater();
+    });
+
+    p->start();
+    // QProcess's default ReadWrite leaves the child's stdin an open pipe, and
+    // pi waits on piped stdin for the prompt instead of taking the argv one —
+    // it hung forever until this sends EOF. (stdout stays readable.)
+    p->closeWriteChannel();
 }
 
 QString MailboxClient::downloadDir() const {
