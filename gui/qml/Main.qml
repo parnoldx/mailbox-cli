@@ -79,7 +79,7 @@ ApplicationWindow {
     property bool _composerLoaded: _bootCompose
     property bool _readerLoaded: false
     property bool _feedLoaded: false
-    onComposeOpenChanged: if (composeOpen) _composerLoaded = true
+    onComposeOpenChanged: if (composeOpen) { _composerLoaded = true; refreshDraftCount() }
     onOpenIdChanged: if (openId) _readerLoaded = true
     onFeedActiveChanged: if (feedActive) _feedLoaded = true
     // Latch the view (creating it if this is the first call) and hand back its
@@ -444,7 +444,20 @@ ApplicationWindow {
     }
     // Re-pull the Drafts list, but only when it is the bucket on screen — the
     // composer calls this after saving, editing or discarding a draft.
-    function refreshDrafts() { if (win.isDraftsBucket()) win.refreshBucket() }
+    function refreshDrafts() {
+        if (win.isDraftsBucket()) win.refreshBucket()
+        win.refreshDraftCount()
+    }
+
+    // How many drafts are on the pile, for the badge the composer shows in its
+    // header. Just the length of `draft list` — there is no dedicated count
+    // verb and 200 is the same cap the Drafts bucket itself uses.
+    property int draftCount: 0
+    function refreshDraftCount() {
+        Mailbox.call(["draft", "list"], { limit: 200 }, function (r) {
+            win.draftCount = (r.ok && r.data) ? r.data.length : 0
+        })
+    }
 
     // ---- search -------------------------------------------------------------
     // A full-screen overlay over every bucket. `search` is a ranked full-text

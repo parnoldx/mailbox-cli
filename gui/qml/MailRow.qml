@@ -140,7 +140,14 @@ Item {
     }
 
     HoverHandler { id: hover }
-    TapHandler { onTapped: root.openAction(root.row.id) }
+    TapHandler {
+        // delBtn sits inside root's own bounds, so a tap on it also lands on
+        // this handler — without the guard, deleting a draft opened it first.
+        onTapped: {
+            if (root.showDelete && point.position.x >= delBtn.x) return
+            root.openAction(root.row.id)
+        }
+    }
     // Right-click opens the triage menu for this row's whole Thread.
     TapHandler {
         acceptedButtons: Qt.RightButton

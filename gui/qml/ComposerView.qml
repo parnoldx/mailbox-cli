@@ -379,6 +379,19 @@ Item {
         Kbd { anchors.verticalCenter: parent.verticalCenter; text: "Esc" }
     }
 
+    // Drafts on the pile — same pill as the Inbox's Compose button, top right.
+    // Click jumps straight to the Drafts bucket.
+    AppButton {
+        anchors { top: parent.top; right: parent.right }
+        anchors.topMargin: 22
+        anchors.rightMargin: root.sideMargin
+        visible: win.draftCount > 0
+        kind: "primary"
+        glyph: ""
+        text: win.draftCount + (win.draftCount === 1 ? " draft" : " drafts")
+        onClicked: { win.composeOpen = false; win.switchToKey("Drafts") }
+    }
+
     // ---- Action bar (fixed, bottom) -------------------------------------
     Rectangle {
         id: actionBar
