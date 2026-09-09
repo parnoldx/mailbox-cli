@@ -31,34 +31,29 @@ Item {
         else if (PixelBlock.blocked > 0)
             out.push({ act: "", interactive: false, glyph: "", glyphColor: Theme.green,
                        label: PixelBlock.blocked + (PixelBlock.blocked === 1 ? " tracker blocked" : " trackers blocked") })
-        if (win.openThread.length > 1)
-            out.push({ act: "toggle-all",
-                       glyph: root.allExpanded() ? "" : "",
-                       label: root.allExpanded() ? "Collapse all" : "Expand all" })
         if (m && !scr) {
-            // One Reply. To-all is a toggle in the composer, not a second chip.
-            out.push({ act: "reply",       glyph: "", label: "Reply",       accentGlyph: true })
-            out.push({ act: "forward",     glyph: "", label: "Forward",     accentGlyph: true })
-            out.push({ act: "reply-later", glyph: "", label: "Reply later", accentGlyph: true })
-            out.push({ act: "set-aside",   glyph: "", label: "Set aside",   accentGlyph: true })
-            out.push({ act: "bubble",      glyph: "", label: "Bubble up",   accentGlyph: true })
-            out.push({ act: "label",       glyph: "", label: "Label",      accentGlyph: true })
+            // Reply / Reply later / Set aside / Bubble up stay on the surface;
+            // Forward, Label, Move and Trash fold into the More menu (M) so the
+            // row fits. kbd is the matching reader Shortcut (Main.qml).
+            out.push({ act: "reply",       glyph: "", label: "Reply",       kbd: "R", accentGlyph: true })
+            out.push({ act: "reply-later", glyph: "", label: "Reply later", kbd: "L", accentGlyph: true })
+            out.push({ act: "set-aside",   glyph: "", label: "Set aside",   kbd: "A", accentGlyph: true })
+            out.push({ act: "bubble",      glyph: "", label: "Bubble up",   kbd: "Z", accentGlyph: true })
+            out.push({ act: "more",        glyph: "", label: "More",        kbd: "M", accentGlyph: true })
         }
         if (m && scr) {
             out.push({ act: "route-inbox",   glyph: "", label: "Inbox", accentGlyph: true })
             out.push({ act: "route-block",   glyph: "", label: "Block", danger: true })
             out.push({ act: "screener-move", glyph: "", label: "Move",  accentGlyph: true })
         }
-        if (m) out.push({ act: "trash", glyph: "", label: "Trash", danger: true })
+        if (m && scr) out.push({ act: "trash", glyph: "", label: "Trash", kbd: "T", danger: true })
         return out
     }
 
     function fireChip(act, chipItem) {
         var id = win.openMsg ? win.openMsg.id : ""
-        if (act === "toggle-all") win.setAllExpanded(!root.allExpanded())
-        else if (act === "reply") win.startReply(false)
-        else if (act === "forward") win.startForward()
-        else if (act === "label") win.openLabelPicker(id)
+        if (act === "reply") win.startReply(false)
+        else if (act === "more") moreMenu.popup(chipItem, 0, chipItem.height + 4)
         else if (act === "screener-move") scMoveMenu.popup(chipItem, 0, chipItem.height + 4)
         else if (act === "bubble") bubbleMenu.popup(chipItem, 0, chipItem.height + 4)
         else if (act === "route-inbox") Triage.dispatch(win, "inbox", id)
@@ -104,14 +99,16 @@ Item {
             }
             Kbd { anchors.verticalCenter: parent.verticalCenter; text: "Esc" }
 
-            // Every triage / reply / expand affordance is a Chip; the set and
-            // the dispatch live in toolbarChips / fireChip above.
+            // Every triage / reply affordance is a Chip, riding the crumb row.
+            // Only five now (Forward/Label/Move/Trash folded into More), so it
+            // fits again. Set and dispatch live in toolbarChips / fireChip.
             Repeater {
                 model: root.toolbarChips
                 Chip {
                     anchors.verticalCenter: parent.verticalCenter
                     glyph: modelData.glyph
                     label: modelData.label
+                    kbd: modelData.kbd === undefined ? "" : modelData.kbd
                     interactive: modelData.interactive === undefined ? true : modelData.interactive
                     danger: !!modelData.danger
                     accentGlyph: !!modelData.accentGlyph
@@ -121,6 +118,10 @@ Item {
             }
             ScreenerMoveMenu {
                 id: scMoveMenu
+                targetId: win.openMsg ? win.openMsg.id : ""
+            }
+            ReaderMoreMenu {
+                id: moreMenu
                 targetId: win.openMsg ? win.openMsg.id : ""
             }
             BubbleMenu {
@@ -140,7 +141,8 @@ Item {
             spacing: 12
             Text {
                 id: subjectText
-                width: parent.width - (threadCount.visible ? threadCount.width + parent.spacing : 0)
+                width: parent.width - (threadCount.visible
+                       ? threadCount.width + expandCaret.width + 2 * parent.spacing : 0)
                 text: win.openMsg ? (Fmt.stripSubjectPrefixes(win.openMsg.subject) || win.openMsg.subject || "(no subject)") : ""
                 wrapMode: Text.Wrap
                 maximumLineCount: 3
@@ -151,6 +153,26 @@ Item {
                 lineHeight: 1.18
                 color: Theme.textPrimary
                 Behavior on color { ColorAnimation { duration: Theme.anim } }
+            }
+            // Expand / collapse the whole accordion. Was an "Expand all" chip in
+            // the toolbar; now a caret by the count — down opens all, up closes.
+            Rectangle {
+                id: expandCaret
+                visible: win.openThread.length > 1
+                anchors.verticalCenter: parent.verticalCenter
+                width: 24; height: 24; radius: 12
+                color: caretHover.hovered ? Theme.cardHover : "transparent"
+                Behavior on color { ColorAnimation { duration: Theme.anim } }
+                Text {
+                    anchors.centerIn: parent
+                    text: (win.expandedIds, root.allExpanded() ? "\uf077" : "\uf078")
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12
+                    color: Theme.textDim
+                    Behavior on color { ColorAnimation { duration: Theme.anim } }
+                }
+                HoverHandler { id: caretHover; cursorShape: Qt.PointingHandCursor }
+                TapHandler { onTapped: win.setAllExpanded(!root.allExpanded()) }
             }
             Rectangle {
                 id: threadCount

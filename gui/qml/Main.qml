@@ -365,6 +365,9 @@ ApplicationWindow {
     // The launcher's label picker, opened on one Thread — from the row menu,
     // the reader toolbar or the launcher itself.
     function openLabelPicker(id) { launcher.openLabelPicker(id) }
+    // "Move" chip / V — the launcher's archive-box picker, acting on the open
+    // Thread (launcher.enterArchive reads win.actionTargetId itself).
+    function openMovePicker() { launcher.enterArchive() }
     function openLabelRename() { launcher.openLabelRename() }
 
     // Every Box the account holds, archive tree included. `cb` gets the raw
@@ -692,7 +695,8 @@ ApplicationWindow {
     // bucketKeys      — bucket/number switching: off only mid-compose or with
     //                   the search field focused (both take raw text).
     // navKeys         — list navigation (j/k/o/Return): a list is on screen.
-    // readerKeys      — reader triage (t/a/r/i/b): a reader is on screen.
+    // readerKeys      — reader actions (r/l/a/z/f/b/v/t, or i/b in Screener):
+    //                   a reader is on screen.
     // _rowActionable  — row triage: a list row is highlighted and actionable.
     readonly property bool anyOverlay: composeOpen || searchView.opened
                                      || launcher.opened || quickLook.opened
@@ -753,16 +757,42 @@ ApplicationWindow {
         sequences: ["t", "Delete"]; enabled: win.readerKeys
         onActivated: win.trashCurrent()
     }
-    // Triage the message you are reading into a bottom-stack pile: A = set aside,
-    // R = reply later. Both drop you back to the list, like Trash. R is off in
-    // the Screener — nothing is owed a reply until its sender is screened in.
+    // The reader's actions, one Shortcut each. R reply · L reply later ·
+    // A set aside · Z bubble up sit on chips; F forward · B label · V move ·
+    // T trash live in the More menu (M), which their letters still fire
+    // directly. All but Reply and Forward drop you back to the list. In the
+    // Screener the chips become I/B sender decisions, so all but A/T stay off.
     Shortcut {
         sequence: "a"; enabled: win.readerKeys
         onActivated: win.setAsideCurrent()
     }
     Shortcut {
+        sequence: "m"; enabled: win.readerKeys && !win.inScreener
+        onActivated: winMoreMenu.popup()
+    }
+    Shortcut {
         sequence: "r"; enabled: win.readerKeys && !win.inScreener
+        onActivated: win.startReply(false)
+    }
+    Shortcut {
+        sequence: "l"; enabled: win.readerKeys && !win.inScreener
         onActivated: win.replyLaterCurrent()
+    }
+    Shortcut {
+        sequence: "z"; enabled: win.readerKeys && !win.inScreener
+        onActivated: winBubbleMenu.popup()
+    }
+    Shortcut {
+        sequence: "f"; enabled: win.readerKeys && !win.inScreener
+        onActivated: win.startForward()
+    }
+    Shortcut {
+        sequence: "b"; enabled: win.readerKeys && !win.inScreener
+        onActivated: win.openLabelPicker(win.openMsg ? win.openMsg.id : "")
+    }
+    Shortcut {
+        sequence: "v"; enabled: win.readerKeys && !win.inScreener
+        onActivated: win.openMovePicker()
     }
     // Screener decisions on the message you are reading: I = let the sender
     // into the Inbox, B = block them. Both act on the sender and drop you back.
@@ -900,6 +930,22 @@ ApplicationWindow {
     QuickLook {
         id: quickLook
         anchors.fill: parent
+    }
+
+    // Popped by the reader's Z shortcut; the "Bubble up" chip has its own,
+    // anchored to the chip (ReadingView). Both feed win.bubbleId.
+    BubbleMenu {
+        id: winBubbleMenu
+        onChosen: function (timing) {
+            win.bubbleId(win.openMsg ? win.openMsg.id : "", timing, "Bubbled up")
+        }
+    }
+
+    // Popped by the reader's M shortcut; the "More" chip has its own, anchored
+    // to the chip (ReadingView).
+    ReaderMoreMenu {
+        id: winMoreMenu
+        targetId: win.openMsg ? win.openMsg.id : ""
     }
 
     SendUndoToast {

@@ -107,6 +107,7 @@ Item {
         root.active = 0
         query.text = ""
         win.loadArchiveBoxes(function (list) { root.archiveBoxes = list; root.active = 0 })
+        if (!root.opened) root.opened = true   // reached straight from the reader's Move / V
         Qt.callLater(function () { query.forceActiveFocus() })
     }
     function exitPane() {

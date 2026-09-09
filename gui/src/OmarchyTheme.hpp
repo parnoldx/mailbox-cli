@@ -90,7 +90,10 @@ public:
     QColor cardHover() const { return mix(m_lighterBackground, m_foreground, 0.10); }
     QColor hairline() const { return mix(m_background, m_foreground, 0.14); }
     QColor textPrimary() const { return m_foreground; }
-    QColor textDim() const { return m_darkForeground; }
+    // Palette "dark foreground" is too faint on our card/selection fills for
+    // comfortable reading — lift it 40% toward the primary text colour. Still
+    // clearly the secondary tier, just legible.
+    QColor textDim() const { return mix(m_darkForeground, m_foreground, 0.40); }
     QColor onAccent() const;
     QVariantList avatarPalette() const;
 
