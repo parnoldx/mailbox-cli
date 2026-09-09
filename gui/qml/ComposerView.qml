@@ -155,6 +155,8 @@ Item {
         if (body.length > 0)
             lexxy.setHtml("<p>" + root._esc(body).replace(/\n/g, "<br>") + "</p>", true)
         var haveTo = String(ctx.to || "").length > 0
+        var atts = ctx.attachments || []
+        for (var i = 0; i < atts.length; i++) root.addAttachment(atts[i])
         Qt.callLater(function () { haveTo ? lexxy.focusStart() : toPills.focusInput() })
     }
 

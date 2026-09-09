@@ -155,7 +155,7 @@ ApplicationWindow {
     // percent-encoded; a literal '+' is a plus, not a space, so we only
     // decodeURIComponent and never touch '+'.
     function _parseMailto(uri) {
-        var out = { to: "", cc: "", bcc: "", subject: "", body: "" }
+        var out = { to: "", cc: "", bcc: "", subject: "", body: "", attachments: [] }
         var s = String(uri || "").replace(/^mailto:/i, "")
         var qi = s.indexOf("?")
         var path = qi >= 0 ? s.slice(0, qi) : s
@@ -169,7 +169,11 @@ ApplicationWindow {
             if (eq < 0) continue
             var key = parts[i].slice(0, eq).toLowerCase()
             var val = dec(parts[i].slice(eq + 1))
-            if (key === "to") tos.push(val)
+            // Nautilus "Send To" / xdg-email hand attachments over as attach=
+            // (or attachment=) query params — file:// URIs or plain paths.
+            function asPath(v) { return String(v).replace(/^file:\/\//, "") }
+            if (key === "attach" || key === "attachment") out.attachments.push(asPath(val))
+            else if (key === "to") tos.push(val)
             else if (key === "cc") out.cc = val
             else if (key === "bcc") out.bcc = val
             else if (key === "subject") out.subject = val
