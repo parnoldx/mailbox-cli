@@ -427,6 +427,24 @@ ApplicationWindow {
         })
     }
 
+    // The addresses this install sends as, primary account first — so the
+    // composer can offer "email yourself" without a hardcoded address. Filled
+    // once from `status`; each row carries { from, from_name, primary }.
+    property var selfRecipients: []
+    function loadSelf() {
+        Mailbox.call(["status"], {}, function (r) {
+            if (!r.ok || !r.data) return
+            var out = []
+            for (var i = 0; i < r.data.length; i++) {
+                var a = r.data[i]
+                if (!a.from) continue
+                var row = { name: a.from_name || "", email: a.from }
+                a.primary ? out.unshift(row) : out.push(row)
+            }
+            win.selfRecipients = out
+        })
+    }
+
     // Re-pull the open bucket's rows in place, without disturbing the reader.
     function refreshBucket() {
         if (win.labelView !== "") {
@@ -654,7 +672,7 @@ ApplicationWindow {
                 if (buckets[k].key.toLowerCase() === want || buckets[k].label.toLowerCase().indexOf(want) >= 0)
                     bucketIndex = k
         }
-        loadCounts(); loadBucket()
+        loadCounts(); loadBucket(); loadSelf()
         var oi = a.indexOf("--open")
         if (oi >= 0 && oi + 1 < a.length) openWhenReady(a[oi + 1])
         // composeOpen is already true from _bootCompose (the view is covering

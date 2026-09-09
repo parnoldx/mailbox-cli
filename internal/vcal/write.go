@@ -72,34 +72,6 @@ func Rename(raw, summary string) (string, error) {
 	})
 }
 
-// SetDue changes or clears the date something is wanted by.
-func SetDue(raw string, due time.Time, dueIsDate bool) (string, error) {
-	return edit(raw, func(c *ical.Component) {
-		if due.IsZero() {
-			c.Props.Del(ical.PropDue)
-			return
-		}
-		setDue(c, due, dueIsDate)
-	})
-}
-
-func setDue(c *ical.Component, due time.Time, isDate bool) {
-	if isDate {
-		c.Props.SetDate(ical.PropDue, due)
-		return
-	}
-	c.Props.SetDateTime(ical.PropDue, due.UTC())
-}
-
-// SetPriority changes or clears how much a Todo matters. Zero clears it, which
-// is iCalendar's "nobody said" and not the same as low; a negative number is
-// nobody having named one, and leaves what is there.
-func SetPriority(raw string, priority int) (string, error) {
-	return edit(raw, func(c *ical.Component) {
-		setPriority(c, priority)
-	})
-}
-
 // TodoEdit is what an edit says about a VTODO. An empty string field is one
 // the caller did not name and is left as it is; setURL's "none" takes a link
 // off, ClearDue takes the date off, and Priority is -1 to leave alone, 0 to
@@ -174,6 +146,14 @@ func PriorityNumber(word string) (int, error) {
 		return n, nil
 	}
 	return -1, fmt.Errorf("--priority takes high, medium, low or none — got %q", word)
+}
+
+func setDue(c *ical.Component, due time.Time, isDate bool) {
+	if isDate {
+		c.Props.SetDate(ical.PropDue, due)
+		return
+	}
+	c.Props.SetDateTime(ical.PropDue, due.UTC())
 }
 
 func setPriority(c *ical.Component, priority int) {

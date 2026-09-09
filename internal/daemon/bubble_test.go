@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -258,7 +259,7 @@ func TestBubbleReturnsUnreadAndFloated(t *testing.T) {
 	if rows[0].Seen() {
 		t.Errorf("the returned message is \\Seen; the phone will not push it")
 	}
-	if !hasFlag(rows[0].Placement.Flags, bubble.Returned) {
+	if !slices.Contains(rows[0].Placement.Flags, bubble.Returned) {
 		t.Errorf("the returned message is not marked %s: %v", bubble.Returned, rows[0].Placement.Flags)
 	}
 	// And the Inbox listing puts it first.
@@ -291,7 +292,7 @@ func TestBubbleNowOnAnInboxThreadDoesNotRoundTrip(t *testing.T) {
 	if len(rows) != 1 || rows[0].Seen() {
 		t.Errorf("inbox = %+v, want one unread message", rows)
 	}
-	if !hasFlag(rows[0].Placement.Flags, bubble.Returned) {
+	if !slices.Contains(rows[0].Placement.Flags, bubble.Returned) {
 		t.Errorf("not floated: %v", rows[0].Placement.Flags)
 	}
 }
@@ -666,7 +667,7 @@ func TestNoReplyWatchBringsTheSentCopyToTheInboxWhenDue(t *testing.T) {
 	if found.Seen() {
 		t.Errorf("the returned copy is \\Seen; the phone will not push it")
 	}
-	if !hasFlag(found.Placement.Flags, bubble.Returned) {
+	if !slices.Contains(found.Placement.Flags, bubble.Returned) {
 		t.Errorf("not marked %s: %v", bubble.Returned, found.Placement.Flags)
 	}
 	if _, ok := bubble.Of(found.Placement.Flags); ok {
@@ -750,7 +751,7 @@ func TestASentCopyArrivingFromAnotherDaemonKeepsItsWatch(t *testing.T) {
 
 	d.cycle(ctx, a, "test")
 
-	if !hasFlag(copy.Flags, keyword) {
+	if !slices.Contains(copy.Flags, keyword) {
 		t.Fatalf("the watch was cancelled by the copy's own arrival: %v", copy.Flags)
 	}
 	row := placement(t, d, "INBOX/Sent", copy.UID)

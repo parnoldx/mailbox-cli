@@ -173,7 +173,7 @@ func daemonChecks(stdout io.Writer) []check {
 	conn.Close()
 
 	var out []check
-	code := request(daemon.Request{ID: "1", Cmd: []string{"status"}}, false,
+	code := request(daemon.Request{Cmd: []string{"status"}}, false,
 		func(_, _ io.Writer, resp daemon.Response) {
 			rows, _ := rowsOf(io.Discard, resp.Data)
 			for _, r := range rows {

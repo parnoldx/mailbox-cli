@@ -2,6 +2,7 @@ package setup
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -53,7 +54,7 @@ func TestAFreshAccountGetsTheBoxesAndAnEmptyScript(t *testing.T) {
 	}
 	// The names are the ones `mailbox route` files into. A Screener under
 	// another name is not a Screener, so nothing here is asked.
-	if b.Created[0] != routing.BoxScreener || !contains(b.Created, routing.BoxBlock) {
+	if b.Created[0] != routing.BoxScreener || !slices.Contains(b.Created, routing.BoxBlock) {
 		t.Fatalf("created %v", b.Created)
 	}
 	// An account running nothing gets ours switched on; that is the only case

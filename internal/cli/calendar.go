@@ -15,7 +15,7 @@ import (
 // that were asked for.
 func runAgenda(in *input, stdout, stderr io.Writer) int {
 	return request(daemon.Request{
-		ID: "1", Cmd: []string{"agenda"},
+		Cmd: []string{"agenda"},
 		Args: map[string]any{
 			"days": in.Int("days"), "from": in.Str("from"),
 			"calendar": in.Str("calendar"), "limit": in.Int("limit"),
@@ -26,7 +26,7 @@ func runAgenda(in *input, stdout, stderr io.Writer) int {
 // runCalendarList lists the collections the Mirror holds.
 func runCalendarList(in *input, stdout, stderr io.Writer) int {
 	return request(daemon.Request{
-		ID: "1", Cmd: []string{"calendar", "list"},
+		Cmd:  []string{"calendar", "list"},
 		Args: map[string]any{"kind": in.Str("kind")},
 	}, in.JSON(), printCalendars, stdout, stderr)
 }
@@ -34,7 +34,7 @@ func runCalendarList(in *input, stdout, stderr io.Writer) int {
 // runEventView reads one entry whole, with the next few times it happens.
 func runEventView(in *input, stdout, stderr io.Writer) int {
 	return request(daemon.Request{
-		ID: "1", Cmd: []string{"event", "view"},
+		Cmd:  []string{"event", "view"},
 		Args: map[string]any{"positional": in.First()},
 	}, in.JSON(), printEvent, stdout, stderr)
 }

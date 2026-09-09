@@ -19,7 +19,7 @@ func todoVerb(verb string) func(*input, io.Writer, io.Writer) int {
 			render = printTodo
 		}
 		return request(daemon.Request{
-			ID: "1", Cmd: []string{"todo", verb},
+			Cmd: []string{"todo", verb},
 			Args: map[string]any{
 				"positional": in.Text(), "list": in.Str("list"), "all": in.Bool("all"),
 				"due": in.Str("due"), "title": in.Str("title"),
@@ -35,7 +35,7 @@ func todoVerb(verb string) func(*input, io.Writer, io.Writer) int {
 func habitVerb(verb string) func(*input, io.Writer, io.Writer) int {
 	return func(in *input, stdout, stderr io.Writer) int {
 		return request(daemon.Request{
-			ID: "1", Cmd: []string{"habit", verb},
+			Cmd: []string{"habit", verb},
 			Args: map[string]any{
 				"positional": in.Text(), "date": in.Str("date"), "days": in.Str("days"),
 				"color": in.Str("color"), "icon": in.Str("icon"),

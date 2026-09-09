@@ -25,19 +25,14 @@ func (m *Mirror) Bubbled(account, folder string) ([]BubbleRef, error) {
 	return m.bubbled(account, folder, "")
 }
 
-// BubblesDue is every placement in a folder whose return time is at or before
-// `at`, soonest first. The scan is by wall clock, not a per-message wake timer:
-// a Daemon that was down when a return came due catches it on the first tick
-// after startup, and a Mirror rebuilt mid-wait repopulated bubble_at from the
-// keyword so nothing is lost.
-func (m *Mirror) BubblesDue(account, folder string, at time.Time) ([]BubbleRef, error) {
-	return m.bubbled(account, folder, at.In(time.Local).Format(bubble.ProjectionLayout))
-}
-
-// BubblesDueAccount is BubblesDue across every folder of the account, not just
-// one. bubble_at is a projection of a flag, not a folder property (ADR-0023),
-// so a return-time keyword can sit anywhere — the "if no reply by" reminder
-// (see docs/adr) puts one on a Sent copy, not on an Aside placement.
+// BubblesDueAccount is every placement in any folder of the account whose
+// return time is at or before `at`, soonest first. The scan is by wall clock,
+// not a per-message wake timer: a Daemon that was down when a return came due
+// catches it on the first tick after startup, and a Mirror rebuilt mid-wait
+// repopulated bubble_at from the keyword so nothing is lost. bubble_at is a
+// projection of a flag, not a folder property (ADR-0023), so a return-time
+// keyword can sit anywhere — the "if no reply by" reminder (see docs/adr) puts
+// one on a Sent copy, not on an Aside placement.
 func (m *Mirror) BubblesDueAccount(account string, at time.Time) ([]BubbleRef, error) {
 	return m.bubbled(account, "", at.In(time.Local).Format(bubble.ProjectionLayout))
 }

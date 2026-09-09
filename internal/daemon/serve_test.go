@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -272,14 +273,14 @@ func TestTrashLeavesTheMirror(t *testing.T) {
 func TestTrashMarksItRead(t *testing.T) {
 	d := seed(t)
 	f := fakeOf(d)
-	if flags := f.Folder("INBOX/Screener").Msgs[0].Flags; hasFlag(flags, `\Seen`) {
+	if flags := f.Folder("INBOX/Screener").Msgs[0].Flags; slices.Contains(flags, `\Seen`) {
 		t.Fatalf("seed message already \\Seen: %v", flags)
 	}
 	if got := write(t, d, []string{"trash"}, map[string]any{"positional": []any{"Screener:42"}}); got[0].Box != "Trash" {
 		t.Fatalf("trash returned %+v", got)
 	}
 	moved := f.Folder("Trash").Msgs
-	if len(moved) != 1 || !hasFlag(moved[0].Flags, `\Seen`) {
+	if len(moved) != 1 || !slices.Contains(moved[0].Flags, `\Seen`) {
 		t.Fatalf("trashed message is not \\Seen: %+v", moved)
 	}
 }

@@ -39,7 +39,7 @@ func runCompose(in *input, stdout, stderr io.Writer) int {
 		cmd, render = []string{"draft", "save"}, printDraftSaved
 	}
 	return request(daemon.Request{
-		ID: "1", Cmd: cmd,
+		Cmd: cmd,
 		Args: withReplyWatch(map[string]any{
 			"to": to, "cc": in.List("cc"), "bcc": in.List("bcc"),
 			"subject": in.Str("subject"), "body": text, "attach": paths,
@@ -82,7 +82,7 @@ func runReply(in *input, stdout, stderr io.Writer) int {
 		render = printDraftSaved
 	}
 	return request(daemon.Request{
-		ID: "1", Cmd: []string{"reply"},
+		Cmd: []string{"reply"},
 		Args: withReplyWatch(map[string]any{
 			"positional": in.First(), "all": in.Bool("all"),
 			"to": in.List("to"), "cc": in.List("cc"),
@@ -100,7 +100,7 @@ func outboxVerb(verb string) func(*input, io.Writer, io.Writer) int {
 			render = printSent
 		}
 		return request(daemon.Request{
-			ID: "1", Cmd: []string{"outbox", verb},
+			Cmd:  []string{"outbox", verb},
 			Args: map[string]any{"positional": in.First()},
 		}, in.JSON(), render, stdout, stderr)
 	}
@@ -180,7 +180,6 @@ func runRSVP(in *input, stdout, stderr io.Writer) int {
 		return ExitUsage
 	}
 	return request(daemon.Request{
-		ID:  "1",
 		Cmd: []string{"rsvp"},
 		Args: map[string]any{
 			"positional": in.First(),

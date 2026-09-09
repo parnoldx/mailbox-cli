@@ -501,14 +501,10 @@ func actionAfter(rest string) (Destination, bool) {
 	return "", false
 }
 
-// parseAddresses reads a Sieve string list. `example@example.com` is dropped
+// parseKeys reads a Sieve string list. `example@example.com` is dropped
 // because it is the placeholder the previous generator wrote into empty lists,
 // and importing it would turn a list nobody is on into a decision about a
 // sender who does not exist.
-func parseAddresses(raw string) []string {
-	return parseKeys(raw, false)
-}
-
 func parseKeys(raw string, domain bool) []string {
 	var out []string
 	seen := map[string]bool{}

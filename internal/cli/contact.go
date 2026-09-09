@@ -18,7 +18,7 @@ func contactVerb(verb string) func(*input, io.Writer, io.Writer) int {
 			render = printContact
 		}
 		return request(daemon.Request{
-			ID: "1", Cmd: []string{"contact", verb},
+			Cmd: []string{"contact", verb},
 			Args: map[string]any{
 				"positional": in.Text(), "limit": in.Int("limit"), "book": in.Str("book"),
 				"org": in.Str("org"), "note": in.Str("note"), "value": in.Str("value"),

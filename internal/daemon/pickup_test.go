@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"os/exec"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -95,7 +96,7 @@ func TestPickupCopiesTheCodeAndQuietensTheMail(t *testing.T) {
 		if !r.Seen() {
 			t.Error("a collected Pickup is still unread; it would raise a notification of its own")
 		}
-		if !hasFlag(r.Placement.Flags, pickup.Keyword) {
+		if !slices.Contains(r.Placement.Flags, pickup.Keyword) {
 			t.Errorf("flags %v carry no %s", r.Placement.Flags, pickup.Keyword)
 		}
 	}

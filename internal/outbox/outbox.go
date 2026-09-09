@@ -233,13 +233,6 @@ func (o *Outbox) HoldInterrupted() ([]Item, error) {
 	return items, nil
 }
 
-// Pending is everything waiting for SMTP, oldest first.
-func (o *Outbox) Pending() ([]Item, error) { return o.byState(Queued) }
-
-// Unfiled is everything SMTP took but that has no copy in Sent yet. Filing is
-// the retryable half of a send.
-func (o *Outbox) Unfiled() ([]Item, error) { return o.byState(Sent) }
-
 // PendingFor and UnfiledFor are the same, for one account. The Outbox is one
 // file for every account — a mail is a mail — but each account's own SMTP
 // server is the only one that can send its mail.

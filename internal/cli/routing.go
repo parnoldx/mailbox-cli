@@ -13,7 +13,7 @@ import (
 // owed there is a decision per sender rather than a read per mail.
 func runScreener(in *input, stdout, stderr io.Writer) int {
 	return request(daemon.Request{
-		ID: "1", Cmd: []string{"screener"}, Args: map[string]any{"limit": in.Int("limit")},
+		Cmd: []string{"screener"}, Args: map[string]any{"limit": in.Int("limit")},
 	}, in.JSON(), printScreener, stdout, stderr)
 }
 
@@ -47,7 +47,7 @@ func printScreener(stdout, stderr io.Writer, resp daemon.Response) {
 // server is the record; what is listed here is a projection of it (ADR-0019).
 func runRouteList(in *input, stdout, stderr io.Writer) int {
 	return request(daemon.Request{
-		ID: "1", Cmd: []string{"route"}, Args: map[string]any{"script": in.Bool("script")},
+		Cmd: []string{"route"}, Args: map[string]any{"script": in.Bool("script")},
 	}, in.JSON(), printRouting, stdout, stderr)
 }
 
@@ -61,7 +61,7 @@ func runRouteSet(in *input, stdout, stderr io.Writer) int {
 		return ExitUsage
 	}
 	return request(daemon.Request{
-		ID: "1", Cmd: []string{"route"},
+		Cmd:  []string{"route"},
 		Args: map[string]any{"positional": in.Words, "to": to},
 	}, in.JSON(), printDecisions, stdout, stderr)
 }
@@ -158,7 +158,7 @@ func pileVerb(name string, done bool) func(*input, io.Writer, io.Writer) int {
 	}
 	return func(in *input, stdout, stderr io.Writer) int {
 		return request(daemon.Request{
-			ID: "1", Cmd: cmd, Args: map[string]any{"positional": in.Words},
+			Cmd: cmd, Args: map[string]any{"positional": in.Words},
 		}, in.JSON(), printChanges, stdout, stderr)
 	}
 }
@@ -169,7 +169,7 @@ func pileVerb(name string, done bool) func(*input, io.Writer, io.Writer) int {
 // always-on VPS daemon just runs the return loop.
 func runBubble(in *input, stdout, stderr io.Writer) int {
 	if len(in.Words) == 1 && in.Words[0] == "list" {
-		return request(daemon.Request{ID: "1", Cmd: []string{"bubble", "list"}},
+		return request(daemon.Request{Cmd: []string{"bubble", "list"}},
 			in.JSON(), printBubbles, stdout, stderr)
 	}
 	render := printBubbles
@@ -177,7 +177,7 @@ func runBubble(in *input, stdout, stderr io.Writer) int {
 		render = printChanges
 	}
 	return request(daemon.Request{
-		ID: "1", Cmd: []string{"bubble"},
+		Cmd: []string{"bubble"},
 		Args: map[string]any{
 			"positional": in.Words,
 			"now":        in.Bool("now"),

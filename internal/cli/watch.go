@@ -22,7 +22,7 @@ import (
 // (ADR-0027).
 func runWatch(in *input, stdout, stderr io.Writer) int {
 	w := &watch{
-		req:  daemon.Request{ID: "1", Cmd: []string{"watch"}, Args: map[string]any{}},
+		req:  daemon.Request{Cmd: []string{"watch"}, Args: map[string]any{}},
 		once: in.Bool("exit-on-first"),
 		out:  stdout, err: stderr,
 	}

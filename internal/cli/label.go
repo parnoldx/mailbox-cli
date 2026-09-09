@@ -12,7 +12,7 @@ import (
 func labelVerb(verb string) func(*input, io.Writer, io.Writer) int {
 	return func(in *input, stdout, stderr io.Writer) int {
 		return request(daemon.Request{
-			ID: "1", Cmd: []string{"label", verb},
+			Cmd:  []string{"label", verb},
 			Args: map[string]any{"name": in.Text(), "limit": in.Int("limit")},
 		}, in.JSON(), printTable, stdout, stderr)
 	}
@@ -30,7 +30,7 @@ func labelApply(verb, flag string) func(*input, io.Writer, io.Writer) int {
 			return ExitUsage
 		}
 		return request(daemon.Request{
-			ID: "1", Cmd: []string{"label", verb},
+			Cmd:  []string{"label", verb},
 			Args: map[string]any{"positional": in.Words, "name": name},
 		}, in.JSON(), printChanges, stdout, stderr)
 	}
@@ -45,7 +45,7 @@ func runLabelCreate(in *input, stdout, stderr io.Writer) int {
 		render = printChanges
 	}
 	return request(daemon.Request{
-		ID: "1", Cmd: []string{"label", "create"},
+		Cmd:  []string{"label", "create"},
 		Args: map[string]any{"name": name, "positional": ids},
 	}, in.JSON(), render, stdout, stderr)
 }
@@ -60,20 +60,20 @@ func runLabelRename(in *input, stdout, stderr io.Writer) int {
 		return ExitUsage
 	}
 	return request(daemon.Request{
-		ID: "1", Cmd: []string{"label", "rename"},
+		Cmd:  []string{"label", "rename"},
 		Args: map[string]any{"name": in.Text(), "to": to},
 	}, in.JSON(), printChanges, stdout, stderr)
 }
 
 func runLabelDelete(in *input, stdout, stderr io.Writer) int {
 	return request(daemon.Request{
-		ID: "1", Cmd: []string{"label", "delete"},
+		Cmd:  []string{"label", "delete"},
 		Args: map[string]any{"name": in.Text()},
 	}, in.JSON(), printChanges, stdout, stderr)
 }
 
 func runLabelList(in *input, stdout, stderr io.Writer) int {
-	return request(daemon.Request{ID: "1", Cmd: []string{"label", "list"}},
+	return request(daemon.Request{Cmd: []string{"label", "list"}},
 		in.JSON(), printLabels, stdout, stderr)
 }
 
@@ -114,7 +114,7 @@ func runForward(in *input, stdout, stderr io.Writer) int {
 		return code
 	}
 	return request(daemon.Request{
-		ID: "1", Cmd: []string{"forward"},
+		Cmd: []string{"forward"},
 		Args: withReplyWatch(map[string]any{
 			"positional": in.First(), "to": in.List("to"), "cc": in.List("cc"),
 			"subject": in.Str("subject"), "body": in.Str("body"), "attach": paths,
@@ -126,7 +126,7 @@ func runForward(in *input, stdout, stderr io.Writer) int {
 func eventVerb(verb string) func(*input, io.Writer, io.Writer) int {
 	return func(in *input, stdout, stderr io.Writer) int {
 		return request(daemon.Request{
-			ID: "1", Cmd: []string{"event", verb},
+			Cmd: []string{"event", verb},
 			Args: map[string]any{
 				"positional": in.Text(), "title": in.Str("title"),
 				"start": in.Str("start"), "end": in.Str("end"),
@@ -175,7 +175,7 @@ func draftVerb(verb string) func(*input, io.Writer, io.Writer) int {
 			args = withReplyWatch(args, in)
 		}
 		return request(daemon.Request{
-			ID: "1", Cmd: []string{"draft", verb}, Args: args,
+			Cmd: []string{"draft", verb}, Args: args,
 		}, in.JSON(), render, stdout, stderr)
 	}
 }

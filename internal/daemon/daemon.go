@@ -241,9 +241,6 @@ func (d *Daemon) Serve(ctx context.Context, ln net.Listener) error {
 	}
 }
 
-// kick asks for a cycle on the Primary Account.
-func (d *Daemon) kick(reason string) { d.kickAccount(d.primaryAccount(), reason) }
-
 // kickAccount asks for a cycle on one account. If one is already queued this
 // does nothing, because a second queued cycle would do exactly what the first
 // will.

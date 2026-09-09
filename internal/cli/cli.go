@@ -37,7 +37,6 @@ func runBoxView(in *input, stdout, stderr io.Writer) int {
 		box = "inbox"
 	}
 	return request(daemon.Request{
-		ID:   "1",
 		Cmd:  []string{"box", "view"},
 		Args: map[string]any{"positional": box, "limit": in.Int("limit")},
 	}, in.JSON(), printTable, stdout, stderr)
@@ -45,14 +44,13 @@ func runBoxView(in *input, stdout, stderr io.Writer) int {
 
 func runMessageView(in *input, stdout, stderr io.Writer) int {
 	return request(daemon.Request{
-		ID:   "1",
 		Cmd:  []string{"message", "view"},
 		Args: map[string]any{"positional": in.First()},
 	}, in.JSON(), printMessage, stdout, stderr)
 }
 
 func runStatus(in *input, stdout, stderr io.Writer) int {
-	return request(daemon.Request{ID: "1", Cmd: []string{"status"}},
+	return request(daemon.Request{Cmd: []string{"status"}},
 		in.JSON(), printStatus, stdout, stderr)
 }
 
@@ -60,7 +58,7 @@ func runStatus(in *input, stdout, stderr io.Writer) int {
 // the one read that waits on the server (ADR-0003).
 func runAttachmentList(in *input, stdout, stderr io.Writer) int {
 	return request(daemon.Request{
-		ID: "1", Cmd: []string{"attachment", "list"},
+		Cmd:  []string{"attachment", "list"},
 		Args: map[string]any{"positional": in.First()},
 	}, in.JSON(), printAttachments, stdout, stderr)
 }
@@ -86,7 +84,7 @@ func runAttachmentSave(in *input, stdout, stderr io.Writer) int {
 		output = abs
 	}
 	return request(daemon.Request{
-		ID: "1", Cmd: []string{"attachment", "save"},
+		Cmd: []string{"attachment", "save"},
 		Args: map[string]any{
 			"positional": in.First(), "output": output, "force": in.Bool("force"),
 		},
@@ -97,7 +95,7 @@ func runAttachmentSave(in *input, stdout, stderr io.Writer) int {
 // JSON — it exists for a reading pane inlining cid: images, not for a terminal.
 func runAttachmentBytes(in *input, stdout, stderr io.Writer) int {
 	return request(daemon.Request{
-		ID: "1", Cmd: []string{"attachment", "bytes"},
+		Cmd:  []string{"attachment", "bytes"},
 		Args: map[string]any{"positional": in.First()},
 	}, in.JSON(), printInlineBytes, stdout, stderr)
 }
@@ -182,7 +180,7 @@ func humanBytes(n int64) string {
 // runThread reads a whole conversation, from any Message in it.
 func runThread(in *input, stdout, stderr io.Writer) int {
 	return request(daemon.Request{
-		ID: "1", Cmd: []string{"thread", "view"},
+		Cmd:  []string{"thread", "view"},
 		Args: map[string]any{"positional": in.First()},
 	}, in.JSON(), printThread, stdout, stderr)
 }
@@ -221,7 +219,6 @@ func printThread(stdout, stderr io.Writer, resp daemon.Response) {
 // query, so `mailbox search rechnung mai --in feed` reads the way it is written.
 func runSearch(in *input, stdout, stderr io.Writer) int {
 	return request(daemon.Request{
-		ID:  "1",
 		Cmd: []string{"search"},
 		Args: map[string]any{
 			"positional": in.Text(),
@@ -262,7 +259,7 @@ func printHits(stdout, stderr io.Writer, resp daemon.Response) {
 func writeVerb(verb string) func(*input, io.Writer, io.Writer) int {
 	return func(in *input, stdout, stderr io.Writer) int {
 		return request(daemon.Request{
-			ID: "1", Cmd: []string{verb}, Args: map[string]any{"positional": in.Words},
+			Cmd: []string{verb}, Args: map[string]any{"positional": in.Words},
 		}, in.JSON(), printChanges, stdout, stderr)
 	}
 }
@@ -274,7 +271,7 @@ func runMove(in *input, stdout, stderr io.Writer) int {
 		return ExitUsage
 	}
 	return request(daemon.Request{
-		ID: "1", Cmd: []string{"move"},
+		Cmd:  []string{"move"},
 		Args: map[string]any{"positional": in.Words, "to": to},
 	}, in.JSON(), printChanges, stdout, stderr)
 }
@@ -355,6 +352,10 @@ func asAny(v any) []any {
 // request sends one command and prints the reply. Pushes may arrive on the same
 // connection; they carry no id and are skipped here.
 func request(req daemon.Request, asJSON bool, render renderer, stdout, stderr io.Writer) int {
+	// A request from here is one of a kind, so one id covers every command.
+	if req.ID == "" {
+		req.ID = "1"
+	}
 	conn, err := net.Dial("unix", config.SocketPath())
 	if err != nil {
 		fmt.Fprintf(stderr, "no daemon listening at %s\n", config.SocketPath())

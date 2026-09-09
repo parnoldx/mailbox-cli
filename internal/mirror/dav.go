@@ -308,25 +308,6 @@ func (m *Mirror) Contacts(account, query string, limit int) ([]Object, error) {
 	return m.objects(where+` ORDER BY o.summary LIMIT ?`, args...)
 }
 
-// Hrefs returns every href the Mirror holds for a Collection, which is what a
-// diff against the server needs.
-func (m *Mirror) Hrefs(collectionID int64) (map[string]string, error) {
-	rows, err := m.db.Query(`SELECT href, etag FROM dav_objects WHERE collection_id = ?`, collectionID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := map[string]string{}
-	for rows.Next() {
-		var href, etag string
-		if err := rows.Scan(&href, &etag); err != nil {
-			return nil, err
-		}
-		out[href] = etag
-	}
-	return out, rows.Err()
-}
-
 func (m *Mirror) objects(where string, args ...any) ([]Object, error) {
 	rows, err := m.db.Query(objectColumns+" "+where, args...)
 	if err != nil {

@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -185,7 +186,7 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 					Account: acct.Name,
 					Count:   c.Count,
 					Unseen:  c.Unseen,
-					Watched: hasFlag(acct.Watched, folder),
+					Watched: slices.Contains(acct.Watched, folder),
 				})
 			}
 		}
@@ -429,6 +430,7 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 			}
 			out = append(out, map[string]any{
 				"account": acct.Name, "primary": acct.Primary,
+				"from": acct.From.Addr, "from_name": acct.From.Name,
 				"folder": f.Name, "uidvalidity": f.UIDValidity,
 				"uidnext": f.UIDNext, "highestmodseq": f.HighestModSeq, "count": f.Count,
 				"boxes": len(acct.Mirrored), "watched": acct.Watched,
@@ -732,7 +734,7 @@ func (d *Daemon) wrote(a *Account, resp Response, results []mailsync.Result, err
 	needCycle := false
 	out := make([]change, 0, len(results))
 	for _, r := range results {
-		c := change{ID: a.messageID(r.Folder, r.UID), Box: r.Folder, Flags: r.Flags, Seen: hasFlag(r.Flags, `\Seen`)}
+		c := change{ID: a.messageID(r.Folder, r.UID), Box: r.Folder, Flags: r.Flags, Seen: slices.Contains(r.Flags, `\Seen`)}
 		boxes[r.Folder] = struct{}{}
 		if r.NewFolder != "" {
 			c.Moved, c.Box = true, r.NewFolder
@@ -834,15 +836,6 @@ type change struct {
 	Moved bool     `json:"moved"`
 	Flags []string `json:"flags,omitempty"`
 	Seen  bool     `json:"seen"`
-}
-
-func hasFlag(flags []string, want string) bool {
-	for _, f := range flags {
-		if f == want {
-			return true
-		}
-	}
-	return false
 }
 
 // parseMessageID reads the [box:]uid a listing printed back into a Placement.
@@ -957,9 +950,9 @@ type message struct {
 	// ReplyAll is the Cc line `reply --all` would build from this Message —
 	// everyone on its To/Cc except us — so a client can show the recipients
 	// before the reply goes out. See replyAllCc.
-	ReplyAll []compose.Address `json:"reply_all,omitempty"`
-	Body     string            `json:"body"`
-	BodyFormat string   `json:"body_format"` // "plain" | "markdown" | "none"
+	ReplyAll   []compose.Address `json:"reply_all,omitempty"`
+	Body       string            `json:"body"`
+	BodyFormat string            `json:"body_format"` // "plain" | "markdown" | "none"
 	// BodyHTML is the raw HTML part, untouched, for a client that renders it
 	// itself (a desktop reading pane). Empty when the message had no HTML part.
 	// The text `Body` above stays the canonical read (ADR-0003); this is extra.
@@ -1070,7 +1063,7 @@ func viewRows(a *Account, folder string, rows []mirror.Row, threadSizes map[int6
 		if when, ok := bubble.Of(r.Placement.Flags); ok {
 			newRow.Due = when.Format("2006-01-02 15:04")
 		}
-		if hasFlag(r.Placement.Flags, bubble.Returned) {
+		if slices.Contains(r.Placement.Flags, bubble.Returned) {
 			newRow.Bubbled = true
 		}
 		out = append(out, newRow)
@@ -1096,7 +1089,7 @@ func viewRows(a *Account, folder string, rows []mirror.Row, threadSizes map[int6
 // without repeating one two Messages both carry.
 func mergeLabels(have, add []string) []string {
 	for _, name := range add {
-		if !hasFlag(have, name) {
+		if !slices.Contains(have, name) {
 			have = append(have, name)
 		}
 	}

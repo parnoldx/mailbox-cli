@@ -28,7 +28,7 @@ type todo struct {
 	// Description and URL are only filled in by `todo view` — a list would
 	// pay to parse the raw of every row for two fields it never shows.
 	Description string `json:"description,omitempty"`
-	URL        string `json:"url,omitempty"`
+	URL         string `json:"url,omitempty"`
 	// Overdue is worth saying rather than leaving to the caller to work out
 	// from a date it would have to parse.
 	Overdue bool `json:"overdue,omitempty"`

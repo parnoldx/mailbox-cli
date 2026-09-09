@@ -121,9 +121,3 @@ func (w *Writer) absolute(c mirror.Collection, href string) string {
 	}
 	return base + "/" + href
 }
-
-// AbsoluteHref is absolute, for a caller that has a collection and an href and
-// needs the URL the server knows them by.
-func (w *Writer) AbsoluteHref(c mirror.Collection, href string) string {
-	return w.absolute(c, href)
-}

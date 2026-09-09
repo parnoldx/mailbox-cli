@@ -16,7 +16,7 @@ import (
 // rather than out of it.
 func runBoxList(in *input, stdout, stderr io.Writer) int {
 	return request(daemon.Request{
-		ID: "1", Cmd: []string{"box", "list"},
+		Cmd:  []string{"box", "list"},
 		Args: map[string]any{"unread": in.Bool("unread"), "archive": in.Bool("archive")},
 	}, in.JSON(), printBoxes, stdout, stderr)
 }
@@ -57,7 +57,7 @@ func printBoxes(stdout, stderr io.Writer, resp daemon.Response) {
 }
 
 func runSieveList(in *input, stdout, stderr io.Writer) int {
-	return request(daemon.Request{ID: "1", Cmd: []string{"sieve", "list"}},
+	return request(daemon.Request{Cmd: []string{"sieve", "list"}},
 		in.JSON(), printScripts, stdout, stderr)
 }
 
@@ -65,7 +65,7 @@ func runSieveList(in *input, stdout, stderr io.Writer) int {
 // redirected into a file and put back unchanged.
 func runSieveGet(in *input, stdout, stderr io.Writer) int {
 	return request(daemon.Request{
-		ID: "1", Cmd: []string{"sieve", "get"},
+		Cmd:  []string{"sieve", "get"},
 		Args: map[string]any{"positional": in.First()},
 	}, in.JSON(), func(stdout, stderr io.Writer, resp daemon.Response) {
 		body, ok := resp.Data.(string)
@@ -102,7 +102,7 @@ func runSievePut(in *input, stdout, stderr io.Writer) int {
 		return ExitUsage
 	}
 	return request(daemon.Request{
-		ID: "1", Cmd: []string{"sieve", "put"},
+		Cmd:  []string{"sieve", "put"},
 		Args: map[string]any{"positional": name, "content": string(content)},
 	}, in.JSON(), func(stdout, stderr io.Writer, resp daemon.Response) {
 		m, ok := resp.Data.(map[string]any)
@@ -119,7 +119,7 @@ func runSievePut(in *input, stdout, stderr io.Writer) int {
 
 func runSieveActivate(in *input, stdout, stderr io.Writer) int {
 	return request(daemon.Request{
-		ID: "1", Cmd: []string{"sieve", "activate"},
+		Cmd:  []string{"sieve", "activate"},
 		Args: map[string]any{"positional": in.First()},
 	}, in.JSON(), printScripts, stdout, stderr)
 }

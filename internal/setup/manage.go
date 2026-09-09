@@ -3,8 +3,10 @@ package setup
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -405,7 +407,7 @@ func (w *Wizard) addCalendar(ctx context.Context, s *snapshot, name string) erro
 	}
 	n := 0
 	for i, label := range labels {
-		if !contains(picked, label) {
+		if !slices.Contains(picked, label) {
 			continue
 		}
 		key := name
@@ -575,21 +577,7 @@ func numOf(v any) float64 {
 }
 
 func sortedKeys[V any](m map[string]V) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
-}
-
-func contains(list []string, want string) bool {
-	for _, s := range list {
-		if s == want {
-			return true
-		}
-	}
-	return false
+	return slices.Sorted(maps.Keys(m))
 }
 
 func domainOf(email string) string {

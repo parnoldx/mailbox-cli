@@ -77,13 +77,39 @@ Item {
     readonly property int contactCap: 5
     readonly property int totalCap: 8
 
+    // Your own send-from addresses (win.selfRecipients, primary first),
+    // promoted above everything else when the query is a prefix of the name or
+    // the address's local part — so typing your own name to mail yourself a
+    // note beats whatever correspondent search digs up for it.
+    function _promoteSelf(q, list) {
+        var lc = root._norm(q)
+        var mine = (typeof win !== "undefined" && win.selfRecipients) ? win.selfRecipients : []
+        var front = []
+        for (var i = 0; i < mine.length; i++) {
+            var m = mine[i], em = root._norm(m.email)
+            var hit = root._norm(m.name).indexOf(lc) === 0
+                   || em.split("@")[0].indexOf(lc) === 0 || em.indexOf(lc) >= 0
+            if (!hit) continue
+            var dup = false
+            for (var k = 0; k < root.recipients.length; k++)
+                if (root._norm(root.recipients[k].email) === em) dup = true
+            if (!dup) front.push({ name: m.name, email: m.email })
+        }
+        if (front.length === 0) return list
+        var seen = {}
+        for (var j = 0; j < front.length; j++) seen[root._norm(front[j].email)] = true
+        return front.concat(list.filter(function (x) {
+            return !seen[root._norm(x.email)]
+        })).slice(0, root.totalCap)
+    }
+
     function refreshSuggestions() {
         var q = input.text.trim()
         if (q.length < 2) { root.suggestions = []; return }
         Mailbox.call(["contact", "search"], { positional: q, limit: 6 }, function (r) {
             if (input.text.trim() !== q) return
             var contactHits = root._hits((r.ok && r.data) ? r.data : [], true).slice(0, root.contactCap)
-            root.suggestions = contactHits
+            root.suggestions = root._promoteSelf(q, contactHits)
             root.sugActive = 0
             // Addresses actually seen in mail, appended below the address
             // book's own matches — not gated on those coming up empty, since
@@ -108,7 +134,7 @@ Item {
                     knownEmails[lc] = true
                     merged.push(corr[j])
                 }
-                root.suggestions = merged
+                root.suggestions = root._promoteSelf(q, merged)
                 root.sugActive = 0
             })
         })

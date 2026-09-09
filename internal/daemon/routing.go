@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -193,7 +194,7 @@ func groupBySender(a *Account, box string, rows []mirror.Row) []waiting {
 		// sender is a login form you used once, not somebody to route. Leaving
 		// it in would put a red badge on the widget for exactly as long as the
 		// mail took to expire.
-		if hasFlag(r.Placement.Flags, pickup.Keyword) {
+		if slices.Contains(r.Placement.Flags, pickup.Keyword) {
 			continue
 		}
 		addr := routing.AddressOf(r.From)
