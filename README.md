@@ -305,3 +305,7 @@ make live LIVE=./internal/imapdrv/
 ```
 
 Architecture Decision Records are documented in [`docs/adr/`](file:///home/pa/Work/tries/2026-08-29-mailbox-cli/docs/adr). Detailed design notes are in [`docs/DESIGN.md`](file:///home/pa/Work/tries/2026-08-29-mailbox-cli/docs/DESIGN.md).
+
+## License
+
+MIT — see [`LICENSE`](LICENSE).
