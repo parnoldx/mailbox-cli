@@ -1,5 +1,7 @@
 # mailbox
 
+**Website:** [parnoldx.github.io/mailbox-cli](https://parnoldx.github.io/mailbox-cli/)
+
 `mailbox` is a fast, agent-oriented CLI and background daemon for email, calendars, tasks, daily habits, and contacts.
 
 Instead of hitting IMAP, SMTP, CalDAV, CardDAV, and ManageSieve servers on every command, a single background daemon maintains a local SQLite **Mirror** of server state. Read commands are answered directly from the local mirror in milliseconds with zero network latency, while write operations synchronize with remote servers to guarantee consistency.

@@ -1,0 +1,765 @@
+<!doctype html>
+<html lang="en" data-theme="night">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>mailbox — Fast, agent-oriented mail for your desktop.</title>
+    <meta
+      name="description"
+      content="A fast, agent-oriented CLI and background daemon for email, calendars, tasks, habits, and contacts, paired with dedicated Omarchy GUI components."
+    />
+    <meta name="theme-color" content="#1a1b26" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="mailbox — Fast, agent-oriented mail for your desktop." />
+    <meta
+      property="og:description"
+      content="A fast, agent-oriented CLI and background daemon for email, calendars, tasks, habits, and contacts, paired with dedicated Omarchy GUI components."
+    />
+    <meta property="og:site_name" content="mailbox" />
+    <meta property="og:url" content="https://parnoldx.github.io/mailbox-cli/" />
+    <link rel="canonical" href="https://parnoldx.github.io/mailbox-cli/" />
+    <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="assets/site.css" />
+    <script src="assets/site.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="index.html" aria-label="mailbox home">
+          <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
+            <rect width="32" height="32" rx="7" fill="currentColor" fill-opacity="0.15" />
+            <rect x="5" y="8" width="22" height="16" rx="2" stroke="currentColor" stroke-width="1.8" />
+            <path d="M7 10 L16 17 L25 10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <span>mailbox<span class="accent">.</span></span>
+        </a>
+        <nav class="site-nav" aria-label="Main navigation">
+          <a class="desktop-link" href="#daemon-cli">Daemon &amp; CLI</a>
+          <a class="desktop-link" href="#gui-components">GUI Components</a>
+          <a class="desktop-link" href="#how-it-works">How it works</a>
+          <a href="#install">Install</a>
+          <a href="https://github.com/parnoldx/mailbox-cli">GitHub <span aria-hidden="true">↗</span></a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main" tabindex="-1">
+      <div class="container">
+        <section class="hero" aria-labelledby="hero-title">
+          <div class="hero-grid">
+            <div>
+              <div class="eyebrow">
+                <span class="status-dot" aria-hidden="true"></span>At home on Omarchy
+              </div>
+              <h1 id="hero-title">
+                Your mail.<br />Your time.<br /><span class="accent">Everywhere.</span>
+              </h1>
+              <p class="hero-copy">
+                A fast, agent-oriented CLI and background daemon for email, calendars, tasks,
+                habits, and contacts. Instant local reads from an offline SQLite mirror,
+                write-through consistency, server-side Sieve routing—and three dedicated visual
+                interfaces designed for the Omarchy desktop.
+              </p>
+              <div class="hero-actions">
+                <a class="button" href="#install">Get mailbox <span aria-hidden="true">↗</span></a>
+                <a class="text-link" href="https://github.com/parnoldx/mailbox-cli">Read the source ↗</a>
+              </div>
+              <div class="compat">
+                <span class="file-pill">Daemon &amp; CLI</span>
+                <span class="file-pill sheet">Qt Desktop Client</span>
+                <span class="file-pill slides">Calendar &amp; Mail Widgets</span>
+                <span class="file-pill">Agent Skills</span>
+              </div>
+              <p class="small-note">Free &amp; open source · Linux · MIT</p>
+            </div>
+
+            <div class="preview">
+              <div class="desktop">
+                <div class="desktop-bar" aria-hidden="true">
+                  <span><span class="workspace-number">1</span>&nbsp; 2 &nbsp; 3 &nbsp; / &nbsp; mail</span>
+                  <span>✦ &nbsp; ◇ &nbsp; 09:41</span>
+                </div>
+                <div class="desktop-wallpaper" aria-hidden="true">
+                  <span>✦</span>
+                </div>
+                <div class="app-window">
+                  <div class="app-title">
+                    <strong><span class="window-mark">✦</span> mailbox</strong>
+                    <span class="preview-badge">LIVE GUI</span>
+                  </div>
+                  <div
+                    class="demo-tabs"
+                    role="tablist"
+                    aria-label="Explore mailbox GUI components"
+                    data-demo-tabs
+                    hidden
+                  >
+                    <button
+                      type="button"
+                      id="tab-gui-client"
+                      role="tab"
+                      data-demo-tab
+                      aria-selected="true"
+                      aria-controls="demo-gui-client"
+                    >
+                      Desktop Client
+                    </button>
+                    <button
+                      type="button"
+                      id="tab-gui-calendar"
+                      role="tab"
+                      data-demo-tab
+                      aria-selected="false"
+                      aria-controls="demo-gui-calendar"
+                      tabindex="-1"
+                    >
+                      Calendar Widget
+                    </button>
+                    <button
+                      type="button"
+                      id="tab-gui-quickadd"
+                      role="tab"
+                      data-demo-tab
+                      aria-selected="false"
+                      aria-controls="demo-gui-quickadd"
+                      tabindex="-1"
+                    >
+                      Quick Add
+                    </button>
+                    <button
+                      type="button"
+                      id="tab-gui-email"
+                      role="tab"
+                      data-demo-tab
+                      aria-selected="false"
+                      aria-controls="demo-gui-email"
+                      tabindex="-1"
+                    >
+                      Mail Alert Bar
+                    </button>
+                    <button
+                      type="button"
+                      id="tab-cli-daemon"
+                      role="tab"
+                      data-demo-tab
+                      aria-selected="false"
+                      aria-controls="demo-cli-daemon"
+                      tabindex="-1"
+                    >
+                      CLI &amp; Daemon
+                    </button>
+                  </div>
+
+                  <!-- 1. Real Qt GUI Client View (mailbox-gui) -->
+                  <div
+                    id="demo-gui-client"
+                    class="demo-panel"
+                    role="tabpanel"
+                    aria-labelledby="tab-gui-client"
+                    tabindex="0"
+                  >
+                    <div class="gui-client-mockup">
+                      <div class="gui-client-header">
+                        <div class="gui-client-title">
+                          <div class="gui-squircle-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                              <rect x="3" y="4" width="18" height="16" rx="4" />
+                              <path d="M3 13h5l2 3h4l2-3h5" />
+                            </svg>
+                          </div>
+                          <h3>Inbox</h3>
+                          <button class="gui-search-btn" type="button" aria-label="Search mailbox">🔍</button>
+                        </div>
+                        <button class="gui-compose-btn" type="button">
+                          <span>✏</span> Compose
+                        </button>
+                      </div>
+
+                      <div class="gui-section-pill">PREVIOUSLY SEEN 1</div>
+
+                      <div class="gui-mail-card">
+                        <div class="gui-avatar">CX</div>
+                        <div class="gui-card-body">
+                          <div class="gui-card-line1">Cinemax — Your tickets are ready · noreply@cinemax.com</div>
+                          <div class="gui-card-line2">Booking confirmed for Friday 19:30 · Seat H12...</div>
+                        </div>
+                        <div class="gui-card-date">1 Sep</div>
+                      </div>
+
+                      <div class="gui-client-bottom">
+                        <div class="gui-live-dot" title="Connected to daemon"></div>
+                        <div class="gui-bottom-stacks">
+                          <div class="gui-stack-icon" title="Bookmarks">🔖</div>
+                          <div class="gui-stack-card">
+                            <div class="gui-stack-avatar">AC</div>
+                            <span><strong>Plan</strong> · Acme Corp</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 2. Real Calendar Widget View (mailbox.clock) -->
+                  <div
+                    id="demo-gui-calendar"
+                    class="demo-panel"
+                    role="tabpanel"
+                    aria-labelledby="tab-gui-calendar"
+                    tabindex="0"
+                    hidden
+                  >
+                    <div class="clock-widget-mockup clock-widget-expanded">
+                      <div class="clock-top-bar">
+                        <span class="clock-top-left">Wed · Sep 2</span>
+                        <span>09:41 · 17° · ⚙</span>
+                      </div>
+                      <div class="clock-header">
+                        <div class="clock-title-row">
+                          <h2><span class="clock-cal-icon" aria-hidden="true">📅</span> September 2026</h2>
+                          <div class="clock-nav-btns" aria-hidden="true">
+                            <span>‹</span><span>›</span>
+                          </div>
+                        </div>
+                        <div class="clock-progress-row">
+                          <span>Year</span>
+                          <div class="clock-progress-bar">
+                            <div class="clock-progress-fill"></div>
+                          </div>
+                          <span>67%</span>
+                        </div>
+                      </div>
+
+                      <div class="clock-calendar-grid" aria-label="September 2026 calendar">
+                        <div class="clock-cell header">Mon</div>
+                        <div class="clock-cell header">Tue</div>
+                        <div class="clock-cell header">Wed</div>
+                        <div class="clock-cell header">Thu</div>
+                        <div class="clock-cell header">Fri</div>
+                        <div class="clock-cell header">Sat</div>
+                        <div class="clock-cell header">Sun</div>
+
+                        <div class="clock-cell muted-day">31</div>
+                        <div class="clock-cell has-dot">1</div>
+                        <div class="clock-cell current-day has-dot">2</div>
+                        <div class="clock-cell has-dot">3</div>
+                        <div class="clock-cell has-dot">4</div>
+                        <div class="clock-cell">5</div>
+                        <div class="clock-cell">6</div>
+
+                        <div class="clock-cell has-dot">7</div>
+                        <div class="clock-cell">8</div>
+                        <div class="clock-cell has-dot">9</div>
+                        <div class="clock-cell">10</div>
+                        <div class="clock-cell has-dot">11</div>
+                        <div class="clock-cell">12</div>
+                        <div class="clock-cell">13</div>
+
+                        <div class="clock-cell has-dot">14</div>
+                        <div class="clock-cell">15</div>
+                        <div class="clock-cell has-dot">16</div>
+                        <div class="clock-cell">17</div>
+                        <div class="clock-cell has-dot">18</div>
+                        <div class="clock-cell">19</div>
+                        <div class="clock-cell">20</div>
+
+                        <div class="clock-cell">21</div>
+                        <div class="clock-cell has-dot">22</div>
+                        <div class="clock-cell">23</div>
+                        <div class="clock-cell has-dot">24</div>
+                        <div class="clock-cell">25</div>
+                        <div class="clock-cell">26</div>
+                        <div class="clock-cell">27</div>
+
+                        <div class="clock-cell">28</div>
+                        <div class="clock-cell has-dot">29</div>
+                        <div class="clock-cell">30</div>
+                        <div class="clock-cell muted-day">1</div>
+                        <div class="clock-cell muted-day">2</div>
+                        <div class="clock-cell muted-day">3</div>
+                        <div class="clock-cell muted-day">4</div>
+                      </div>
+
+                      <div class="clock-events-list">
+                        <div class="clock-events-label">Today</div>
+                        <div class="clock-event-row">
+                          <div class="clock-event-meta">
+                            <span class="clock-event-time">10:00</span>
+                            <span class="clock-event-title">Product Sync</span>
+                          </div>
+                          <span class="clock-join-btn">Join Zoom</span>
+                        </div>
+                        <div class="clock-event-row">
+                          <div class="clock-event-meta">
+                            <span class="clock-event-time">16:00</span>
+                            <span class="clock-event-title">Design Review</span>
+                          </div>
+                          <span class="clock-join-btn">Join Teams</span>
+                        </div>
+                        <div class="clock-events-label">Tasks</div>
+                        <div class="clock-todo-row">
+                          <input type="checkbox" id="demo-todo-1" />
+                          <label for="demo-todo-1">Ship release notes</label>
+                        </div>
+                        <div class="clock-todo-row">
+                          <input type="checkbox" id="demo-todo-2" checked />
+                          <label for="demo-todo-2" class="done">Review inbox triage</label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 3. Quick Add Event View (from mailbox.clock) -->
+                  <div
+                    id="demo-gui-quickadd"
+                    class="demo-panel"
+                    role="tabpanel"
+                    aria-labelledby="tab-gui-quickadd"
+                    tabindex="0"
+                    hidden
+                  >
+                    <div class="quick-add-mockup">
+                      <div class="quick-add-nav">
+                        <div class="quick-add-tabs">
+                          <span>&lt; EVENT</span>
+                          <span style="color: var(--muted);">TODO</span>
+                        </div>
+                        <span style="color: var(--accent);">● Calendar ▾</span>
+                      </div>
+
+                      <div class="quick-add-input">
+                        <span>Team lunch tomorrow 12:30 till 14:00</span>
+                        <span style="color: var(--muted);">?</span>
+                      </div>
+
+                      <div class="quick-add-card">
+                        <strong>Team lunch</strong>
+                        <div class="quick-add-card-times">
+                          <span>Thu, 3 Sep · 12:30</span>
+                          <span>→</span>
+                          <span>Thu, 3 Sep · 14:00</span>
+                        </div>
+                      </div>
+
+                      <div class="quick-add-pills">
+                        <span class="quick-add-pill">🔗 Link</span>
+                        <span class="quick-add-pill">📍 Location</span>
+                        <span class="quick-add-pill">📝 Notes</span>
+                        <span class="quick-add-pill">🔔 Notify me</span>
+                        <span class="quick-add-pill">🔁 Repeat</span>
+                      </div>
+
+                      <div class="quick-add-submit">Add this event</div>
+                    </div>
+                  </div>
+
+                  <!-- 4. Mail Notification Dropdown View (mailbox.email) -->
+                  <div
+                    id="demo-gui-email"
+                    class="demo-panel"
+                    role="tabpanel"
+                    aria-labelledby="tab-gui-email"
+                    tabindex="0"
+                    hidden
+                  >
+                    <div class="email-panel-mockup">
+                      <div class="email-panel-header">
+                        <div class="email-panel-title">
+                          <span class="email-panel-icon" aria-hidden="true">✉</span>
+                          <div>
+                            <strong>Mailbox</strong>
+                            <span class="email-status-live">2 NEW</span>
+                          </div>
+                        </div>
+                        <div class="email-panel-actions" aria-hidden="true">
+                          <span class="email-action-icon" title="Mute">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M22 9l-6 6M16 9l6 6"/></svg>
+                          </span>
+                          <span class="email-action-icon" title="Refresh">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><path d="M21 3v6h-6"/></svg>
+                          </span>
+                          <span class="email-action-icon" title="Settings">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9c.3.6.9 1 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+                          </span>
+                        </div>
+                      </div>
+
+                      <div class="email-mail-list">
+                        <div class="email-mail-row unread">
+                          <div class="email-mail-avatar">GH</div>
+                          <div class="email-mail-body">
+                            <div class="email-mail-top">
+                              <strong>GitHub</strong>
+                              <span>2m</span>
+                            </div>
+                            <div class="email-mail-subject">[mailbox-cli] CI passed on main</div>
+                            <div class="email-mail-preview">All checks were successful for pull request #142…</div>
+                          </div>
+                        </div>
+                        <div class="email-mail-row unread">
+                          <div class="email-mail-avatar cx">CX</div>
+                          <div class="email-mail-body">
+                            <div class="email-mail-top">
+                              <strong>Cinemax</strong>
+                              <span>18m</span>
+                            </div>
+                            <div class="email-mail-subject">Your tickets are ready</div>
+                            <div class="email-mail-preview">Booking confirmed for Friday 19:30 · Seat H12…</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="email-panel-footer">
+                        <span>Open desktop client</span>
+                        <span class="email-hide-note">Icon hides when inbox is clear</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 5. Standalone CLI View -->
+                  <div
+                    id="demo-cli-daemon"
+                    class="demo-panel"
+                    role="tabpanel"
+                    aria-labelledby="tab-cli-daemon"
+                    tabindex="0"
+                    hidden
+                  >
+                    <div class="cli-preview-mockup">
+                      <div><span class="cli-prompt-sym">~ ❯ </span><span class="cli-cmd">mailbox box view inbox</span></div>
+                      <div class="cli-out">36781  2026-09-01 18:45  Cinemax — Your tickets are ready</div>
+                      <div><span class="cli-prompt-sym">~ ❯ </span><span class="cli-cmd">mailbox agenda</span></div>
+                      <div class="cli-out">Wed 2026-09-02 (today)
+  1646  10:00-11:00  Product Sync              Work
+  1798  16:00-17:00  Design Review             Work</div>
+                      <div><span class="cli-prompt-sym">~ ❯ </span><span class="cli-cmd">mailbox todo list</span></div>
+                      <div class="cli-out">  1792  Ship release notes    Tasks</div>
+                      <div><span class="cli-prompt-sym">~ ❯ </span><span class="cli-cmd">mailbox status --json</span></div>
+                      <div class="cli-out">{"ok":true,"mirror":{"behind":false,"synced_at":"2026-09-10T21:00:00Z"}}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <p class="preview-caption">Interactive preview · authentic Omarchy Qt client, Quickshell widgets &amp; CLI.</p>
+            </div>
+          </div>
+        </section>
+
+        <div class="principles" aria-label="Project principles">
+          <span><b>01</b> Instant SQLite mirror</span>
+          <span><b>02</b> Standalone daemon &amp; CLI</span>
+          <span><b>03</b> Dedicated Omarchy GUI</span>
+          <span><b>04</b> Server-side Sieve</span>
+        </div>
+
+        <!-- Section 1: The Daemon & CLI -->
+        <section class="section" id="daemon-cli" aria-labelledby="daemon-cli-title">
+          <div class="section-heading">
+            <div>
+              <div class="section-number">01 / THE HEADLESS FOUNDATION</div>
+              <h2 id="daemon-cli-title">
+                The daemon and the CLI operate 100% independently<span class="accent">.</span>
+              </h2>
+            </div>
+            <p>
+              No display server, Qt, or desktop environment required. The background daemon
+              owns all server connections and maintains an offline SQLite mirror; the CLI
+              answers queries in ~1ms with zero network latency.
+            </p>
+          </div>
+
+          <div class="feature-grid four-col">
+            <article>
+              <span class="feature-mark" aria-hidden="true">
+                <svg viewBox="0 0 32 32">
+                  <ellipse cx="16" cy="8" rx="10" ry="4" />
+                  <path d="M6 8v8c0 2.2 4.5 4 10 4s10-1.8 10-4V8M6 16v8c0 2.2 4.5 4 10 4s10-1.8 10-4v-8" />
+                </svg>
+              </span>
+              <h3>The SQLite Mirror</h3>
+              <p>
+                A disposable local read model holding mail, events, todos, and contacts. Reads answer in ~1ms directly from SQLite; dropping it loses zero data.
+              </p>
+              <code>~/.local/share/mailbox/mirror.db</code>
+            </article>
+            <article>
+              <span class="feature-mark" aria-hidden="true">
+                <svg viewBox="0 0 32 32">
+                  <path d="M6 22l10-14 10 14M10 22h12" />
+                </svg>
+              </span>
+              <h3>Durable Outbox</h3>
+              <p>
+                Outgoing messages stage in a disk-backed queue before SMTP submission. Network disruptions hold mail safely for retry rather than dropping or duplicating.
+              </p>
+              <code>held queue · zero lost mail</code>
+            </article>
+            <article>
+              <span class="feature-mark" aria-hidden="true">
+                <svg viewBox="0 0 32 32">
+                  <path d="M6 10l10 7 10-7M4 8h24v16H4z" />
+                </svg>
+              </span>
+              <h3>Zero-Click Pickups</h3>
+              <p>
+                Recognizes 2FA codes and magic links gated on the subject line. Copies the token to your clipboard, sends a desktop notification when collected, marks it read, and auto-trashes it after ~15m.
+              </p>
+              <code>clipboard · notification · auto-trash ~15m</code>
+            </article>
+            <article>
+              <span class="feature-mark" aria-hidden="true">
+                <svg viewBox="0 0 32 32">
+                  <path d="M10 9l-6 7 6 7M22 9l6 7-6 7M18 6l-4 20" />
+                </svg>
+              </span>
+              <h3>First-Class Agent Support</h3>
+              <p>
+                Every command supports structured <code>--json</code> with freshness metadata (<code>behind: false</code>). Discovery via <code>mailbox commands</code>.
+              </p>
+              <code>mailbox commands · skill/SKILL.md</code>
+            </article>
+          </div>
+        </section>
+
+        <!-- Section 2: GUI Components -->
+        <section class="section" id="gui-components" aria-labelledby="gui-title">
+          <div class="section-heading">
+            <div>
+              <div class="section-number">02 / THE VISUAL INTERFACES</div>
+              <h2 id="gui-title">
+                Three dedicated clients over the daemon socket<span class="accent">.</span>
+              </h2>
+            </div>
+            <p>
+              The GUI is not a monolithic program. It is three unbundled tools built for the Omarchy
+              desktop, each interfacing directly with the daemon's Unix socket over NDJSON.
+            </p>
+          </div>
+
+          <div class="feature-grid">
+            <article>
+              <span class="feature-mark" aria-hidden="true">
+                <svg viewBox="0 0 32 32">
+                  <path d="M4 6h24v20H4zM4 11h24M10 6v5" />
+                </svg>
+              </span>
+              <h3>1. Desktop Mail Client (mailbox-gui)</h3>
+              <p>
+                A HEY-style desktop client in Qt 6. Single view, content first: Inbox split into <em>New for you</em> and <em>Previously seen</em>, The Feed, Paper Trail, and Screener. Fanned card stacks for <em>Set Aside</em> and <em>Reply Later</em> ride the bottom. Includes Basecamp's Lexxy rich text composer, 5-second undo send, and Dark Reader mail theming.
+              </p>
+              <code>make install-gui · ~/.local/bin/mailbox-gui</code>
+            </article>
+            <article>
+              <span class="feature-mark" aria-hidden="true">
+                <svg viewBox="0 0 32 32">
+                  <circle cx="16" cy="16" r="11" />
+                  <path d="M16 9v7l5 3" />
+                </svg>
+              </span>
+              <h3>2. Calendar Widget (mailbox.clock)</h3>
+              <p>
+                A Quickshell top bar clock and interactive popup window. Displays the monthly calendar grid with event dots, a year progress bar, upcoming meetings with one-click launch buttons (<code>Join Zoom</code>, <code>Join Teams</code>), weekly task checklists, and a natural language event entry pane.
+              </p>
+              <code>plugins/mailbox.clock · Quickshell bar widget</code>
+            </article>
+            <article>
+              <span class="feature-mark" aria-hidden="true">
+                <svg viewBox="0 0 32 32">
+                  <path d="M4 8h24v16H4zM4 9l12 9 12-9" />
+                </svg>
+              </span>
+              <h3>3. Mail Notification Bar (mailbox.email)</h3>
+              <p>
+                A dynamic Quickshell bar icon that appears <strong>only when unread inbox mail arrives</strong>. Collapses completely when caught up so your bar stays distraction-free. The dropdown lists new arrivals for a quick glance and opens the message in the desktop client with one click.
+              </p>
+              <code>plugins/mailbox.email · Quickshell notification dropdown</code>
+            </article>
+          </div>
+        </section>
+
+        <!-- Section 3: Architecture -->
+        <section class="section" id="how-it-works" aria-labelledby="arch-title">
+          <div class="section-heading">
+            <div>
+              <div class="section-number">03 / ARCHITECTURE &amp; UNIX SOCKET</div>
+              <h2 id="arch-title">
+                Sub-millisecond speed without sync drift<span class="accent">.</span>
+              </h2>
+            </div>
+            <p>
+              Instead of opening remote network connections on every command, a single long-lived daemon
+              owns the servers and the Mirror. The CLI, GUI, and widgets all speak the same NDJSON protocol.
+            </p>
+          </div>
+
+          <div class="flow-diagram">
+            <div class="flow-row">
+              <div class="flow-node">
+                <strong>Clients &amp; Interfaces</strong>
+                <span>mailbox CLI · mailbox-gui · mailbox.clock · mailbox.email · AI Agents</span>
+              </div>
+              <span class="flow-arrow" aria-hidden="true">⇄</span>
+              <div class="flow-node">
+                <strong>Unix Domain Socket (NDJSON)</strong>
+                <span>$XDG_RUNTIME_DIR/mailbox.sock</span>
+              </div>
+            </div>
+            <div class="flow-row second-hop">
+              <div class="flow-node">
+                <strong>mailbox daemon</strong>
+                <span>SQLite Mirror (Reads) + Durable Outbox (Writes)</span>
+              </div>
+              <span class="flow-arrow" aria-hidden="true">⇄</span>
+              <div class="flow-node">
+                <strong>Remote Mail &amp; DAV Servers</strong>
+                <span>IMAP · SMTP · CalDAV · CardDAV · ManageSieve</span>
+              </div>
+            </div>
+            <p class="flow-caption">
+              Local reads answer from SQLite in ~1ms. Modifying commands write through to the server before acknowledging with exit code 0.
+            </p>
+          </div>
+        </section>
+
+        <!-- Section 4: Installation & Setup -->
+        <section class="install" id="install" aria-labelledby="install-title">
+          <div class="install-grid">
+            <div>
+              <div class="section-number">04 / MODULAR INSTALLATION</div>
+              <h2 id="install-title">
+                Install what you need<span class="accent">.</span>
+              </h2>
+              <p class="install-copy">
+                Build and install only the components you want. Everything runs locally under
+                your systemd user session with zero cloud intermediaries.
+              </p>
+              <p class="install-copy">
+                Requires Linux and Go 1.22+. The desktop client optionally requires Qt 6 with WebEngine;
+                the bar widgets require Quickshell / Omarchy.
+              </p>
+              <a class="text-link" href="https://github.com/parnoldx/mailbox-cli#readme">
+                Full command guide &amp; manual ↗
+              </a>
+            </div>
+
+            <div>
+              <div class="terminal">
+                <div class="terminal-title">
+                  Terminal <span>Build and install all components</span>
+                </div>
+                <div class="command-row">
+                  <span class="prompt" aria-hidden="true">$</span>
+                  <code id="install-command">git clone https://github.com/parnoldx/mailbox-cli.git &amp;&amp; cd mailbox-cli &amp;&amp; make install-all</code>
+                  <button
+                    class="copy-button"
+                    type="button"
+                    data-copy="install-command"
+                    data-feedback="copy-feedback"
+                    hidden
+                    aria-label="Copy installation command"
+                  >
+                    Copy
+                  </button>
+                </div>
+                <p id="copy-feedback" class="copy-feedback" role="status" aria-live="polite"></p>
+              </div>
+
+              <ol class="install-steps">
+                <li>
+                  <strong>Run the interactive setup wizard.</strong>
+                  <span>Discover mail folders, calendars, address books, and save secure config: <code>mailbox setup</code>.</span>
+                </li>
+                <li>
+                  <strong>Enable the background daemon.</strong>
+                  <span>Activate the systemd socket: <code>systemctl --user enable --now mailbox.socket</code>.</span>
+                </li>
+                <li>
+                  <strong>Open your tools.</strong>
+                  <span>Run <code>mailbox status</code> in your shell, launch <code>mailbox-gui</code>, or use the Omarchy bar widgets.</span>
+                </li>
+              </ol>
+
+              <p class="release-note">
+                Modular targets: <code>make install</code> (CLI &amp; daemon only), <code>make install-gui</code> (Qt client), <code>make install-plugins</code> (Omarchy widgets), or <code>make skill</code> (AI agent skills).
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Section 5: FAQ -->
+        <section class="section faq" id="faq" aria-labelledby="faq-title">
+          <div class="faq-grid">
+            <div>
+              <div class="section-number">05 / PRACTICAL DETAILS</div>
+              <h2 id="faq-title">
+                Frequently asked questions<span class="accent">.</span>
+              </h2>
+            </div>
+            <div class="faq-list">
+              <details>
+                <summary>Can I run mailbox purely headlessly without any GUI?</summary>
+                <p>
+                  Yes. The CLI and daemon are pure Go and have zero GUI or display server dependencies. You can run them on remote servers, headless devboxes, or in automated cron/agent environments with <code>make install</code>.
+                </p>
+              </details>
+              <details>
+                <summary>How do the GUI components communicate with the daemon?</summary>
+                <p>
+                  All three GUI components (the Qt client, the calendar widget, and the email notification bar) communicate over a local Unix domain socket (<code>$XDG_RUNTIME_DIR/mailbox.sock</code>) using newline-delimited JSON (NDJSON). They do not open network connections or parse databases directly.
+                </p>
+              </details>
+              <details>
+                <summary>How does the local SQLite mirror stay synchronized?</summary>
+                <p>
+                  The background daemon listens on IMAP IDLE and pushes sync cycles to remote servers. When you run a read command, it returns in ~1ms directly from SQLite. If the daemon is temporarily catching up, it answers with <code>behind: true</code> metadata instead of stalling.
+                </p>
+              </details>
+              <details>
+                <summary>What is a "Pickup" and why does it bypass normal mail routing?</summary>
+                <p>
+                  A login code or magic link is not mail to triage, it is a token to collect: worth thirty seconds and then worth nothing. The daemon gates on the subject line, copies the token to your clipboard, sends a desktop notification when it is collected, marks it read so it never alerts you again, and moves it to Trash after about 15 minutes.
+                </p>
+              </details>
+              <details>
+                <summary>How does live Omarchy theme morphing work?</summary>
+                <p>
+                  The desktop client includes a native C++ theme monitor (<code>OmarchyTheme</code>) that watches <code>~/.local/state/omarchy/current/theme/colors.toml</code>. The instant you change your Omarchy theme (e.g. <code>omarchy theme set "Gruvbox"</code>), all window colors morph live with zero restart.
+                </p>
+              </details>
+              <details>
+                <summary>Does mailbox store credentials or messages on a third-party server?</summary>
+                <p>
+                  Never. Mailbox has no cloud relay, hosted server, or analytics. Your machine connects directly to your own configured mail, CalDAV, CardDAV, and Sieve servers over encrypted TLS.
+                </p>
+              </details>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container">
+        <div class="footer-top">
+          <a class="brand" href="index.html">
+            <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
+              <rect width="32" height="32" rx="7" fill="currentColor" fill-opacity="0.15" />
+              <rect x="5" y="8" width="22" height="16" rx="2" stroke="currentColor" stroke-width="1.8" />
+              <path d="M7 10 L16 17 L25 10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <span>mailbox<span class="accent">.</span></span>
+          </a>
+          <nav class="footer-links" aria-label="Footer navigation">
+            <a href="https://github.com/parnoldx/mailbox-cli/issues">Contact ↗</a>
+            <a href="https://github.com/parnoldx/mailbox-cli/blob/main/LICENSE">MIT license ↗</a>
+          </nav>
+        </div>
+        <div class="footer-bottom">
+          <span>Made for the <a href="https://omarchy.org/">Omarchy</a> desktop.</span>
+        </div>
+        <div class="footer-wordmark" aria-hidden="true">mailbox.</div>
+      </div>
+    </footer>
+  </body>
+</html>
