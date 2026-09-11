@@ -83,6 +83,15 @@ func TestBoxViewShowsTheNewestOfAThread(t *testing.T) {
 	if thread.Count != 3 {
 		t.Errorf("count = %d, want 3", thread.Count)
 	}
+	// The stamp is that Message's instant in the local zone, so the listing and
+	// the reader agree on the hour.
+	stamped, err := time.ParseInLocation("2006-01-02 15:04", thread.Date, time.Local)
+	if err != nil {
+		t.Fatalf("date %q: %v", thread.Date, err)
+	}
+	if want := time.Date(2026, 8, 29, 9, 0, 0, 0, time.UTC); !stamped.Equal(want) {
+		t.Errorf("date = %q (%v), want %v", thread.Date, stamped, want)
+	}
 }
 
 func TestBoxViewMarksAThreadUnreadIfAnyMessageIs(t *testing.T) {

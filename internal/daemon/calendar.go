@@ -46,6 +46,10 @@ type occurrence struct {
 	AllDay    bool   `json:"all_day"`
 	Recurring bool   `json:"recurring"`
 	Status    string `json:"status,omitempty"`
+	// Alarms is the object's reminders, minutes before the start. A widget
+	// with no VALARM handling of its own reads these off the row rather than
+	// fetching the whole event just to know how early to say something.
+	Alarms []int `json:"alarms,omitempty"`
 }
 
 // event is one calendar object read whole.
@@ -211,7 +215,8 @@ func viewOccurrence(o mirror.Object, in vcal.Occurrence) occurrence {
 		ID: o.ID, Calendar: o.Collection, UID: in.UID, Summary: in.Summary,
 		Location: in.Location, AllDay: in.AllDay, Recurring: in.Recurring,
 		Status: in.Status, Notes: o.Description, URL: in.URL,
-		Start: start.Format(time.RFC3339), End: end.Format(time.RFC3339),
+		Alarms: in.Alarms,
+		Start:  start.Format(time.RFC3339), End: end.Format(time.RFC3339),
 		Date: start.Format("2006-01-02"),
 	}
 	if in.AllDay {

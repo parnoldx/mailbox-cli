@@ -209,7 +209,10 @@ func groupBySender(a *Account, box string, rows []mirror.Row) []waiting {
 				Subject: r.Subject, ID: a.messageID(box, r.Placement.UID),
 			}
 			if !r.Message.Date.IsZero() {
-				w.Newest = r.Message.Date.Format("2006-01-02 15:04")
+				// .Local() for the same reason the Box listing does it: the
+				// server's instant is usually UTC, and a wait list that shows a
+				// different hour than the mail it points at reads as wrong.
+				w.Newest = r.Message.Date.Local().Format("2006-01-02 15:04")
 			}
 			byAddr[addr] = w
 			order = append(order, addr)

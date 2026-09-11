@@ -23,7 +23,8 @@ LIVE ?= ./internal/sievedrv/
 
 .DEFAULT_GOAL := build
 .PHONY: build test live vet fmt install install-gui install-plugins install-all \
-	update-daemon update-daemon-local update-daemon-vps register-mailto skill
+	update-daemon update-daemon-local update-daemon-vps register-mailto skill \
+	site-check site-serve
 
 build:
 	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/mailbox
@@ -79,11 +80,12 @@ install-gui:
 # that path — overwriting an earlier copy in place rather than nesting a
 # second one inside it the way a plain `cp -r` would on the second run — and
 # it never touches sibling plugins. Enable them afterwards with
-# `omarchy plugin enable mailbox.clock mailbox.email`.
+# `omarchy plugin enable mailbox.clock mailbox.email pa.todo`.
 install-plugins:
 	mkdir -p $(OMARCHY_PLUGINS)
 	cp -rT plugins/mailbox.clock $(OMARCHY_PLUGINS)/mailbox.clock
 	cp -rT plugins/mailbox.email $(OMARCHY_PLUGINS)/mailbox.email
+	cp -rT plugins/pa.todo $(OMARCHY_PLUGINS)/pa.todo
 
 # Everything this repo installs: CLI, agent skill, desktop client, widgets.
 install-all: install skill install-gui install-plugins
@@ -140,3 +142,11 @@ skill:
 		echo "Remove it and run make skill again."; exit 1; \
 	fi
 	ln -sfn ../../.agents/skills/mailbox $(CLAUDE)/mailbox
+
+# Validate the self-contained static documentation website.
+site-check:
+	python3 scripts/check-site.py
+
+# Serve the static website locally for testing.
+site-serve:
+	python3 -m http.server -d site 8080

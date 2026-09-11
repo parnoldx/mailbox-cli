@@ -54,6 +54,29 @@ test("shouldAnnounce covers the lead window and only the first minutes after sta
   assert.equal(Model.shouldAnnounce(upcoming, now, 0), false)
 })
 
+test("an event alarm blips briefly, without a countdown", () => {
+  // Start 10:50, alarm 50 minutes before it, blip window 1 minute.
+  const alarmed = event({ start: "2026-08-23T10:50:00+02:00", end: "2026-08-23T11:20:00+02:00", alarms: [50] })
+
+  // Fires at 10:00 and shows for about a minute, then goes quiet.
+  assert.equal(Model.shouldAnnounce(alarmed, now, 5, 1), true)
+  assert.equal(Model.inAlarmBlip(alarmed, now, 5, 1), true)
+  assert.equal(Model.shouldAnnounce(alarmed, Date.parse("2026-08-23T10:00:30+02:00"), 5, 1), true)
+  assert.equal(Model.shouldAnnounce(alarmed, Date.parse("2026-08-23T10:01:30+02:00"), 5, 1), false)
+  assert.equal(Model.shouldAnnounce(alarmed, Date.parse("2026-08-23T09:59:00+02:00"), 5, 1), false)
+
+  // No countdown in the long gap between the alarm and the ordinary lead...
+  assert.equal(Model.shouldAnnounce(alarmed, Date.parse("2026-08-23T10:30:00+02:00"), 5, 1), false)
+  // ...and the ordinary 5-minute lead still takes over near the start, as a
+  // real countdown rather than a blip.
+  assert.equal(Model.shouldAnnounce(alarmed, Date.parse("2026-08-23T10:46:00+02:00"), 5, 1), true)
+  assert.equal(Model.inAlarmBlip(alarmed, Date.parse("2026-08-23T10:46:00+02:00"), 5, 1), false)
+
+  // An alarm at or inside the lead is just the countdown, never a blip.
+  const near = event({ start: "2026-08-23T10:05:00+02:00", end: "2026-08-23T10:20:00+02:00", alarms: [5] })
+  assert.equal(Model.inAlarmBlip(near, now, 5, 1), false)
+})
+
 test("shouldNudge waits out the first minute and gives up after five", () => {
   const current = event({ id: "current", start: "2026-08-23T10:00:00+02:00", end: "2026-08-23T10:25:00+02:00" })
   assert.equal(Model.shouldNudge(current, Date.parse("2026-08-23T10:00:59+02:00")), false)
@@ -232,6 +255,13 @@ test("parseEventPhrase reads the C366 task examples", () => {
   const groceries = parse("Buy groceries tomorrow !")
   assert.equal(groceries.title, "Buy groceries")
   assert.equal(groceries.priority, "low")
+  assert.equal(groceries.dateKey, "2026-08-24")
+  // …and the parsed day has to reach the wire, date-only.
+  const built = Model.buildQuickAddRequest(
+    Object.assign(groceries, { kind: "task" }), nlNow).request
+  assert.equal(built.dueMs, Date.parse("2026-08-24T00:00:00+02:00"))
+  assert.equal(built.dueHasTime, false)
+  assert.equal(built.priority, 9)
 
   const report = parse("Finish report Friday /Work !!")
   assert.equal(report.priority, "medium")
@@ -553,10 +583,13 @@ test("buildQuickAddRequest builds tasks with iCalendar priorities", () => {
   assert.equal(high.dueMs, Date.parse("2026-08-24T17:00:00+02:00"))
   assert.equal(Model.formatEntrySummary(high).indexOf("!!!") > 0, true)
 
-  const undated = Model.buildQuickAddRequest(
+  // A task with a day but no hour is due on that day, date-only — the pane
+  // always shows a date, so "buy milk tomorrow" must not lose it on write.
+  const dateOnly = Model.buildQuickAddRequest(
     Model.fallbackDraft("Someday", "2026-08-24", "task"), nlNow)
-  assert.equal(undated.request.dueMs, null)
-  assert.match(Model.formatEntrySummary(undated.request), /no due date/)
+  assert.equal(dateOnly.request.dueMs, Date.parse("2026-08-24T00:00:00+02:00"))
+  assert.equal(dateOnly.request.dueHasTime, false)
+  assert.match(Model.formatEntrySummary(dateOnly.request), /due Mon 24 Aug/)
 
   const noted = Model.buildQuickAddRequest(
     Object.assign(Model.fallbackDraft("Someday", "2026-08-24", "task"),

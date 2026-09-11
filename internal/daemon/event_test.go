@@ -193,6 +193,11 @@ func TestEventAddWritesTheRuleTheReminderAndTheLink(t *testing.T) {
 	if len(agenda) == 0 || agenda[0].URL != "https://meet.example.org/r?a=1,2" {
 		t.Errorf("agenda = %+v", agenda)
 	}
+	// The reminders ride the row too, so a widget with no VALARM handling
+	// of its own can say something as early as the phone does.
+	if len(agenda) == 0 || len(agenda[0].Alarms) != 2 || agenda[0].Alarms[0] != 5 || agenda[0].Alarms[1] != 60 {
+		t.Errorf("agenda alarms = %+v", agenda)
+	}
 
 	// And it reads back, which is what a caller filling in a form again needs.
 	view := mustAsk(t, d, []string{"event", "view"},

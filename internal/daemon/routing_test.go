@@ -175,6 +175,15 @@ func TestScreenerIsOneLinePerSender(t *testing.T) {
 	if got[0].Address != "spam@example.net" {
 		t.Errorf("first sender is %q, want the newest", got[0].Address)
 	}
+	// Its stamp is the reader's wall clock, not the UTC the Mirror stored —
+	// the same hour the mail shows once it is opened.
+	newest, err := time.ParseInLocation("2006-01-02 15:04", got[0].Newest, time.Local)
+	if err != nil {
+		t.Fatalf("newest = %q: %v", got[0].Newest, err)
+	}
+	if want := time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC); !newest.Equal(want) {
+		t.Errorf("newest = %q (%v), want the seeded instant %v", got[0].Newest, newest, want)
+	}
 	var news *waiting
 	for i := range got {
 		if got[i].Address == "news@example.com" {

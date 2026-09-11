@@ -591,37 +591,8 @@ function shouldAnnounce(event, nowMs, leadMinutes, startedLeadMinutes) {
   }
 
   var lead = Number(leadMinutes)
-  if (!isFinite(lead) || lead < 0) lead = 0
-  if (lead > 0 && delta <= lead * MINUTE_MS) return true
-
-  // The event's own reminders (--alarm / VALARM) each fire once and briefly:
-  // shown for blipMinutes and then gone, with no running countdown. The bar
-  // is the only reminder the desktop has, so it mirrors the phone's single
-  // buzz rather than sitting on screen for the whole hour before the start.
-  return inAlarmBlip(event, nowMs, leadMinutes, startedLeadMinutes)
-}
-
-var DEFAULT_BLIP_MINUTES = 1
-
-// True while an alarm the event carries is inside its brief on-screen window
-// and the normal lead countdown has not taken over yet. The widget reads this
-// to drop the countdown phrase and give the label one shake as it appears.
-function inAlarmBlip(event, nowMs, leadMinutes, blipMinutes) {
-  if (!event) return false
-  var delta = millisUntil(event, nowMs)
-  if (delta === null || delta <= 0) return false
-
-  var lead = Number(leadMinutes)
-  if (isFinite(lead) && lead > 0 && delta <= lead * MINUTE_MS) return false
-
-  var blip = Number(blipMinutes)
-  if (!isFinite(blip) || blip <= 0) blip = DEFAULT_BLIP_MINUTES
-  var alarms = event.alarms
-  for (var i = 0; alarms && i < alarms.length; i++) {
-    var at = Number(alarms[i]) * MINUTE_MS
-    if (isFinite(at) && at > 0 && delta <= at && delta > at - blip * MINUTE_MS) return true
-  }
-  return false
+  if (!isFinite(lead) || lead <= 0) return false
+  return delta <= lead * MINUTE_MS
 }
 
 // A join button left unclicked: the meeting is running, it still has a
@@ -1734,7 +1705,6 @@ function eventsFromAgenda(rows, colors) {
       title: String(row.summary || "").trim() || "(no title)",
       location: String(row.location || ""),
       time: allDay ? "" : String(row.start || "").slice(11, 16),
-      alarms: Array.isArray(row.alarms) ? row.alarms.map(Number).filter(isFinite) : [],
       meetingUrl: safeLinkUrl(row.url) || meetingUrlIn(row.summary, row.location, row.notes)
     }
     if (seen[event.id + "|" + event.dateKey]) continue
@@ -2269,7 +2239,6 @@ if (typeof module !== "undefined") {
     truncateTitle: truncateTitle,
     millisUntil: millisUntil,
     shouldAnnounce: shouldAnnounce,
-    inAlarmBlip: inAlarmBlip,
     shouldNudge: shouldNudge,
     occurrenceKey: occurrenceKey,
     isDismissed: isDismissed,

@@ -32,7 +32,10 @@ const (
 )
 
 func runBoxView(in *input, stdout, stderr io.Writer) int {
-	box := in.First()
+	// The whole line, not just the first word: box names have spaces in them
+	// ("Paper Trail", "Reply Later") and the listing prints them that way, so
+	// `box view Paper Trail` has to work without the caller quoting it.
+	box := in.Text()
 	if box == "" {
 		box = "inbox"
 	}

@@ -122,6 +122,10 @@ type Occurrence struct {
 	// Recurring says this instance came from a rule rather than from a plain
 	// dated event.
 	Recurring bool
+	// Alarms is the reminders on the object, minutes before the start, the
+	// same on every instance. A client with no VALARM handling of its own
+	// reads these to know how early to say something.
+	Alarms []int
 }
 
 // Occurrences expands one raw object into the instances that fall in
@@ -159,6 +163,7 @@ func Occurrences(raw string, from, to time.Time, loc *time.Location) ([]Occurren
 	if status, err := master.Props.Text(ical.PropStatus); err == nil {
 		base.Status = strings.ToUpper(status)
 	}
+	base.Alarms = alarmMinutes(master)
 
 	overrides := overridesOf(cal, loc)
 

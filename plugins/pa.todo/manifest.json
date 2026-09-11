@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "pa.todo",
+  "name": "ToDo",
+  "version": "1.0.0",
+  "author": "pa",
+  "description": "Quick capture straight into the mailbox task list",
+  "kinds": ["overlay"],
+  "keepLoaded": true,
+  "entryPoints": { "overlay": "Todo.qml" },
+  "omarchy": { "clonedFrom": "yordanbuilds.jot" }
+}

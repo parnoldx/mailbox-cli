@@ -122,9 +122,17 @@ Item {
 
     function fromName(s) { return Fmt.displayName(s) }
     function fromAddr(s) { return Fmt.address(s) }
-    function niceDate(s) {
+    // The header's stamp, in two halves: the day, and the clock under it. Both
+    // on one line ("11 Sep 2026 · 19:38") is wider than the column the header
+    // keeps for it, which silently clipped the time off and left the day
+    // reading alone.
+    function niceDay(s) {
         var d = new Date(s)
-        return isNaN(d.getTime()) ? (s || "") : Qt.formatDateTime(d, "d MMM yyyy · HH:mm")
+        return isNaN(d.getTime()) ? (s || "") : Qt.formatDateTime(d, "d MMM yyyy")
+    }
+    function niceTime(s) {
+        var d = new Date(s)
+        return isNaN(d.getTime()) ? "" : Qt.formatDateTime(d, "HH:mm")
     }
     // One line of taste for the collapsed row — not a rendering of the body,
     // just enough to remember what this Message said without opening it.
@@ -396,7 +404,7 @@ Item {
                     seed: root.fromAddr(root.msg.from)
                 }
                 Column {
-                    width: parent.width - 28 - 12 - 76
+                    width: parent.width - 28 - 12 - stampSmall.width - parent.spacing
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 2
                     Text {
@@ -419,13 +427,27 @@ Item {
                         Behavior on color { ColorAnimation { duration: Theme.anim } }
                     }
                 }
-                Text {
+                Column {
+                    id: stampSmall
                     anchors.verticalCenter: parent.verticalCenter
-                    text: root.niceDate(root.msg.date)
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 10
-                    color: Theme.textDim
-                    Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    spacing: 2
+                    Text {
+                        anchors.right: parent.right
+                        text: root.niceDay(root.msg.date)
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 10
+                        color: Theme.textDim
+                        Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    }
+                    Text {
+                        anchors.right: parent.right
+                        visible: text !== ""
+                        text: root.niceTime(root.msg.date)
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 10
+                        color: Theme.textDim
+                        Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    }
                 }
             }
             HoverHandler { id: rowHover; cursorShape: Qt.PointingHandCursor }
@@ -450,7 +472,7 @@ Item {
                     seed: root.fromAddr(root.msg.from)
                 }
                 Column {
-                    width: parent.width - 36 - 13 - 90
+                    width: parent.width - 36 - 13 - stamp.width - senderRow.spacing
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 3
                     Text {
@@ -470,11 +492,21 @@ Item {
                     }
                 }
                 Column {
+                    id: stamp
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 6
                     Text {
                         anchors.right: parent.right
-                        text: root.niceDate(root.msg.date)
+                        text: root.niceDay(root.msg.date)
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11
+                        color: Theme.textDim
+                        Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    }
+                    Text {
+                        anchors.right: parent.right
+                        visible: text !== ""
+                        text: root.niceTime(root.msg.date)
                         font.family: Theme.fontFamily
                         font.pixelSize: 11
                         color: Theme.textDim

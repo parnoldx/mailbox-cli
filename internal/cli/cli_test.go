@@ -50,6 +50,21 @@ func serveSeeded(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// One mail in a box whose name has a space in it, so `box view Paper Trail`
+	// unquoted and `box view trail` by its routing alias both have something to
+	// find.
+	pt, _, err := tx.UpsertMessage(mirror.Message{
+		Key: "c@example.com", Subject: "Receipt", From: "shop@example.com",
+		Date: time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.PutPlacement(mirror.Placement{
+		Folder: "INBOX/Paper Trail", UID: 60, MessageID: pt,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +74,7 @@ func serveSeeded(t *testing.T) {
 	}
 
 	socket := filepath.Join(dir, "s.sock")
-	d := daemon.New("primary", m, nil, []string{"INBOX", "INBOX/Screener"}, nil,
+	d := daemon.New("primary", m, nil, []string{"INBOX", "INBOX/Screener", "INBOX/Paper Trail"}, nil,
 		log.New(&bytes.Buffer{}, "", 0))
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -156,6 +171,19 @@ func TestWordsAndFlagsReachTheDaemon(t *testing.T) {
 	// With no box named it is the inbox, which the seeded mirror leaves empty.
 	if out, _, code := run(t, "box", "view"); code != ExitOK || strings.TrimSpace(out) != "" {
 		t.Errorf("bare box view: exit %d, out %q", code, out)
+	}
+
+	// A box name with a space, given unquoted as two words, and the same box by
+	// the short alias `mailbox route` uses — both resolve to INBOX/Paper Trail.
+	for _, name := range [][]string{{"Paper", "Trail"}, {"trail"}} {
+		args := append([]string{"box", "view"}, name...)
+		out, errs, code := run(t, args...)
+		if code != ExitOK {
+			t.Fatalf("%v: exit %d: %s", args, code, errs)
+		}
+		if lines := strings.Split(strings.TrimSpace(out), "\n"); len(lines) != 1 {
+			t.Errorf("%v returned %d lines:\n%s", args, len(lines), out)
+		}
 	}
 
 	// A declared default arrives when the flag is not given: --limit defaults

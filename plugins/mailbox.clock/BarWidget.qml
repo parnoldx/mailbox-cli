@@ -47,19 +47,28 @@ BarWidget {
     && !Model.isDismissed(upcomingEvent, dismissedKey)
   readonly property bool joinable: Model.meetingUrlFor(upcomingEvent) !== ""
   readonly property bool showReminder: announcing && !vertical
+
+  // An alarm the event carries (--alarm / VALARM) is a single brief buzz, not
+  // a countdown: the label shows the title for about a minute and drops it
+  // again until the ordinary lead window takes over near the start.
+  readonly property bool blipping: showReminder
+    && Model.inAlarmBlip(upcomingEvent, nowMs, announceLeadMinutes, startedLeadMinutes)
+
   readonly property bool reminderUrgent: showReminder
     && Model.isImminent(Model.millisUntil(upcomingEvent, nowMs))
 
   // The last minute shakes the label twice instead of recoloring it — the
   // motion reads at a glance without spending the theme's urgent color,
-  // which the mail widget already owns for the Screener.
+  // which the mail widget already owns for the Screener. An alarm blip gets
+  // the same shake as it appears.
   onReminderUrgentChanged: if (reminderUrgent) shake.restart()
+  onBlippingChanged: if (blipping) shake.restart()
 
   readonly property string displayText: {
     var clockText = formatted(displayDate)
     if (!showReminder) return clockText
     var title = Model.truncateTitle(upcomingEvent && upcomingEvent.title)
-    var phrase = Model.formatStartsIn(Model.millisUntil(upcomingEvent, nowMs))
+    var phrase = root.blipping ? "" : Model.formatStartsIn(Model.millisUntil(upcomingEvent, nowMs))
     var reminder = title && phrase ? title + "  " + phrase : (title || phrase)
     if (!reminder) return clockText
     return clockText + "  ·  " + reminder

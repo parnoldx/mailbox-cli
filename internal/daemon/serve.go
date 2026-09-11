@@ -875,6 +875,14 @@ func resolveBox(name string, known []string) string {
 			return k
 		}
 	}
+	// The short vocabulary `mailbox route` uses for the boxes the routing files
+	// into — "paper", "trail", "feed", "block" — so a name that names a box there
+	// names the same box here.
+	if d, err := routing.ParseDestination(name); err == nil {
+		if box := d.Box(); box != "" {
+			return box
+		}
+	}
 	return name
 }
 
@@ -1051,7 +1059,10 @@ func viewRows(a *Account, folder string, rows []mirror.Row, threadSizes map[int6
 		}
 		date := ""
 		if !r.Message.Date.IsZero() {
-			date = r.Message.Date.Format("2006-01-02 15:04")
+			// .Local(): the Mirror keeps the instant the server sent, which is
+			// usually UTC. Printing it raw made a listing disagree with the
+			// reader by the zone offset, both on screen at once.
+			date = r.Message.Date.Local().Format("2006-01-02 15:04")
 		}
 		index[r.ThreadID] = len(out)
 		threadOf = append(threadOf, r.ThreadID)
