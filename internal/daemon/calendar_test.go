@@ -114,12 +114,14 @@ func TestAgendaExpandsTheWindowItWasAskedFor(t *testing.T) {
 	for _, o := range got {
 		summaries = append(summaries, o.Date+" "+o.Time+" "+o.Summary)
 	}
-	// Monday's standup, Tuesday's dentist, the two-day holiday, and the
-	// following Monday's standup: a rule with no end keeps producing.
+	// Monday's standup, Tuesday's dentist, the two-day holiday on both of its
+	// days, and the following Monday's standup: a rule with no end keeps
+	// producing.
 	want := []string{
 		"2026-08-31 09:30–09:45 Wochenstart",
 		"2026-09-01 10:00–11:30 Zahnarzt",
 		"2026-09-02 all day Urlaub",
+		"2026-09-03 all day Urlaub",
 		"2026-09-07 09:30–09:45 Wochenstart",
 	}
 	if len(summaries) != len(want) {
@@ -166,7 +168,7 @@ func TestAgendaCanBeAskedForOneCalendar(t *testing.T) {
 	got := agenda(t, d, map[string]any{
 		"from": monday.Format("2006-01-02"), "days": float64(8), "calendar": "kalender",
 	})
-	if len(got) != 4 {
+	if len(got) != 5 {
 		t.Fatalf("agenda = %+v", got)
 	}
 	// A calendar that does not exist is a mistake, not an empty week.

@@ -197,19 +197,40 @@ func expand(objects []mirror.Object, from, to time.Time) ([]occurrence, error) {
 			continue
 		}
 		for _, in := range instances {
-			out = append(out, viewOccurrence(o, in))
+			for _, day := range daysOf(in, from, to) {
+				out = append(out, viewOccurrence(o, in, day))
+			}
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {
-		if out[i].Start == out[j].Start {
+		if out[i].Date == out[j].Date {
 			return out[i].Summary < out[j].Summary
 		}
-		return out[i].Start < out[j].Start
+		return out[i].Date < out[j].Date
 	})
 	return out, nil
 }
 
-func viewOccurrence(o mirror.Object, in vcal.Occurrence) occurrence {
+// daysOf lists the calendar days one instance touches, clipped to the window:
+// a three-day event is something to see on each of its days, not just the one
+// it starts on.
+func daysOf(in vcal.Occurrence, from, to time.Time) []time.Time {
+	first := startOfDay(in.Start.Local())
+	last := startOfDay(in.End.Local().Add(-time.Nanosecond))
+	if last.Before(first) {
+		last = first
+	}
+	if first.Before(startOfDay(from)) {
+		first = startOfDay(from)
+	}
+	var days []time.Time
+	for day := first; !day.After(last) && day.Before(to); day = day.AddDate(0, 0, 1) {
+		days = append(days, day)
+	}
+	return days
+}
+
+func viewOccurrence(o mirror.Object, in vcal.Occurrence, day time.Time) occurrence {
 	start, end := in.Start.Local(), in.End.Local()
 	row := occurrence{
 		ID: o.ID, Calendar: o.Collection, UID: in.UID, Summary: in.Summary,
@@ -217,7 +238,7 @@ func viewOccurrence(o mirror.Object, in vcal.Occurrence) occurrence {
 		Status: in.Status, Notes: o.Description, URL: in.URL,
 		Alarms: in.Alarms,
 		Start:  start.Format(time.RFC3339), End: end.Format(time.RFC3339),
-		Date: start.Format("2006-01-02"),
+		Date: day.Format("2006-01-02"),
 	}
 	if in.AllDay {
 		row.Time = "all day"
