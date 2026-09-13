@@ -57,6 +57,15 @@ func TestFindsCodesAndLinks(t *testing.T) {
 			body:     "Passcode: 9F4KQ2\n",
 			wantCode: "9F4KQ2",
 		},
+		{
+			// Verbatim from the Screener: missed because the subject has
+			// neither a code/link word nor an "Anmeldung ... bestätigen" pair,
+			// just the bare separable verb.
+			name:     "german bare sign-in verb",
+			subject:  "Bei Amp anmelden",
+			body:     "Sie haben eine Anmeldung bei Amp angefordert. Ihr Einmalcode lautet:\n\n638298\n\nDieser Code läuft in 10 Minuten ab.\n",
+			wantCode: "638298",
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

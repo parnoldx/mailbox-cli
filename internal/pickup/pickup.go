@@ -60,7 +60,14 @@ var subject = regexp.MustCompile(`(?i)` +
 	`|\b(aktivierung|freischaltung|verifizierung)\b[^\n]{0,24}` +
 	`\b(konto|account|zugang|benutzer|registrierung|anmeldung|e-?mail)` +
 	`|\b(is|ist) (your|dein|ihr) (\S+ ){0,2}code\b` +
-	`|^[0-9]{4,8}\b.*\b(code|verif|login|sign)`)
+	`|^[0-9]{4,8}\b.*\b(code|verif|login|sign)` +
+	// "Bei Amp anmelden": a bare sign-in verb with no code/link word and no
+	// "Anmeldung ... bestätigen" pair either, because German drops the noun
+	// entirely once the verb is right there. Missed the compound rule (no
+	// "anmelde" stem glued to a code word) and the noun+verb rule (there is no
+	// noun) both at once.
+	`|\b(sign|log)[- ]?in (to|at) \S+\b` +
+	`|\b(bei (\S+ ){0,2}anmelden|anmelden bei \S+)\b`)
 
 // labelled is a code introduced by a word: "Your code is 123456", "PIN: 8842".
 // The label is case-insensitive but the code is not — a case-insensitive
