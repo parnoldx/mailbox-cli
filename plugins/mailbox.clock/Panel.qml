@@ -1439,15 +1439,28 @@ Panel {
     root.readsWaiting = 3
     var from = new Date()
     from.setDate(from.getDate() - 21)
+    var to = new Date()
+    to.setDate(to.getDate() + 112)
+    // The fixed window around today covers the next-event bar and the
+    // default view; paging the grid to a month outside it must not leave
+    // that month showing as empty, so the window grows to cover whatever is
+    // on screen too.
+    var monthStart = new Date(root.viewYear, root.viewMonth, 1)
+    monthStart.setDate(monthStart.getDate() - 7)
+    var monthEnd = new Date(root.viewYear, root.viewMonth + 1, 0)
+    monthEnd.setDate(monthEnd.getDate() + 7)
+    if (monthStart < from) from = monthStart
+    if (monthEnd > to) to = monthEnd
     // A wire date, not a display date: the daemon parses 2026-08-29.
     var fromKey = Model.dateKey(from.getFullYear(), from.getMonth(), from.getDate())
+    var days = Math.round((to.getTime() - from.getTime()) / 86400000)
     // A call with no arguments sends no args field at all: the daemon reads
     // args as an object, and an empty array is a malformed request it cannot
     // even answer by id.
     mailbox.call(["calendar", "list"], undefined, function (error, data) {
       root.readAnswered(epoch, "calendars", error, data)
     })
-    mailbox.call(["agenda"], { from: fromKey, days: 112 }, function (error, data) {
+    mailbox.call(["agenda"], { from: fromKey, days: days }, function (error, data) {
       root.readAnswered(epoch, "agenda", error, data)
     })
     mailbox.call(["todo", "list"], { all: true }, function (error, data) {
@@ -1611,6 +1624,10 @@ Panel {
       root.selectedDayKey = root.todayKey
     else
       root.selectedDayKey = Model.dateKey(next.year, next.month, 1)
+    // Paging far enough from today moves outside askCalendar's window; this
+    // is what stops a month showing as empty just because nobody asked about
+    // it yet.
+    root.askCalendar()
   }
 
   function moveYear(delta) {
