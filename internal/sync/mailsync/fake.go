@@ -212,9 +212,6 @@ func (f *Fake) Renumber(folder string, newValidity uint32) {
 	}
 }
 
-// Emit sends a watch event to whoever is watching.
-func (f *Fake) Emit(e Event) { f.events <- e }
-
 func (f *Fake) status(folder string) (FolderStatus, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

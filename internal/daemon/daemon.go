@@ -166,17 +166,8 @@ func New(account string, m *mirror.Mirror, r *mailsync.Reconciler, mirrored, wat
 	return d
 }
 
-// Run syncs, then serves until ctx is done.
-func (d *Daemon) Run(ctx context.Context, socket string) error {
-	ln, err := Listen(socket, false)
-	if err != nil {
-		return err
-	}
-	return d.Serve(ctx, ln)
-}
-
-// Serve is Run on a listener somebody else opened — systemd, under socket
-// activation (ADR-0012).
+// Serve serves until ctx is done, on a listener somebody else opened — systemd,
+// under socket activation (ADR-0012).
 func (d *Daemon) Serve(ctx context.Context, ln net.Listener) error {
 	defer ln.Close()
 	d.Log.Printf("listening on %s", ln.Addr())

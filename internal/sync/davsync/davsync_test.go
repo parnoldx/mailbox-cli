@@ -221,7 +221,7 @@ func TestARepeatingEventIsOneRowAndStaysRelevant(t *testing.T) {
 	}
 }
 
-func TestSyncAllReportsEachCollection(t *testing.T) {
+func TestSyncKindsReportsEachCollection(t *testing.T) {
 	r, f, m := setup(t)
 	f.AddCollection(Collection{Kind: "events", URL: "https://dav.example.org/caldav/einkauf/", Name: "Einkauf"})
 	f.Deliver(calURL, "a.ics", event("a@example.org", "Zahnarzt", "20260829T100000"))
@@ -229,7 +229,7 @@ func TestSyncAllReportsEachCollection(t *testing.T) {
 	if _, err := r.Discover(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	outcomes, err := r.SyncAll(context.Background())
+	outcomes, err := r.SyncKinds(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +262,7 @@ func TestACollectionThatDisappearsIsDroppedWithItsObjects(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.Deliver(aufgaben, "1.ics", event("t1", "Milch", "20260901T090000"))
-	if _, err := r.SyncAll(context.Background()); err != nil {
+	if _, err := r.SyncKinds(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 

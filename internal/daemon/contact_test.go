@@ -34,7 +34,7 @@ func seedContacts(t *testing.T, books ...davsync.Collection) (*Daemon, *davsync.
 	if _, err := d.DAV.Discover(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := d.DAV.SyncAll(context.Background()); err != nil {
+	if _, err := d.DAV.SyncKinds(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	return d, f

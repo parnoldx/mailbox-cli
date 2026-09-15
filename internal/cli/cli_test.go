@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"log"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -76,21 +75,18 @@ func serveSeeded(t *testing.T) {
 	socket := filepath.Join(dir, "s.sock")
 	d := daemon.New("primary", m, nil, []string{"INBOX", "INBOX/Screener", "INBOX/Paper Trail"}, nil,
 		log.New(&bytes.Buffer{}, "", 0))
+	ln, err := daemon.Listen(socket, false)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
-	go func() { defer close(done); _ = d.Run(ctx, socket) }()
+	go func() { defer close(done); _ = d.Serve(ctx, ln) }()
 	t.Cleanup(func() { cancel(); <-done })
 
+	// Listen has bound the path, so a client dialling it now queues in the
+	// backlog until Serve accepts it.
 	t.Setenv("MAILBOX_SOCKET", socket)
-	// Run blocks on the socket existing, and Run above creates it before it
-	// serves anything.
-	for i := 0; i < 100; i++ {
-		if _, err := os.Stat(socket); err == nil {
-			return
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	t.Fatal("the daemon never listened")
 }
 
 func run(t *testing.T, args ...string) (string, string, int) {

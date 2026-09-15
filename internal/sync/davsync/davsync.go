@@ -168,16 +168,11 @@ func (r *Reconciler) excluded(name string) bool {
 	return false
 }
 
-// SyncAll reconciles every known collection. One that fails does not stop the
-// others: a Mirror that is Behind on one calendar and current on the rest is a
-// better answer than one that gives up.
-func (r *Reconciler) SyncAll(ctx context.Context) (map[string]Outcome, error) {
-	return r.SyncKinds(ctx)
-}
-
 // SyncKinds reconciles the collections of the kinds named, or all of them when
 // none are. Calendars and task lists move all day and address books almost
-// never, so they do not deserve the same cadence (ADR-0010).
+// never, so they do not deserve the same cadence (ADR-0010). One that fails does
+// not stop the others: a Mirror that is Behind on one calendar and current on
+// the rest is a better answer than one that gives up.
 func (r *Reconciler) SyncKinds(ctx context.Context, kinds ...string) (map[string]Outcome, error) {
 	cols, err := r.Mirror.Collections(r.Account, "")
 	if err != nil {
