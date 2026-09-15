@@ -103,6 +103,14 @@ func runAttachmentBytes(in *input, stdout, stderr io.Writer) int {
 	}, in.JSON(), printInlineBytes, stdout, stderr)
 }
 
+// runAttachmentFileee mails one attachment straight to fileee's drop box.
+func runAttachmentFileee(in *input, stdout, stderr io.Writer) int {
+	return request(daemon.Request{
+		Cmd:  []string{"attachment", "fileee"},
+		Args: map[string]any{"positional": in.First()},
+	}, in.JSON(), printSent, stdout, stderr)
+}
+
 func printInlineBytes(stdout, stderr io.Writer, resp daemon.Response) {
 	m, ok := fieldsOf(stdout, resp.Data)
 	if !ok {

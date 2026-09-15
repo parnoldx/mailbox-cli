@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"mime/quotedprintable"
+	"net/mail"
 	"strconv"
 	"strings"
 	"sync"
@@ -383,15 +384,23 @@ func (d *Driver) FetchEnvelopes(ctx context.Context, folder string, uids []uint3
 	var out []mailsync.Envelope
 	err := d.onWork(folder, func(c *imapclient.Client) error {
 		// ENVELOPE carries In-Reply-To but not References, so the chain costs
-		// one extra header section on the same FETCH (ADR-0008).
+		// one extra header section on the same FETCH (ADR-0008). Unsubscribe is
+		// a second section rather than more names on this one: messageIDs below
+		// treats every <...> in the bytes as a Message-ID, and a mailto: URI in
+		// List-Unsubscribe would otherwise be read as one.
 		refs := &imap.FetchItemBodySection{
 			Specifier:    imap.PartSpecifierHeader,
 			HeaderFields: []string{"References"},
 			Peek:         true,
 		}
+		unsub := &imap.FetchItemBodySection{
+			Specifier:    imap.PartSpecifierHeader,
+			HeaderFields: []string{"List-Unsubscribe", "List-Unsubscribe-Post"},
+			Peek:         true,
+		}
 		msgs, err := c.Fetch(uidSet(uids), &imap.FetchOptions{
 			UID: true, Envelope: true, Flags: true, InternalDate: true, RFC822Size: true,
-			BodySection: []*imap.FetchItemBodySection{refs},
+			BodySection: []*imap.FetchItemBodySection{refs, unsub},
 		}).Collect()
 		if err != nil {
 			return err
@@ -413,9 +422,9 @@ func (d *Driver) FetchEnvelopes(ctx context.Context, folder string, uids []uint3
 				e.Cc = addrList(m.Envelope.Cc)
 				e.InReplyTo = messageIDs(strings.Join(m.Envelope.InReplyTo, " "))
 			}
-			for _, sec := range m.BodySection {
-				e.References = messageIDs(string(sec.Bytes))
-			}
+			e.References = messageIDs(string(m.FindBodySection(refs)))
+			e.ListUnsubscribe = headerField(m.FindBodySection(unsub), "List-Unsubscribe")
+			e.ListUnsubscribePost = headerField(m.FindBodySection(unsub), "List-Unsubscribe-Post")
 			out = append(out, e)
 		}
 		return nil
@@ -997,6 +1006,19 @@ func uidSet(uids []uint32) imap.UIDSet {
 		s.AddNum(imap.UID(u))
 	}
 	return s
+}
+
+// headerField reads one header out of a raw HEADER.FIELDS section — net/mail
+// unfolds the continuation lines so a long List-Unsubscribe is read whole.
+func headerField(section []byte, name string) string {
+	if len(section) == 0 {
+		return ""
+	}
+	msg, err := mail.ReadMessage(bytes.NewReader(append(section, "\r\n\r\n"...)))
+	if err != nil {
+		return ""
+	}
+	return msg.Header.Get(name)
 }
 
 // messageIDs pulls Message-IDs out of a header value. Real mail puts all sorts

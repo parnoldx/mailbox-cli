@@ -25,6 +25,7 @@ import (
 	"mailbox/internal/sync/mailsync"
 	"mailbox/internal/terminal"
 	"mailbox/internal/trackers"
+	"mailbox/internal/unsubscribe"
 )
 
 // serve handles one client: NDJSON requests in, replies and pushes out.
@@ -92,9 +93,18 @@ func (d *Daemon) serve(ctx context.Context, conn net.Conn) {
 			}
 			continue
 		}
-		if err := write(d.handle(ctx, req)); err != nil {
-			return
-		}
+		// One goroutine per request. A send blocks in SMTP for seconds, and
+		// nothing behind it on this connection should sit waiting: every read
+		// is a Mirror read (WAL SQLite, already shared with the cycles), and
+		// every reply carries its request's id, so replies may interleave and
+		// the caller matches them up. A failed write kills the connection,
+		// which is what unblocks the scan below.
+		go func() {
+			if err := write(d.handle(ctx, req)); err != nil {
+				cancel()
+				conn.Close()
+			}
+		}()
 	}
 }
 
@@ -150,6 +160,8 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 		return d.handleSieve(ctx, req, resp)
 	case "rsvp":
 		return d.handleRSVP(ctx, req, resp)
+	case "unsubscribe":
+		return d.handleUnsubscribe(ctx, req, resp)
 	case "label":
 		return d.handleLabel(ctx, req, resp)
 	case "draft":
@@ -296,6 +308,9 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 			Filename: part.Name(), MIMEType: part.MIMEType, Size: len(body),
 			ContentID: part.ContentID, Base64: base64.StdEncoding.EncodeToString(body),
 		})
+
+	case "attachment fileee":
+		return d.handleFileee(ctx, req, resp)
 
 	case "thread view":
 		id := req.Str("positional")
@@ -976,6 +991,24 @@ type message struct {
 	// Invite is a meeting request this Message carries, when a text/calendar
 	// or .ics part is present. Details may be empty until the part is fetched.
 	Invite *inviteCard `json:"invite,omitempty"`
+	// Unsubscribe is how to leave this list, when the message offers a way —
+	// its own List-Unsubscribe headers, or a link its body carries. Nil means
+	// no button: neither was found.
+	Unsubscribe *unsubscribeInfo `json:"unsubscribe,omitempty"`
+}
+
+// unsubscribeInfo is unsubscribe.Target as the client needs it: enough to
+// draw the button and to know, once tapped, whether the daemon just did it
+// (one_click, email) or a browser has to (link).
+type unsubscribeInfo struct {
+	Kind string `json:"kind"`
+	URL  string `json:"url,omitempty"`
+}
+
+// unsubscribeTarget is unsubscribe.Of, fed from the one Message both
+// message view and `unsubscribe` read it from.
+func unsubscribeTarget(m mirror.Message) unsubscribe.Target {
+	return unsubscribe.Of(m.ListUnsubscribe, m.ListUnsubscribePost, m.TextHTML, m.TextPlain)
 }
 
 func viewMessage(a *Account, folder string, r mirror.Row, places []mirror.Placement) message {
@@ -988,6 +1021,9 @@ func viewMessage(a *Account, folder string, r mirror.Row, places []mirror.Placem
 		BodyHTML: r.Message.TextHTML,
 		Trackers: trackers.InHTML(r.Message.TextHTML),
 		Labels:   mirror.LabelsOf(r.Placement.Flags),
+	}
+	if t := unsubscribeTarget(r.Message); t.Kind != unsubscribe.None {
+		m.Unsubscribe = &unsubscribeInfo{Kind: string(t.Kind), URL: t.URL}
 	}
 	if to, err := compose.ParseAddressList(r.From); err == nil {
 		m.ReplyAll = replyAllCc(a, r.Message, to, nil)

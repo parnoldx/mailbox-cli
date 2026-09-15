@@ -66,6 +66,16 @@ func TestFindsCodesAndLinks(t *testing.T) {
 			body:     "Sie haben eine Anmeldung bei Amp angefordert. Ihr Einmalcode lautet:\n\n638298\n\nDieser Code läuft in 10 Minuten ab.\n",
 			wantCode: "638298",
 		},
+		{
+			// Verbatim from the Screener: HTML-only mail, subject is the bare
+			// noun "Anmeldung" over a preference center — no verb, no code
+			// word. Body is what HTMLToMarkdown renders; the code is the lone
+			// bold line.
+			name:     "preference center login",
+			subject:  "Ihre Anmeldung im Präferenz-Center",
+			body:     "Sie haben kürzlich einen Verifizierungscode angefordert, um sich in Ihr Kommunikationspräferenzzentrum einzuloggen. Der Code ist 10 Minuten lang gültig.\n\nIhr Geheimcode zur einmaligen Verwendung :\n\n**110263**\n\nAus Sicherheitsgründen bitten wir Sie, diesen Code nicht weiterzugeben.\n",
+			wantCode: "110263",
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -115,6 +125,37 @@ func TestIgnoresMailThatIsNotAPickup(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			if code, link := Find(c.subject, c.body); code != "" || link != "" {
 				t.Errorf("Find() = (%q, %q), want empty: this is not a Pickup", code, link)
+			}
+		})
+	}
+}
+
+// The clipboard used to carry what the match dragged in rather than the URL:
+// an HTML mail renders to Markdown as [text](url), and the regex swallowed the
+// closing paren — a magic link that pasted as "…token=abc)" and failed. Same
+// for a sentence mark after a plain-text URL.
+func TestLinkIsTrimmedOfWrapperAndPunctuation(t *testing.T) {
+	cases := []struct{ name, body, want string }{
+		{
+			"markdown-wrapped link",
+			"Confirm your address:\n\n[Click here](https://example.com/verify?token=abc123)\n",
+			"https://example.com/verify?token=abc123",
+		},
+		{
+			"sentence punctuation",
+			"Click https://example.com/verify?token=abc123. to continue.",
+			"https://example.com/verify?token=abc123",
+		},
+		{
+			"balanced paren belongs to the URL",
+			"See https://en.wikipedia.org/wiki/Magic_(paranormal) for details.",
+			"https://en.wikipedia.org/wiki/Magic_(paranormal)",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if _, link := Find("Verify your email address", c.body); link != c.want {
+				t.Errorf("link = %q, want %q", link, c.want)
 			}
 		})
 	}

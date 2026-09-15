@@ -114,7 +114,7 @@ var ErrNotFound = errors.New("not found")
 // copy is a scan-count error in the other two.
 const messageFields = `m.id, m.message_key, m.date, m.subject, m.from_addr, m.to_addr,
 		       m.cc_addr, m.text_plain, m.text_html, m.body_state, m.thread_id,
-		       m.in_reply_to, m.references_`
+		       m.in_reply_to, m.references_, m.list_unsubscribe, m.list_unsubscribe_post`
 
 const rowFields = `p.uid, p.flags, p.internaldate, p.size,
 		       ` + messageFields
@@ -220,7 +220,8 @@ func scanRow(scan func(...any) error, folder string) (Row, error) {
 	if err := scan(&r.Placement.UID, &flags, &internal, &r.Placement.Size,
 		&r.Message.ID, &r.Message.Key, &date, &r.Message.Subject,
 		&r.Message.From, &r.Message.To, &r.Message.Cc, &r.Message.TextPlain, &r.Message.TextHTML,
-		&r.Message.BodyState, &r.Message.ThreadID, &inReplyTo, &references); err != nil {
+		&r.Message.BodyState, &r.Message.ThreadID, &inReplyTo, &references,
+		&r.Message.ListUnsubscribe, &r.Message.ListUnsubscribePost); err != nil {
 		return Row{}, err
 	}
 	r.Placement.Folder = folder

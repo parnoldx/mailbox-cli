@@ -133,6 +133,8 @@
   }
   .chip:hover { background:var(--cardhover); }
   .chip.chip-trash:hover { background:#c0392b; color:#fff; }
+  /* The list's unsubscribe offer, parked at the right end of the foot. */
+  .chip.chip-unsub { margin-left:auto; }
 
   /* dividers — the "you got to here" rule from FeedDivider.qml */
   .divider { display:flex; align-items:center; gap:12px; height:34px; }
@@ -184,6 +186,7 @@
     var card = cardById(id);
     if (!card) return;
     fillSnippet(card);
+    updateUnsub(card);
     if (card.classList.contains("near")) ensureIframe(card);
   };
 
@@ -211,8 +214,15 @@
   };
 
   window.__trashHi = function () {
-    if (HI >= 0 && HI < DATA.rows.length)
-      location.href = "feed:trash/" + encodeURIComponent(DATA.rows[HI].id);
+    // An expanded card is the one being read — T means that one, even when
+    // the keyboard highlight has drifted to another row (e.g. after clicking
+    // "Read more"). Highlight open → trash it; else one open card → that.
+    var hiCard = cardAt(HI);
+    var open = WRAP.querySelectorAll(".card.open");
+    var target = (hiCard && hiCard.classList.contains("open")) ? hiCard
+               : (open.length === 1 ? open[0] : hiCard);
+    if (target)
+      location.href = "feed:trash/" + encodeURIComponent(target.dataset.id);
   };
 
   window.__state = function () {
@@ -333,6 +343,7 @@
       location.href = "feed:trash/" + encodeURIComponent(card.dataset.id);
     });
     fillSnippet(card);
+    updateUnsub(card);
   }
 
   function fillSnippet(card) {
@@ -342,6 +353,25 @@
     if (b && b.text) el.textContent = b.text.replace(/\s+/g, " ").trim().slice(0, 240);
     else if (b) el.textContent = "";
     else el.textContent = "Loading preview…";
+  }
+
+  // The unsubscribe pill: only exists once the body record has arrived and
+  // carries an offer, and goes away again ("unsubscribed" stays as text) once
+  // the daemon says it is done. QML pushes the updated record back through
+  // __setBody, so this is also how the pill survives a view rebuild.
+  function updateUnsub(card) {
+    var b = BODIES[card.dataset.id];
+    var pill = card.querySelector(".chip-unsub");
+    if (b && b.unsubscribe && !pill) {
+      pill = document.createElement("button");
+      pill.className = "chip chip-unsub";
+      pill.addEventListener("click", function (e) {
+        e.stopPropagation();
+        location.href = "feed:unsub/" + encodeURIComponent(card.dataset.id);
+      });
+      card.querySelector(".foot").appendChild(pill);
+    }
+    if (pill) pill.textContent = (b && b.unsubscribe) ? "unsubscribe" : "unsubscribed";
   }
 
   // ---------- the article iframe ----------

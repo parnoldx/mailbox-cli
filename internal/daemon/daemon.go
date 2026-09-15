@@ -78,6 +78,9 @@ type Daemon struct {
 	// PickupExpiry is how long a Pickup — mail the Daemon took a login code out
 	// of — waits before it is binned. Zero means DefaultPickupExpiry.
 	PickupExpiry time.Duration
+	// FileeeAddress is where an "attachment fileee" send goes: fileee's whole
+	// integration is a file mailed to this one address. Empty refuses the send.
+	FileeeAddress string
 	// AddressBook is where a new Contact goes when the caller does not say.
 	AddressBook string
 	// Sieve is the ManageSieve connection that holds the Routing: the script

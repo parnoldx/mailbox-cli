@@ -111,10 +111,11 @@ func (t *Tx) UpsertMessage(m Message) (id int64, hasBody bool, err error) {
 	}
 	res, err := t.tx.Exec(`
 		INSERT INTO messages (account, message_key, date, subject, from_addr, to_addr,
-		                      cc_addr, in_reply_to, references_, body_state)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+		                      cc_addr, in_reply_to, references_, body_state,
+		                      list_unsubscribe, list_unsubscribe_post)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
 		t.account, m.Key, nullTime(m.Date), m.Subject, m.From, m.To, m.Cc,
-		joinIDs(m.InReplyTo), joinIDs(m.References))
+		joinIDs(m.InReplyTo), joinIDs(m.References), m.ListUnsubscribe, m.ListUnsubscribePost)
 	if err != nil {
 		return 0, false, err
 	}

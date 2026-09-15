@@ -35,6 +35,12 @@ type Envelope struct {
 	Flags        []string
 	InternalDate time.Time
 	Size         int64
+	// ListUnsubscribe and ListUnsubscribePost are RFC 2369 / RFC 8058, raw and
+	// unparsed — what the unsubscribe package turns into a Target. Fetched
+	// alongside References on the same header section (ADR-0008's reasoning
+	// applies here too: one more field costs nothing on a FETCH already open).
+	ListUnsubscribe     string
+	ListUnsubscribePost string
 }
 
 // Body is a message's text parts, and the metadata of everything else it

@@ -68,8 +68,12 @@ type FakeMsg struct {
 	References []string
 	Flags      []string
 	Plain      string
+	HTML       string
 	Parts      []FakePart
 	ModSeq     uint64
+
+	ListUnsubscribe     string
+	ListUnsubscribePost string
 }
 
 // Attach adds a file to a fake message, the way a sender would.
@@ -280,6 +284,7 @@ func (f *Fake) FetchEnvelopes(ctx context.Context, folder string, uids []uint32)
 				From: m.From, To: m.To, Cc: m.Cc,
 				InReplyTo: m.InReplyTo, References: m.References,
 				Flags: m.Flags, Size: int64(len(m.Plain)),
+				ListUnsubscribe: m.ListUnsubscribe, ListUnsubscribePost: m.ListUnsubscribePost,
 			})
 		}
 	}
@@ -325,7 +330,7 @@ func (f *Fake) FetchBodies(ctx context.Context, folder string, uids []uint32) ([
 	var out []Body
 	for _, m := range f.folders[folder].Msgs {
 		if want[m.UID] {
-			b := Body{UID: m.UID, Plain: m.Plain}
+			b := Body{UID: m.UID, Plain: m.Plain, HTML: m.HTML}
 			for _, p := range m.Parts {
 				b.Parts = append(b.Parts, p.PartInfo)
 			}

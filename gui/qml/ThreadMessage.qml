@@ -23,7 +23,9 @@ Item {
     readonly property string msgId: (root.msg && root.msg.id) ? root.msg.id : ""
     property string rsvpState: ""
     property string pickedCalendar: ""
-    onMsgIdChanged: { root.rsvpState = ""; root.pickedCalendar = "" }
+    readonly property var unsubscribe: root.msg.unsubscribe || null
+    property string unsubState: ""
+    onMsgIdChanged: { root.rsvpState = ""; root.pickedCalendar = ""; root.unsubState = "" }
     readonly property string targetCalendar: root.pickedCalendar
         || ((root.invite && root.invite.calendar) ? root.invite.calendar : "")
     readonly property bool needCalendarPick: !!(root.invite && !root.invite.calendar
@@ -165,6 +167,18 @@ Item {
         root.rsvpState = "busy"
         win.rsvpId(root.msg.id, status, label, root.targetCalendar, function (ok) {
             root.rsvpState = ok ? status : ""
+        })
+    }
+    // Leaves the list: a one-click POST or a plain email happen on the
+    // daemon and come back done; a body-guessed or non-one-click link comes
+    // back as "link" and is opened here, since only a browser can be sure a
+    // page like that actually went through.
+    function doUnsubscribe() {
+        if (!root.msg.id || root.unsubState === "busy") return
+        root.unsubState = "busy"
+        win.unsubscribeId(root.msg.id, function (ok, kind, url) {
+            if (ok && kind === "link" && url) Qt.openUrlExternally(url)
+            root.unsubState = ok ? "done" : ""
         })
     }
     function bodyText() {
@@ -491,50 +505,85 @@ Item {
                         Behavior on color { ColorAnimation { duration: Theme.anim } }
                     }
                 }
-                Column {
+                Row {
                     id: stamp
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 6
-                    Text {
-                        anchors.right: parent.right
-                        text: root.niceDay(root.msg.date)
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 11
-                        color: Theme.textDim
-                        Behavior on color { ColorAnimation { duration: Theme.anim } }
-                    }
-                    Text {
-                        anchors.right: parent.right
-                        visible: text !== ""
-                        text: root.niceTime(root.msg.date)
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 11
-                        color: Theme.textDim
-                        Behavior on color { ColorAnimation { duration: Theme.anim } }
-                    }
-                    // Dark-mail toggle, this Message's own — HTML mail only.
-                    Rectangle {
-                        anchors.right: parent.right
-                        visible: root.htmlMode
-                        width: dmRow.implicitWidth + 16
-                        height: 18
-                        radius: 9
-                        color: dmHover.hovered ? Theme.cardHover : Theme.selection
-                        Behavior on color { ColorAnimation { duration: Theme.anim } }
-                        Row {
-                            id: dmRow
-                            anchors.centerIn: parent
-                            spacing: 4
-                            Text {
-                                text: root.applyDark ? "dark" : "original"
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 9
-                                color: Theme.textDim
-                                Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    spacing: 8
+                    // Pills beside the date rather than under it, so a Message with
+                    // both a dark toggle and an unsubscribe offer still keeps the
+                    // header to the two lines the date/time column is anyway.
+                    Column {
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 4
+                        Rectangle {
+                            anchors.right: parent.right
+                            visible: !!root.unsubscribe
+                            width: unsubRow.implicitWidth + 16
+                            height: 18
+                            radius: 9
+                            color: unsubHover.hovered ? Theme.cardHover : Theme.selection
+                            Behavior on color { ColorAnimation { duration: Theme.anim } }
+                            Row {
+                                id: unsubRow
+                                anchors.centerIn: parent
+                                spacing: 4
+                                Text {
+                                    text: root.unsubState === "done" ? "unsubscribed"
+                                        : root.unsubState === "busy" ? "…" : "unsubscribe"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 9
+                                    color: Theme.textDim
+                                    Behavior on color { ColorAnimation { duration: Theme.anim } }
+                                }
                             }
+                            HoverHandler { id: unsubHover; cursorShape: Qt.PointingHandCursor }
+                            TapHandler { onTapped: root.doUnsubscribe() }
                         }
-                        HoverHandler { id: dmHover; cursorShape: Qt.PointingHandCursor }
-                        TapHandler { onTapped: root.darkOverride = root.applyDark ? 0 : 1 }
+                        // Dark-mail toggle, this Message's own — HTML mail only.
+                        Rectangle {
+                            anchors.right: parent.right
+                            visible: root.htmlMode
+                            width: dmRow.implicitWidth + 16
+                            height: 18
+                            radius: 9
+                            color: dmHover.hovered ? Theme.cardHover : Theme.selection
+                            Behavior on color { ColorAnimation { duration: Theme.anim } }
+                            Row {
+                                id: dmRow
+                                anchors.centerIn: parent
+                                spacing: 4
+                                Text {
+                                    text: root.applyDark ? "dark" : "original"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 9
+                                    color: Theme.textDim
+                                    Behavior on color { ColorAnimation { duration: Theme.anim } }
+                                }
+                            }
+                            HoverHandler { id: dmHover; cursorShape: Qt.PointingHandCursor }
+                            TapHandler { onTapped: root.darkOverride = root.applyDark ? 0 : 1 }
+                        }
+                    }
+                    Column {
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 6
+                        Text {
+                            anchors.right: parent.right
+                            text: root.niceDay(root.msg.date)
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                            color: Theme.textDim
+                            Behavior on color { ColorAnimation { duration: Theme.anim } }
+                        }
+                        Text {
+                            anchors.right: parent.right
+                            visible: text !== ""
+                            text: root.niceTime(root.msg.date)
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                            color: Theme.textDim
+                            Behavior on color { ColorAnimation { duration: Theme.anim } }
+                        }
                     }
                 }
             }

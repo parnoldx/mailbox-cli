@@ -39,6 +39,10 @@ type Message struct {
 	TextPlain string
 	TextHTML  string
 	BodyState string // "mirrored" | "pending"
+	// ListUnsubscribe and ListUnsubscribePost are RFC 2369 / RFC 8058, raw and
+	// unparsed. See internal/unsubscribe for what a caller does with them.
+	ListUnsubscribe     string
+	ListUnsubscribePost string
 }
 
 // Placement is where a Message currently sits: a folder, a uid, and its flags.

@@ -9,7 +9,7 @@ Rectangle {
     property var att: ({})
     property string status: ""
 
-    implicitWidth: Math.min(360, row.implicitWidth + 68)
+    implicitWidth: Math.min(360, row.implicitWidth + (isPdf ? 106 : 68))
     implicitHeight: 52
     radius: Theme.radiusSmall
     color: bodyArea.containsMouse ? Theme.cardHover : Theme.cardBg
@@ -36,12 +36,16 @@ Rectangle {
     }
     function localPath(url) { return Fmt.localPath(url) }
     function fileUrl(p) { return Fmt.fileUrl(p) }
+    readonly property bool isPdf: (root.att.mime_type || "").indexOf("pdf") >= 0
 
     Timer { id: doneTimer; interval: 2600; onTriggered: root.status = "" }
 
     MouseArea {
         id: bodyArea
-        anchors { left: parent.left; top: parent.top; bottom: parent.bottom; right: saveBtn.left }
+        anchors {
+            left: parent.left; top: parent.top; bottom: parent.bottom
+            right: root.isPdf ? fileeeBtn.left : saveBtn.left
+        }
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         onClicked: win.openQuickLook(root.att)
@@ -85,6 +89,39 @@ Rectangle {
     }
 
     Rectangle {
+        id: fileeeBtn
+        visible: root.isPdf
+        width: visible ? 30 : 0; height: 30; radius: 7
+        anchors { right: saveBtn.left; rightMargin: 4; verticalCenter: parent.verticalCenter }
+        color: fileeeArea.containsMouse ? Theme.selection : "transparent"
+        Behavior on color { ColorAnimation { duration: Theme.anim } }
+        Text {
+            anchors.centerIn: parent
+            text: "F"
+            font.family: Theme.fontFamily
+            font.italic: true
+            font.weight: Font.Black
+            font.pixelSize: 14
+            color: fileeeArea.containsMouse ? Theme.accent : Theme.textDim
+            Behavior on color { ColorAnimation { duration: Theme.anim } }
+        }
+        MouseArea {
+            id: fileeeArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                root.status = "busy"
+                Mailbox.call(["attachment", "fileee"], { positional: root.att.id },
+                             function (r) {
+                    root.status = r.ok ? "Sent to fileee" : Fmt.errText(r, "Send failed")
+                    doneTimer.restart()
+                })
+            }
+        }
+    }
+
+    Rectangle {
         id: saveBtn
         width: 30; height: 30; radius: 7
         anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
@@ -94,7 +131,7 @@ Rectangle {
             anchors.centerIn: parent
             text: "\uf0c7"
             font.family: Theme.fontFamily
-            font.pixelSize: 12
+            font.pixelSize: 14
             color: saveArea.containsMouse ? Theme.accent : Theme.textDim
             Behavior on color { ColorAnimation { duration: Theme.anim } }
         }

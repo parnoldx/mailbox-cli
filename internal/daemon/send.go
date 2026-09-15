@@ -572,3 +572,49 @@ func forwardBody(note string, m mirror.Message) string {
 	b.WriteString("\n")
 	return b.String()
 }
+
+// handleFileee mails one attachment straight to fileee's drop box — that
+// address is fileee's whole integration, so this is a send with no body, not a
+// forward: the recipient never sees the mail it came from, only the file.
+func (d *Daemon) handleFileee(ctx context.Context, req Request, resp Response) Response {
+	if d.FileeeAddress == "" {
+		return resp.usage("no fileee address configured — set fileee.address in the config")
+	}
+	id := req.Str("positional")
+	acct, folder, uid, index, err := d.resolveAttachmentID(id)
+	if err != nil {
+		return resp.usage(err.Error())
+	}
+	if d.Outbox == nil || acct.Courier == nil {
+		return resp.api(fmt.Sprintf("account %q cannot send: no outbox", acct.Name))
+	}
+	if acct.From.Addr == "" {
+		return resp.api(fmt.Sprintf("account %q has no sender address configured", acct.Name))
+	}
+	parts, err := d.partsOf(acct, folder, uid)
+	if err != nil {
+		return fail(resp, id, err)
+	}
+	part, err := pick(acct, folder, uid, parts, index)
+	if err != nil {
+		return resp.usage(err.Error())
+	}
+	if acct.Reconciler == nil {
+		return resp.api("this daemon cannot fetch: no server connection")
+	}
+	body, err := acct.Reconciler.Driver.FetchPart(ctx, folder, uid, part.Path)
+	if err != nil {
+		return resp.api(err.Error())
+	}
+	to, err := compose.ParseAddressList(d.FileeeAddress)
+	if err != nil {
+		return resp.api(fmt.Sprintf("fileee address %q: %v", d.FileeeAddress, err))
+	}
+	draft := compose.Draft{
+		From: acct.From, Date: time.Now(), To: to, Subject: part.Name(),
+		Attachments: []compose.Attachment{{
+			Filename: part.Name(), MIMEType: part.MIMEType, Content: body,
+		}},
+	}
+	return d.deliver(ctx, acct, draft, resp, req)
+}

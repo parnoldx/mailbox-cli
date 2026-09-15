@@ -15,8 +15,11 @@ Row {
             height: 16
             width: pillText.implicitWidth + 14
             radius: 8
-            color: Qt.rgba(Theme.avatarColor(modelData).r, Theme.avatarColor(modelData).g,
-                           Theme.avatarColor(modelData).b, 0.18)
+            // avatarColor() is a Q_INVOKABLE with no NOTIFY of its own — reading
+            // the avatarPalette property is what ties these colours to a theme
+            // change (same trick as Avatar.qml).
+            readonly property color tint: Theme.avatarPalette && Theme.avatarColor(modelData)
+            color: Qt.rgba(tint.r, tint.g, tint.b, 0.18)
             Behavior on color { ColorAnimation { duration: Theme.anim } }
             Text {
                 id: pillText
@@ -25,7 +28,7 @@ Row {
                 font.family: Theme.fontFamily
                 font.pixelSize: 10
                 font.weight: Font.DemiBold
-                color: Theme.avatarColor(modelData)
+                color: parent.tint
                 Behavior on color { ColorAnimation { duration: Theme.anim } }
             }
         }

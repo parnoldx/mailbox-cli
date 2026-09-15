@@ -473,14 +473,16 @@ func messageOf(e Envelope, folder string) mirror.Message {
 		key = syntheticKey(folder, e.UID)
 	}
 	return mirror.Message{
-		Key:        key,
-		Date:       e.Date,
-		Subject:    e.Subject,
-		From:       e.From,
-		To:         e.To,
-		Cc:         e.Cc,
-		InReplyTo:  e.InReplyTo,
-		References: e.References,
+		Key:                 key,
+		Date:                e.Date,
+		Subject:             e.Subject,
+		From:                e.From,
+		To:                  e.To,
+		Cc:                  e.Cc,
+		InReplyTo:           e.InReplyTo,
+		References:          e.References,
+		ListUnsubscribe:     e.ListUnsubscribe,
+		ListUnsubscribePost: e.ListUnsubscribePost,
 	}
 }
 

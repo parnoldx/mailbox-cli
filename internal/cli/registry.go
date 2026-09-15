@@ -313,6 +313,15 @@ func tree(l Locals) []*Command {
 			Run: runRSVP,
 		},
 		{
+			Name: "unsubscribe", Section: SectionMail, Short: "Leave the list a message is from", Needs: true,
+			Usage: []string{"mailbox unsubscribe ID"},
+			Long: "Uses whatever the message itself offers: a one-click POST when the " +
+				"sender declared RFC 8058 support, a plain email when List-Unsubscribe " +
+				"names only a mailto:, or — failing both — the link to open by hand.",
+			Examples: []string{"mailbox unsubscribe 36722"},
+			Run:      runUnsubscribe,
+		},
+		{
 			Name: "forward", Section: SectionMail, Short: "Send a message on", Needs: true,
 			Usage: []string{"mailbox forward ID --to ADDR [--body TEXT]"},
 			Long: "The original is quoted whole under a header block. A forward starts a " +
@@ -443,6 +452,15 @@ func tree(l Locals) []*Command {
 					Usage:    []string{"mailbox attachment bytes ID[:INDEX]"},
 					Examples: []string{"mailbox attachment bytes 36722:2"},
 					Run:      runAttachmentBytes,
+				},
+				{
+					Name: "fileee", Short: "Mail one file to fileee", Needs: true,
+					Long: "Fileee's whole integration is a mail with a file attached, sent to " +
+						"the personal address it assigned (fileee.address in the config). " +
+						"No body, no quoting the original — just the file, on its way.",
+					Usage:    []string{"mailbox attachment fileee ID[:INDEX]"},
+					Examples: []string{"mailbox attachment fileee 36722:1"},
+					Run:      runAttachmentFileee,
 				},
 			},
 		},

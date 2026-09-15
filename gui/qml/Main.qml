@@ -278,6 +278,19 @@ ApplicationWindow {
             if (typeof done === "function") done(ok)
         })
     }
+    // Leaves the list a message is from. `done(ok, kind, url)` — kind is
+    // "done" when the daemon already finished it, or "link" when the caller
+    // still has to open url itself (ThreadMessage does).
+    function unsubscribeId(id, done) {
+        if (!id) return
+        Mailbox.call(["unsubscribe"], { positional: id }, function (r) {
+            var ok = !!(r && r.ok)
+            var data = (r && r.data) || {}
+            win.flash(ok ? (data.kind === "link" ? "Opening unsubscribe page" : "Unsubscribed")
+                         : win._failMsg("Unsubscribe", r))
+            if (typeof done === "function") done(ok, data.kind, data.url)
+        })
+    }
     // Bubble Up (ADR-0023): set a Thread aside with a return time, or re-time
     // one already bubbled. `timing` is what BubbleMenu's chosen() signal
     // carries — {tomorrow:true} | {weekend:true} | {next_week:true} |
@@ -755,8 +768,8 @@ ApplicationWindow {
         onActivated: searchView.open()
     }
     // Number keys switch buckets straight from anywhere (but not mid-compose).
-    // No key for the Screener: it is reached only from the Inbox button. The
-    // rest keep their order: Set Aside 4, Reply Later 5, Drafts 6, Sent 7.
+    // The Screener sits on Ctrl+S instead. The rest keep their order:
+    // Set Aside 4, Reply Later 5, Drafts 6, Sent 7.
     Shortcut { sequence: "1"; enabled: win.bucketKeys; onActivated: win.switchToKey("INBOX") }
     Shortcut { sequence: "2"; enabled: win.bucketKeys; onActivated: win.switchToKey("Feed") }
     Shortcut { sequence: "3"; enabled: win.bucketKeys; onActivated: win.switchToKey("Paper Trail") }
@@ -764,6 +777,9 @@ ApplicationWindow {
     Shortcut { sequence: "5"; enabled: win.bucketKeys; onActivated: win.switchToKey("Reply Later") }
     Shortcut { sequence: "6"; enabled: win.bucketKeys; onActivated: win.switchToKey("Drafts") }
     Shortcut { sequence: "7"; enabled: win.bucketKeys; onActivated: win.switchToKey("Sent") }
+    // The Screener has no number of its own — Ctrl+S, so the letters below it
+    // (and the reader's own b/i) stay untouched.
+    Shortcut { sequence: "Ctrl+S"; enabled: win.bucketKeys; onActivated: win.switchToKey("Screener") }
     Shortcut { sequences: ["j", "Down"]; enabled: win.navKeys; onActivated: win.navView().move(1) }
     Shortcut { sequences: ["k", "Up"]; enabled: win.navKeys; onActivated: win.navView().move(-1) }
     Shortcut {

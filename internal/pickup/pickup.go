@@ -23,7 +23,10 @@
 // has taken this class of false positive in the field for years.
 package pickup
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+)
 
 // Keyword marks a Message the Daemon has taken a code out of. It is an IMAP
 // keyword rather than a Mirror column so it survives a Mirror rebuild and both
@@ -61,6 +64,12 @@ var subject = regexp.MustCompile(`(?i)` +
 	`\b(konto|account|zugang|benutzer|registrierung|anmeldung|e-?mail)` +
 	`|\b(is|ist) (your|dein|ihr) (\S+ ){0,2}code\b` +
 	`|^[0-9]{4,8}\b.*\b(code|verif|login|sign)` +
+	// "Ihre Anmeldung im Präferenz-Center": the consent-center login code. The
+	// bare noun "Anmeldung" is every registration confirmation — two in the
+	// corpus carry initial passwords that must never be binned — but a
+	// preference center names itself, and its mail is always a code or a login
+	// link (OneTrust and its kin).
+	`|\b(preference|präferenz)[- ]?cent(er|re)\b` +
 	// "Bei Amp anmelden": a bare sign-in verb with no code/link word and no
 	// "Anmeldung ... bestätigen" pair either, because German drops the noun
 	// entirely once the verb is right there. Missed the compound rule (no
@@ -108,10 +117,32 @@ func Find(subject_, body string) (code, link_ string) {
 		return "", ""
 	}
 	if m := link.FindString(body); m != "" {
-		link_ = m
+		link_ = trimLink(m)
 	}
 	code = findCode(body)
 	return code, link_
+}
+
+// trimLink strips what the match drags in but the URL does not own. An HTML
+// mail renders to Markdown as [Click here](https://…), and the match ends at
+// the closing paren of that wrapper, not the URL; prose adds sentence marks the
+// same way. A paren that is balanced inside the URL (a wiki-style "…_(2024)")
+// stays — only the unbalanced tail is the wrapper.
+func trimLink(u string) string {
+	for len(u) > 0 {
+		switch c := u[len(u)-1]; c {
+		case '.', ',', ';', ':', '!', '?':
+			u = u[:len(u)-1]
+		case ')':
+			if strings.Count(u, "(") >= strings.Count(u, ")") {
+				return u
+			}
+			u = u[:len(u)-1]
+		default:
+			return u
+		}
+	}
+	return u
 }
 
 // findCode pulls the code out of a body already known to be a Pickup, trying

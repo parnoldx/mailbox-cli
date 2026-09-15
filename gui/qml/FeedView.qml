@@ -66,7 +66,8 @@ Item {
             root._inflight--
             if (r && r.ok && r.data) {
                 var d = r.data
-                var rec = { html: d.body_html || "", text: d.body || "" }
+                var rec = { html: d.body_html || "", text: d.body || "",
+                            unsubscribe: d.unsubscribe || null }
                 var nb = Object.assign({}, root.bodies)
                 nb[d.id] = rec
                 // The row id is a Thread id; `message view` may answer under a
@@ -197,6 +198,23 @@ Item {
     function openHighlighted() { if (_ready) _js("__toggleHi()") }
     function openFull() { if (_ready) _js("__openFullHi()") }
     function trashHighlighted() { if (_ready) _js("__trashHi()") }
+    // Same contract as ThreadMessage.doUnsubscribe(): the daemon either
+    // finishes it itself or hands back a link only a browser can complete.
+    // On success the body record loses its offer and is pushed back, so the
+    // pill flips to "unsubscribed" — and stays gone across a view rebuild.
+    // (The pill only exists once the body has loaded, so rec is always here.)
+    function unsubId(id) {
+        win.unsubscribeId(id, function (ok, kind, url) {
+            if (ok && kind === "link" && url) Qt.openUrlExternally(url)
+            if (!ok) return
+            var rec = root.bodies[id]
+            if (!rec) return
+            var nb = Object.assign({}, root.bodies)
+            nb[id] = Object.assign({}, rec, { unsubscribe: null })
+            root.bodies = nb
+            root._pushBody(id, nb[id])
+        })
+    }
     function anyOpen() { return _anyOpen }
     function collapseAll() {
         _anyOpen = false
@@ -223,6 +241,12 @@ Item {
         sourceComponent: WebEngineView {
             backgroundColor: Theme.windowBg
             url: "qrc:/qml/vendor/feed.html"
+            // Clicks (Read more, chips) must not move keyboard focus into the
+            // page: a focused WebEngineView eats plain-letter keys before the
+            // window Shortcuts see them, and T/j/k go dead after one click.
+            // The feed page has no inputs; scrolling and selection don't need
+            // focus.
+            activeFocusOnPress: false
             // Arm the tracking-pixel blocker before the feed pulls any remote
             // image — main.cpp leaves it unarmed to keep Chromium off the
             // Inbox's start-up path.
@@ -251,6 +275,8 @@ Item {
                     req.reject()
                     if (u.indexOf("feed:openfull/") === 0)
                         win.openMessage(decodeURIComponent(u.substring(14)))
+                    else if (u.indexOf("feed:unsub/") === 0)
+                        root.unsubId(decodeURIComponent(u.substring(11)))
                     else if (u.indexOf("feed:trash/") === 0)
                         win.trashId(decodeURIComponent(u.substring(11)))
                     else if (u === "feed:markall")

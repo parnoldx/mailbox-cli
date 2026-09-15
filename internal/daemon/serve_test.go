@@ -1,8 +1,11 @@
 package daemon
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
+	"net"
 	"os"
 	"path/filepath"
 	"slices"
@@ -11,6 +14,7 @@ import (
 	"time"
 
 	"mailbox/internal/mirror"
+	"mailbox/internal/outbox"
 	"mailbox/internal/sync/mailsync"
 )
 
@@ -631,5 +635,63 @@ func TestSpamWithNoJunkBoxIsARefusal(t *testing.T) {
 	}
 	if !strings.Contains(resp.Error, "junk") {
 		t.Errorf("error = %q", resp.Error)
+	}
+}
+
+// gateTransport holds every Send until the test lets it go, so a send can be
+// parked mid-SMTP the way a big attachment parks the real one.
+type gateTransport struct{ release chan struct{} }
+
+func (g *gateTransport) Send(ctx context.Context, from string, to []string, raw []byte) error {
+	<-g.release
+	return nil
+}
+
+// A slow send must not stall the reads behind it on the same connection:
+// during the SMTP upload the GUI keeps asking the Mirror for lists, counts
+// and stacks, and those are served from the DB, not queued behind the send.
+// Both replies carry their request's id, so the read arriving first is the
+// one that was asked second.
+func TestSendDoesNotStallTheConnection(t *testing.T) {
+	d, _ := seedSend(t)
+	gate := &gateTransport{release: make(chan struct{})}
+	d.Courier = &outbox.Courier{Box: d.Outbox, Transport: gate, Filer: fakeOf(d), SentBox: "INBOX/Sent"}
+
+	client, server := net.Pipe()
+	defer client.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go d.serve(ctx, server)
+	defer func() { gate.release <- struct{}{}; time.Sleep(50 * time.Millisecond) }()
+
+	client.SetDeadline(time.Now().Add(5 * time.Second))
+	one, _ := json.Marshal(map[string]any{
+		"id": "1", "cmd": []string{"send"},
+		"args": map[string]any{"to": []string{"you@example.com"}, "subject": "t", "body": "b"},
+	})
+	two, _ := json.Marshal(map[string]any{"id": "2", "cmd": []string{"box", "list"}})
+	go func() {
+		client.Write(append(one, '\n'))
+		client.Write(append(two, '\n'))
+	}()
+
+	sc := bufio.NewScanner(client)
+	first := ""
+	for sc.Scan() {
+		var reply struct{ ID string }
+		if err := json.Unmarshal(sc.Bytes(), &reply); err != nil {
+			t.Fatalf("reply %q: %v", sc.Bytes(), err)
+		}
+		if reply.ID == "2" {
+			first = "2"
+			break
+		}
+		if reply.ID == "1" {
+			first = "1"
+			break
+		}
+	}
+	if first != "2" {
+		t.Fatalf("first reply was for request %q, want the later request \"2\" first", first)
 	}
 }

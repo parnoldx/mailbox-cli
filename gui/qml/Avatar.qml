@@ -6,8 +6,15 @@ Rectangle {
     property string name: ""
     property string seed: ""
 
+    // avatarColor() is a Q_INVOKABLE reading C++ members directly, so a plain
+    // `color: Theme.avatarColor(...)` binding never hears the theme's changed()
+    // signal and stays on the old palette until the delegate is recreated.
+    // Naming avatarPalette — a NOTIFY property holding exactly what the colour
+    // derives from — is what makes the binding re-tint on a theme swap.
+    readonly property string colorKey: seed && seed.length ? seed : name
+
     width: 34; height: 34; radius: 17
-    color: Theme.avatarColor(seed && seed.length ? seed : name)
+    color: Theme.avatarPalette && Theme.avatarColor(colorKey)
     Behavior on color { ColorAnimation { duration: Theme.anim } }
 
     Text {

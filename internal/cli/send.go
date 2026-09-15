@@ -191,6 +191,27 @@ func runRSVP(in *input, stdout, stderr io.Writer) int {
 	}, in.JSON(), printSent, stdout, stderr)
 }
 
+func runUnsubscribe(in *input, stdout, stderr io.Writer) int {
+	return request(daemon.Request{
+		Cmd:  []string{"unsubscribe"},
+		Args: map[string]any{"positional": in.First()},
+	}, in.JSON(), printUnsubscribed, stdout, stderr)
+}
+
+// printUnsubscribed says what happened: either it is done, or a link needs a
+// person on it.
+func printUnsubscribed(stdout, stderr io.Writer, resp daemon.Response) {
+	m, ok := fieldsOf(stdout, resp.Data)
+	if !ok {
+		return
+	}
+	if str(m["kind"]) == "link" {
+		fmt.Fprintf(stdout, "Open to finish: %s\n", str(m["url"]))
+		return
+	}
+	fmt.Fprintln(stdout, str(m["detail"]))
+}
+
 // printSent says what happened to the mail, in two facts: it went, and where
 // the copy of it is.
 func printSent(stdout, stderr io.Writer, resp daemon.Response) {

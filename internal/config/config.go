@@ -109,6 +109,14 @@ type Pickup struct {
 	Expiry string `toml:"expiry"`
 }
 
+// Fileee is the fileee.com drop box: sending a mail there with a file attached
+// is fileee's entire integration, so this is the one address that means.
+type Fileee struct {
+	// Address is the personal inbox address fileee assigned. Empty means the
+	// "send to fileee" button has nothing to send to.
+	Address string `toml:"address"`
+}
+
 // Config is everything on disk.
 type Config struct {
 	Account Account `toml:"account"`
@@ -116,6 +124,8 @@ type Config struct {
 	Bubble Bubble `toml:"bubble"`
 	// Pickup is how long a collected login code's mail is kept.
 	Pickup Pickup `toml:"pickup"`
+	// Fileee is the address the "send to fileee" attachment button uses.
+	Fileee Fileee `toml:"fileee"`
 	// Secondary accounts, keyed by the name their ids are prefixed with:
 	// `[accounts.gmx]` makes `gmx/INBOX:412` mean something (ADR-0005). They
 	// have an Inbox, Drafts and Sent and the ability to Send; the Screener and

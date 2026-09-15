@@ -4,8 +4,10 @@ import (
 	"context"
 	"net/url"
 	"os/exec"
+	"strings"
 	"time"
 
+	"mailbox/internal/htmlmd"
 	"mailbox/internal/mirror"
 	"mailbox/internal/pickup"
 	"mailbox/internal/routing"
@@ -60,7 +62,7 @@ func (d *Daemon) collectPickups(ctx context.Context, a *Account, outcomes map[st
 			if arrivedAt(row).Before(cutoff) {
 				continue
 			}
-			code, link := pickup.Find(row.Message.Subject, row.Message.TextPlain)
+			code, link := pickup.Find(row.Message.Subject, bodyOf(row))
 			if code == "" && link == "" {
 				// A subject that read like a Pickup but carried nothing to
 				// collect. Logged rather than dropped: the phrase list was
@@ -90,6 +92,16 @@ func (d *Daemon) collectPickups(ctx context.Context, a *Account, outcomes map[st
 		}
 	}
 	return found
+}
+
+// bodyOf is the text Find reads: the plain part when the mail carries one,
+// otherwise the HTML rendered down — the same text the search index uses, and
+// the only body an HTML-only code mail has (reconciler.go searchText).
+func bodyOf(row mirror.Row) string {
+	if strings.TrimSpace(row.Message.TextPlain) != "" {
+		return row.Message.TextPlain
+	}
+	return htmlmd.HTMLToMarkdown(row.Message.TextHTML)
 }
 
 // takePickup is what happens to one Pickup, in the order that matters: hand the

@@ -105,6 +105,44 @@ func TestPickupCopiesTheCodeAndQuietensTheMail(t *testing.T) {
 	}
 }
 
+// An HTML-only mail has no plain part, so TextPlain is empty. Find must see
+// the rendered HTML — the same text the search index gets — or every
+// marketing-shaped code mail (which is most of them) goes uncollected.
+// Verbatim sender: Suresse Direkt Bank, "Ihre Anmeldung im Präferenz-Center".
+func TestPickupReadsAnHTMLOnlyBody(t *testing.T) {
+	d, _ := seedScreener(t)
+	var h handedOver
+	h.install(t)
+
+	ctx := context.Background()
+	a := d.primaryAccount()
+	// One sync first, so the delivery below lands as an arrival (deliverScreener).
+	if _, err := a.Reconciler.SyncAll(ctx, d.Mirrored); err != nil {
+		t.Fatal(err)
+	}
+	m := fakeOf(d).Deliver(routing.BoxScreener, "suresse@example.de",
+		"Ihre Anmeldung im Präferenz-Center", "")
+	m.HTML = "<p>Sie haben kürzlich einen Verifizierungscode angefordert.</p>\n<p>Ihr Geheimcode zur einmaligen Verwendung :</p>\n<p><b>110263</b></p>\n"
+	m.From, m.Date = "Suresse Direkt Bank <no-reply@gdpr.suressedirektbank.de>", time.Now()
+	out, err := a.Reconciler.SyncAll(ctx, d.Mirrored)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := d.collectPickups(ctx, d.primaryAccount(), out)
+	if len(got) != 1 {
+		t.Fatalf("collectPickups found %d pickups, want 1", len(got))
+	}
+	for _, code := range got {
+		if code != "110263" {
+			t.Errorf("code = %q, want 110263", code)
+		}
+	}
+	if c := h.arg("wl-copy"); len(c) != 1 || c[0] != "110263" {
+		t.Errorf("clipboard got %v, want [110263]", c)
+	}
+}
+
 // Gate 2. The Screener never asks for a decision about a Pickup's sender: a
 // login form you used once is not somebody to route.
 func TestPickupIsNotAScreenerDecision(t *testing.T) {

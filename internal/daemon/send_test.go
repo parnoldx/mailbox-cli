@@ -468,6 +468,42 @@ func TestForwardSubjectIsPrefixedOnce(t *testing.T) {
 	}
 }
 
+// The fileee button is one mail, no body, the file, to the one address
+// configured for it.
+func TestFileeeMailsTheAttachment(t *testing.T) {
+	d, _ := seedSend(t)
+	d.FileeeAddress = "abc123@in.fileee.com"
+	resp := d.handle(context.Background(), Request{ID: "1", Cmd: []string{"attachment", "fileee"},
+		Args: map[string]any{"positional": "7:1"}})
+	if !resp.OK {
+		t.Fatalf("attachment fileee: %s (%s)", resp.Error, resp.Code)
+	}
+	out := resp.Data.(sent)
+
+	copyOf := filedCopy(t, d, out.UID)
+	if !strings.Contains(copyOf.To, "abc123@in.fileee.com") {
+		t.Errorf("to = %q", copyOf.To)
+	}
+	if strings.TrimSpace(copyOf.Plain) != "" {
+		t.Errorf("body = %q, want empty", copyOf.Plain)
+	}
+	if len(copyOf.Parts) != 1 || copyOf.Parts[0].Filename != "rechnung.pdf" {
+		t.Fatalf("parts = %+v", copyOf.Parts)
+	}
+	if string(copyOf.Parts[0].Bytes) != "%PDF-1.4 fake" {
+		t.Errorf("attachment bytes changed on the way out")
+	}
+}
+
+func TestFileeeNeedsAnAddressConfigured(t *testing.T) {
+	d, _ := seedSend(t)
+	resp := d.handle(context.Background(), Request{ID: "1", Cmd: []string{"attachment", "fileee"},
+		Args: map[string]any{"positional": "7:1"}})
+	if resp.OK || resp.Code != "usage" {
+		t.Fatalf("resp = %+v, want a usage error", resp)
+	}
+}
+
 // Forwarding to nobody would queue a mail with no recipients, which the outbox
 // would then keep failing to send.
 func TestForwardNeedsARecipient(t *testing.T) {

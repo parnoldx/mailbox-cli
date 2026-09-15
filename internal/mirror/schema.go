@@ -2,7 +2,7 @@ package mirror
 
 // schemaVersion is bumped whenever the schema below changes. On a mismatch the
 // Mirror file is deleted and rebuilt rather than migrated (ADR-0013).
-const schemaVersion = 13
+const schemaVersion = 14
 
 const schema = `
 CREATE TABLE meta (
@@ -40,6 +40,9 @@ CREATE TABLE messages (
   text_plain  TEXT NOT NULL DEFAULT '',
   text_html   TEXT NOT NULL DEFAULT '',
   body_state  TEXT NOT NULL DEFAULT 'pending',
+  -- RFC 2369 / RFC 8058, raw and unparsed. See internal/unsubscribe.
+  list_unsubscribe      TEXT NOT NULL DEFAULT '',
+  list_unsubscribe_post TEXT NOT NULL DEFAULT '',
   UNIQUE (account, message_key)
 );
 

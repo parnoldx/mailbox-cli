@@ -283,6 +283,7 @@ func runDaemon(systemdSocket bool) error {
 		}
 		d.PickupExpiry = expiry
 	}
+	d.FileeeAddress = cfg.Fileee.Address
 
 	// The Routing: one Sieve script on the Primary Account's server, which is
 	// what puts mail in the Screener, the Feed and the Paper Trail before this
