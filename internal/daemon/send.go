@@ -575,7 +575,8 @@ func forwardBody(note string, m mirror.Message) string {
 
 // handleFileee mails one attachment straight to fileee's drop box — that
 // address is fileee's whole integration, so this is a send with no body, not a
-// forward: the recipient never sees the mail it came from, only the file.
+// forward: the recipient never sees the mail it came from, only the file. The
+// GUI's attachment chip is the caller; there is no CLI command for it.
 func (d *Daemon) handleFileee(ctx context.Context, req Request, resp Response) Response {
 	if d.FileeeAddress == "" {
 		return resp.usage("no fileee address configured — set fileee.address in the config")

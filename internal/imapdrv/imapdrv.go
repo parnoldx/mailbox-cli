@@ -14,6 +14,7 @@ import (
 	"io"
 	"mime/quotedprintable"
 	"net/mail"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -1009,12 +1010,16 @@ func uidSet(uids []uint32) imap.UIDSet {
 }
 
 // headerField reads one header out of a raw HEADER.FIELDS section — net/mail
-// unfolds the continuation lines so a long List-Unsubscribe is read whole.
+// unfolds the continuation lines so a long List-Unsubscribe is read whole. The
+// section is cloned first: mail.ReadMessage needs the blank line that ends a
+// header block, and appending it to the library's own buffer would write past
+// the end of a slice that is not ours.
 func headerField(section []byte, name string) string {
 	if len(section) == 0 {
 		return ""
 	}
-	msg, err := mail.ReadMessage(bytes.NewReader(append(section, "\r\n\r\n"...)))
+	raw := append(slices.Clone(section), "\r\n\r\n"...)
+	msg, err := mail.ReadMessage(bytes.NewReader(raw))
 	if err != nil {
 		return ""
 	}

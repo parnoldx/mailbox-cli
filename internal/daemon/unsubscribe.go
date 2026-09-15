@@ -15,8 +15,15 @@ import (
 
 // unsubscribeClient is the one-click POST (RFC 8058): no cookies, no
 // redirects followed blind, and a short timeout so a dead list host does not
-// hang the request.
-var unsubscribeClient = &http.Client{Timeout: 15 * time.Second}
+// hang the request. A redirect is answered as the 3xx it is — Go would
+// otherwise turn the POST into a GET, drop the List-Unsubscribe body, and
+// report the landing page's 200 as an unsubscribe that never happened. The
+// caller's fallback (hand the URL to a browser) is the right answer to a
+// redirect anyway.
+var unsubscribeClient = &http.Client{
+	Timeout:       15 * time.Second,
+	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+}
 
 // handleUnsubscribe leaves the list a message belongs to, however it offers
 // to be left: an RFC 8058 one-click POST, a plain mailto:, or — when neither

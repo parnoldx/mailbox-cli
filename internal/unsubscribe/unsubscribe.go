@@ -39,12 +39,14 @@ type Target struct {
 
 // Of decides how to unsubscribe from a message: List-Unsubscribe first (the
 // sender's own word for it), and only when the message carries none, a guess
-// at an unsubscribe link in its own body.
-func Of(listUnsubscribe, listUnsubscribePost, html, plain string) Target {
+// at an unsubscribe link in its HTML body. A plain-text body is not read — an
+// auth-shaped list mail that skips the header is HTML in practice, and a bare
+// URL in prose is not an unsubscribe link until something says so.
+func Of(listUnsubscribe, listUnsubscribePost, html string) Target {
 	if t := fromHeader(listUnsubscribe, listUnsubscribePost); t.Kind != None {
 		return t
 	}
-	return fromBody(html, plain)
+	return fromBody(html)
 }
 
 // angleURI matches one <...> entry of a List-Unsubscribe header (RFC 2369
@@ -94,7 +96,7 @@ var unsubLink = regexp.MustCompile(`(?is)<a\b[^>]*href=["']([^"']+)["'][^>]*>(.*
 var tag = regexp.MustCompile(`(?s)<[^>]*>`)
 
 var keywords = []string{
-	"unsubscribe", "unsub",
+	"unsub",
 	"abmelden", "abbestellen", "abbestellung", "austragen",
 }
 
@@ -111,7 +113,7 @@ func mentionsUnsub(s string) bool {
 // fromBody is a best-effort guess at an unsubscribe link the message offers
 // itself, for the many senders that skip the header. It only ever proposes
 // opening the page — a body link was never declared safe to POST to blind.
-func fromBody(html, plain string) Target {
+func fromBody(html string) Target {
 	for _, m := range unsubLink.FindAllStringSubmatch(html, -1) {
 		href, text := m[1], tag.ReplaceAllString(m[2], " ")
 		if mentionsUnsub(href) || mentionsUnsub(text) {

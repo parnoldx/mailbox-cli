@@ -4,11 +4,10 @@ import "testing"
 
 func TestOf(t *testing.T) {
 	cases := []struct {
-		name                             string
-		listUnsubscribe, listUnsubPost   string
-		html                             string
-		want                             Kind
-		wantURL, wantTo, wantSubj, wantB string
+		name                                 string
+		listUnsubscribe, listUnsubPost, html string
+		want                                 Kind
+		wantURL, wantTo, wantSubj, wantBody  string
 	}{
 		{
 			name:            "one-click",
@@ -23,8 +22,9 @@ func TestOf(t *testing.T) {
 		},
 		{
 			name:            "mailto only",
-			listUnsubscribe: "<mailto:leave@example.com?subject=unsubscribe>",
+			listUnsubscribe: "<mailto:leave@example.com?subject=unsubscribe&body=please%20remove%20me>",
 			want:            Email, wantTo: "leave@example.com", wantSubj: "unsubscribe",
+			wantBody: "please remove me",
 		},
 		{
 			name: "body link, English",
@@ -44,7 +44,7 @@ func TestOf(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := Of(c.listUnsubscribe, c.listUnsubPost, c.html, "")
+			got := Of(c.listUnsubscribe, c.listUnsubPost, c.html)
 			if got.Kind != c.want {
 				t.Fatalf("kind = %q, want %q", got.Kind, c.want)
 			}
@@ -56,6 +56,9 @@ func TestOf(t *testing.T) {
 			}
 			if got.Subject != c.wantSubj {
 				t.Fatalf("subject = %q, want %q", got.Subject, c.wantSubj)
+			}
+			if got.Body != c.wantBody {
+				t.Fatalf("body = %q, want %q", got.Body, c.wantBody)
 			}
 		})
 	}

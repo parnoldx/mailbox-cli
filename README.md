@@ -146,6 +146,9 @@ Optional settings that the wizard does not ask about:
 ```toml
 [pickup]
 expiry = "15m"   # how long a collected login code's mail is kept before Trash
+
+[fileee]
+address = "abc123@in.fileee.com"   # where the GUI's "send to fileee" button mails a PDF
 ```
 
 ### Running the Daemon
@@ -185,6 +188,7 @@ mailbox reply 36722 --body "Thanks for the update."
 mailbox forward 36722 --to colleague@example.com
 mailbox compose --to user@example.com --subject "Draft" --body "WIP" --draft  # File in drafts instead of sending
 mailbox rsvp 36722 --accept        # Accept a meeting invite (iMIP + calendar)
+mailbox unsubscribe 36722          # Leave the list this came from (one-click POST, mailto, or a URL to open)
 mailbox draft list                 # Mail written but not yet sent
 mailbox draft send 12              # Send a draft (optionally override --to/--subject/--body)
 mailbox outbox list                # View queue status and held messages

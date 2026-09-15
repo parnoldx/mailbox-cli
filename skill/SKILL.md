@@ -42,6 +42,7 @@ and each help text carries the reason the command works the way it does.
 | decide about a sender | `mailbox screener`, then `mailbox route set ID --to feed` |
 | route a whole domain | `mailbox route set @stripe.com --to paper` |
 | accept a meeting | `mailbox rsvp ID --accept` |
+| leave a mailing list | `mailbox unsubscribe ID` |
 | keep one for later | `mailbox aside add 36722` |
 | flag one you owe a reply | `mailbox reply-later add 36722` |
 | file it | `mailbox move 36722 --to Archive/Immo` |
@@ -59,6 +60,11 @@ that domain; a specific address always wins. `mailbox sieve` is raw access for
 the cases route does not cover. `mailbox rsvp ID --accept` answers a meeting
 invite (iMIP to the organizer, and the event on the calendar). `attachment save`
 writes into the working directory unless `--output` names somewhere else.
+
+`mailbox unsubscribe ID` leaves the list a message came from. When the sender
+declared RFC 8058 one-click or a `mailto:`, it is done and the answer says so;
+when the only way out is a page, the answer is `Open to finish: URL` — open that
+URL (or hand it to the user), because nothing was unsubscribed yet.
 
 ## Reading the answer
 

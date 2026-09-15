@@ -453,15 +453,6 @@ func tree(l Locals) []*Command {
 					Examples: []string{"mailbox attachment bytes 36722:2"},
 					Run:      runAttachmentBytes,
 				},
-				{
-					Name: "fileee", Short: "Mail one file to fileee", Needs: true,
-					Long: "Fileee's whole integration is a mail with a file attached, sent to " +
-						"the personal address it assigned (fileee.address in the config). " +
-						"No body, no quoting the original — just the file, on its way.",
-					Usage:    []string{"mailbox attachment fileee ID[:INDEX]"},
-					Examples: []string{"mailbox attachment fileee 36722:1"},
-					Run:      runAttachmentFileee,
-				},
 			},
 		},
 

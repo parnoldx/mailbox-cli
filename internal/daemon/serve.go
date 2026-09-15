@@ -1008,7 +1008,7 @@ type unsubscribeInfo struct {
 // unsubscribeTarget is unsubscribe.Of, fed from the one Message both
 // message view and `unsubscribe` read it from.
 func unsubscribeTarget(m mirror.Message) unsubscribe.Target {
-	return unsubscribe.Of(m.ListUnsubscribe, m.ListUnsubscribePost, m.TextHTML, m.TextPlain)
+	return unsubscribe.Of(m.ListUnsubscribe, m.ListUnsubscribePost, m.TextHTML)
 }
 
 func viewMessage(a *Account, folder string, r mirror.Row, places []mirror.Placement) message {
