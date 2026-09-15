@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	"mailbox/internal/daemon"
 	"mailbox/internal/imapdrv"
 	"mailbox/internal/sync/davsync"
 )
@@ -308,7 +309,7 @@ func (w *Wizard) follow(ctx context.Context) {
 	if w.Socket == "" {
 		return
 	}
-	c, err := Dial(w.Socket, 10*time.Second)
+	c, err := daemon.Dial(w.Socket, 10*time.Second)
 	if err != nil {
 		w.say("")
 		w.sayf("The daemon is not answering yet: %v", err)
@@ -319,7 +320,7 @@ func (w *Wizard) follow(ctx context.Context) {
 
 	w.say("")
 	w.say("Filling the mirror. This is the slow one; every later start is not.")
-	pushes, stop, err := Pushes(w.Socket)
+	pushes, stop, err := daemon.Pushes(w.Socket)
 	if err == nil {
 		defer stop()
 	}
@@ -362,7 +363,7 @@ func (w *Wizard) follow(ctx context.Context) {
 // countIn asks the Mirror what it now holds in one Box. The push said only that
 // something moved (ADR-0011), so the count comes from a read like everybody
 // else's.
-func countIn(c *Client, box string) string {
+func countIn(c *daemon.Client, box string) string {
 	resp, err := c.Do([]string{"box", "list"}, map[string]any{"archive": true})
 	if err != nil || !resp.OK {
 		return "held"

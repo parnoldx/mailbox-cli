@@ -4,12 +4,10 @@
 package cli
 
 import (
-	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -355,29 +353,31 @@ func asAny(v any) []any {
 // request sends one command and prints the reply. Pushes may arrive on the same
 // connection; they carry no id and are skipped here.
 func request(req daemon.Request, asJSON bool, render renderer, stdout, stderr io.Writer) int {
-	// A request from here is one of a kind, so one id covers every command.
-	if req.ID == "" {
-		req.ID = "1"
-	}
-	conn, err := net.Dial("unix", config.SocketPath())
+	c, err := daemon.Dial(config.SocketPath(), 0)
 	if err != nil {
 		fmt.Fprintf(stderr, "no daemon listening at %s\n", config.SocketPath())
 		fmt.Fprintf(stderr, "start one with: mailbox daemon\n")
 		return ExitDaemon
 	}
-	defer conn.Close()
+	defer c.Close()
 
-	if err := json.NewEncoder(conn).Encode(req); err != nil {
+	// A request from here is one of a kind, so one id covers every command.
+	if req.ID == "" {
+		req.ID = "1"
+	}
+	if err := c.Send(req); err != nil {
 		fmt.Fprintf(stderr, "write: %v\n", err)
 		return ExitAPI
 	}
 
-	sc := bufio.NewScanner(conn)
-	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
-	for sc.Scan() {
+	for {
 		var resp daemon.Response
-		if err := json.Unmarshal(sc.Bytes(), &resp); err != nil {
-			continue
+		err := c.Next(&resp)
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				fmt.Fprintf(stderr, "read: %v\n", err)
+			}
+			return ExitAPI
 		}
 		if resp.ID != req.ID {
 			continue // a push
@@ -394,10 +394,6 @@ func request(req daemon.Request, asJSON bool, render renderer, stdout, stderr io
 		}
 		return codeToExit(resp.Code)
 	}
-	if err := sc.Err(); err != nil && !errors.Is(err, io.EOF) {
-		fmt.Fprintf(stderr, "read: %v\n", err)
-	}
-	return ExitAPI
 }
 
 func codeToExit(code string) int {

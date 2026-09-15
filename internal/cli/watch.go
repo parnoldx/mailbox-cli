@@ -1,12 +1,10 @@
 package cli
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"os/exec"
 	"strconv"
@@ -74,7 +72,7 @@ const redialEvery = 2 * time.Second
 
 func (w *watch) run() int {
 	for {
-		conn, err := net.Dial("unix", config.SocketPath())
+		c, err := daemon.Dial(config.SocketPath(), 0)
 		if err != nil {
 			if !w.dialled {
 				fmt.Fprintf(w.err, "no daemon listening at %s\n", config.SocketPath())
@@ -86,8 +84,8 @@ func (w *watch) run() int {
 			}
 			continue
 		}
-		code, done := w.stream(conn)
-		conn.Close()
+		code, done := w.stream(c)
+		c.Close()
 		if done {
 			return code
 		}
@@ -111,17 +109,15 @@ func (w *watch) pause() bool {
 // stream subscribes on one connection and reports what arrives. It returns the
 // exit code and whether the watch is over: a connection that simply dropped is
 // not, because the daemon is allowed to restart under a watch.
-func (w *watch) stream(conn net.Conn) (int, bool) {
+func (w *watch) stream(c *daemon.Client) (int, bool) {
 	if !w.deadline.IsZero() {
-		_ = conn.SetDeadline(w.deadline)
+		_ = c.Deadline(w.deadline)
 	}
-	if err := json.NewEncoder(conn).Encode(w.req); err != nil {
+	if err := c.Send(w.req); err != nil {
 		fmt.Fprintf(w.err, "write: %v\n", err)
 		return ExitAPI, true
 	}
-	sc := bufio.NewScanner(conn)
-	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
-	for sc.Scan() {
+	for {
 		// A reply and a change arrive on the same connection, and a reply is
 		// the one carrying an id. The only reply this command ever gets is the
 		// answer to its own subscription.
@@ -132,8 +128,11 @@ func (w *watch) stream(conn net.Conn) (int, bool) {
 			Code  string `json:"code"`
 			Error string `json:"error"`
 		}
-		if err := json.Unmarshal(sc.Bytes(), &line); err != nil {
-			continue
+		err := c.Next(&line)
+		if err != nil {
+			// The deadline is --timeout arriving, which is an ordinary end to a
+			// watch; anything else is a dropped connection, which is not.
+			return ExitOK, os.IsTimeout(err)
 		}
 		if line.ID != "" {
 			if !line.OK {
@@ -151,11 +150,6 @@ func (w *watch) stream(conn net.Conn) (int, bool) {
 			return ExitOK, true
 		}
 	}
-	// The deadline is --timeout arriving, which is an ordinary end to a watch.
-	if os.IsTimeout(sc.Err()) {
-		return ExitOK, true
-	}
-	return ExitOK, false
 }
 
 // report prints one change, or runs the command instead. The two lines that

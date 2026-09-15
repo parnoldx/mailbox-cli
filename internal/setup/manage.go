@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"mailbox/internal/config"
+	"mailbox/internal/daemon"
 	"mailbox/skill"
 )
 
@@ -24,7 +25,7 @@ import (
 type snapshot struct {
 	cfg    *config.Config
 	cfgErr error
-	client *Client
+	client *daemon.Client
 	// accounts, calendars and active are the Daemon's answers, empty when it is
 	// not running.
 	accounts  []map[string]any
@@ -46,7 +47,7 @@ func (w *Wizard) snapshot(ctx context.Context) *snapshot {
 	if w.Socket == "" {
 		return s
 	}
-	c, err := Dial(w.Socket, 0)
+	c, err := daemon.Dial(w.Socket, 0)
 	if err != nil {
 		return s
 	}
