@@ -8,11 +8,13 @@ package imapdrv
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"mime/quotedprintable"
+	"net"
 	"net/mail"
 	"slices"
 	"strconv"
@@ -34,6 +36,10 @@ type Config struct {
 	Port     int
 	Username string
 	Password string
+	// TLS overrides the client side of the connection when set. nil means
+	// verify against the host's own name, which is what a real account wants;
+	// a test sets it to reach a fake server with a self-signed certificate.
+	TLS *tls.Config
 }
 
 // Driver holds the connections to one account.
@@ -48,28 +54,62 @@ type Config struct {
 type Driver struct {
 	cfg Config
 
-	ctlMu sync.Mutex
-	ctl   *imapclient.Client // never selects a mailbox
+	ctlMu   sync.Mutex
+	ctl     *imapclient.Client // never selects a mailbox
+	ctlConn net.Conn
 
-	workMu sync.Mutex
-	work   *imapclient.Client
+	workMu   sync.Mutex
+	work     *imapclient.Client
+	workConn net.Conn
 
 	condStore bool
+}
+
+// cmdCap bounds one batch of commands on a pooled connection. go-imap leaves
+// the socket untimed between responses and can park a Wait on a server that
+// went silent mid-command, forever — and the parked command holds the
+// connection and everything queued behind it: on 2026-09-15 one silent APPEND
+// froze a whole account's mail sync for six hours. A socket deadline cannot
+// fix this: the reader goroutine lifts it again after every response. What
+// does fix it is closing the connection, which is the one thing that unblocks
+// a parked Wait; the caller then redials. The IDLE watchers dial their own
+// connections and never come through here, so nothing bounds them.
+//
+// ponytail: one wall-clock cap per batch, not per command — a cold start
+// fetching a huge folder in one FETCH must fit inside it; chunk the fetches
+// if a real account ever outgrows half an hour.
+var cmdCap = 30 * time.Minute
+
+// runCapped runs fn against the connection and gives up after cmdCap by
+// closing it, which is what unblocks the parked command and lets the goroutine
+// drain. The caller is expected to redial on the error.
+func runCapped(conn net.Conn, fn func() error) error {
+	done := make(chan error, 1)
+	go func() { done <- fn() }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(cmdCap):
+		_ = conn.Close()
+		<-done
+		return errors.New("imap: no reply within the cap, connection closed")
+	}
 }
 
 // Dial connects and authenticates both connections.
 func Dial(cfg Config) (*Driver, error) {
 	d := &Driver{cfg: cfg}
-	ctl, err := d.connect(nil)
+	ctl, ctlConn, err := d.connect(nil)
 	if err != nil {
 		return nil, err
 	}
-	work, err := d.connect(nil)
+	work, workConn, err := d.connect(nil)
 	if err != nil {
 		ctl.Close()
+		ctlConn.Close()
 		return nil, err
 	}
-	d.ctl, d.work = ctl, work
+	d.ctl, d.ctlConn, d.work, d.workConn = ctl, ctlConn, work, workConn
 	// CONDSTORE is not turned on with ENABLE: RFC 7162 says a server enables it
 	// implicitly the first time the client uses a CONDSTORE parameter, and
 	// go-imap refuses `ENABLE CONDSTORE` outright ("not supported"). Advertising
@@ -79,27 +119,39 @@ func Dial(cfg Config) (*Driver, error) {
 	return d, nil
 }
 
-func (d *Driver) connect(opts *imapclient.Options) (*imapclient.Client, error) {
-	c, err := imapclient.DialTLS(fmt.Sprintf("%s:%d", d.cfg.Host, d.cfg.Port), opts)
+func (d *Driver) connect(opts *imapclient.Options) (*imapclient.Client, net.Conn, error) {
+	// Dialed by hand rather than through imapclient.DialTLS so the net.Conn
+	// only with it can runCapped unstick the pooled connections.
+	tlsCfg := d.cfg.TLS
+	if tlsCfg == nil {
+		// What DialTLS would build from an empty Options: default verification
+		// against the hostname in the address, ALPN "imap".
+		tlsCfg = &tls.Config{NextProtos: []string{"imap"}}
+	}
+	addr := fmt.Sprintf("%s:%d", d.cfg.Host, d.cfg.Port)
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 30 * time.Second}, "tcp", addr, tlsCfg)
 	if err != nil {
-		return nil, fmt.Errorf("dial %s: %w", d.cfg.Host, err)
+		return nil, nil, fmt.Errorf("dial %s: %w", d.cfg.Host, err)
 	}
-	if err := c.Login(d.cfg.Username, d.cfg.Password).Wait(); err != nil {
-		c.Close()
-		return nil, fmt.Errorf("login: %w", err)
+	c := imapclient.New(conn, opts)
+	if err := runCapped(conn, func() error { return c.Login(d.cfg.Username, d.cfg.Password).Wait() }); err != nil {
+		conn.Close()
+		return nil, nil, fmt.Errorf("login: %w", err)
 	}
-	return c, nil
+	return c, conn, nil
 }
 
 // onWork runs fn with folder selected, redialling once if the connection has
 // died. A server drops a connection whose selected folder is deleted or renamed
 // by somebody else, so this is normal operation rather than a fault, and a
 // daemon that cannot survive it is not one.
+// onWork runs fn with folder selected, redialling once if the connection has
+// died, and capped so a silent server cannot park the batch forever.
 func (d *Driver) onWork(folder string, fn func(*imapclient.Client) error) error {
 	d.workMu.Lock()
 	defer d.workMu.Unlock()
 
-	err := d.tryWork(folder, fn)
+	err := runCapped(d.workConn, func() error { return d.tryWork(folder, fn) })
 	if err == nil {
 		return nil
 	}
@@ -108,15 +160,17 @@ func (d *Driver) onWork(folder string, fn func(*imapclient.Client) error) error 
 	// and Dovecot poisons one permanently once that folder is gone; both read
 	// as ordinary command errors. Every operation here is a read, so retrying
 	// is free of consequence.
-	c, rerr := d.connect(nil)
+	c, conn, rerr := d.connect(nil)
 	if rerr != nil {
 		return fmt.Errorf("reconnect after %v: %w", err, rerr)
 	}
 	_ = d.work.Close()
-	d.work = c
+	d.work, d.workConn = c, conn
 	return d.tryWork(folder, fn)
 }
 
+// tryWork selects the folder and runs fn against the work connection. Runs
+// under runCapped (onWork and onWorkOnce), so no deadline of its own.
 func (d *Driver) tryWork(folder string, fn func(*imapclient.Client) error) error {
 	if err := d.selectFolder(folder); err != nil {
 		return err
@@ -129,7 +183,7 @@ func (d *Driver) tryWork(folder string, fn func(*imapclient.Client) error) error
 func (d *Driver) onWorkOnce(folder string, fn func(*imapclient.Client) error) error {
 	d.workMu.Lock()
 	defer d.workMu.Unlock()
-	return d.tryWork(folder, fn)
+	return runCapped(d.workConn, func() error { return d.tryWork(folder, fn) })
 }
 
 // onCtl runs fn against the detection connection, redialling once if it died.
@@ -137,16 +191,16 @@ func (d *Driver) onCtl(fn func(*imapclient.Client) error) error {
 	d.ctlMu.Lock()
 	defer d.ctlMu.Unlock()
 
-	err := fn(d.ctl)
+	err := runCapped(d.ctlConn, func() error { return fn(d.ctl) })
 	if err == nil {
 		return nil
 	}
-	c, rerr := d.connect(nil)
+	c, conn, rerr := d.connect(nil)
 	if rerr != nil {
 		return fmt.Errorf("reconnect after %v: %w", err, rerr)
 	}
 	_ = d.ctl.Close()
-	d.ctl = c
+	d.ctl, d.ctlConn = c, conn
 	return fn(d.ctl)
 }
 
@@ -154,7 +208,16 @@ func (d *Driver) onCtl(fn func(*imapclient.Client) error) error {
 func (d *Driver) Close() error {
 	for _, c := range []*imapclient.Client{d.ctl, d.work} {
 		if c != nil {
-			_ = c.Logout().Wait()
+			// A Logout on a connection a runCapped already closed would park on
+			// its Wait forever: the answer is never coming. Bound it like any
+			// other command — the conn it would use is about to be closed here
+			// anyway, so the watchdog cap is just a formality on healthy conns.
+			done := make(chan error, 1)
+			go func() { done <- c.Logout().Wait() }()
+			select {
+			case <-done:
+			case <-time.After(cmdCap):
+			}
 			_ = c.Close()
 		}
 	}
@@ -595,6 +658,17 @@ func (d *Driver) Append(ctx context.Context, folder string, flags []string, raw 
 	d.workMu.Lock()
 	defer d.workMu.Unlock()
 
+	var uid uint32
+	err := runCapped(d.workConn, func() error {
+		var err error
+		uid, err = d.append(folder, flags, raw)
+		return err
+	})
+	return uid, err
+}
+
+func (d *Driver) append(folder string, flags []string, raw []byte) (uint32, error) {
+
 	cmd := d.work.Append(folder, int64(len(raw)), &imap.AppendOptions{
 		Flags: imapFlags(flags), Time: time.Now(),
 	})
@@ -938,9 +1012,10 @@ func (d *Driver) Watch(ctx context.Context, folder string, events chan<- mailsyn
 		default:
 		}
 	}
-	// A connection running IDLE may send no other command until DONE, so a
-	// watcher cannot share the connection that fetches.
-	c, err := d.connect(&imapclient.Options{
+	// The watcher's socket is deliberately not capped (capConn): IDLE sits
+	// idle for hours by design, and its dead-connection detection is the
+	// "ended" channel below.
+	c, _, err := d.connect(&imapclient.Options{
 		UnilateralDataHandler: &imapclient.UnilateralDataHandler{
 			// Any unsolicited word from the server means "run a cycle". The
 			// sequence numbers go-imap reports here would need a seq->uid map
