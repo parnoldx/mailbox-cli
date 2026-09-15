@@ -305,6 +305,9 @@ Item {
             })
         })
     }
+    // Send from the keyboard, matching every desktop composer: Ctrl+Return
+    // fires Send wherever focus sits in the form.
+    Shortcut { sequence: "Ctrl+Return"; enabled: root.visible; onActivated: root.doSend() }
     // Same send, plus a "no reply by" reminder: the daemon writes the return
     // keyword onto the filed copy once it's out (see internal/daemon/bubble.go
     // replyWatch), so this only needs to merge the same timing shape

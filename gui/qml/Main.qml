@@ -932,6 +932,18 @@ ApplicationWindow {
         sourceComponent: ReadingView { id: readingView }
     }
 
+    // Click shield: while the composer covers (or fades off) the window, clicks
+    // must land nowhere else. Without it a press near the paperclip or the
+    // fading Send button could fall through to the pile stacks beneath and
+    // switch the bucket (the "send showed Set Aside" bug).
+    MouseArea {
+        anchors.fill: parent
+        visible: composerLoader.opacity > 0.01
+        enabled: visible
+        acceptedButtons: Qt.AllButtons
+        hoverEnabled: true
+    }
+
     Loader {
         id: composerLoader
         anchors.fill: parent
