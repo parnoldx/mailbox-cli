@@ -23,6 +23,13 @@ Panel {
 
   property var anchorItem: null
 
+  // Shift watch for the Join button. The popup is its own layer-shell
+  // window, so key events never reach the bar window this Panel lives in;
+  // they bubble from the focused key catcher up through the popup's
+  // contentItem instead, which is where this watches.
+  property bool shiftHeld: false
+  onOpenedChanged: if (!opened) shiftHeld = false
+
   // The bar tracks the widget mounted in its slot — BarWidget.qml — not this
   // nested panel. Everything the bar identifies a panel by has to be that
   // widget: the popout coordinator (and with it the open-panel dot under the
@@ -1530,11 +1537,17 @@ Panel {
     root.close()
   }
 
-  function openMeeting(event) {
+  function openMeeting(event, record) {
     var url = Model.meetingUrlFor(event)
     if (!url) return
     if (root.hostWidget && typeof root.hostWidget.dismissReminder === "function")
       root.hostWidget.dismissReminder(event)
+    // Auto-record: let voxtype transcribe this meeting (loopback + mic
+    // diarization). Shift-click skips it; also skipped silently if voxtype
+    // is already busy.
+    if (record !== false)
+      Quickshell.execDetached(["sh", "-c",
+        "voxtype meeting start --title \"" + String(event.title || "Meeting").replace(/"/g, "") + "\" 2>&1 || true"])
     root.openExternally(url)
   }
 
@@ -1776,7 +1789,19 @@ Panel {
     onFileChanged: reload()
   }
 
-  Component.onCompleted: Qt.callLater(function() { paletteFile.reload() })
+  Component.onCompleted: Qt.callLater(function() {
+    paletteFile.reload()
+    // The key catcher owns focus inside the popup window; extra JS handlers
+    // on its Keys object fire alongside the declarative ones instead of
+    // replacing them. Wayland mislabels the Shift release as Key_Control,
+    // so both count as "shift let go".
+    keyCatcher.Keys.onPressed.connect(function(event) {
+      if (event.key === Qt.Key_Shift) root.shiftHeld = true
+    })
+    keyCatcher.Keys.onReleased.connect(function(event) {
+      if (event.key === Qt.Key_Shift || event.key === Qt.Key_Control) root.shiftHeld = false
+    })
+  })
 
   SystemClock {
     id: clock
@@ -2438,6 +2463,8 @@ Panel {
                     ? "transparent"
                     : Qt.darker(root.contentForeground, 2.0)
 
+                  readonly property color recColor: Qt.lighter(Color.urgent, 1.25)
+
                   Text {
                     id: joinLabel
                     anchors.centerIn: parent
@@ -2448,9 +2475,13 @@ Panel {
                     text: eventRow.isMeeting
                       ? Model.joinButtonLabel(eventRow.meetingUrl)
                       : "󰌹"
-                    color: joinMouse.containsMouse
-                      ? Color.background
-                      : Qt.darker(root.contentForeground, 1.2)
+                    // Recording is the default, so the label wears the
+                    // theme's red until shift says this click will not
+                    // record — then it looks like every other day. A plain
+                    // link never records, so it always looks like a day.
+                    color: !eventRow.isMeeting || root.shiftHeld
+                      ? (joinMouse.containsMouse ? Color.background : Qt.darker(root.contentForeground, 1.2))
+                      : joinButton.recColor
                     font.family: root.contentFontFamily
                     font.pixelSize: Style.font.bodySmall
                   }
@@ -2460,7 +2491,9 @@ Panel {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: root.openMeeting(eventRow.modelData)
+                    onClicked: function(mouse) {
+                      root.openMeeting(eventRow.modelData, (eventRow.isMeeting && (mouse.modifiers & Qt.ShiftModifier) === 0))
+                    }
                   }
                 }
               }
