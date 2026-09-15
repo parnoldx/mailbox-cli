@@ -2,7 +2,9 @@
 
 Agent-facing command `mailbox` over mail, calendars, todos and contacts. A daemon
 holds a local Mirror of the servers; the CLI reads the Mirror and never waits on
-a network. Not a human mail client.
+a network. The CLI is not a mail client: the human surfaces — the Qt client in
+`gui/`, the bar widgets in `plugins/` — are clients of the same socket reading
+the same Mirror.
 
 ## The Mirror
 
