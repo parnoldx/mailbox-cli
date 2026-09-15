@@ -45,7 +45,7 @@ BarWidget {
   readonly property bool announcing: announceLeadMinutes > 0
     && Model.shouldAnnounce(upcomingEvent, nowMs, announceLeadMinutes, startedLeadMinutes)
     && !Model.isDismissed(upcomingEvent, dismissedKey)
-  readonly property bool joinable: Model.meetingUrlFor(upcomingEvent) !== ""
+  readonly property bool joinable: Model.isMeetingUrl(Model.meetingUrlFor(upcomingEvent))
   readonly property bool showReminder: announcing && !vertical
 
   // An alarm the event carries (--alarm / VALARM) is a single brief buzz, not

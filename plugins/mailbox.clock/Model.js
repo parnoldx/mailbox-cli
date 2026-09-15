@@ -632,7 +632,7 @@ function inAlarmBlip(event, nowMs, leadMinutes, blipMinutes) {
 // supplies the once-per-occurrence memory so the sound plays a single time.
 function shouldNudge(event, nowMs, graceMs, windowMs) {
   if (!event) return false
-  if (meetingUrlFor(event) === "") return false
+  if (!isMeetingUrl(meetingUrlFor(event))) return false
   if (!isInProgress(event, nowMs)) return false
   var start = eventStartMs(event)
   if (isNaN(start)) return false
@@ -735,6 +735,16 @@ function meetingUrlFor(event) {
   var text = event ? safeUrl(event.meetingUrl) : ""
   if (!text || isCalendarFileUrl(text)) return ""
   return text
+}
+
+// A room to join rather than a page to read. Same host rule meetingUrlIn
+// applies: a link on an unknown host — the pool's homepage sitting in the
+// URL field — is a document, and gets a Link button, never a Join.
+function isMeetingUrl(url) {
+  var text = safeUrl(url)
+  if (!text || isCalendarFileUrl(text)) return false
+  var host = text.split("//").pop().split("/")[0]
+  return MAILBOX_MEETING_HOST.test(host)
 }
 
 // ---- Natural-language quick-add. Bilingual by table, not by setting: EN
@@ -2282,6 +2292,7 @@ if (typeof module !== "undefined") {
     dayColors: dayColors,
     isCalendarFileUrl: isCalendarFileUrl,
     meetingUrlFor: meetingUrlFor,
+    isMeetingUrl: isMeetingUrl,
     parseEventPhrase: parseEventPhrase,
     fallbackDraft: fallbackDraft,
     draftFromAgendaEvent: draftFromAgendaEvent,

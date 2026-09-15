@@ -88,6 +88,7 @@ test("shouldNudge waits out the first minute and gives up after five", () => {
 
 test("shouldNudge needs a join link and a meeting that is actually running", () => {
   assert.equal(Model.shouldNudge(event({ meetingUrl: "" }), now), false)
+  assert.equal(Model.shouldNudge(event({ meetingUrl: "https://www.keidel-therme.de/" }), now), false)
   assert.equal(Model.shouldNudge(event({ allDay: true, start: "2026-08-23", end: "2026-08-24" }), now), false)
   assert.equal(Model.shouldNudge(event(), now), false) // not started yet
   assert.equal(
@@ -128,6 +129,21 @@ test("joinButtonLabel names the meeting service", () => {
   assert.equal(Model.joinButtonLabel("https://teams.microsoft.com/l/meetup-join/x"), "Join Teams")
   assert.equal(Model.joinButtonLabel("https://meet.jit.si/Standup"), "Join Jitsi")
   assert.equal(Model.joinButtonLabel("https://example.com/call"), "Join")
+})
+
+// A homepage in the URL field is a page to read, not a room to join: the
+// same host rule meetingUrlIn applies. It still gets a button — the link
+// glyph — but the label is no longer a promise to join anything.
+test("isMeetingUrl only says yes to meeting hosts", () => {
+  assert.equal(Model.isMeetingUrl("https://meet.google.com/abc-defg-hij"), true)
+  assert.equal(Model.isMeetingUrl("https://us02web.zoom.us/j/1"), true)
+  assert.equal(Model.isMeetingUrl("https://teams.microsoft.com/l/meetup-join/x"), true)
+  assert.equal(Model.isMeetingUrl("http://meet.jit.si/Standup"), true)
+  assert.equal(Model.isMeetingUrl("https://www.keidel-therme.de/"), false)
+  assert.equal(Model.isMeetingUrl("https://example.com/call"), false)
+  assert.equal(Model.isMeetingUrl("https://example.com/standup.ics"), false)
+  assert.equal(Model.isMeetingUrl(""), false)
+  assert.equal(Model.isMeetingUrl("javascript:alert(1)"), false)
 })
 
 test("safeUrl launches plain http(s) meeting links and nothing else", () => {

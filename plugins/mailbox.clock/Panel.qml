@@ -2362,6 +2362,9 @@ Panel {
                 required property var modelData
                 readonly property string meetingUrl: Model.meetingUrlFor(modelData)
                 readonly property bool joinable: meetingUrl !== ""
+                // Only a meeting room says "Join"; any other link in the
+                // URL field gets a bare link glyph and opens just the same.
+                readonly property bool isMeeting: Model.isMeetingUrl(meetingUrl)
                 readonly property int joinReserve: joinable ? joinButton.width + Style.space(8) : 0
 
                 width: gridColumn.width
@@ -2440,8 +2443,11 @@ Panel {
                     anchors.centerIn: parent
                     // Name the service: "Join Zoom" tells you what is about
                     // to open, and it is the same wording the bar uses for
-                    // the next meeting.
-                    text: Model.joinButtonLabel(eventRow.meetingUrl)
+                    // the next meeting. A non-meeting link shows the link
+                    // glyph the entry pane's pill uses.
+                    text: eventRow.isMeeting
+                      ? Model.joinButtonLabel(eventRow.meetingUrl)
+                      : "󰌹"
                     color: joinMouse.containsMouse
                       ? Color.background
                       : Qt.darker(root.contentForeground, 1.2)
