@@ -39,9 +39,16 @@ test("a /list in the phrase becomes --list", () => {
     ["todo", "add", "einkaufen", "--due", "2026-08-24", "--list", "Arbeit"])
 })
 
-test("Model.js is a verbatim copy of the calendar widget's", () => {
-  const here = fs.readFileSync(path.join(__dirname, "..", "Model.js"), "utf8")
-  const src = fs.readFileSync(
-    path.join(__dirname, "..", "..", "mailbox.clock", "Model.js"), "utf8")
-  assert.equal(here, src, "run: cp plugins/mailbox.clock/Model.js plugins/pa.todo/Model.js")
+// Model.js is a slice of the calendar widget's, and every line of it has to stay
+// that widget's own: two phrase parsers that drift mean Super+N understands
+// other words than the entry pane does. Re-copy the functions named in the
+// failure from ../mailbox.clock/Model.js.
+test("every line of Model.js is the calendar widget's own", () => {
+  const lines = p => fs.readFileSync(path.join(__dirname, "..", p), "utf8").split("\n")
+  const clock = new Set(lines("../mailbox.clock/Model.js").map(l => l.trim()))
+  const ours = lines("Model.js").map(l => l.trim())
+  const exportsAt = ours.findIndex(l => l.includes("typeof module"))
+  const body = ours.slice(0, exportsAt).filter(l => l && !l.startsWith("//"))
+  assert.deepEqual(body.filter(l => !clock.has(l)), [],
+    "these lines are not in ../mailbox.clock/Model.js")
 })

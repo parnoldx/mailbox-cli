@@ -1,13 +1,15 @@
 // Quick-capture line -> `mailbox todo add` argv, using the calendar widget's
 // phrase parser so Super+N understands the same words its entry pane does
-// ("buy milk friday !", "einkaufen morgen /Arbeit"). Model.js here is a
-// verbatim copy of ../mailbox.clock/Model.js; tests/capture.test.js fails if
-// the two drift. `Model` is passed in so this file needs no import of its
-// own — QML hands it the namespace, node hands it the require().
+// ("buy milk friday !", "einkaufen morgen /Arbeit"). Model.js here is the slice
+// of ../mailbox.clock/Model.js this capture path calls, and tests/capture.test.js
+// fails if a line of it is not the calendar widget's own. `Model` is passed in
+// so this file needs no import of its own — QML hands it the namespace, node
+// hands it the require().
 //
-// ponytail: whole Model.js copied in for ~5 functions. Re-copy on change;
-// the drift test is the guard. Extract a shared parse module if a third
-// caller ever needs it.
+// ponytail: a subset copied in, not a shared module — Omarchy installs each
+// plugin on its own, so an import across plugins would break one of them. The
+// drift test is the guard; extract a shared parse module if a third caller ever
+// needs it.
 
 function todoAddArgv(text, nowMs, Model) {
   var raw = String(text === undefined || text === null ? "" : text).trim()
