@@ -731,6 +731,9 @@ Item {
                 if (root.mode === "reply") root.doAgentDraft()
                 else win.flash("AI drafts replies — open a reply first")
             }
+            // Ctrl+Enter inside the body editor — the QML Shortcut above cannot
+            // fire while the web view has focus, so Lexxy hands the key out.
+            onSendRequested: root.doSend()
         }
 
         // Drop files onto the editor to attach them.

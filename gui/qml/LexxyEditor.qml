@@ -21,6 +21,10 @@ Item {
     // The toolbar's AI button (see calloutBootJS) — ComposerView starts the
     // agent draft from it.
     signal aiDraft()
+    // Ctrl+Enter inside the page (see the keydown listener in calloutBootJS).
+    // The QML Shortcut cannot see it: QtWebEngine's native render widget eats
+    // key events before they reach the window's shortcut machinery.
+    signal sendRequested()
 
     function _js(s) { return JSON.stringify(s === undefined ? "" : s) }
 
@@ -87,6 +91,11 @@ Item {
     function calloutBootJS() {
         return [
             "(function(){",
+            // Send from the keyboard: Ctrl/Cmd+Enter navigates to mailbox-send:,
+            // which onNavigationRequested turns into the sendRequested signal.
+            "document.addEventListener('keydown',function(e){",
+            "if((e.ctrlKey||e.metaKey)&&(e.key==='Enter'||e.key==='Return')){e.preventDefault();window.location='mailbox-send:';}",
+            "},true);",
             "var kinds=[",
             "{kind:'note',label:'Note',bg:'#dbeafe',fg:'#1e3a8a'},",
             "{kind:'tip',label:'Tip',bg:'#dcfce7',fg:'#14532d'},",
@@ -275,6 +284,12 @@ Item {
                 // The toolbar's AI button (calloutBootJS). Same trick as the
                 // dropped file above: reject the navigation, raise a signal.
                 root.aiDraft()
+                req.reject()
+                return
+            }
+            if (u.indexOf("mailbox-send:") === 0) {
+                // Ctrl+Enter inside the page (calloutBootJS keydown listener).
+                root.sendRequested()
                 req.reject()
                 return
             }
