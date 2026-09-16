@@ -241,12 +241,14 @@ Item {
         sourceComponent: WebEngineView {
             backgroundColor: Theme.windowBg
             url: "qrc:/qml/vendor/feed.html"
-            // Clicks (Read more, chips) must not move keyboard focus into the
-            // page: a focused WebEngineView eats plain-letter keys before the
-            // window Shortcuts see them, and T/j/k go dead after one click.
-            // The feed page has no inputs; scrolling and selection don't need
-            // focus.
-            activeFocusOnPress: false
+            // A click must not leave keyboard focus inside the page: a focused
+            // WebEngineView eats plain-letter keys before the window Shortcuts
+            // see them, and T/j/k go dead after one click. activeFocusOnPress:
+            // false does the same, but on Qt 6.11 it swallows the click itself
+            // (cards stop expanding, chips stop firing). The feed page has no
+            // inputs, so whatever focus a click hands the view bounces straight
+            // back to the app.
+            onActiveFocusChanged: if (activeFocus) root.forceActiveFocus()
             // Arm the tracking-pixel blocker before the feed pulls any remote
             // image — main.cpp leaves it unarmed to keep Chromium off the
             // Inbox's start-up path.
