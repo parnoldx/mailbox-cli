@@ -160,7 +160,13 @@ func (d *Daemon) handOver(from, code, link string) bool {
 	if code == "" {
 		title = "Link from " + who
 	}
-	if err := run("notify-send", "-a", "mailbox", "-u", "critical", title, body); err != nil {
+	// No -a, on purpose: Do Not Disturb lets an urgent bare-CLI alert through
+	// and silences anything that declares an app name (omarchy's
+	// shouldBypassDnd trusts app_name "notify-send" and nothing else at
+	// critical urgency — the rule exists to keep branded chat apps quiet).
+	// A Pickup is the one alert worth breaking DND for, since a login form is
+	// waiting, and naming the app here is what put it in the silenced class.
+	if err := run("notify-send", "-u", "critical", title, body); err != nil {
 		d.logf("pickup: no notification: %v", err)
 	}
 	d.logf("pickup from %s: code %q link %q", who, code, link)

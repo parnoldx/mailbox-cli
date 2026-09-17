@@ -289,6 +289,40 @@ func TestPickupCopiesARegistrationLink(t *testing.T) {
 	}
 }
 
+// Gate 7. The alert has to arrive while Do Not Disturb is on: a code is
+// worthless once the screen has moved on. The desktop (omarchy's
+// shouldBypassDnd) lets through one shape only — urgency=critical sent by an
+// app that did NOT declare a name — so the alert must not name itself. Seen in
+// the field: a branded one was delivered to the shell and written straight to
+// history without ever being shown, while the link sat on the clipboard.
+func TestPickupAlertIsTheShapeDoNotDisturbLetsThrough(t *testing.T) {
+	d, _ := seedScreener(t)
+	var h handedOver
+	h.install(t)
+
+	out := deliverScreener(t, d, "otp7@example.com", "Ihr Zugriffscode",
+		"Dienst <no-reply@example.org>", "Ihr Code lautet 778812.\n")
+	if got := d.collectPickups(context.Background(), d.primaryAccount(), out); len(got) != 1 {
+		t.Fatalf("collectPickups found %d pickups, want 1", len(got))
+	}
+
+	n := h.arg("notify-send")
+	if len(n) == 0 {
+		t.Fatal("no notification was sent at all")
+	}
+	for i, a := range n {
+		if a == "-a" || a == "--app-name" {
+			t.Errorf("alert names itself %q; Do Not Disturb silences it", n[i+1])
+		}
+		if strings.HasPrefix(a, "--app-name=") {
+			t.Errorf("alert names itself %q; Do Not Disturb silences it", a)
+		}
+	}
+	if !slices.Contains(n, "critical") {
+		t.Errorf("urgency is not critical in %v; DND would silence it", n)
+	}
+}
+
 func inScreener(t *testing.T, d *Daemon, subject string) bool {
 	t.Helper()
 	for _, r := range rowsIn(t, d, routing.BoxScreener) {
