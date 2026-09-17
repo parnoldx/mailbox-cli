@@ -298,6 +298,17 @@ func (o *Outbox) byState(s State) ([]Item, error) {
 	return o.query(`WHERE state = ? AND (not_before IS NULL OR not_before <= ?) ORDER BY id`, string(s), now())
 }
 
+// Unsent counts one account's queued, sent and held mail, however old. A
+// limit here would make an account whose mail is older than the newest few
+// rows look empty, and empty is the signal that it is safe to drop the
+// account (ADR-0013: the Outbox is the only copy of that mail).
+func (o *Outbox) Unsent(account string) (int, error) {
+	var n int
+	err := o.db.QueryRow(`SELECT count(*) FROM outbox
+		WHERE account = ? AND state IN ('queued', 'sent', 'held')`, account).Scan(&n)
+	return n, err
+}
+
 // move applies a state transition, refusing one that does not start where it
 // says it does. A queue whose states are only advisory is not a queue.
 func (o *Outbox) move(id int64, from []State, stmt string) error {

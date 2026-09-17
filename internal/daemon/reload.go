@@ -45,7 +45,13 @@ type Problem struct {
 
 // reloadState is the config half of the Daemon.
 type reloadState struct {
-	mu       sync.Mutex
+	mu sync.Mutex
+	// applyMu serialises Apply. reloadConfig is reachable from two goroutines
+	// at once — the Primary's cycle loop and the socket's reload command — and
+	// the applier is a plain closure over last-applied config, so two
+	// overlapping applies would run Reconcile twice against the same "was".
+	// Not mu: Apply calls stop(), which locks mu.
+	applyMu  sync.Mutex
 	modTime  time.Time
 	size     int64
 	problems map[string]string
@@ -56,10 +62,14 @@ type reloadState struct {
 // WatchConfig turns on config reconciliation. path is the record; apply is what
 // brings this process into line with it.
 func (d *Daemon) WatchConfig(path string, apply Applier) {
+	d.reload.mu.Lock()
 	d.ConfigPath = path
 	d.Apply = apply
+	d.reload.mu.Unlock()
 	if info, err := os.Stat(path); err == nil {
+		d.reload.mu.Lock()
 		d.reload.modTime, d.reload.size = info.ModTime(), info.Size()
+		d.reload.mu.Unlock()
 	}
 }
 
@@ -99,7 +109,9 @@ func (d *Daemon) reloadConfig(reason string) []string {
 		d.setProblem("config", err.Error())
 		return nil
 	}
+	d.reload.applyMu.Lock()
 	applied, err := d.Apply(cfg)
+	d.reload.applyMu.Unlock()
 	if err != nil {
 		d.logf("config (%s): %v", reason, err)
 		d.setProblem("config", err.Error())

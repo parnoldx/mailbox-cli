@@ -91,8 +91,16 @@ func runCapped(conn net.Conn, fn func() error) error {
 		return err
 	case <-time.After(cmdCap):
 		_ = conn.Close()
-		<-done
-		return errors.New("imap: no reply within the cap, connection closed")
+		// Close is what unblocks fn — but only if fn is parked on this socket.
+		// Anything else it might be parked on gets one more cap to come back;
+		// past that the caller leaks the goroutine rather than its mutex, and
+		// the error says so.
+		select {
+		case err := <-done:
+			return err
+		case <-time.After(cmdCap):
+			return errors.New("imap: no reply within the cap and no unblock after close")
+		}
 	}
 }
 
@@ -159,14 +167,16 @@ func (d *Driver) onWork(folder string, fn func(*imapclient.Client) error) error 
 	// errors. A server drops a connection whose selected folder was deleted,
 	// and Dovecot poisons one permanently once that folder is gone; both read
 	// as ordinary command errors. Every operation here is a read, so retrying
-	// is free of consequence.
+	// is free of consequence. The retry goes under runCapped like the first
+	// attempt: a freshly dialled server that then goes silent would otherwise
+	// park here forever, still holding workMu.
 	c, conn, rerr := d.connect(nil)
 	if rerr != nil {
 		return fmt.Errorf("reconnect after %v: %w", err, rerr)
 	}
 	_ = d.work.Close()
 	d.work, d.workConn = c, conn
-	return d.tryWork(folder, fn)
+	return runCapped(d.workConn, func() error { return d.tryWork(folder, fn) })
 }
 
 // tryWork selects the folder and runs fn against the work connection. Runs
@@ -201,24 +211,38 @@ func (d *Driver) onCtl(fn func(*imapclient.Client) error) error {
 	}
 	_ = d.ctl.Close()
 	d.ctl, d.ctlConn = c, conn
-	return fn(d.ctl)
+	return runCapped(d.ctlConn, func() error { return fn(d.ctl) })
+}
+
+// logoutCapped logs c out, bounded like any other command: a server that has
+// gone silent must not park a shutdown or a Watch teardown forever.
+func logoutCapped(c *imapclient.Client) {
+	done := make(chan error, 1)
+	go func() { done <- c.Logout().Wait() }()
+	select {
+	case <-done:
+	case <-time.After(cmdCap):
+	}
+	_ = c.Close()
 }
 
 // Close logs both connections out.
 func (d *Driver) Close() error {
-	for _, c := range []*imapclient.Client{d.ctl, d.work} {
+	// Snapshot under the same mutexes onCtl/onWork swap the fields with: an
+	// unsynchronized read would race the redial paths.
+	d.ctlMu.Lock()
+	ctl := d.ctl
+	d.ctlMu.Unlock()
+	d.workMu.Lock()
+	work := d.work
+	d.workMu.Unlock()
+	for _, c := range []*imapclient.Client{ctl, work} {
 		if c != nil {
 			// A Logout on a connection a runCapped already closed would park on
 			// its Wait forever: the answer is never coming. Bound it like any
 			// other command — the conn it would use is about to be closed here
 			// anyway, so the watchdog cap is just a formality on healthy conns.
-			done := make(chan error, 1)
-			go func() { done <- c.Logout().Wait() }()
-			select {
-			case <-done:
-			case <-time.After(cmdCap):
-			}
-			_ = c.Close()
+			logoutCapped(c)
 		}
 	}
 	return nil
@@ -1028,7 +1052,7 @@ func (d *Driver) Watch(ctx context.Context, folder string, events chan<- mailsyn
 	if err != nil {
 		return err
 	}
-	defer func() { _ = c.Logout().Wait(); _ = c.Close() }()
+	defer func() { logoutCapped(c) }()
 
 	if _, err := c.Select(folder, &imap.SelectOptions{CondStore: d.condStore}).Wait(); err != nil {
 		return fmt.Errorf("select %s: %w", folder, err)

@@ -93,14 +93,17 @@ func (d *Daemon) StartAccount(a *Account) {
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	a.cancel = cancel
-	d.Others = append(d.Others, a)
-	d.reload.mu.Unlock()
-
+	// Publish last, while the lock is still held: between publish and loop
+	// start a concurrent StopAccount could cancel and close the account, and
+	// these goroutines would then spawn anyway. Nothing the loops do before
+	// their first kick takes reload.mu, so starting them under it is safe.
 	go d.cycleLoop(ctx, a)
 	go d.poll(ctx, a)
 	for _, f := range a.Watched {
 		go d.watch(ctx, a, f)
 	}
+	d.Others = append(d.Others, a)
+	d.reload.mu.Unlock()
 	d.kickAccount(a, "added")
 }
 
@@ -109,20 +112,25 @@ func (d *Daemon) StartAccount(a *Account) {
 // write.
 func (d *Daemon) StopAccount(name string) bool {
 	d.reload.mu.Lock()
-	defer d.reload.mu.Unlock()
 	for i, a := range d.Others {
 		if !strings.EqualFold(a.Name, name) {
 			continue
 		}
+		// Take the entry off under the lock, then cancel and close outside it:
+		// Close waits on Logout, which on a silent server is bounded only by
+		// cmdCap, and holding mu through it would block every account lookup
+		// and reload for that long.
+		d.Others = append(d.Others[:i], d.Others[i+1:]...)
+		d.reload.mu.Unlock()
 		if a.cancel != nil {
 			a.cancel()
 		}
 		if a.Close != nil {
 			a.Close()
 		}
-		d.Others = append(d.Others[:i], d.Others[i+1:]...)
 		return true
 	}
+	d.reload.mu.Unlock()
 	return false
 }
 
@@ -164,8 +172,11 @@ func (d *Daemon) resolveAttachmentID(value string) (*Account, string, uint32, in
 }
 
 func (d *Daemon) accountNames() []string {
-	out := make([]string, 0, len(d.Others)+1)
-	for _, a := range d.accounts() {
+	// Via accounts(), under the lock: reading d.Others here directly would
+	// race StartAccount/StopAccount appending under it.
+	accounts := d.accounts()
+	out := make([]string, 0, len(accounts))
+	for _, a := range accounts {
 		out = append(out, a.Name)
 	}
 	return out

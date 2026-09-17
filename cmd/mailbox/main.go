@@ -478,24 +478,11 @@ func applier(d *daemon.Daemon, was *config.Config, m *mirror.Mirror,
 }
 
 // stillInFlight counts what one account has left in the Outbox: queued, at the
-// server, or Held.
+// server, or Held — without a row limit, because an account whose mail is older
+// than the newest few rows must not read as an empty outbox (ADR-0013).
 func stillInFlight(box *outbox.Outbox, account string) (int, error) {
 	if box == nil {
 		return 0, nil
 	}
-	items, err := box.List(500)
-	if err != nil {
-		return 0, err
-	}
-	n := 0
-	for _, it := range items {
-		if it.Account != account {
-			continue
-		}
-		switch it.State {
-		case outbox.Queued, outbox.Sent, outbox.Held:
-			n++
-		}
-	}
-	return n, nil
+	return box.Unsent(account)
 }

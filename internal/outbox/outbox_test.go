@@ -322,3 +322,23 @@ func TestTheQueueRefusesAStateItIsNotIn(t *testing.T) {
 		t.Fatal("a filed mail must not be deliverable again")
 	}
 }
+
+func TestUnsentCountsEveryRowNotJustTheNewest(t *testing.T) {
+	c, _, _ := courier(t)
+	// Older than the newest few rows but still the account's: a limit on the
+	// count would read as an empty outbox, and empty is what makes Reconcile
+	// drop the account (ADR-0013).
+	for i := 0; i < 60; i++ {
+		queue(t, c, "war am %d. Januar")
+	}
+	n, err := c.Box.Unsent("primary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 60 {
+		t.Fatalf("Unsent counted %d, want 60", n)
+	}
+	if n, _ := c.Box.Unsent("other"); n != 0 {
+		t.Fatalf("Unsent leaked across accounts: %d", n)
+	}
+}

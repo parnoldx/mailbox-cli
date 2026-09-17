@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net"
 	"strings"
@@ -170,7 +171,7 @@ func New(account string, m *mirror.Mirror, r *mailsync.Reconciler, mirrored, wat
 // under socket activation (ADR-0012).
 func (d *Daemon) Serve(ctx context.Context, ln net.Listener) error {
 	defer ln.Close()
-	d.Log.Printf("listening on %s", ln.Addr())
+	d.logf("listening on %s", ln.Addr())
 	d.reload.mu.Lock()
 	d.reload.runCtx = ctx
 	d.reload.mu.Unlock()
@@ -183,29 +184,36 @@ func (d *Daemon) Serve(ctx context.Context, ln net.Listener) error {
 	// Every cycle goes through cycleLoop, including this first one. Running the
 	// startup cycle directly instead left nothing reading the trigger channel,
 	// and a kick that nobody reads is a poll that never syncs.
+	//
+	// OnFolder is installed before the loop starts: cycleLoop can reach its
+	// first sync at any moment, and assigning the handler afterwards would
+	// race that sync and drop its per-folder logging.
 	for _, acct := range d.accounts() {
-		go d.cycleLoop(ctx, acct)
-		d.kickAccount(acct, "startup")
-	}
-
-	for _, acct := range d.accounts() {
-		name := acct.Name
-		if acct.Reconciler == nil {
-			continue
+		cctx := ctx
+		// An account added before Serve has no cancel — StartAccount only saw
+		// a runCtx after this — so its loops would survive a StopAccount. Give
+		// it its own cancellable context and wire the cancel in.
+		if acct.cancel == nil && !acct.Primary {
+			cctx, acct.cancel = context.WithCancel(ctx)
 		}
-		acct.Reconciler.OnFolder = func(folder string, out mailsync.Outcome, err error) {
-			switch {
-			case err != nil:
-				d.Log.Printf("sync %s/%s: %v", name, folder, err)
-			case out.Action != mailsync.ActionNone:
-				d.Log.Printf("sync %s/%s: %s new=%d flags=%d expunged=%d remapped=%d",
-					name, folder, out.Action, out.NewMessages, out.FlagsChanged, out.Expunged, out.Remapped)
+		if acct.Reconciler != nil {
+			name := acct.Name
+			acct.Reconciler.OnFolder = func(folder string, out mailsync.Outcome, err error) {
+				switch {
+				case err != nil:
+					d.logf("sync %s/%s: %v", name, folder, err)
+				case out.Action != mailsync.ActionNone:
+					d.logf("sync %s/%s: %s new=%d flags=%d expunged=%d remapped=%d",
+						name, folder, out.Action, out.NewMessages, out.FlagsChanged, out.Expunged, out.Remapped)
+				}
 			}
 		}
-		go d.poll(ctx, acct)
+		go d.cycleLoop(cctx, acct)
+		go d.poll(cctx, acct)
 		for _, f := range acct.Watched {
-			go d.watch(ctx, acct, f)
+			go d.watch(cctx, acct, f)
 		}
+		d.kickAccount(acct, "startup")
 	}
 	go d.davLoop(ctx)
 	go d.routingLoop(ctx)
@@ -313,7 +321,14 @@ func (d *Daemon) watch(ctx context.Context, a *Account, folder string) {
 		}
 	}()
 	for ctx.Err() == nil {
-		if err := a.Reconciler.Driver.Watch(ctx, folder, events); err != nil && ctx.Err() == nil {
+		err := a.Reconciler.Driver.Watch(ctx, folder, events)
+		if err == nil && ctx.Err() == nil {
+			// The interface only promises Watch runs "until ctx is done"; a nil
+			// return with ctx still live would redial in a tight loop, so treat
+			// it like the failure it must have been.
+			err = errors.New("watch returned without an error")
+		}
+		if err != nil && ctx.Err() == nil {
 			d.logf("watch %s/%s: %v (retrying)", a.Name, folder, err)
 			select {
 			case <-ctx.Done():
