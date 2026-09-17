@@ -43,7 +43,7 @@ type Outcome struct {
 	// in one folder and an append in another, two folders apart and possibly
 	// two cycles apart; matching a Gone in one folder's outcome to an Added in
 	// another's is how the Daemon reads a drag out of the Screener as a routing
-	// decision (docs/bubble-and-screener-handoff.md, supersedes ADR-0019).
+	// decision (ADR-0024, which supersedes ADR-0019 for the Screener).
 	Added []PlacementDelta
 	Gone  []PlacementDelta
 	// Flagged is the placements whose flags this cycle changed — a mail read,
@@ -436,7 +436,7 @@ func partsOf(b Body) []mirror.Part {
 // searchText is what Search matches a Message's body on: the plain part when
 // there is one, and otherwise the HTML rendered down to text. Indexing the
 // markup instead would match every message with a <table> in it on "table",
-// and the reader already sees this rendering (docs/DESIGN.md, second slice).
+// and the reader already sees this rendering (ADR-0009).
 func searchText(b Body) string {
 	if strings.TrimSpace(b.Plain) != "" {
 		return b.Plain

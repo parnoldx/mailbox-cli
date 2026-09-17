@@ -20,7 +20,7 @@ import (
 // `$bubble-*` keyword — no new Box (D5) — and `bubbleLoop` moves it back to the
 // Inbox when its instant passes, `\Seen` stripped so the iPhone raises a push
 // (D8). Scheduling happens only on the home machine; the always-on VPS Daemon
-// runs only the loop (D7, D9). See docs/bubble-and-screener-handoff.md.
+// runs only the loop (ADR-0025). See ADR-0023 in docs/DESIGN.md.
 func (d *Daemon) handleBubble(ctx context.Context, req Request, resp Response) Response {
 	a := d.primaryAccount()
 	if req.Verb("") == "list" {

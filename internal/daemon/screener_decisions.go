@@ -19,8 +19,7 @@ import (
 // "read this once" — the second reading does not exist, and the move is the
 // answer to the Screener's one question. And `mailbox route` does not work from
 // a phone; the folder move is the only signal an iPhone can send. This
-// supersedes ADR-0019 for the Screener alone (ADR-0023,
-// docs/bubble-and-screener-handoff.md).
+// supersedes ADR-0019 for the Screener alone (ADR-0024).
 func (d *Daemon) inferScreenerDecisions(ctx context.Context, a *Account, outcomes map[string]mailsync.Outcome) {
 	if d.Sieve == nil {
 		return

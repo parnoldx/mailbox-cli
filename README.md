@@ -308,7 +308,7 @@ make live LIVE=./internal/davdrv/
 make live LIVE=./internal/imapdrv/
 ```
 
-Architecture Decision Records are documented in [`docs/adr/`](file:///home/pa/Work/tries/2026-08-29-mailbox-cli/docs/adr). Detailed design notes are in [`docs/DESIGN.md`](file:///home/pa/Work/tries/2026-08-29-mailbox-cli/docs/DESIGN.md).
+Design notes and the numbered decisions (ADR-00xx, cited from the code) are in [`docs/DESIGN.md`](docs/DESIGN.md); the vocabulary is in [`CONTEXT.md`](CONTEXT.md).
 
 ## License
 

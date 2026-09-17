@@ -31,7 +31,7 @@ func (m *Mirror) Bubbled(account, folder string) ([]BubbleRef, error) {
 // catches it on the first tick after startup, and a Mirror rebuilt mid-wait
 // repopulated bubble_at from the keyword so nothing is lost. bubble_at is a
 // projection of a flag, not a folder property (ADR-0023), so a return-time
-// keyword can sit anywhere — the "if no reply by" reminder (see docs/adr) puts
+// keyword can sit anywhere — the "if no reply by" reminder (ADR-0023) puts
 // one on a Sent copy, not on an Aside placement.
 func (m *Mirror) BubblesDueAccount(account string, at time.Time) ([]BubbleRef, error) {
 	return m.bubbled(account, "", at.In(time.Local).Format(bubble.ProjectionLayout))

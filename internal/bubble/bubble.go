@@ -8,7 +8,7 @@
 // one gets there first returns the thread, and the other syncs the result and
 // finds nothing to do. This is ADR-0010's "raw is the record, the columns
 // beside it are a projection" applied once more — the projection is
-// placements.bubble_at. See docs/bubble-and-screener-handoff.md.
+// placements.bubble_at (ADR-0010, ADR-0023).
 package bubble
 
 import (

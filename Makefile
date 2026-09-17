@@ -108,8 +108,8 @@ update-daemon-local: install
 # stopped rather than live so nothing runs half-updated. $(VPS) is an ssh host
 # alias, not a hostname: the address, user and key live in ~/.ssh/config, not
 # in this repo. Restarting a remote service is the kind of action worth
-# running by hand rather than unattended — see docs/adr/0025 before changing
-# how this deploys.
+# running by hand rather than unattended — see ADR-0025 in docs/DESIGN.md
+# before changing how this deploys.
 VPS ?= misc
 update-daemon-vps:
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 $(GO) build -ldflags "$(LDFLAGS)" -o /tmp/mailbox-vps ./cmd/mailbox
