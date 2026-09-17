@@ -351,3 +351,89 @@ func TestADaemonWithNoClipboardLeavesThePickupForTheDesktop(t *testing.T) {
 		t.Fatal("the Pickup was quietened by a Daemon that could not show it")
 	}
 }
+
+// Gate 8. A held Pickup is readable a second time. The clipboard is the one
+// place a code is put, and the next thing copied takes it away — so the bar
+// icon and `mailbox pickup list` have to answer "what was it again?" from the
+// Mirror for as long as the mail is still there, and stop answering it exactly
+// when the expiry scan bins the mail.
+func TestPickupListAndCopyHandItOverAgain(t *testing.T) {
+	d, _ := seedScreener(t)
+	var h handedOver
+	h.install(t)
+	ctx := context.Background()
+
+	out := deliverScreener(t, d, "otp8@example.com", "Ihr Bestätigungscode",
+		"Dienst <no-reply@example.org>", "Ihr Code lautet 559013.\n")
+	if got := d.collectPickups(ctx, d.primaryAccount(), out); len(got) != 1 {
+		t.Fatalf("collectPickups found %d pickups, want 1", len(got))
+	}
+	// The arrival's own hand-over is not what is under test here.
+	h.calls = nil
+
+	list := d.handle(ctx, Request{ID: "1", Cmd: []string{"pickup", "list"}})
+	if !list.OK {
+		t.Fatalf("pickup list: %s", list.Error)
+	}
+	rows, ok := list.Data.([]pickupRow)
+	if !ok || len(rows) != 1 {
+		t.Fatalf("pickup list returned %#v, want one row", list.Data)
+	}
+	if rows[0].Code != "559013" {
+		t.Errorf("code = %q, want 559013", rows[0].Code)
+	}
+	if rows[0].Subject != "Ihr Bestätigungscode" || rows[0].Arrived == "" {
+		t.Errorf("row %+v does not describe the mail it came from", rows[0])
+	}
+
+	copy := d.handle(ctx, Request{ID: "2", Cmd: []string{"pickup", "copy"},
+		Args: map[string]any{"positional": rows[0].ID}})
+	if !copy.OK {
+		t.Fatalf("pickup copy %s: %s", rows[0].ID, copy.Error)
+	}
+	if c := h.arg("wl-copy"); len(c) != 1 || c[0] != "559013" {
+		t.Errorf("clipboard got %v, want [559013]", c)
+	}
+
+	// Mail that was never collected is refused rather than handed over: the
+	// id is the only thing between a caller and somebody else's link.
+	refused := false
+	for _, r := range rowsIn(t, d, routing.BoxScreener) {
+		if r.Message.Subject != "Newsletter #41" {
+			continue
+		}
+		id := d.primaryAccount().messageID(r.Placement.Folder, r.Placement.UID)
+		resp := d.handle(ctx, Request{ID: "3", Cmd: []string{"pickup", "copy"},
+			Args: map[string]any{"positional": id}})
+		if resp.OK {
+			t.Errorf("pickup copy %s handed over mail that was never collected", id)
+		}
+		refused = true
+	}
+	if !refused {
+		t.Fatal("the seeded Screener mail was not there to refuse")
+	}
+
+	// A magic link is the other half of the same errand: the list carries the
+	// host to show and the URL to copy, and never confuses the two.
+	link := "https://portal.example.de/eportal/auth/Registrierung?t=9f2ad91c4b"
+	out = deliverScreener(t, d, "reg8@example.com", "Bitte E-Mail-Adresse bestätigen",
+		"Elster <portal@example.de>", "Guten Tag,\n\nzum Aktivieren:\n"+link+"\n")
+	if got := d.collectPickups(ctx, d.primaryAccount(), out); len(got) != 1 {
+		t.Fatalf("collectPickups found %d link pickups, want 1", len(got))
+	}
+	list = d.handle(ctx, Request{ID: "4", Cmd: []string{"pickup", "list"}})
+	rows, _ = list.Data.([]pickupRow)
+	if len(rows) != 2 {
+		t.Fatalf("pickup list returned %d rows, want 2", len(rows))
+	}
+	var linkRow pickupRow
+	for _, r := range rows {
+		if r.Link != "" {
+			linkRow = r
+		}
+	}
+	if linkRow.Link != link || linkRow.Host != "portal.example.de" || linkRow.Code != "" {
+		t.Errorf("link row %+v, want the URL with its host and no code", linkRow)
+	}
+}

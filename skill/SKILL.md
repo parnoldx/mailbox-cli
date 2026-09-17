@@ -48,6 +48,7 @@ and each help text carries the reason the command works the way it does.
 | file it | `mailbox move 36722 --to Archive/Immo` |
 | flag it, bin it | `mailbox seen 36722`, `mailbox trash 36722`, `mailbox spam 36722` |
 | get a file out | `mailbox attachment list 36722`, then `mailbox attachment save 36722:1` |
+| find a collected code or link again | `mailbox pickup list`, then `mailbox pickup copy Screener:2340` |
 | what is on | `mailbox agenda --days 14` |
 | tasks and practices | `mailbox todo list`, `mailbox habit list` |
 | who is that | `mailbox contact search jane` |
@@ -57,7 +58,10 @@ and each help text carries the reason the command works the way it does.
 `route set` owns the Sieve script that sorts mail on the server, so it is how a
 sender is blocked or let through. A target `@example.com` is every address at
 that domain; a specific address always wins. `mailbox sieve` is raw access for
-the cases route does not cover. `mailbox rsvp ID --accept` answers a meeting
+the cases route does not cover. A **Pickup** — a login code or a magic link — is
+never read but collected: the daemon puts it on the clipboard on arrival, so
+`mailbox pickup` is only how it is found again once the clipboard has moved on.
+`mailbox rsvp ID --accept` answers a meeting
 invite (iMIP to the organizer, and the event on the calendar). `attachment save`
 writes into the working directory unless `--output` names somewhere else.
 

@@ -457,6 +457,30 @@ func tree(l Locals) []*Command {
 		},
 
 		{
+			Name: "pickup", Section: SectionMail, Short: "Codes and links collected, still fresh",
+			Long: "A login code or a registration link is collected rather than read: on " +
+				"arrival the daemon puts it on the clipboard, marks the mail read and bins " +
+				"it a quarter of an hour later, so there is nothing here to triage. This is " +
+				"how the same code is found again once the clipboard has moved on, and how " +
+				"a bar widget knows one is waiting: the list is read from the mirror, so it " +
+				"empties itself exactly when the mail is binned.",
+			Sub: []*Command{
+				{
+					Name: "list", Short: "The codes and links still held",
+					Usage:    []string{"mailbox pickup list"},
+					Examples: []string{"mailbox pickup list"},
+					Run:      runPickupList,
+				},
+				{
+					Name: "copy", Short: "Hand one over again", Needs: true,
+					Usage:    []string{"mailbox pickup copy ID"},
+					Examples: []string{"mailbox pickup copy Screener:2340"},
+					Run:      runPickupCopy,
+				},
+			},
+		},
+
+		{
 			Name: "watch", Section: SectionMail, Short: "Follow email threads and calendars as they change",
 			Usage: []string{
 				"mailbox watch [--box BOX] [--events LIST] [--exit-on-first] [--timeout D]",

@@ -205,6 +205,32 @@ function accountFilterOptions(accounts, messages) {
   return out
 }
 
+// One held Pickup as a row shows it. `value` is what gets pasted — a code or a
+// URL — and `label` is what a row prints in its place: the code itself, or the
+// host a link logs you in to, never a screenful of token. Which is which comes
+// from the daemon, so nothing here has to decide what a Pickup is.
+function pickupItem(raw, nowMs) {
+  var r = raw || {}
+  var code = String(r.code || "")
+  var link = String(r.link || "")
+  var host = String(r.host || "")
+  return {
+    id: String(r.id || ""),
+    from: String(r.from || ""),
+    name: cleanSenderName(r.from) || cleanAddress(r.from) || "Unknown",
+    address: cleanAddress(r.from),
+    subject: String(r.subject || ""),
+    code: code,
+    link: link,
+    value: code || link,
+    label: code || host || link,
+    arrived: String(r.arrived || ""),
+    age: formatRelativeTime(r.arrived, nowMs),
+    initials: extractInitials(r.from),
+    colorIndex: avatarColorIndex(r.from, 8)
+  }
+}
+
 function shellQuote(value) {
   return "'" + String(value || "").replace(/'/g, "'\\''") + "'"
 }
@@ -237,6 +263,7 @@ if (typeof module !== "undefined" && module.exports) {
     formatRelativeTime: formatRelativeTime,
     filterMessages: filterMessages,
     feedItems: feedItems,
+    pickupItem: pickupItem,
     accountFilterOptions: accountFilterOptions,
     shellQuote: shellQuote,
     buildOpenCommand: buildOpenCommand

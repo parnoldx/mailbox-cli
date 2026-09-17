@@ -148,6 +148,8 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 		return d.handleCorrespondent(req, resp)
 	case "screener":
 		return d.handleScreener(req, resp)
+	case "pickup":
+		return d.handlePickup(ctx, req, resp)
 	case "route":
 		return d.handleRoute(ctx, req, resp)
 	case "aside":

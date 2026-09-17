@@ -16,6 +16,7 @@ MAIL
   draft         Mail written but not sent
   outbox        What is queued to go out
   attachment    The files a message carries
+  pickup        Codes and links collected, still fresh
   watch         Follow email threads and calendars as they change
 
 ORGANIZE

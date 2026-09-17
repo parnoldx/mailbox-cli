@@ -406,6 +406,103 @@ Panel {
               width: parent.width
               spacing: Style.space(8)
 
+              // 0. PICKUPS — collected codes and magic links, newest first.
+              // Not mail: it is already read, owes no decision, and the daemon
+              // bins it in a quarter of an hour. What it is, is pasteable, and
+              // the clipboard it was first put on has been overwritten since.
+              Column {
+                id: pickupSection
+                visible: !root.settingsOpen && service.pickups.length > 0
+                width: parent.width
+                spacing: Style.space(4)
+
+                PanelSectionHeader {
+                  text: "READY TO PASTE"
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                }
+
+                Repeater {
+                  id: pickupRepeater
+                  model: service.pickups
+
+                  Rectangle {
+                    id: pickupRow
+                    required property var modelData
+
+                    width: contentColumn.width
+                    implicitHeight: pickupLayout.implicitHeight + Style.space(12)
+                    radius: Style.space(6)
+                    color: Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b,
+                                   pickupHover.containsMouse ? 0.16 : 0.08)
+
+                    MouseArea {
+                      id: pickupHover
+                      anchors.fill: parent
+                      hoverEnabled: true
+                      cursorShape: Qt.PointingHandCursor
+                      onClicked: service.copyPickup(pickupRow.modelData.id)
+                    }
+
+                    RowLayout {
+                      id: pickupLayout
+                      anchors.left: parent.left
+                      anchors.right: parent.right
+                      anchors.top: parent.top
+                      anchors.margins: Style.space(6)
+                      spacing: Style.space(10)
+
+                      Avatar { item: pickupRow.modelData }
+
+                      Column {
+                        Layout.fillWidth: true
+                        spacing: Style.space(2)
+
+                        Text {
+                          width: parent.width
+                          text: pickupRow.modelData.name
+                          color: root.foreground
+                          font.family: root.fontFamily
+                          font.pixelSize: Style.font.bodySmall
+                          elide: Text.ElideRight
+                        }
+
+                        // The code itself, or the host a link logs you in to:
+                        // never the token, which tells you nothing you can use
+                        // at a glance.
+                        Text {
+                          width: parent.width
+                          text: pickupRow.modelData.label
+                          color: Color.accent
+                          font.family: root.fontFamily
+                          font.pixelSize: Style.font.body
+                          font.bold: true
+                          elide: Text.ElideRight
+                        }
+                      }
+
+                      Text {
+                        text: pickupRow.modelData.age
+                        color: root.dim
+                        font.family: root.fontFamily
+                        font.pixelSize: Style.font.caption
+                      }
+
+                      PanelActionButton {
+                        iconText: "󰆏"
+                        foreground: root.foreground
+                        tooltipText: "Copy again"
+                        onClicked: service.copyPickup(pickupRow.modelData.id)
+                      }
+                    }
+                  }
+                }
+
+                PanelSeparator {
+                  foreground: root.foreground
+                }
+              }
+
               // 1. SETTINGS VIEW
               Column {
                 id: settingsView

@@ -76,6 +76,19 @@ Nothing about a pickup asks for a decision. It never counts as unread, never
 appears in `mailbox screener`, and a watch is told `pickup` rather than
 `added`/`new` — the sender is a login form you used once, not somebody to route.
 
+A notification is not always a way to reach you: under Do Not Disturb it is
+silenced, and the code is already on the clipboard with nothing on screen
+saying so. So a held pickup raises the mailbox bar icon — a key glyph for as
+long as the daemon is holding one — and the panel under it lists what is ready
+to paste, clicking a row or its button to copy it again. Both read
+`mailbox pickup list`, which is the same $pickup mail the expiry scan bins, so
+the icon cannot outlive the code:
+
+```bash
+mailbox pickup list                # Codes and links still held, with their age
+mailbox pickup copy Screener:2340  # Hand one over again
+```
+
 Detection **gates on the subject** and only then reads the body. That is the
 opposite of the usual approach and it is a measured choice: over 1445 real
 messages, body-first matching on keywords, bare code-shaped lines or opaque
@@ -221,6 +234,14 @@ happen, or to hand one to a script of your own:
 ```bash
 mailbox watch --events pickup                     # One line per code collected
 mailbox watch --events pickup --run-async 'echo "$MAILBOX_CODE"'
+```
+
+To find one again after the clipboard has moved on — the bar icon does the same
+thing when you click it:
+
+```bash
+mailbox pickup list                # Codes and links still held, with their age
+mailbox pickup copy Screener:2340  # Back on the clipboard
 ```
 
 ### Calendars, Todos, Habits & Contacts

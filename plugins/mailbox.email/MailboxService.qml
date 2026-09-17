@@ -32,6 +32,12 @@ Item {
   property int accountCount: accounts.length
   property var messages: []
 
+  // Codes and links the daemon is still holding, newest first. It lives here
+  // rather than on a timer of the widget's own: the daemon empties this list
+  // when it bins the mail, so the bar icon cannot outlive the code.
+  property var pickups: []
+  readonly property int pickupCount: pickups.length
+
   property int unreadCount: 0
 
   signal connected()
@@ -138,7 +144,6 @@ Item {
 
       // 2. Inbox messages
       root.call(["box", "view"], { positional: "inbox", limit: 50 }, function(errMsgs, msgs) {
-        root.refreshing = false
         if (!errMsgs && Array.isArray(msgs)) {
           var formatted = []
           var newUnreadList = []
@@ -180,7 +185,17 @@ Item {
             if (root.notify) root._notifyNewMail(newUnreadList)
           }
         }
-        if (callback) callback(null)
+        // 3. Held pickups. A code is worth fifteen minutes and then nothing,
+        // so it is the one thing the bar has to show besides new mail — and
+        // unlike a toast it is still there when you look up again. A daemon
+        // too old to answer empties the list rather than leaving a stale icon.
+        root.call(["pickup", "list"], {}, function(errPickups, held) {
+          root.refreshing = false
+          root.pickups = !errPickups && Array.isArray(held)
+            ? held.map(function(row) { return Model.pickupItem(row) })
+            : []
+          if (callback) callback(null)
+        })
       })
     })
   }
@@ -242,6 +257,13 @@ Item {
 
   function setSeen(id, seen, done) {
     _action([seen === false ? "unseen" : "seen"], { positional: id }, "", done)
+  }
+
+  // Hand a held Pickup over again: the code, or the link, back on the
+  // clipboard. Copied, never followed — the same errand the daemon ran when the
+  // mail arrived, run again because the clipboard has moved on since.
+  function copyPickup(id, done) {
+    _action(["pickup", "copy"], { positional: id }, "Copied", done)
   }
 
   function setAside(id, done) {

@@ -2,8 +2,10 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"os/exec"
+	"slices"
 	"strings"
 	"time"
 
@@ -279,4 +281,122 @@ func arrivedAt(row mirror.Row) time.Time {
 		return row.Placement.InternalDate
 	}
 	return row.Message.Date
+}
+
+// handlePickup answers `pickup list` and `pickup copy`.
+//
+// The list is read from the Mirror rather than from anything the Daemon kept
+// for itself: the rows it returns are the $pickup placements the expiry scan
+// bins, so what a bar shows and what the Daemon is about to move to Trash
+// cannot disagree, and a widget needs no clock of its own to know a code has
+// gone stale.
+//
+// It exists because a notification is not a reliable way to reach somebody who
+// has Do Not Disturb on — the toast is silenced and the code is already on the
+// clipboard, out of sight (see the regression test on the alert's shape). A
+// surface that stays on screen does not have that failure mode.
+func (d *Daemon) handlePickup(ctx context.Context, req Request, resp Response) Response {
+	a := d.primaryAccount()
+	if a == nil {
+		return resp.usage("no account is configured")
+	}
+	switch req.Verb("list") {
+	case "list":
+		held, err := d.heldPickups(a)
+		if err != nil {
+			return resp.api(err.Error())
+		}
+		return resp.ok(held)
+
+	case "copy":
+		id := req.Text("positional")
+		acct, folder, uid, err := d.resolveID(id)
+		if err != nil {
+			return resp.usage(err.Error())
+		}
+		row, err := d.Mirror.Row(acct.Name, folder, uid)
+		if errors.Is(err, mirror.ErrNotFound) {
+			return resp.notFound(noSuchMessage(id))
+		}
+		if err != nil {
+			return resp.api(err.Error())
+		}
+		// Only something the Daemon took a code out of: a caller pasting the
+		// wrong id should be told, not handed a link the mail never carried.
+		if !slices.Contains(row.Placement.Flags, pickup.Keyword) {
+			return resp.usage(id + " was not collected as a Pickup")
+		}
+		code, link := pickup.Find(row.Message.Subject, bodyOf(row))
+		if code == "" && link == "" {
+			return resp.api(id + " carries nothing to collect")
+		}
+		// Copied, never followed, exactly as on arrival — and the same refusal
+		// when there is no clipboard to copy to.
+		if !d.handOver(row.Message.From, code, link) {
+			return resp.api("no clipboard to hand it to")
+		}
+		return resp.ok(pickupRowOf(a, row, code, link))
+	}
+	return resp.usage("pickup takes list or copy")
+}
+
+// heldPickups is every Pickup still worth a caller's attention, newest first.
+// A placement whose body will not read back is skipped rather than reported
+// empty: the Daemon is about to bin it either way.
+func (d *Daemon) heldPickups(a *Account) ([]pickupRow, error) {
+	held, err := d.Mirror.Pickups(a.Name)
+	if err != nil {
+		return nil, err
+	}
+	out := []pickupRow{}
+	for _, p := range held {
+		row, err := d.Mirror.Changed(a.Name, p.Folder, p.MessageID)
+		if err != nil {
+			continue
+		}
+		code, link := pickup.Find(row.Message.Subject, bodyOf(row))
+		if code == "" && link == "" {
+			continue
+		}
+		out = append(out, pickupRowOf(a, row, code, link))
+	}
+	slices.SortFunc(out, func(x, y pickupRow) int { return strings.Compare(y.Arrived, x.Arrived) })
+	return out, nil
+}
+
+// pickupRow is one held Pickup as a caller reads it: enough for a bar icon to
+// say a code is ready, and enough to hand it over again.
+type pickupRow struct {
+	ID      string `json:"id"`
+	From    string `json:"from"`
+	Address string `json:"address"`
+	Subject string `json:"subject"`
+	// Arrived is when the mail landed, which is what the expiry counts from:
+	// the caller reads a code's age off it rather than being told a deadline
+	// the Daemon would have to keep recomputing.
+	Arrived string `json:"arrived"`
+	// Code and Link are what was collected. A code mail has the code only, a
+	// registration or magic link the link only.
+	Code string `json:"code,omitempty"`
+	Link string `json:"link,omitempty"`
+	// Host is the readable half of a link, for the places too small to show a
+	// token (hostOf's job, applied here so every caller agrees on it).
+	Host string `json:"host,omitempty"`
+}
+
+func pickupRowOf(a *Account, row mirror.Row, code, link string) pickupRow {
+	name := routing.NameOf(row.Message.From)
+	if name == "" {
+		name = routing.AddressOf(row.Message.From)
+	}
+	return pickupRow{
+		ID:      a.messageID(row.Placement.Folder, row.Placement.UID),
+		From:    name,
+		Address: routing.AddressOf(row.Message.From),
+		Subject: row.Message.Subject,
+		Arrived: arrivedAt(row).Format(time.RFC3339),
+		Code:    code,
+		Link:    link,
+		Host:    hostOf(link),
+	}
 }

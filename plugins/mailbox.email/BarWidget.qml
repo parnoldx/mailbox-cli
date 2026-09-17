@@ -6,15 +6,17 @@ import qs.Ui
 
 // BarWidget.qml — Email notification bar icon and host for the Mailbox popup panel.
 //
-// Appears in the top bar when there is unread inbox mail. When everything is
-// read the widget collapses and stays invisible, so it acts cleanly as a
-// notification icon.
+// Appears in the top bar when there is unread inbox mail, or when the daemon is
+// holding a Pickup. When everything is read and nothing is held the widget
+// collapses and stays invisible, so it acts cleanly as a notification icon.
 //
-// Unread inbox mail is the only thing it knows about. The Screener is not here
-// at all: screening is a decision owed whenever you next sit down, so it lives
-// in the desktop client. What used to be urgent in there — login codes and
-// registration links — the daemon now collects by itself (see Pickups in the
-// repo README).
+// Unread inbox mail and held Pickups are the only two things it knows about.
+// The Screener is not here at all: screening is a decision owed whenever you
+// next sit down, so it lives in the desktop client. A Pickup is the opposite —
+// it is already read, it owes no decision, and it is worthless in fifteen
+// minutes, which is why it takes the icon: a toast is silenced by Do Not
+// Disturb and gone in seconds, and the code is on the clipboard with nothing
+// on screen saying so.
 BarWidget {
   id: root
   moduleName: "mailbox.email"
@@ -31,8 +33,14 @@ BarWidget {
   readonly property int unseenCount: service ? service.unreadCount : 0
   readonly property bool hasNew: unseenCount > 0
 
+  // A held code or magic link, which the daemon drops the moment it bins the
+  // mail. The nerd-font key is the whole of what the icon says about it: one
+  // glyph, no badge, nothing to read while a login form is waiting.
+  readonly property int pickupCount: service ? service.pickupCount : 0
+  readonly property bool pickupReady: pickupCount > 0
+
   readonly property bool hideWhenEmpty: setting("hideWhenEmpty", true)
-  readonly property bool widgetVisible: !hideWhenEmpty || hasNew || opened
+  readonly property bool widgetVisible: !hideWhenEmpty || hasNew || opened || pickupReady
 
   visible: widgetVisible
   implicitWidth: widgetVisible ? button.implicitWidth : 0
@@ -97,28 +105,50 @@ BarWidget {
     function toggle(): void { root.togglePanel() }
     function refresh(): string { if (service) service.refresh(); return "ok" }
     function unread(): int { return root.unseenCount }
+    // The held pickups, for anything that wants to ask the bar instead of the
+    // daemon — and for a test that has to see the icon's state without eyes.
+    function pickups(): int { return root.pickupCount }
+  }
+
+  // The two icons the slot can carry. A Component cannot sit inside the
+  // ternary below — QML parses the object literal as a token, not a value —
+  // so the envelope is declared here and only chosen there.
+  Component {
+    id: envelopeIcon
+    Item {
+      MailIcon {
+        anchors.centerIn: parent
+        iconSize: Style.space(14)
+        color: {
+          if (root.unseenCount > 0) return root.accent
+          return root.foreground
+        }
+      }
+    }
   }
 
   BarIconButton {
     id: button
     anchors.fill: parent
     bar: root.bar
-    tooltipText: root.unseenCount > 0
-      ? root.unseenCount + " unread email" + (root.unseenCount === 1 ? "" : "s")
-      : "Mailbox"
+    // A held Pickup outranks unread mail in the tooltip as well as the icon:
+    // it is the one that stops being useful.
+    tooltipText: root.pickupReady
+      ? (root.pickupCount === 1
+        ? "Code or link ready to paste"
+        : root.pickupCount + " codes and links ready to paste")
+      : (root.unseenCount > 0
+        ? root.unseenCount + " unread email" + (root.unseenCount === 1 ? "" : "s")
+        : "Mailbox")
 
-    iconComponent: Component {
-      Item {
-        MailIcon {
-          anchors.centerIn: parent
-          iconSize: Style.space(14)
-          color: {
-            if (root.unseenCount > 0) return root.accent
-            return root.foreground
-          }
-        }
-      }
-    }
+    // The slot carries one icon. When a Pickup is held it is the key glyph and
+    // nothing else — the envelope says "mail to read", which is exactly what a
+    // collected code is not.
+    text: root.pickupReady ? "󰌆" : ""
+    active: root.pickupReady
+    useActiveColor: true
+    activeColor: root.accent
+    iconComponent: root.pickupReady ? null : envelopeIcon
 
     onPressed: function(buttonCode) {
       if (buttonCode === Qt.RightButton || buttonCode === Qt.MiddleButton) {
