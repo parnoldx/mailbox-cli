@@ -312,6 +312,13 @@ func NewMessageID(domain string) string {
 
 func (d *Draft) sanitise() {
 	d.Subject = sanitizeHeaderValue(d.Subject)
+	// The Message-IDs are headers like any other, and the reply ones come from
+	// a mail somebody sent us. A CR or LF in them would close the header and
+	// inject whatever follows, which is exactly the Bcc privacy this file is
+	// built around.
+	d.MessageID = sanitizeMessageID(d.MessageID)
+	d.InReplyTo = sanitizeMessageIDs(d.InReplyTo)
+	d.References = sanitizeMessageIDs(d.References)
 	d.From.Name = sanitizeHeaderValue(d.From.Name)
 	d.From.Addr = sanitizeHeaderValue(d.From.Addr)
 	for i := range d.To {
@@ -367,6 +374,27 @@ func sanitizeHeaderValue(s string) string {
 	s = strings.ReplaceAll(s, "\r", "")
 	s = strings.ReplaceAll(s, "\n", "")
 	return s
+}
+
+// sanitizeMessageID strips the characters that would end the header it is
+// written into. An id has no spaces either, so the first run of those is where
+// anything smuggled behind it begins.
+func sanitizeMessageID(s string) string {
+	s = sanitizeHeaderValue(s)
+	if i := strings.IndexAny(s, " \t"); i >= 0 {
+		s = s[:i]
+	}
+	return strings.TrimSpace(strings.Trim(s, "<>"))
+}
+
+func sanitizeMessageIDs(ids []string) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if id = sanitizeMessageID(id); id != "" {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 func sanitizeFilename(s string) string {

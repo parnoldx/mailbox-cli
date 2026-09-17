@@ -101,6 +101,23 @@ Item {
         }
     }
 
+    // A Bubble Up return brought this Thread back — HEY's bubble marker, the
+    // same glyph as the reader's Bubble up button. Beside the count badge when
+    // there is one; the daemon drops it once the Thread is read.
+    Text {
+        visible: root.row.bubbled === true
+        anchors {
+            right: countBadge.visible ? countBadge.left : parent.right
+            rightMargin: countBadge.visible ? 6 : 16
+            verticalCenter: countBadge.verticalCenter
+        }
+        text: ""
+        font.family: Theme.fontFamily
+        font.pixelSize: 14
+        color: Theme.accent
+        Behavior on color { ColorAnimation { duration: Theme.anim } }
+    }
+
     Text {
         id: date
         anchors { right: parent.right; rightMargin: root.showDelete ? 44 : 14; bottom: parent.bottom; bottomMargin: 14 }

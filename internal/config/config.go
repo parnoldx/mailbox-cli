@@ -175,6 +175,21 @@ func LoadFrom(path string) (*Config, error) {
 		}
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
+	// The file holds the mail and DAV passwords, so who can read it is part of
+	// whether it is usable at all (ADR-0014). Doctor reports the mode, but every
+	// command and the daemon load through here, so this is where the contract is
+	// kept rather than merely advised.
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", path)
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		return nil, fmt.Errorf("%s is mode %04o: it holds a password, so chmod 600 it",
+			path, info.Mode().Perm())
+	}
 	if c.Account.Email == "" || c.Account.Password == "" {
 		return nil, fmt.Errorf("%s: account.email and account.password are required", path)
 	}
@@ -265,5 +280,14 @@ func SocketPath() string {
 	if dir := os.Getenv("XDG_RUNTIME_DIR"); dir != "" {
 		return filepath.Join(dir, "mailbox.sock")
 	}
-	return filepath.Join(os.TempDir(), "mailbox.sock")
+	// No runtime directory and no home to fall back to. The empty path is
+	// deliberate: Listen refuses it rather than binding a bare name in a
+	// world-writable /tmp, where any local user can answer as the daemon.
+	if cache, err := os.UserCacheDir(); err == nil {
+		dir := filepath.Join(cache, "mailbox")
+		if err := os.MkdirAll(dir, 0o700); err == nil {
+			return filepath.Join(dir, "mailbox.sock")
+		}
+	}
+	return ""
 }

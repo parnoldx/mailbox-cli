@@ -72,7 +72,18 @@ func (d *Daemon) Reconcile(was, now *config.Config, a Accounts) Applied {
 		// reported: a declarative file plus a component that may decline needs
 		// somewhere for the declining to be seen (ADR-0021).
 		if a.InFlight != nil {
-			if held, err := a.InFlight(name); err == nil && held > 0 {
+			held, err := a.InFlight(name)
+			switch {
+			case err != nil:
+				// The queue could not be checked, so it is kept. Removing the
+				// account here is the one outcome this guard exists to prevent:
+				// the Outbox is the only copy of composed-but-unsent mail.
+				detail := fmt.Sprintf("%s was removed from the config, but its outbox could not "+
+					"be checked (%v) — it is kept", name, err)
+				d.SetProblem("account "+name, detail)
+				out.Changes = append(out.Changes, detail)
+				continue
+			case held > 0:
 				detail := fmt.Sprintf("%s was removed from the config, but %d of its mails "+
 					"are still in the outbox — it is kept until they are sent or cancelled",
 					name, held)

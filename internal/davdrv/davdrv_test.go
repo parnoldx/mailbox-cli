@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"mailbox/internal/sync/davsync"
@@ -96,6 +97,38 @@ func TestCollectionsAreDiscoveredNotConfigured(t *testing.T) {
 		if strings.Contains(col.URL, "inbox") {
 			t.Fatalf("a scheduling collection was offered: %+v", col)
 		}
+	}
+}
+
+func TestAnUnknownHostIsRefusedRatherThanSentThePrimaryCredentials(t *testing.T) {
+	// A live host that no client was configured for — a Mirror row left over
+	// after the calendar URL was edited in the config. It must not be dialled at
+	// all: the old fallback would have sent the primary account's Basic
+	// credentials there.
+	var reached atomic.Int32
+	attacker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(attacker.Close)
+
+	set := NewSet(New(Config{Endpoint: "https://dav.example.org/", Username: "me", Password: "secret"}))
+	stale := attacker.URL + "/dav/calendars/me/"
+
+	if _, err := set.Sync(context.Background(), stale, ""); err == nil {
+		t.Fatal("Sync accepted a host no client was configured for")
+	}
+	if _, err := set.MultiGet(context.Background(), stale, []string{"a.ics"}); err == nil {
+		t.Fatal("MultiGet accepted a host no client was configured for")
+	}
+	if _, err := set.Put(context.Background(), stale+"x.ics", "BEGIN:VCALENDAR", ""); err == nil {
+		t.Fatal("Put accepted a host no client was configured for")
+	}
+	if err := set.Delete(context.Background(), stale+"x.ics", ""); err == nil {
+		t.Fatal("Delete accepted a host no client was configured for")
+	}
+	if n := reached.Load(); n != 0 {
+		t.Errorf("%d requests reached a host no client was configured for", n)
 	}
 }
 

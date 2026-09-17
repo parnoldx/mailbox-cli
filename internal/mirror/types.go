@@ -1,6 +1,7 @@
 package mirror
 
 import (
+	"path"
 	"strings"
 	"time"
 )
@@ -85,15 +86,29 @@ type Part struct {
 	ContentID string
 }
 
-// Name is what to call this Part on disk. A part with no filename still has to
+// Name is what to call this Part on disk. It is the sender's own
+// Content-Disposition filename, so it is reduced to a single path element: a
+// part called ../../.ssh/authorized_keys must not name a path outside the
+// directory the caller asked to save into. A part with no filename still has to
 // be saveable, so it is named after its path and type.
 func (p Part) Name() string {
-	if p.Filename != "" {
-		return p.Filename
+	// Backslashes too: a name that reaches a Windows host separates on those.
+	name := path.Base(strings.ReplaceAll(p.Filename, `\`, "/"))
+	if name == "." || name == ".." || name == "/" {
+		name = ""
+	}
+	if name != "" {
+		return name
 	}
 	ext := ""
 	if i := strings.LastIndex(p.MIMEType, "/"); i >= 0 {
-		ext = "." + p.MIMEType[i+1:]
+		ext = "." + strings.Map(func(r rune) rune {
+			switch {
+			case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+				return r
+			}
+			return -1
+		}, p.MIMEType[i+1:])
 	}
 	return "part-" + strings.ReplaceAll(p.Path, ".", "-") + ext
 }

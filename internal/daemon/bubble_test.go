@@ -266,6 +266,13 @@ func TestBubbleReturnsUnreadAndFloated(t *testing.T) {
 	if view := boxView(t, d, "inbox"); len(view) == 0 || !view[0].Bubbled {
 		t.Errorf("the Inbox listing does not float the bubbled thread: %+v", view)
 	}
+	// Once read, it is an ordinary Inbox thread again.
+	if _, err := d.Writer.SetSeen(ctx, []mailsync.Ref{{Folder: "INBOX", UID: rows[0].UID}}, true); err != nil {
+		t.Fatal(err)
+	}
+	if view := boxView(t, d, "inbox"); len(view) == 0 || view[0].Bubbled {
+		t.Errorf("a read thread is still marked bubbled: %+v", view)
+	}
 }
 
 // Gate 10. `--now` on a thread already in the Inbox floats it and marks it

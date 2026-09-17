@@ -1,9 +1,12 @@
 package cli
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"log"
+	"net"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -257,6 +260,62 @@ func TestSinceReadsLikeSomethingSaidOutLoud(t *testing.T) {
 	} {
 		if got := since(time.Now().Add(-tc.d)); got != tc.want {
 			t.Errorf("since(%v) = %q, want %q", tc.d, got, tc.want)
+		}
+	}
+}
+
+// serveCapture stands in for the Daemon and records the first request, so a
+// test can assert the flags turned into Args (they reach the wire as JSON).
+func serveCapture(t *testing.T) *daemon.Request {
+	t.Helper()
+	socket := filepath.Join(t.TempDir(), "s.sock")
+	ln, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	t.Setenv("MAILBOX_SOCKET", socket)
+
+	var got daemon.Request
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		sc := bufio.NewScanner(conn)
+		if !sc.Scan() {
+			return
+		}
+		_ = json.Unmarshal(sc.Bytes(), &got)
+		_ = json.NewEncoder(conn).Encode(daemon.Response{ID: "1", OK: true, Data: map[string]any{}})
+	}()
+	t.Cleanup(func() { <-done })
+	return &got
+}
+
+// --title on `habit edit` and --name on `contact update` are documented flags.
+// They used to be declared but never put on the wire — an edit that silently
+// changed nothing.
+func TestChangeFlagsReachTheDaemon(t *testing.T) {
+	for _, tt := range [][]string{
+		{"habit", "edit", "Lesen", "--title", "Lesen abends"},
+		{"contact", "update", "12", "--name", "Anna Beispiel"},
+	} {
+		got := serveCapture(t)
+		if out, errs, code := run(t, tt...); code != ExitOK {
+			t.Fatalf("%v: exit %d: %s", tt, code, errs)
+		} else if strings.TrimSpace(out) == "" {
+			t.Errorf("%v printed nothing", tt)
+		}
+		want, key := tt[4], "title"
+		if tt[0] == "contact" {
+			key = "name"
+		}
+		if got.Args[key] != want {
+			t.Errorf("%v: Args[%s] = %v, want %q", tt, key, got.Args[key], want)
 		}
 	}
 }

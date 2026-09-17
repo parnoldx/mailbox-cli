@@ -49,6 +49,39 @@ func TestTheDaemonTakesTheSocketSystemdGivesIt(t *testing.T) {
 	conn.Close()
 }
 
+// A socket anyone can open is a mailbox anyone can read. It is bound under a
+// private name and only given the real one once it is already 0600, so there is
+// no window to connect through — this pins the 0600 and the real path down, and
+// Listen's own code is what keeps the window shut.
+func TestTheSocketIsPrivateAndAtItsOwnPath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mailbox.sock")
+	ln, err := Listen(path, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("socket mode = %04o, want 0600", got)
+	}
+	if got := ln.Addr().String(); got != path {
+		t.Fatalf("Addr() = %q, want %q", got, path)
+	}
+	// The private bind name is not left behind beside the real one.
+	if _, err := os.Stat(path + ".bind"); !os.IsNotExist(err) {
+		t.Fatalf("the bind name survived: %v", err)
+	}
+	conn, err := net.Dial("unix", path)
+	if err != nil {
+		t.Fatalf("the socket is not reachable at its own path: %v", err)
+	}
+	conn.Close()
+}
+
 func TestWithoutASocketPassedInItFailsRatherThanBindingOne(t *testing.T) {
 	t.Setenv("LISTEN_FDS", "")
 	t.Setenv("LISTEN_PID", "")

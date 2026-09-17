@@ -568,3 +568,13 @@ func TestEvenAPlainSendCarriesBothParts(t *testing.T) {
 		t.Fatalf("both parts should hold the body:\n%s", raw)
 	}
 }
+
+// An unparsable To:/Cc: header used to be skipped silently, so a reply-all
+// went to fewer people than the parent was addressed to. Now it is refused.
+func TestReplyAllCcRefusesAnUnparsableList(t *testing.T) {
+	a := &Account{From: compose.Address{Addr: "me@example.com"}}
+	parent := mirror.Message{To: "@@@ nobody", Cc: "kollege@example.com"}
+	if _, err := replyAllCc(a, parent, nil, nil); err == nil {
+		t.Fatal("an unparsable To: passed silently")
+	}
+}

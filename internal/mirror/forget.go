@@ -47,6 +47,7 @@ func (m *Mirror) ForgetAccount(account string) error {
 		`DELETE FROM dav_collections WHERE account = ?`,
 		`DELETE FROM placements WHERE account = ?`,
 		`DELETE FROM messages WHERE account = ?`,
+		`DELETE FROM correspondents WHERE account = ?`,
 		`DELETE FROM folders WHERE account = ?`,
 		`DELETE FROM routing WHERE account = ?`,
 		`DELETE FROM routing_script WHERE account = ?`,

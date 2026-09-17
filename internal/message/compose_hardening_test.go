@@ -31,6 +31,37 @@ func TestHardening_HeaderInjectionCannotSmuggleBcc(t *testing.T) {
 	}
 }
 
+func TestHardening_ReplyHeadersCannotInject(t *testing.T) {
+	// In-Reply-To and References are copied from a received mail, so they are
+	// as untrusted as the body. MessageID comes from the caller.
+	inj := "parent@example.com\r\nBcc: evil@example.net"
+	d := Draft{
+		From:       Address{Addr: "me@example.com"},
+		To:         []Address{{Addr: "you@example.com"}},
+		Subject:    "Re: hello",
+		Body:       "hi",
+		MessageID:  inj,
+		InReplyTo:  []string{inj},
+		References: []string{"grandparent@example.com", inj},
+	}
+	raw, err := d.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(bytes.ToLower(raw), []byte("\nbcc:")) || bytes.Contains(bytes.ToLower(raw), []byte("\rbcc:")) {
+		t.Fatalf("injected Bcc header from a Message-ID:\n%s", raw)
+	}
+	h, _, _ := read(t, raw)
+	if addrs, err := h.AddressList("Bcc"); err == nil && len(addrs) > 0 {
+		t.Fatalf("bcc address list = %v", addrs)
+	}
+	for _, field := range []string{"In-Reply-To", "References"} {
+		if got := h.Get(field); strings.ContainsAny(got, "\r\n") {
+			t.Fatalf("%s = %q", field, got)
+		}
+	}
+}
+
 func TestHardening_FilenameNewlinesAreStripped(t *testing.T) {
 	d := Draft{
 		From: Address{Addr: "me@example.com"}, To: []Address{{Addr: "you@example.com"}},

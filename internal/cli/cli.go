@@ -374,7 +374,12 @@ func request(req daemon.Request, asJSON bool, render renderer, stdout, stderr io
 		var resp daemon.Response
 		err := c.Next(&resp)
 		if err != nil {
-			if !errors.Is(err, io.EOF) {
+			// The Daemon dying mid-request is not silence: exit 7 with nothing on
+			// the screen reads as the command having hung or having said nothing
+			// on purpose.
+			if errors.Is(err, io.EOF) {
+				fmt.Fprintln(stderr, "the daemon went away before answering — check: journalctl --user -u mailbox")
+			} else {
 				fmt.Fprintf(stderr, "read: %v\n", err)
 			}
 			return ExitAPI
@@ -472,6 +477,7 @@ func printStatus(stdout, stderr io.Writer, resp daemon.Response) {
 			strings.Join(strs(asAny(m["watched"])), ", "))
 	}
 	_ = tw.Flush()
+	printProblems(stdout, resp)
 	printInferred(stdout, resp)
 	behindNotice(stderr, resp)
 }

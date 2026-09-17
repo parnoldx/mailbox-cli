@@ -652,8 +652,9 @@ type Set struct {
 	clients []*Client
 }
 
-// NewSet groups clients. The first one is the fallback for a URL whose host
-// matches none of them.
+// NewSet groups clients. A request is routed to the client whose host the URL
+// names (clientFor); one whose host matches none is an error rather than a
+// guess.
 func NewSet(clients ...*Client) *Set { return &Set{clients: clients} }
 
 // Collections implements davsync.Driver over every server.
@@ -681,38 +682,57 @@ func (s *Set) Collections(ctx context.Context) ([]davsync.Collection, error) {
 
 // Sync implements davsync.Driver against whichever server holds the collection.
 func (s *Set) Sync(ctx context.Context, collection, token string) (davsync.Changes, error) {
-	return s.clientFor(collection).Sync(ctx, collection, token)
+	c, err := s.clientFor(collection)
+	if err != nil {
+		return davsync.Changes{}, err
+	}
+	return c.Sync(ctx, collection, token)
 }
 
 // MultiGet implements davsync.Driver against whichever server holds the
 // collection.
 func (s *Set) MultiGet(ctx context.Context, collection string, hrefs []string) ([]davsync.Change, error) {
-	return s.clientFor(collection).MultiGet(ctx, collection, hrefs)
+	c, err := s.clientFor(collection)
+	if err != nil {
+		return nil, err
+	}
+	return c.MultiGet(ctx, collection, hrefs)
 }
 
 // Put implements davsync.WriteDriver against whichever server holds the object.
 func (s *Set) Put(ctx context.Context, href, data, ifMatch string) (string, error) {
-	return s.clientFor(href).Put(ctx, href, data, ifMatch)
+	c, err := s.clientFor(href)
+	if err != nil {
+		return "", err
+	}
+	return c.Put(ctx, href, data, ifMatch)
 }
 
 // Delete implements davsync.WriteDriver against whichever server holds it.
 func (s *Set) Delete(ctx context.Context, href, ifMatch string) error {
-	return s.clientFor(href).Delete(ctx, href, ifMatch)
+	c, err := s.clientFor(href)
+	if err != nil {
+		return err
+	}
+	return c.Delete(ctx, href, ifMatch)
 }
 
-func (s *Set) clientFor(collection string) *Client {
+// clientFor names the server a URL belongs to. A URL whose host matches no
+// client has no server here: falling back to the first one would send the
+// primary account's Basic credentials to whatever host that stale URL names.
+func (s *Set) clientFor(collection string) (*Client, error) {
 	want := hostOf(collection)
 	for _, c := range s.clients {
 		if hostOf(c.cfg.Endpoint) == want {
-			return c
+			return c, nil
 		}
 		for _, col := range c.static {
 			if hostOf(col.URL) == want {
-				return c
+				return c, nil
 			}
 		}
 	}
-	return s.clients[0]
+	return nil, fmt.Errorf("no DAV server is configured for %s", collection)
 }
 
 func hostOf(raw string) string {

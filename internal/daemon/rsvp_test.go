@@ -95,7 +95,10 @@ func TestInviteToTheAccountAddressPicksTheHomeCalendar(t *testing.T) {
 func TestInviteToAWorkAddressPicksWork(t *testing.T) {
 	d, _, _ := seedInviteDAV(t)
 	in := vcal.Invite{Attendees: []string{"me@work.test"}}
-	name, names := d.inviteTarget(in, "", d.primaryAccount())
+	name, names, err := d.inviteTarget(in, "", d.primaryAccount())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if name != "Work" {
 		t.Fatalf("got %q from %v", name, names)
 	}
@@ -104,7 +107,10 @@ func TestInviteToAWorkAddressPicksWork(t *testing.T) {
 func TestInviteToAnUnknownAddressNeedsAChoice(t *testing.T) {
 	d, _, _ := seedInviteDAV(t)
 	in := vcal.Invite{Attendees: []string{"stranger@example.org"}}
-	name, names := d.inviteTarget(in, "", d.primaryAccount())
+	name, names, err := d.inviteTarget(in, "", d.primaryAccount())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if name != "" {
 		t.Fatalf("guessed %q", name)
 	}

@@ -73,7 +73,10 @@ func (d *Daemon) inviteCardOf(ctx context.Context, acct *Account, folder string,
 			return nil
 		}
 		card := &inviteCard{Summary: part.Filename}
-		card.Calendar, card.Calendars = d.inviteTarget(vcal.Invite{}, msgTo, acct)
+		if card.Calendar, card.Calendars, err = d.inviteTarget(vcal.Invite{}, msgTo, acct); err != nil {
+			d.logf("invite: %v", err)
+			card.Calendar, card.Calendars = "", nil
+		}
 		return card
 	}
 	card := &inviteCard{
@@ -86,7 +89,12 @@ func (d *Daemon) inviteCardOf(ctx context.Context, acct *Account, folder string,
 	if !in.End.IsZero() {
 		card.End = in.End.Format(time.RFC3339)
 	}
-	card.Calendar, card.Calendars = d.inviteTarget(in, msgTo, acct)
+	if card.Calendar, card.Calendars, err = d.inviteTarget(in, msgTo, acct); err != nil {
+		// A calendar list that cannot be read is logged rather than shown as
+		// "no calendars": the RSVP itself fails loudly when it needs one.
+		d.logf("invite: %v", err)
+		card.Calendar, card.Calendars = "", nil
+	}
 	return card
 }
 
@@ -100,47 +108,52 @@ func (d *Daemon) withInvite(ctx context.Context, acct *Account, folder string, u
 // inviteTarget decides which calendar an RSVP writes to. An invite to the
 // account's own address goes on that account's CalDAV; an invite to a mapped
 // work address goes on that calendar; anything else returns no name and the
-// list a chooser offers.
-func (d *Daemon) inviteTarget(in vcal.Invite, msgTo string, acct *Account) (string, []string) {
-	open := d.eventCalendars()
+// list a chooser offers. A calendar list that cannot be read is an error,
+// not an empty list — an empty list reads as "no calendars", which is a lie
+// about the account.
+func (d *Daemon) inviteTarget(in vcal.Invite, msgTo string, acct *Account) (string, []string, error) {
+	open, err := d.eventCalendars()
+	if err != nil {
+		return "", nil, err
+	}
 	names := make([]string, 0, len(open))
 	for _, c := range open {
 		names = append(names, c.Name)
 	}
 	if len(open) == 0 {
-		return "", nil
+		return "", nil, nil
 	}
 	if len(open) == 1 {
-		return open[0].Name, names
+		return open[0].Name, names, nil
 	}
 
 	matched := d.matchedInviteEmails(in, msgTo, acct)
 	if len(matched) != 1 {
-		return "", names
+		return "", names, nil
 	}
 	mapped, ok := d.lookupCalendarEmail(matched[0])
 	if !ok {
-		return "", names
+		return "", names, nil
 	}
 	if mapped == "" {
 		home := d.calendarsOnHost(open, d.DAVHost)
 		if len(home) == 1 {
-			return home[0].Name, names
+			return home[0].Name, names, nil
 		}
-		return "", names
+		return "", names, nil
 	}
 	for _, c := range open {
 		if strings.EqualFold(c.Name, mapped) {
-			return c.Name, names
+			return c.Name, names, nil
 		}
 	}
-	return "", names
+	return "", names, nil
 }
 
-func (d *Daemon) eventCalendars() []mirror.Collection {
+func (d *Daemon) eventCalendars() ([]mirror.Collection, error) {
 	all, err := d.Mirror.Collections(d.Account, calendars.kind)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	out := make([]mirror.Collection, 0, len(all))
 	for _, c := range all {
@@ -149,7 +162,7 @@ func (d *Daemon) eventCalendars() []mirror.Collection {
 		}
 		out = append(out, c)
 	}
-	return out
+	return out, nil
 }
 
 func (d *Daemon) calendarsOnHost(all []mirror.Collection, host string) []mirror.Collection {
@@ -300,7 +313,9 @@ func (d *Daemon) storeInvite(ctx context.Context, req Request, in vcal.Invite, a
 	}
 	name := req.Str("calendar")
 	if name == "" {
-		name, _ = d.inviteTarget(in, msgTo, acct)
+		if name, _, err = d.inviteTarget(in, msgTo, acct); err != nil {
+			return err
+		}
 	}
 	col, err := d.pick(calendars, name)
 	if err != nil {

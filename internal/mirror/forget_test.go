@@ -69,6 +69,18 @@ func TestForgettingOneAccountLeavesTheOtherAlone(t *testing.T) {
 	} else if len(hits) != 1 {
 		t.Fatalf("search found %d, want the one that is left", len(hits))
 	}
+	// Autocomplete reads the correspondents cache, which is account-scoped too:
+	// an address the forgotten account exchanged mail with must not come back.
+	if hits, err := m.SearchCorrespondents("gmx", "bil", 6); err != nil {
+		t.Fatal(err)
+	} else if len(hits) != 0 {
+		t.Fatalf("gmx kept %d correspondents: %+v", len(hits), hits)
+	}
+	if hits, err := m.SearchCorrespondents("primary", "bil", 6); err != nil {
+		t.Fatal(err)
+	} else if len(hits) != 1 {
+		t.Fatalf("primary has %d correspondents, want 1", len(hits))
+	}
 }
 
 func TestForgettingACollectionTakesItsObjects(t *testing.T) {

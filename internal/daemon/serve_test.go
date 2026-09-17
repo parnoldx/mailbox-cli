@@ -495,6 +495,59 @@ func TestAttachmentSaveWritesTheFile(t *testing.T) {
 	}
 }
 
+// A save writes the Daemon's own file, and the filename it writes is the one
+// the sender chose: a part named ../../evil.txt must land in the directory the
+// caller asked for, never outside it.
+func TestAttachmentSaveCannotEscapeTheOutputDirectory(t *testing.T) {
+	d := seed(t)
+	// The next free uid on the scripted server, so the evil Message does not
+	// collide with the seeded one.
+	fake := fakeOf(d)
+	fake.Folder("INBOX").UIDNext = 8
+	fake.Deliver("INBOX", "evil@example.com", "Evil", "x").
+		Attach("1", "text/plain", "../../evil.txt", []byte("n"))
+
+	tx, err := d.Mirror.Begin("primary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	id, _, err := tx.UpsertMessage(mirror.Message{
+		Key: "evil@example.com", Subject: "Evil",
+		Date: time.Date(2026, 8, 29, 11, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.PutParts(id, []mirror.Part{
+		{Path: "1", MIMEType: "text/plain", Filename: "../../evil.txt", Disposition: "attachment"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.PutPlacement(mirror.Placement{Folder: "INBOX", UID: 8, MessageID: id}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	resp := d.handle(context.Background(), Request{
+		ID: "1", Cmd: []string{"attachment", "save"},
+		Args: map[string]any{"positional": "8:1", "output": dir},
+	})
+	if !resp.OK {
+		t.Fatalf("save: %s (%s)", resp.Error, resp.Code)
+	}
+	got := resp.Data.(saved)
+	if want := filepath.Join(dir, "evil.txt"); got.Path != want {
+		t.Fatalf("wrote %s, want %s", got.Path, want)
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(dir), "evil.txt")); !os.IsNotExist(err) {
+		t.Fatalf("the attachment escaped the output directory: %v", err)
+	}
+}
+
 // A Message with several attachments cannot be named without saying which, and
 // the error says what to type.
 func TestAttachmentSaveNeedsAnIndexWhenThereAreSeveral(t *testing.T) {

@@ -43,8 +43,8 @@ func TestAMirrorAtAnotherVersionIsRebuiltRatherThanMigrated(t *testing.T) {
 	}
 	defer m.Close()
 
-	if v := readVersion(m.db); v != schemaVersion {
-		t.Fatalf("reopened mirror is at schema %d, want %d", v, schemaVersion)
+	if v, err := readVersion(m.db); err != nil || v != schemaVersion {
+		t.Fatalf("reopened mirror is at schema %d (%v), want %d", v, err, schemaVersion)
 	}
 	var messages int
 	if err := m.db.QueryRow(`SELECT count(*) FROM messages`).Scan(&messages); err != nil {
@@ -67,7 +67,35 @@ func TestAFileThatIsNotAMirrorIsReplaced(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer m.Close()
-	if v := readVersion(m.db); v != schemaVersion {
-		t.Fatalf("mirror is at schema %d, want %d", v, schemaVersion)
+	if v, err := readVersion(m.db); err != nil || v != schemaVersion {
+		t.Fatalf("mirror is at schema %d (%v), want %d", v, err, schemaVersion)
+	}
+}
+
+// A Mirror that cannot be read right now — a lock held by a sync, a permission
+// problem, an I/O error — is not a Mirror at another version. Open has to fail
+// and leave the file alone: it is the copy the server may no longer be able to
+// hand back, and the dsn deliberately lets a sync and a command hold it at
+// once, so a transient lock is an expected condition rather than a rebuild.
+func TestAMirrorThatCannotBeReadIsNotDeleted(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a mode-000 file anyway")
+	}
+	path := filepath.Join(t.TempDir(), "mirror.db")
+	m, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Close()
+	if err := os.Chmod(path, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(path, 0o600) })
+
+	if _, err := Open(path); err == nil {
+		t.Fatal("Open read a mirror it cannot open")
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("Open deleted a mirror it could not read: %v", err)
 	}
 }

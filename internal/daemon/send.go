@@ -140,7 +140,11 @@ func (d *Daemon) answer(a *Account, draft *compose.Draft, parent mirror.Message,
 		draft.To = to
 	}
 	if all {
-		draft.Cc = append(draft.Cc, replyAllCc(a, parent, draft.To, draft.Cc)...)
+		cc, err := replyAllCc(a, parent, draft.To, draft.Cc)
+		if err != nil {
+			return err
+		}
+		draft.Cc = append(draft.Cc, cc...)
 	}
 	if draft.Subject == "" {
 		draft.Subject = replySubject(parent.Subject)
@@ -160,17 +164,19 @@ func (d *Daemon) answer(a *Account, draft *compose.Draft, parent mirror.Message,
 // replyAllCc is the Cc line a reply-to-all gets: everyone the parent was
 // addressed to, minus ourselves, minus the people already on `to`, and minus
 // whoever is on `have` already. Replying to all should not mean mailing
-// yourself a copy every time, nor anyone twice.
+// yourself a copy every time, nor anyone twice. An unparsable To:/Cc: header
+// is an error, not an empty list — silently mailing fewer people than the
+// parent was addressed to is not a decision to make on the caller's behalf.
 //
 // Read twice: `reply --all` builds the outgoing Cc from it, and a Message read
 // carries it (reply_all) so a client can show who a reply-all would reach
 // before it is sent.
-func replyAllCc(a *Account, parent mirror.Message, to, have []compose.Address) []compose.Address {
+func replyAllCc(a *Account, parent mirror.Message, to, have []compose.Address) ([]compose.Address, error) {
 	var cc []compose.Address
 	for _, group := range []string{parent.To, parent.Cc} {
 		list, err := compose.ParseAddressList(group)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("cannot read the address list %q: %w", group, err)
 		}
 		for _, addr := range list {
 			if sameAddress(addr.Addr, a.From.Addr) || containsAddress(to, addr.Addr) ||
@@ -180,7 +186,7 @@ func replyAllCc(a *Account, parent mirror.Message, to, have []compose.Address) [
 			cc = append(cc, addr)
 		}
 	}
-	return cc
+	return cc, nil
 }
 
 // replySubject prefixes Re: exactly once. "Re: Re: Re:" is somebody's client
@@ -428,9 +434,6 @@ func (d *Daemon) handleOutbox(ctx context.Context, req Request, resp Response) R
 		if err != nil {
 			return resp.usage(err.Error())
 		}
-		if err := d.Outbox.Retry(id); err != nil {
-			return outboxFail(resp, err)
-		}
 		queued, err := d.Outbox.Get(id)
 		if err != nil {
 			return outboxFail(resp, err)
@@ -438,6 +441,11 @@ func (d *Daemon) handleOutbox(ctx context.Context, req Request, resp Response) R
 		acct, err := d.accountNamed(queued.Account)
 		if err != nil || acct.Courier == nil {
 			return resp.api(fmt.Sprintf("#%d belongs to account %q, which cannot send", id, queued.Account))
+		}
+		// The account was validated before the row is touched: a retry that
+		// cannot be delivered must not have reset the row it failed on.
+		if err := d.Outbox.Retry(id); err != nil {
+			return outboxFail(resp, err)
 		}
 		it, err := acct.Courier.Deliver(ctx, id)
 		if err != nil {

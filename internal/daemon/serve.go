@@ -1026,7 +1026,9 @@ func viewMessage(a *Account, folder string, r mirror.Row, places []mirror.Placem
 		m.Unsubscribe = &unsubscribeInfo{Kind: string(t.Kind), URL: t.URL}
 	}
 	if to, err := compose.ParseAddressList(r.From); err == nil {
-		m.ReplyAll = replyAllCc(a, r.Message, to, nil)
+		if cc, err := replyAllCc(a, r.Message, to, nil); err == nil {
+			m.ReplyAll = cc
+		}
 	}
 	if !r.Message.Date.IsZero() {
 		m.Date = r.Message.Date.Format(time.RFC3339)
@@ -1122,6 +1124,10 @@ func viewRows(a *Account, folder string, rows []mirror.Row, threadSizes map[int6
 		if out[i].Count <= 1 {
 			out[i].Count = 0 // omitempty: no badge for a Message on its own
 		}
+		// Reading a returned thread, in any client, is what ends its bubbled
+		// state: the `$bubbled` keyword stays on the server, but a read thread
+		// neither floats nor carries the badge.
+		out[i].Bubbled = out[i].Bubbled && !out[i].Seen
 	}
 	// A bubbled thread comes back with an old date and would sort low; the Inbox
 	// floats it to the top, badged, the way HEY does. Other Boxes keep their

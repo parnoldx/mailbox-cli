@@ -46,6 +46,8 @@ private:
     struct Row {
         QString id, fromName, fromAddr, subject, date, dateRaw;
         bool seen = false;
+        // A Bubble Up return brought this Thread back and it is still unread.
+        bool bubbled = false;
         // How many Messages are in this row's Thread in all, wherever they
         // sit — 0 for a Message on its own (the daemon already collapsed the
         // listing to one row per Thread; this is just its badge).

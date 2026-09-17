@@ -90,6 +90,31 @@ func TestAnAccountWithMailInFlightIsKeptAndSaidSo(t *testing.T) {
 	}
 }
 
+func TestAnAccountWhoseOutboxCannotBeCheckedIsKeptToo(t *testing.T) {
+	d := seed(t)
+	d.StartAccount(NewAccount("gmx", nil, nil, []string{"INBOX"}, nil))
+
+	forgotten := false
+	acc := Accounts{
+		Build:    func(string, config.Account) (*Account, error) { return nil, errors.New("no") },
+		Forget:   func(string) error { forgotten = true; return nil },
+		InFlight: func(string) (int, error) { return 0, errors.New("database is locked") },
+	}
+	was := cfgWith(map[string]config.Account{"gmx": {Email: "me@gmx.de", IMAPHost: "imap.gmx.net"}})
+
+	applied := d.Reconcile(was, cfgWith(nil), acc)
+	if len(d.accounts()) != 2 || forgotten {
+		t.Fatalf("an unreadable outbox dropped the account: accounts = %d, forgotten = %v",
+			len(d.accounts()), forgotten)
+	}
+	if len(applied.Changes) != 1 || !strings.Contains(applied.Changes[0], "could not be checked") {
+		t.Fatalf("changes = %v", applied.Changes)
+	}
+	if got := d.Problems(); len(got) != 1 || !strings.Contains(got[0].Detail, "could not be checked") {
+		t.Fatalf("problems = %v", got)
+	}
+}
+
 func TestAChangeToThePrimaryIsAnExitAndNothingElseHappens(t *testing.T) {
 	d := seed(t)
 	built := 0

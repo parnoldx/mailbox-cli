@@ -37,6 +37,14 @@ PixelBlock::PixelBlock(QObject *parent)
     };
 }
 
+PixelBlock::~PixelBlock()
+{
+    // The profile keeps only a raw pointer to its interceptor. Going away while
+    // still installed leaves it calling into freed memory on the next request.
+    if (m_armed)
+        QWebEngineProfile::defaultProfile()->setUrlRequestInterceptor(nullptr);
+}
+
 void PixelBlock::arm()
 {
     if (m_armed)

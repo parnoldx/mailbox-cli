@@ -61,14 +61,10 @@ func runDoctor(in *input, stdout, stderr io.Writer) int {
 func localChecks(ctx context.Context, offline bool) []check {
 	out := []check{}
 	path := config.Path()
-	cfg, err := config.Load()
-	if err != nil {
-		return append(out, check{Name: "config", Detail: err.Error()})
-	}
-	out = append(out, check{Name: "config", OK: true, Detail: path})
-
 	// The file holds a password, so who can read it is part of whether this is
-	// set up correctly (ADR-0014).
+	// set up correctly (ADR-0014). Checked before the read, because the read now
+	// refuses a file anyone else can open: a diagnostic that only says "shown as
+	// refused" would not name the fix.
 	if info, err := os.Stat(path); err == nil {
 		mode := info.Mode().Perm()
 		detail := fmt.Sprintf("%04o", mode)
@@ -77,21 +73,31 @@ func localChecks(ctx context.Context, offline bool) []check {
 		}
 		out = append(out, check{Name: "config mode", OK: mode&0o077 == 0, Detail: detail})
 	}
+	cfg, err := config.Load()
+	if err != nil {
+		return append(out, check{Name: "config", Detail: err.Error()})
+	}
+	out = append(out, check{Name: "config", OK: true, Detail: path})
 
-	for _, p := range []struct{ name, path string }{
-		{"mirror", mustPath(config.MirrorPath)},
-		{"outbox", mustPath(config.OutboxPath)},
+	for _, p := range []struct {
+		name string
+		path func() (string, error)
+	}{
+		{"mirror", config.MirrorPath},
+		{"outbox", config.OutboxPath},
 	} {
-		detail := p.path + " — not written yet"
-		ok := false
-		if info, err := os.Stat(p.path); err == nil {
-			detail = fmt.Sprintf("%s, %s", p.path, humanBytes(info.Size()))
-			ok = true
+		path, err := p.path()
+		if err != nil {
+			out = append(out, check{Name: p.name, Detail: err.Error()})
+			continue
+		}
+		detail := path + " — not written yet"
+		if info, err := os.Stat(path); err == nil {
+			detail = fmt.Sprintf("%s, %s", path, humanBytes(info.Size()))
 		}
 		// A mirror that is not there yet is a cold start, not a fault; an
 		// outbox that is not there is an account that has never sent. Both are
 		// reported and neither fails the check.
-		_ = ok
 		out = append(out, check{Name: p.name, OK: true, Detail: detail})
 	}
 
@@ -147,11 +153,14 @@ func localChecks(ctx context.Context, offline bool) []check {
 		})
 	}
 	// ManageSieve is only reachable when it is: an account without it still
-	// works, it just cannot be triaged.
+	// works, it just cannot be triaged. So its absence is a note, not a
+	// failure — a healthy setup without it has to exit 0.
 	addr := net.JoinHostPort(a.SieveHost, fmt.Sprint(a.SievePort))
 	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
 	if err != nil {
-		out = append(out, check{Name: "sieve", Detail: err.Error()})
+		out = append(out, check{Name: "sieve", OK: true, Detail: fmt.Sprintf(
+			"%s not reachable (%s) — everything works, but sieve scripts cannot be edited",
+			addr, err.Error())})
 	} else {
 		conn.Close()
 		out = append(out, check{Name: "sieve", OK: true, Detail: addr})
@@ -205,12 +214,4 @@ func daemonChecks(stdout io.Writer) []check {
 		return append([]check{{Name: "daemon", Detail: "listening, but it will not answer status"}}, out...)
 	}
 	return append([]check{{Name: "daemon", OK: true, Detail: socket}}, out...)
-}
-
-func mustPath(fn func() (string, error)) string {
-	p, err := fn()
-	if err != nil {
-		return "unknown: " + err.Error()
-	}
-	return p
 }

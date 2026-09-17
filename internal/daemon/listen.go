@@ -26,6 +26,9 @@ func Listen(socket string, systemd bool) (net.Listener, error) {
 	if systemd {
 		return inherited()
 	}
+	if socket == "" {
+		return nil, errors.New("no socket path: set XDG_RUNTIME_DIR or MAILBOX_SOCKET")
+	}
 	// Someone answering on this path is a live daemon — most likely the
 	// socket-activated one. Removing the path below would unlink it out from
 	// under that daemon, which keeps its listening socket and its systemd
@@ -38,20 +41,49 @@ func Listen(socket string, systemd bool) (net.Listener, error) {
 	// Nothing answered, so the path is stale (a daemon that died without
 	// cleaning up) and taking it is safe.
 	if err := os.Remove(socket); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, err
+		return nil, fmt.Errorf("listen %s: %w", socket, err)
 	}
-	ln, err := net.Listen("unix", socket)
+	// net.Listen creates the socket 0777&^umask, so chmod-ing after the bind
+	// leaves a window in which any local user can connect. Bound under a name
+	// nobody can guess and moved into place only once it is already 0600: the
+	// socket speaks for a logged-in mailbox, and who can open it is the whole
+	// access control (ADR-0014's reasoning, one layer out).
+	pending := socket + ".bind"
+	if err := os.Remove(pending); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("listen %s: %w", socket, err)
+	}
+	ln, err := net.Listen("unix", pending)
 	if err != nil {
 		return nil, fmt.Errorf("listen %s: %w", socket, err)
 	}
-	// The socket speaks for a logged-in mailbox, and who can open it is the
-	// whole access control (ADR-0014's reasoning, one layer out).
-	if err := os.Chmod(socket, 0o600); err != nil {
+	if err := os.Chmod(pending, 0o600); err != nil {
 		ln.Close()
-		return nil, err
+		return nil, fmt.Errorf("listen %s: %w", socket, err)
 	}
-	return ln, nil
+	// A link, not a rename: rename would write over a socket another daemon
+	// had just moved into place, and a daemon whose socket is unlinked while it
+	// listens is a daemon nobody can reach. link fails if the name exists.
+	if err := os.Link(pending, socket); err != nil {
+		ln.Close()
+		os.Remove(pending)
+		if errors.Is(err, os.ErrExist) {
+			return nil, fmt.Errorf("listen %s: a daemon is already listening there", socket)
+		}
+		return nil, fmt.Errorf("listen %s: %w", socket, err)
+	}
+	os.Remove(pending)
+	return boundListener{ln.(*net.UnixListener), socket}, nil
 }
+
+// boundListener reports the socket's real path. net.Listen bound the private
+// name above, and a listener whose Addr() is that name makes its own log line
+// a lie.
+type boundListener struct {
+	*net.UnixListener
+	path string
+}
+
+func (l boundListener) Addr() net.Addr { return &net.UnixAddr{Name: l.path, Net: "unix"} }
 
 // inherited takes the listener systemd bound. LISTEN_PID guards against an
 // environment carried into a child process that was never given the fd.

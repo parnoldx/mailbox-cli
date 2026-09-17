@@ -12,7 +12,8 @@ import (
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite"
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 // Mirror is the local copy of what the servers hold. It is the answer a read
@@ -40,7 +41,14 @@ func Open(path string) (*Mirror, error) {
 	if err != nil {
 		return nil, err
 	}
-	if readVersion(db) == schemaVersion {
+	version, err := readVersion(db)
+	if err != nil {
+		// A mirror that cannot be read is not an old one. Deleting it here
+		// would throw away a valid database over a lock the dsn invites.
+		db.Close()
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	if version == schemaVersion {
 		return &Mirror{db: db, path: path}, nil
 	}
 	db.Close()
@@ -64,15 +72,32 @@ func Open(path string) (*Mirror, error) {
 	return &Mirror{db: db, path: path}, nil
 }
 
-// readVersion is the version the file claims. Anything that cannot be read as
-// one — no row, no meta table, not a database at all — is 0, which is not the
-// current version and so means rebuild.
-func readVersion(db *sql.DB) int {
+// readVersion is the version the file claims, and whether the file could be
+// read at all. A file with no schema_version row, no meta table, or no SQLite
+// header is 0 — that is the rebuild ADR-0013 describes. Every other failure is
+// returned instead: dsn lets a sync and a command hold the Mirror at once, so a
+// lock or an I/O error is a Mirror that cannot be read right now, not an old
+// one, and Open must fail rather than delete the copy the server may not be
+// able to hand back.
+func readVersion(db *sql.DB) (int, error) {
 	var v int
-	if err := db.QueryRow(`SELECT value FROM meta WHERE key = 'schema_version'`).Scan(&v); err != nil {
-		return 0
+	err := db.QueryRow(`SELECT value FROM meta WHERE key = 'schema_version'`).Scan(&v)
+	switch {
+	case err == nil:
+		return v, nil
+	case errors.Is(err, sql.ErrNoRows):
+		return 0, nil
 	}
-	return v
+	var se *sqlite.Error
+	if errors.As(err, &se) {
+		switch {
+		case se.Code() == sqlite3.SQLITE_NOTADB:
+			return 0, nil
+		case se.Code() == sqlite3.SQLITE_ERROR && strings.Contains(err.Error(), "no such table"):
+			return 0, nil
+		}
+	}
+	return 0, err
 }
 
 // Close closes the underlying database.

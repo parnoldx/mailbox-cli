@@ -28,6 +28,10 @@ func runCompose(in *input, stdout, stderr io.Writer) int {
 	if code != ExitOK {
 		return code
 	}
+	html, code := bodyHTML(in, stderr)
+	if code != ExitOK {
+		return code
+	}
 	paths, code := attachments(in.List("attach"), stderr)
 	if code != ExitOK {
 		return code
@@ -43,7 +47,7 @@ func runCompose(in *input, stdout, stderr io.Writer) int {
 		Args: withReplyWatch(map[string]any{
 			"to": to, "cc": in.List("cc"), "bcc": in.List("bcc"),
 			"subject": in.Str("subject"), "body": text, "attach": paths,
-			"body_html": in.Str("body-html"), "account": in.Str("account"),
+			"body_html": html, "account": in.Str("account"),
 		}, in),
 	}, in.JSON(), render, stdout, stderr)
 }
@@ -70,6 +74,10 @@ func runReply(in *input, stdout, stderr io.Writer) int {
 	if code != ExitOK {
 		return code
 	}
+	html, code := bodyHTML(in, stderr)
+	if code != ExitOK {
+		return code
+	}
 	paths, code := attachments(in.List("attach"), stderr)
 	if code != ExitOK {
 		return code
@@ -87,7 +95,7 @@ func runReply(in *input, stdout, stderr io.Writer) int {
 			"positional": in.First(), "all": in.Bool("all"),
 			"to": in.List("to"), "cc": in.List("cc"),
 			"subject": in.Str("subject"), "body": text, "attach": paths,
-			"body_html": in.Str("body-html"), "draft": in.Bool("draft"),
+			"body_html": html, "draft": in.Bool("draft"),
 		}, in),
 	}, in.JSON(), render, stdout, stderr)
 }
@@ -106,15 +114,24 @@ func outboxVerb(verb string) func(*input, io.Writer, io.Writer) int {
 	}
 }
 
-// composeBody is the body a send or reply carries. Without --body-html it is
-// --body or stdin, as before, and the daemon renders it from Markdown. With
-// --body-html the HTML is the body: --body, if given, is the plain-text twin,
-// and stdin is left alone so a `--body-html` mail is not a hang on the tty.
+// composeBody is the plain-text body a send or reply carries. With --body-html
+// it is --body, if given, and stdin is left alone — reading stdin here too
+// would make a `--body-html` mail a hang on the tty. Without --body-html it is
+// --body or stdin, as before, and the daemon renders it from Markdown.
 func composeBody(in *input, stderr io.Writer) (string, int) {
 	if in.Str("body-html") != "" {
 		return in.Str("body"), ExitOK
 	}
 	return bodyText(in.Str("body"), stderr)
+}
+
+// bodyHTML resolves --body-html. A value of "-" reads the HTML from stdin,
+// the same sentinel --body takes.
+func bodyHTML(in *input, stderr io.Writer) (string, int) {
+	if v := in.Str("body-html"); v != "-" {
+		return v, ExitOK
+	}
+	return bodyText("-", stderr)
 }
 
 // bodyText takes the body from --body, or from stdin when it is piped in. A
@@ -124,9 +141,10 @@ func bodyText(body string, stderr io.Writer) (string, int) {
 		return body, ExitOK
 	}
 	info, err := os.Stdin.Stat()
-	if err == nil && info.Mode()&os.ModeCharDevice != 0 && body != "-" {
-		// A terminal, and no --body: there is nothing to send and nothing to
-		// wait for. Waiting on a tty here would just look like a hang.
+	if err == nil && info.Mode()&os.ModeCharDevice != 0 {
+		// A terminal — whether --body was empty or an explicit "-", stdin has
+		// nothing to send and nothing that will ever end. Waiting on a tty here
+		// would just look like a hang.
 		fmt.Fprint(stderr, "no body: pass --body TEXT, or pipe the text in\n")
 		return "", ExitUsage
 	}

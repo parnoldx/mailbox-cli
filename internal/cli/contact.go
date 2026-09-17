@@ -21,7 +21,8 @@ func contactVerb(verb string) func(*input, io.Writer, io.Writer) int {
 			Cmd: []string{"contact", verb},
 			Args: map[string]any{
 				"positional": in.Text(), "limit": in.Int("limit"), "book": in.Str("book"),
-				"org": in.Str("org"), "note": in.Str("note"), "value": in.Str("value"),
+				"name": in.Str("name"), "org": in.Str("org"), "note": in.Str("note"),
+				"value": in.Str("value"),
 				"email": in.List("email"), "phone": in.List("phone"),
 			},
 		}, in.JSON(), render, stdout, stderr)

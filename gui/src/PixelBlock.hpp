@@ -2,6 +2,7 @@
 
 #include <QWebEngineUrlRequestInterceptor>
 #include <QStringList>
+#include <atomic>
 
 // PixelBlock drops the requests an HTML mail makes to phone home: 1x1 beacons,
 // open-tracking endpoints and the usual analytics hosts. It never blocks the
@@ -14,6 +15,7 @@ class PixelBlock : public QWebEngineUrlRequestInterceptor {
 
 public:
     explicit PixelBlock(QObject *parent = nullptr);
+    ~PixelBlock() override;
 
     int blocked() const { return m_blocked; }
     Q_INVOKABLE void reset();
@@ -31,7 +33,9 @@ signals:
 
 private:
     bool m_armed{false};
-    int m_blocked{0};
+    // interceptRequest runs on the WebEngine IO thread while blocked() is read
+    // and reset() runs on the GUI thread, so the counter is atomic.
+    std::atomic<int> m_blocked{0};
     QStringList m_hosts;   // substring match against the request host
     QStringList m_paths;   // substring match against the request path
 };

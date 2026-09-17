@@ -38,6 +38,7 @@ func habitVerb(verb string) func(*input, io.Writer, io.Writer) int {
 			Cmd: []string{"habit", verb},
 			Args: map[string]any{
 				"positional": in.Text(), "date": in.Str("date"), "days": in.Str("days"),
+				"title": in.Str("title"),
 				"color": in.Str("color"), "icon": in.Str("icon"),
 			},
 		}, in.JSON(), printHabits, stdout, stderr)

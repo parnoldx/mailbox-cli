@@ -2,6 +2,7 @@ package mirror
 
 import (
 	"database/sql"
+	"fmt"
 	"time"
 
 	"mailbox/internal/pickup"
@@ -29,8 +30,7 @@ type PickupRef struct {
 // difference at this size.
 func (m *Mirror) Pickups(account string) ([]PickupRef, error) {
 	rows, err := m.db.Query(`
-		SELECT p.folder, p.uid, p.message_id, m.subject,
-		       COALESCE(p.internaldate, m.date)
+		SELECT p.folder, p.uid, p.message_id, m.subject, p.internaldate, m.date
 		  FROM placements p JOIN messages m ON m.id = p.message_id
 		 WHERE p.account = ? AND p.flags LIKE ?
 		 ORDER BY COALESCE(p.internaldate, m.date)`, account, "%"+pickup.Keyword+"%")
@@ -42,15 +42,25 @@ func (m *Mirror) Pickups(account string) ([]PickupRef, error) {
 	var out []PickupRef
 	for rows.Next() {
 		var r PickupRef
-		var internal sql.NullString
-		if err := rows.Scan(&r.Folder, &r.UID, &r.MessageID, &r.Subject, &internal); err != nil {
+		var internal, date sql.NullString
+		if err := rows.Scan(&r.Folder, &r.UID, &r.MessageID, &r.Subject, &internal, &date); err != nil {
 			return nil, err
 		}
-		// The server's own instant, falling back to the Date: header. A
-		// Placement with neither would never expire, and a Pickup that never
-		// expires is the one outcome this feature must not have.
+		// The server's own instant, falling back to the Date: header. A value
+		// that will not parse is an error rather than the zero time: a zero
+		// InternalDate means "no instant" to binExpiredPickups, which moves the
+		// mail to Trash, so swallowing the parse would bin a real mail.
 		if internal.Valid {
-			r.InternalDate, _ = time.Parse(time.RFC3339, internal.String)
+			r.InternalDate, err = time.Parse(time.RFC3339, internal.String)
+			if err != nil {
+				return nil, fmt.Errorf("pickup %s/%d: internaldate %q: %w", r.Folder, r.UID, internal.String, err)
+			}
+		}
+		if r.InternalDate.IsZero() && date.Valid {
+			r.InternalDate, err = time.Parse(time.RFC3339, date.String)
+			if err != nil {
+				return nil, fmt.Errorf("pickup %s/%d: date %q: %w", r.Folder, r.UID, date.String, err)
+			}
 		}
 		out = append(out, r)
 	}

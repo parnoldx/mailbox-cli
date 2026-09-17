@@ -6,7 +6,6 @@
 #include <QJSEngine>
 #include <QDateTime>
 #include <QProcess>
-#include <QProcessEnvironment>
 #include <QDir>
 #include <QFile>
 #include <QStandardPaths>
@@ -44,7 +43,13 @@ MailboxClient::MailboxClient(QObject *parent) : QObject(parent) {
 void MailboxClient::connectSocket() {
     if (m_sock->state() != QLocalSocket::UnconnectedState)
         return;
-    QString dir = QProcessEnvironment::systemEnvironment().value("XDG_RUNTIME_DIR", "/tmp");
+    // The private per-user runtime directory, never a bare name in the
+    // world-writable /tmp: any local user could create that first and be handed
+    // the requests meant for the daemon. No runtime dir means no connection —
+    // the amber dot beats talking to an impostor.
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
+    if (dir.isEmpty())
+        return;
     m_sock->connectToServer(dir + "/mailbox.sock");
 }
 
