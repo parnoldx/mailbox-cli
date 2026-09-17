@@ -159,6 +159,39 @@ test("pickupItem survives a row with nothing readable in it", () => {
   assert.equal(row.initials, "?")
 })
 
+// The key on the bar is a "it is ready NOW" signal and nothing else: a minute
+// after the code landed it is gone, while the mail it came from — and so the
+// panel's list and `mailbox pickup list` — stay for the daemon's fifteen. An
+// icon that sat there all afternoon would be a badge, and a badge on a login
+// code is the alarm this whole feature exists to avoid.
+test("pickupFresh is the bar's window, not the mail's", () => {
+  const arrived = "2026-09-17T12:23:28Z"
+  const at = Date.parse(arrived)
+  const held = [{ arrived: arrived }]
+
+  assert.equal(Model.pickupFresh(held, at + 1000), true, "a code just landed")
+  assert.equal(Model.pickupFresh(held, at + 59000), true, "still within the minute")
+  assert.equal(Model.pickupFresh(held, at + 61000), false, "past the minute the key goes")
+  assert.equal(Model.pickupFresh(held, at + 14 * 60000), false, "the mail is held, the key is not")
+  assert.equal(Model.pickupFresh([], at), false)
+  assert.equal(Model.pickupFresh(null, at), false)
+
+  // A row whose stamp the daemon could not format is stale rather than fresh:
+  // an icon that never goes away is the one outcome this window prevents.
+  assert.equal(Model.pickupFresh([{ arrived: "not a date" }], at), false)
+})
+
+// One fresh row among stale ones is enough, and a stamp a second in the future
+// (clock skew between the server's instant and this machine's) is not stale.
+test("pickupFresh keeps the key up for any fresh pickup", () => {
+  const now = Date.parse("2026-09-17T12:30:00Z")
+  assert.equal(Model.pickupFresh([
+    { arrived: "2026-09-17T12:29:50Z" },
+    { arrived: "2026-09-17T12:00:00Z" }
+  ], now), true)
+  assert.equal(Model.pickupFresh([{ arrived: "2026-09-17T12:30:05Z" }], now), true, "skew is fresh")
+})
+
 // The Screener is a watched box, so a naive "unseen in watched boxes" count
 // picks it up and raises the bar icon for mail that owes a decision rather than
 // an answer. The widget shows no screener at all any more, so this filter is

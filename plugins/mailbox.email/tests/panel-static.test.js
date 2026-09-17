@@ -69,19 +69,29 @@ test("Dynamic visibility is implemented in BarWidget.qml", () => {
 })
 
 // Unread inbox mail raises the icon, and so does a Pickup the daemon is still
-// holding. A Pickup can never be counted as unread — the daemon marks it read
-// when it takes the code out — so without its own term the one thing that stops
-// being useful in fifteen minutes would be the one thing the bar never showed.
-// Everything else stays out, and the Screener above all.
-test("BarWidget.qml is raised by unread mail and held pickups", () => {
+// holding — for a minute, and then only the panel's list is left. A Pickup can
+// never be counted as unread (the daemon marks it read when it takes the code
+// out), so without its own term the one thing that stops being useful in
+// minutes would be the one thing the bar never showed; and without the shorter
+// window on that term the key would outstay the errand. Everything else stays
+// out, and the Screener above all.
+test("BarWidget.qml is raised by unread mail and freshly held pickups", () => {
   assert.ok(
     /hasNew:\s*unseenCount > 0/.test(barSrc),
     "hasNew must be driven by unread mail alone"
   )
   assert.ok(barSrc.indexOf("pickupReady") !== -1, "a held Pickup must raise the icon")
   assert.ok(
+    barSrc.indexOf("Model.pickupFresh") !== -1,
+    "the key must be bounded by the shorter window, not by the mail's lifetime"
+  )
+  assert.ok(
+    /running:\s*root\.pickupReady/.test(barSrc),
+    "the clock that closes the window must tick while the key is up"
+  )
+  assert.ok(
     barSrc.indexOf("service.pickupCount") !== -1,
-    "the icon must read the held pickups from the service"
+    "the panel's list must still count everything held"
   )
   assert.equal(
     barSrc.indexOf("screenerCount"), -1,

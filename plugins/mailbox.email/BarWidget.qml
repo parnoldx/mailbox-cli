@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
+import "Model.js" as Model
 
 // BarWidget.qml — Email notification bar icon and host for the Mailbox popup panel.
 //
@@ -13,10 +14,11 @@ import qs.Ui
 // Unread inbox mail and held Pickups are the only two things it knows about.
 // The Screener is not here at all: screening is a decision owed whenever you
 // next sit down, so it lives in the desktop client. A Pickup is the opposite —
-// it is already read, it owes no decision, and it is worthless in fifteen
-// minutes, which is why it takes the icon: a toast is silenced by Do Not
-// Disturb and gone in seconds, and the code is on the clipboard with nothing
-// on screen saying so.
+// it is already read, it owes no decision, and it is worthless in minutes,
+// which is why it takes the icon: a toast is silenced by Do Not Disturb and
+// gone in seconds, and the code is on the clipboard with nothing on screen
+// saying so. The key is gone a minute after the code landed; the mail, and the
+// panel's list of it, stay until the daemon bins them.
 BarWidget {
   id: root
   moduleName: "mailbox.email"
@@ -33,11 +35,34 @@ BarWidget {
   readonly property int unseenCount: service ? service.unreadCount : 0
   readonly property bool hasNew: unseenCount > 0
 
-  // A held code or magic link, which the daemon drops the moment it bins the
-  // mail. The nerd-font key is the whole of what the icon says about it: one
-  // glyph, no badge, nothing to read while a login form is waiting.
+  // A held code or magic link the daemon is still holding, for as long as the
+  // key means anything (Model.PICKUP_ICON_MS, a minute from arrival). The nerd-
+  // font key is the whole of what the icon says about it: one glyph, no badge,
+  // nothing to read while a login form is waiting.
   readonly property int pickupCount: service ? service.pickupCount : 0
-  readonly property bool pickupReady: pickupCount > 0
+
+  // The window is evaluated against a clock that ticks, not against the age a
+  // row was fetched with: `pickups` only changes when the daemon says so, and
+  // the key has to go on its own minute without waiting for the next arrival.
+  property double nowMs: Date.now()
+  readonly property bool pickupReady: Model.pickupFresh(service ? service.pickups : [], nowMs)
+
+  Timer {
+    interval: 1000
+    repeat: true
+    // Only while the key is up: freshness never comes back on its own, and a
+    // new arrival re-evaluates the binding long before this could have
+    // mattered. So one pickup costs at most sixty ticks.
+    running: root.pickupReady
+    onTriggered: root.nowMs = Date.now()
+  }
+
+  Connections {
+    target: service
+    // A fresh arrival is evaluated against now, not against whenever this
+    // widget last looked at a clock.
+    function onPickupsChanged() { root.nowMs = Date.now() }
+  }
 
   readonly property bool hideWhenEmpty: setting("hideWhenEmpty", true)
   readonly property bool widgetVisible: !hideWhenEmpty || hasNew || opened || pickupReady
@@ -107,7 +132,10 @@ BarWidget {
     function unread(): int { return root.unseenCount }
     // The held pickups, for anything that wants to ask the bar instead of the
     // daemon — and for a test that has to see the icon's state without eyes.
+    // `pickups` is what the panel lists (held until binned); `pickupKey` is
+    // only whether the key is on the bar, which is the shorter window.
     function pickups(): int { return root.pickupCount }
+    function pickupKey(): bool { return root.pickupReady }
   }
 
   // The two icons the slot can carry. A Component cannot sit inside the

@@ -78,11 +78,12 @@ appears in `mailbox screener`, and a watch is told `pickup` rather than
 
 A notification is not always a way to reach you: under Do Not Disturb it is
 silenced, and the code is already on the clipboard with nothing on screen
-saying so. So a held pickup raises the mailbox bar icon — a key glyph for as
-long as the daemon is holding one — and the panel under it lists what is ready
-to paste, clicking a row or its button to copy it again. Both read
-`mailbox pickup list`, which is the same $pickup mail the expiry scan bins, so
-the icon cannot outlive the code:
+saying so. So a collected pickup raises the mailbox bar icon — a key glyph for
+a minute after the code landed, which is the window in which it is still worth
+something — and the panel under it lists what is ready to paste for the whole
+fifteen minutes the mail is kept, clicking a row or its button to copy it
+again. Both read `mailbox pickup list`, which is the same $pickup mail the
+expiry scan bins, so nothing can outlive the code:
 
 ```bash
 mailbox pickup list                # Codes and links still held, with their age

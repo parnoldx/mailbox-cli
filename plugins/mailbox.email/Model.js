@@ -205,6 +205,13 @@ function accountFilterOptions(accounts, messages) {
   return out
 }
 
+// How long the bar key means anything. A Pickup is collected within a second
+// of landing, so this runs from arrival — and it is deliberately far shorter
+// than the fifteen minutes the mail itself is kept: the key says "it is ready
+// NOW, paste it", not "here is a badge for the afternoon". The mail, the
+// panel's list and `mailbox pickup list` all keep the longer window.
+var PICKUP_ICON_MS = 60000
+
 // One held Pickup as a row shows it. `value` is what gets pasted — a code or a
 // URL — and `label` is what a row prints in its place: the code itself, or the
 // host a link logs you in to, never a screenful of token. Which is which comes
@@ -229,6 +236,18 @@ function pickupItem(raw, nowMs) {
     initials: extractInitials(r.from),
     colorIndex: avatarColorIndex(r.from, 8)
   }
+}
+
+function pickupFresh(pickups, nowMs) {
+  var list = Array.isArray(pickups) ? pickups : []
+  var now = typeof nowMs === "number" && isFinite(nowMs) ? nowMs : Date.now()
+  for (var i = 0; i < list.length; i++) {
+    var at = parseTimestamp(list[i] && list[i].arrived)
+    // A stamp that will not parse is stale rather than fresh: an icon that
+    // never goes away is the failure this window exists to prevent.
+    if (at !== null && now - at < PICKUP_ICON_MS) return true
+  }
+  return false
 }
 
 function shellQuote(value) {
@@ -264,6 +283,7 @@ if (typeof module !== "undefined" && module.exports) {
     filterMessages: filterMessages,
     feedItems: feedItems,
     pickupItem: pickupItem,
+    pickupFresh: pickupFresh,
     accountFilterOptions: accountFilterOptions,
     shellQuote: shellQuote,
     buildOpenCommand: buildOpenCommand
