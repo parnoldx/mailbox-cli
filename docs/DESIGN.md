@@ -30,7 +30,7 @@ Mirror. The CLI is a socket client and nothing else (ADR-0012).
 ## Packages
 
 ```
-cmd/mailbox/           argv -> cli
+main.go              argv -> cli
 gui/                   the Qt client   plugins/   the bar widgets
 internal/
   cli/                 parsing, dispatch, the registry the help is rendered from

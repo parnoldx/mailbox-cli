@@ -104,7 +104,7 @@ returns one small inline part base64-wrapped (all in `internal/daemon/serve.go`)
 The Mirror schema is bumped to 11 for the `content_id` column, so the first
 restart **rebuilds the Mirror and resyncs** (ADR-0013). Rebuild and restart the
 daemon after pulling:
-`go build -o bin/mailbox ./cmd/mailbox && systemctl --user restart mailbox`.
+`go build -o bin/mailbox . && systemctl --user restart mailbox`.
 
 ## Why watching the theme is fiddly
 

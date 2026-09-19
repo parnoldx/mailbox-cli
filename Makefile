@@ -27,7 +27,7 @@ LIVE ?= ./internal/sievedrv/
 	site-check site-serve
 
 build:
-	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/mailbox
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN) .
 
 test:
 	$(GO) test ./...
@@ -112,7 +112,7 @@ update-daemon-local: install
 # before changing how this deploys.
 VPS ?= misc
 update-daemon-vps:
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 $(GO) build -ldflags "$(LDFLAGS)" -o /tmp/mailbox-vps ./cmd/mailbox
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 $(GO) build -ldflags "$(LDFLAGS)" -o /tmp/mailbox-vps .
 	scp /tmp/mailbox-vps $(VPS):/root/mailbox.new
 	ssh $(VPS) 'systemctl stop mailbox.service && mv /root/mailbox.new /root/mailbox && chmod 755 /root/mailbox && systemctl start mailbox.service'
 
