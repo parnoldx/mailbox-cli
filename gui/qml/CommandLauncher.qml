@@ -27,10 +27,12 @@ Item {
     property string labelTargetId: ""
     property var labelsOnTarget: []
     property var labelRows: []
-    // The boxes mail already moves through — dropped from the archive picker,
-    // which is only for the tree behind them. Matches `routingOrder` server-side.
+    // The boxes mail does not move into one at a time — dropped from the move
+    // picker, which offers the archive tree plus Feed and Paper Trail, whose
+    // rows route the sender as well (they are Destinations, not just boxes).
+    // Matches `routingOrder` server-side.
     readonly property var routingKeys: [
-        "INBOX", "Feed", "Paper Trail", "Screener", "Aside", "Reply Later", "Sent", "Drafts", "Junk"
+        "INBOX", "Screener", "Aside", "Reply Later", "Sent", "Drafts", "Junk"
     ]
 
     function open() {
@@ -222,7 +224,7 @@ Item {
             out.push({ id: "reply-later", label: "Reply later", glyph: "\uf017", kbd: "R" })
         // Archive opens the second pane rather than acting straight away.
         out.push({ id: "label", label: "Label as\u2026", glyph: "\uf02c", kbd: "" })
-        out.push({ id: "archive", label: "Archive to\u2026", glyph: "\uf187", kbd: "" })
+        out.push({ id: "archive", label: "Move to\u2026", glyph: "\uf187", kbd: "" })
         out.push({ id: "trash", label: "Trash", glyph: "\uf1f8", kbd: "T", danger: true })
         return _f(out)
     }
@@ -260,7 +262,13 @@ Item {
             if (!ab) return
             var id = root.archiveTargetId
             root.close()
-            win.moveId(id, ab.box, "Archived to " + ab.box)
+            // Feed and Paper Trail are Destinations: moving mail there decides
+            // the sender's routing too — the same decision the Screener's menu
+            // makes, from wherever the mail was read.
+            if (ab.box === "Feed" || ab.box === "Paper Trail")
+                win.routeId(ab.box === "Feed" ? "feed" : "paper", "Moved to " + ab.box, id)
+            else
+                win.moveId(id, ab.box, "Moved to " + ab.box)
             return
         }
         if (listPos < rows.length) {
@@ -360,7 +368,7 @@ Item {
                         id: query
                         width: parent.width - 34
                         anchors.verticalCenter: parent.verticalCenter
-                        placeholderText: root.pane === "archive" ? "Archive to…"
+                        placeholderText: root.pane === "archive" ? "Move to…"
                                        : root.pane === "labels" ? "Open a label…"
                                        : root.pane === "label-apply" ? "Label as…"
                                        : root.pane === "label-rename" ? "New name…"
@@ -621,7 +629,7 @@ Item {
             Text {
                 visible: root.pane === "archive"
                 leftPadding: 4
-                text: "Move to archive box"
+                text: "Move to a box"
                 font.family: Theme.fontFamily
                 font.pixelSize: 10
                 font.weight: Font.DemiBold
@@ -632,7 +640,7 @@ Item {
                 visible: root.pane === "archive" && root.archRows.length === 0
                 leftPadding: 4
                 topPadding: 4
-                text: root.archiveBoxes.length === 0 ? "Loading boxes…" : "No archive box matches"
+                text: root.archiveBoxes.length === 0 ? "Loading boxes…" : "No box matches"
                 font.family: Theme.fontFamily
                 font.pixelSize: 12
                 color: Theme.textDim

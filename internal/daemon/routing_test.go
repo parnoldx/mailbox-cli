@@ -252,6 +252,63 @@ func TestDecidingRoutesAndMovesWhatIsWaiting(t *testing.T) {
 	}
 }
 
+// Gate 2b. A decision made on mail read outside the Screener moves that mail
+// too: "this belongs in the Paper Trail", read in the Inbox, is a decision
+// about the sender — and the mail it was read on does not stay behind to
+// contradict it.
+func TestDecidingFromTheInboxMovesTheMailRead(t *testing.T) {
+	d, sieve := seedScreener(t)
+	f := fakeOf(d)
+
+	// A mail from a sender with no Screener mail waiting, in the Inbox.
+	msg := f.Deliver("INBOX", "<receipt@example.com>", "Ihre Rechnung", "Ihre Rechnung")
+	msg.From = "Kontoauszug <konto@bank.example>"
+	tx, err := d.Mirror.Begin("primary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, _, err := tx.UpsertMessage(mirror.Message{
+		Key: "<receipt@example.com>", From: msg.From, Subject: msg.Subject,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.PutPlacement(mirror.Placement{Folder: "INBOX", UID: msg.UID, MessageID: id}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := mustAsk(t, d, []string{"route"}, map[string]any{
+		"positional": []any{fmt.Sprintf("%d", msg.UID)}, "to": "paper",
+	})
+	got, ok := resp.Data.([]decision)
+	if !ok || len(got) != 1 {
+		t.Fatalf("route returned %T %+v", resp.Data, resp.Data)
+	}
+	if got[0].Address != "konto@bank.example" || !got[0].Changed {
+		t.Fatalf("decision = %+v", got[0])
+	}
+	// The mail read moved with the decision.
+	if len(got[0].Moved) != 1 || !strings.HasPrefix(got[0].Moved[0], "Paper Trail:") {
+		t.Fatalf("moved %v, want the inbox mail in the Paper Trail", got[0].Moved)
+	}
+
+	// The script files their next mail into the Paper Trail.
+	if l := routing.Parse(sieve.scripts[routing.ScriptName]); l.Of("konto@bank.example") != routing.PaperTrail {
+		t.Errorf("the script does not route them:\n%s", sieve.scripts[routing.ScriptName])
+	}
+	// And the mail is gone from the Inbox, sitting in the Paper Trail, read.
+	if len(f.Folder("INBOX").Msgs) != 0 {
+		t.Errorf("the inbox mail stayed behind")
+	}
+	trail := f.Folder(routing.BoxPaperTrail)
+	if len(trail.Msgs) != 1 || !slices.Contains(trail.Msgs[0].Flags, "\\Seen") {
+		t.Errorf("paper trail holds %+v, want the mail, read", trail.Msgs)
+	}
+}
+
 // Gate 3. Blocking discards what comes next and bins what is already here: the
 // script never sees another mail from them, and the mail that was waiting is
 // marked read and moved to Trash, so nothing is left sitting in the Block Box.

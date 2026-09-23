@@ -424,6 +424,60 @@ func (d *Daemon) handleRoute(ctx context.Context, req Request, resp Response) Re
 		d.push(Push{Event: "mail.changed", Account: a.Name, Box: screener})
 		d.push(Push{Event: "mail.changed", Account: a.Name, Box: box})
 	}
+
+	// The mail the decision was made about moves with it, when the Screener is
+	// not the one holding it: "this belongs in the Paper Trail", read in the
+	// Inbox, is a decision about the sender, and the mail it was read on should
+	// not stay behind to contradict it. Read on arrival, the same way the
+	// script marks what it files there. A Screener target is the sweep's job
+	// above, and one already sitting in the destination needs nothing.
+	if to == routing.Feed || to == routing.PaperTrail {
+		dest, _ := a.boxNamed(to.Box())
+		for _, t := range targets {
+			t = strings.TrimSpace(t)
+			if strings.Contains(t, "@") {
+				continue // an address was decided about, no mail named
+			}
+			acct, folder, uid, err := d.resolveID(t)
+			if err != nil {
+				return resp.api(err.Error())
+			}
+			if acct.Name != a.Name ||
+				strings.EqualFold(folder, routing.BoxScreener) ||
+				strings.EqualFold(folder, to.Box()) {
+				continue
+			}
+			row, err := d.Mirror.Row(acct.Name, folder, uid)
+			if err != nil {
+				return resp.api(err.Error())
+			}
+			ref := mailsync.Ref{Folder: folder, UID: uid}
+			// \Seen first, while the uid we hold is still the mail's — the
+			// same order trash bins in, for the same reason.
+			if _, err := a.Writer.SetSeen(ctx, []mailsync.Ref{ref}, true); err != nil {
+				return resp.api(err.Error())
+			}
+			results, err := a.Writer.Move(ctx, []mailsync.Ref{ref}, dest)
+			if err != nil {
+				return resp.api(err.Error())
+			}
+			d.push(Push{Event: "mail.changed", Account: a.Name, Box: folder})
+			d.push(Push{Event: "mail.changed", Account: a.Name, Box: to.Box()})
+			addr := routing.AddressOf(row.From)
+			for i := range out {
+				if out[i].Address != addr {
+					continue
+				}
+				for _, r := range results {
+					if r.NewUID != 0 {
+						out[i].Moved = append(out[i].Moved, a.messageID(r.NewFolder, r.NewUID))
+					} else {
+						out[i].Moved = append(out[i].Moved, to.Box())
+					}
+				}
+			}
+		}
+	}
 	return resp.ok(out)
 }
 

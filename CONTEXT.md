@@ -66,6 +66,8 @@ _Avoid_: filter, rule, sieve (that is the language it is written in)
 **Destination**:
 Where the Routing sends one sender's mail: Inbox, Feed, Paper Trail or Block. The
 Screener is the absence of one, not a fifth. Named by an address or by a domain key.
+A decision can be made on mail read in any Box, not only the Screener's — the mail
+it was read on moves with it.
 _Avoid_: category, label, bucket
 
 **Screener**:
