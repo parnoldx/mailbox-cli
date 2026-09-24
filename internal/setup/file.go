@@ -107,6 +107,7 @@ type AccountBlock struct {
 	IMAPPort    int
 	SMTPHost    string
 	SMTPPort    int
+	Color       string
 }
 
 func (a AccountBlock) body() string {
@@ -120,6 +121,7 @@ func (a AccountBlock) body() string {
 	if a.SMTPHost != "" {
 		fmt.Fprintf(&b, "smtp_host = %q\nsmtp_port = %d\n", a.SMTPHost, a.SMTPPort)
 	}
+	line(&b, "color", a.Color)
 	return b.String()
 }
 

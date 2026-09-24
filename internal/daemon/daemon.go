@@ -47,6 +47,8 @@ type Daemon struct {
 	Courier *outbox.Courier
 	// From is the address this account sends as.
 	From compose.Address
+	// Color is the Primary Account's colour (config.Account.Color).
+	Color string
 	// PollEvery is how often the LIST-STATUS cycle runs.
 	PollEvery time.Duration
 	// DAV reconciles the calendars, task lists and address books. It runs on
@@ -384,28 +386,29 @@ func (d *Daemon) cycle(ctx context.Context, a *Account, reason string) {
 	// (ADR-0027). It is one call for the whole cycle because a move shows up as
 	// two Boxes' outcomes.
 	d.watchMail(a, outcomes, pickups)
-	// A reply that lands in a conversation half-filed in Aside or Reply Later
-	// pulls the filed half back to the Inbox: the piles are decided one mail at
-	// a time, but a live thread is not something to keep hidden (matches how
-	// the Inbox row badges the whole thread).
 	if a.Primary {
 		// A message dragged out of the Screener from any client is a routing
 		// decision, and the destination folder names the destination (supersedes
 		// ADR-0019). Read from this cycle's outcomes before anything else looks
 		// at them.
 		d.inferScreenerDecisions(ctx, a, outcomes)
-		for folder, out := range outcomes {
-			// Aside and Reply Later's own sync reports a Thread "new" the first
-			// time this Daemon ever sees it filed there — a cold start, a Mirror
-			// rebuild (ADR-0013), or simply this Daemon's first look at the pile.
-			// That is not a reply landing, and reclaiming on it would drag a
-			// conversation right back out of the pile it was just filed into.
-			if strings.EqualFold(folder, routing.BoxAside) || strings.EqualFold(folder, routing.BoxReplyLater) {
-				continue
-			}
-			if out.Action == mailsync.ActionIncremental {
-				d.reclaimPiled(ctx, a, out.NewThreads, out.Added)
-			}
+	}
+	// A reply that lands in a conversation half-filed in Aside or Reply Later
+	// pulls the filed half back to the Inbox: the piles are decided one mail at
+	// a time, but a live thread is not something to keep hidden (matches how
+	// the Inbox row badges the whole thread). Every account with piles, not
+	// only the Primary.
+	for folder, out := range outcomes {
+		// Aside and Reply Later's own sync reports a Thread "new" the first
+		// time this Daemon ever sees it filed there — a cold start, a Mirror
+		// rebuild (ADR-0013), or simply this Daemon's first look at the pile.
+		// That is not a reply landing, and reclaiming on it would drag a
+		// conversation right back out of the pile it was just filed into.
+		if strings.EqualFold(folder, routing.BoxAside) || strings.EqualFold(folder, routing.BoxReplyLater) {
+			continue
+		}
+		if out.Action == mailsync.ActionIncremental {
+			d.reclaimPiled(ctx, a, out.NewThreads, out.Added)
 		}
 	}
 }

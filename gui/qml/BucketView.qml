@@ -108,6 +108,39 @@ Item {
                             HoverHandler { id: searchHover; cursorShape: Qt.PointingHandCursor }
                             TapHandler { onTapped: win.openSearch() }
                         }
+
+                        // Which account the list shows — All, then one pill per
+                        // account outlined in its colour. Only with more than
+                        // one account, and only on buckets a Secondary has too.
+                        Row {
+                            visible: win.filterApplies()
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 6
+                            Repeater {
+                                model: [{ name: "", label: "All" }].concat(win.accounts)
+                                delegate: Rectangle {
+                                    readonly property bool on: win.accountFilter === modelData.name
+                                    readonly property color tint: modelData.name ? win.accountColor(modelData.name) : Theme.textDim
+                                    width: pillText.implicitWidth + 24; height: 28; radius: 14
+                                    color: on ? Qt.rgba(tint.r, tint.g, tint.b, 0.18)
+                                         : pillHover.hovered ? Theme.cardHover : "transparent"
+                                    border.width: 1
+                                    border.color: on ? tint : Theme.hairline
+                                    Behavior on color { ColorAnimation { duration: Theme.anim } }
+                                    Text {
+                                        id: pillText
+                                        anchors.centerIn: parent
+                                        text: modelData.label
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: 12
+                                        font.weight: parent.on ? Font.DemiBold : Font.Normal
+                                        color: parent.on ? parent.tint : Theme.textDim
+                                    }
+                                    HoverHandler { id: pillHover; cursorShape: Qt.PointingHandCursor }
+                                    TapHandler { onTapped: win.setAccountFilter(modelData.name) }
+                                }
+                            }
+                        }
                     }
                 }
             }

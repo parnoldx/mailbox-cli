@@ -10,6 +10,9 @@ Rectangle {
     property string glyph: ""
     property string kind: "ghost"      // primary | ghost | soft | danger
     property bool active: true
+    // What a primary button is filled with — the composer paints Send in the
+    // sending account's colour.
+    property color fill: Theme.accent
     signal clicked()
 
     readonly property bool primary: kind === "primary"
@@ -21,7 +24,7 @@ Rectangle {
     radius: Theme.radius
     opacity: active ? 1 : 0.4
 
-    color: primary ? (hover.hovered ? Qt.lighter(Theme.accent, 1.12) : Theme.accent)
+    color: primary ? (hover.hovered ? Qt.lighter(root.fill, 1.12) : root.fill)
                    : soft ? (hover.hovered ? Theme.cardHover : Theme.selection)
                    : hover.hovered ? Theme.cardHover : "transparent"
     border.width: (primary || soft) ? 0 : 1

@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Window
 import "Triage.js" as Triage
+import "MailFormat.js" as MailFormat
 
 // HEY-style single view: one full-screen bucket at a time, a full-screen reading
 // view, and a numbered Command Launcher (press H or Ctrl+K) to jump between
@@ -462,6 +463,57 @@ ApplicationWindow {
         })
     }
 
+    // Every configured account, Primary first: { name, email, primary, color,
+    // label }. The account colours, the filter pills and the composer's From
+    // pill are drawn only when there is more than one — a single account looks
+    // exactly as it always did.
+    property var accounts: []
+    readonly property bool multiAccount: accounts.length > 1
+    function loadAccounts() {
+        Mailbox.call(["account", "list"], {}, function (r) {
+            if (!r.ok || !r.data) return
+            var out = r.data.map(function (a) {
+                // The Primary is the personal account; a Secondary goes by
+                // its name from the config.
+                a.label = a.primary ? "Personal" : a.name.charAt(0).toUpperCase() + a.name.slice(1)
+                return a
+            })
+            out.sort(function (x, y) { return (y.primary ? 1 : 0) - (x.primary ? 1 : 0) })
+            win.accounts = out
+        })
+    }
+    // The account a row or an id belongs to. Rows carry "" for the Primary;
+    // ids are `[account/]box:uid`, and a Box name can itself hold a slash, so
+    // only a prefix that names a Secondary counts.
+    function accountNamed(name) {
+        for (var i = 0; i < accounts.length; i++)
+            if (name ? accounts[i].name === name : accounts[i].primary) return accounts[i]
+        return null
+    }
+    function accountOfId(id) {
+        var s = String(id || ""), slash = s.indexOf("/")
+        var a = slash > 0 ? accountNamed(s.slice(0, slash)) : null
+        return a && !a.primary ? a.name : ""
+    }
+    // A palette name (accent, orange, …) or #rrggbb, as `account list` gives it.
+    function accountColor(name) {
+        var a = accountNamed(name)
+        var c = a ? a.color : "accent"
+        return c.charAt(0) === "#" ? c : (Theme[c] || Theme.accent)
+    }
+    // Which account the list shows: "" is all of them. It narrows only the
+    // buckets a Secondary has too — the Screener, Feed and Paper Trail are the
+    // Primary's alone (a Secondary has no Routing).
+    property string accountFilter: ""
+    function filterApplies() {
+        return win.multiAccount && win.labelView === ""
+            && ["INBOX", "Aside", "Reply Later", "Sent"].indexOf(currentKey()) >= 0
+    }
+    function setAccountFilter(name) {
+        win.accountFilter = name
+        win.refreshBucket()
+    }
+
     // Re-pull the open bucket's rows in place, without disturbing the reader.
     function refreshBucket() {
         if (win.labelView !== "") {
@@ -476,7 +528,10 @@ ApplicationWindow {
             })
             return
         }
-        Mailbox.call(["box", "view"], { positional: currentKey(), limit: 200 }, function (r) {
+        // The daemon lists a Box every account has from all of them; an
+        // account prefix narrows it to one (ADR-0028).
+        var box = win.accountFilter && win.filterApplies() ? win.accountFilter + "/" + currentKey() : currentKey()
+        Mailbox.call(["box", "view"], { positional: box, limit: 200 }, function (r) {
             listModel.setRows(r.ok && r.data ? r.data : [])
         })
     }
@@ -689,7 +744,7 @@ ApplicationWindow {
                 if (buckets[k].key.toLowerCase() === want || buckets[k].label.toLowerCase().indexOf(want) >= 0)
                     bucketIndex = k
         }
-        loadCounts(); loadBucket(); loadSelf()
+        loadCounts(); loadBucket(); loadSelf(); loadAccounts()
         var oi = a.indexOf("--open")
         if (oi >= 0 && oi + 1 < a.length) openWhenReady(a[oi + 1])
         // composeOpen is already true from _bootCompose (the view is covering
@@ -704,6 +759,7 @@ ApplicationWindow {
         target: Mailbox
         function onOnlineChanged() {
             win.loadCounts()
+            win.loadAccounts()
             // Don't reset the reader if one is open (reconnect mid-read, or the
             // socket coming up just after --open raised it).
             if (win.openId) win.refreshBucket()
@@ -735,7 +791,9 @@ ApplicationWindow {
     // _rowActionable  — row triage: a list row is highlighted and actionable.
     readonly property bool anyOverlay: composeOpen || searchView.opened
                                      || launcher.opened || quickLook.opened
+                                     || contactsPane.hasFocus
     readonly property bool bucketKeys: !composeOpen && !searchView.opened
+                                       && !contactsPane.hasFocus
     readonly property bool navKeys: !openId && !anyOverlay
     readonly property bool readerKeys: !!openId && !anyOverlay
     readonly property bool _rowActionable:
@@ -750,6 +808,7 @@ ApplicationWindow {
             else if (win.composeOpen) win.composeOpen = false
             else if (searchView.opened) searchView.close()
             else if (launcher.opened) launcher.close()
+            else if (contactsPane.opened && contactsPane.hasFocus) contactsPane.esc()
             else if (win.openId) win.back()
             else if (win.feedActive && feed() && feed().anyOpen()) feed().collapseAll()
         }
@@ -759,6 +818,14 @@ ApplicationWindow {
         sequences: ["c", "Ctrl+N"]
         enabled: !win.anyOverlay
         onActivated: win.startCompose()
+    }
+    // Toggle the contacts pane. With it open but the mail holding focus, Ctrl+O
+    // hands focus back into the pane instead of closing — one key returns you.
+    Shortcut {
+        sequence: "Ctrl+O"
+        enabled: !win.composeOpen && !searchView.opened && !launcher.opened
+                 && !quickLook.opened && !contactsPane.hasFocus
+        onActivated: contactsPane.opened ? contactsPane.refocus() : contactsPane.open()
     }
     // Open the search overlay from anywhere but a compose or a modal. Disabled
     // once it is open so a "/" typed into its own field is text, not a toggle.
@@ -779,6 +846,23 @@ ApplicationWindow {
     Shortcut { sequence: "6"; enabled: win.bucketKeys; onActivated: win.switchToKey("Drafts") }
     Shortcut { sequence: "7"; enabled: win.bucketKeys; onActivated: win.switchToKey("Sent") }
     Shortcut { sequence: "Ctrl+S"; enabled: win.bucketKeys; onActivated: win.switchToKey("Screener") }
+    // With more than one account: 0 shows them all, an account's first letter
+    // shows only it (P for Personal, W for Work). A letter a list or reader
+    // shortcut already has gets no key; its pill is still there to click.
+    Shortcut {
+        sequence: "0"; enabled: win.bucketKeys && !win.openId && win.filterApplies()
+        onActivated: win.setAccountFilter("")
+    }
+    Instantiator {
+        model: win.multiAccount ? win.accounts : []
+        delegate: Shortcut {
+            readonly property string key: modelData.label.charAt(0).toLowerCase()
+            sequence: key
+            enabled: win.bucketKeys && !win.openId && win.filterApplies()
+                     && "abcfijklmortvz".indexOf(key) < 0
+            onActivated: win.setAccountFilter(modelData.name)
+        }
+    }
     Shortcut { sequences: ["j", "Down"]; enabled: win.navKeys; onActivated: win.navView().move(1) }
     Shortcut { sequences: ["k", "Up"]; enabled: win.navKeys; onActivated: win.navView().move(-1) }
     Shortcut {
@@ -799,6 +883,21 @@ ApplicationWindow {
     // T trash live in the More menu (M), which their letters still fire
     // directly. All but Reply and Forward drop you back to the list. In the
     // Screener the chips become I/B sender decisions, so all but A/T stay off.
+    // Add the sender of the message you are reading to the contacts: their
+    // card's detail if the address is already on one, the Add form prefilled
+    // otherwise. Shift+P — plain p is the Personal account filter.
+    Shortcut {
+        sequence: "Shift+P"; enabled: win.readerKeys
+        onActivated: {
+            var raw = win.openMsg ? win.openMsg.from : ""
+            if (!raw) return
+            // displayName falls back to the address when there is no display
+            // name — that is no name, so leave the name field empty instead.
+            var name = MailFormat.displayName(raw)
+            contactsPane.openFor(name === MailFormat.address(raw) ? "" : name,
+                                 MailFormat.address(raw))
+        }
+    }
     Shortcut {
         sequence: "a"; enabled: win.readerKeys
         onActivated: win.setAsideCurrent()
@@ -898,7 +997,9 @@ ApplicationWindow {
 
     BucketView {
         id: bucketView
-        anchors.fill: parent
+        // The contacts pane pushes in from the right; these four view hosts
+        // anchor to its left edge so the mail shrinks while it is open.
+        anchors { top: parent.top; bottom: parent.bottom; left: parent.left; right: contactsPane.left }
         opacity: (win.openId || win.currentKey() === "Feed") ? 0 : 1
         visible: opacity > 0.01
         Behavior on opacity { NumberAnimation { duration: Theme.anim; easing.type: Easing.OutCubic } }
@@ -913,7 +1014,7 @@ ApplicationWindow {
     // reaches for the reader.
     Loader {
         id: feedLoader
-        anchors.fill: parent
+        anchors { top: parent.top; bottom: parent.bottom; left: parent.left; right: contactsPane.left }
         active: win._feedLoaded
         // No fade: the Feed is opaque and sits above BucketView, so it snaps in
         // to cover the outgoing bucket header while that one fades out beneath.
@@ -924,7 +1025,7 @@ ApplicationWindow {
 
     Loader {
         id: readerLoader
-        anchors.fill: parent
+        anchors { top: parent.top; bottom: parent.bottom; left: parent.left; right: contactsPane.left }
         active: win._readerLoaded
         opacity: win.openId ? 1 : 0
         visible: opacity > 0.01
@@ -937,7 +1038,7 @@ ApplicationWindow {
     // fading Send button could fall through to the pile stacks beneath and
     // switch the bucket (the "send showed Set Aside" bug).
     MouseArea {
-        anchors.fill: parent
+        anchors { top: parent.top; bottom: parent.bottom; left: parent.left; right: contactsPane.left }
         visible: composerLoader.opacity > 0.01
         enabled: visible
         acceptedButtons: Qt.AllButtons
@@ -946,7 +1047,7 @@ ApplicationWindow {
 
     Loader {
         id: composerLoader
-        anchors.fill: parent
+        anchors { top: parent.top; bottom: parent.bottom; left: parent.left; right: contactsPane.left }
         active: win._composerLoaded
         opacity: win.composeOpen ? 1 : 0
         visible: opacity > 0.01
@@ -964,6 +1065,22 @@ ApplicationWindow {
                 Behavior on color { ColorAnimation { duration: Theme.anim } }
             }
         }
+    }
+
+    // A click anywhere in the mail area takes keyboard focus back from the
+    // contacts pane (the mail keys work again); the pane itself stays open.
+    // Non-visual, above the view hosts, below the pane and the overlays.
+    Item {
+        anchors { top: parent.top; bottom: parent.bottom; left: parent.left; right: contactsPane.left }
+        TapHandler {
+            enabled: contactsPane.hasFocus
+            onTapped: win.navView().forceActiveFocus()
+        }
+    }
+
+    ContactsPane {
+        id: contactsPane
+        anchors { top: parent.top; bottom: parent.bottom; right: parent.right }
     }
 
     CommandLauncher {

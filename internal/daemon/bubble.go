@@ -3,6 +3,8 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -22,12 +24,8 @@ import (
 // (D8). Scheduling happens only on the home machine; the always-on VPS Daemon
 // runs only the loop (ADR-0025). See ADR-0023 in docs/DESIGN.md.
 func (d *Daemon) handleBubble(ctx context.Context, req Request, resp Response) Response {
-	a := d.primaryAccount()
 	if req.Verb("") == "list" {
-		return d.bubbleList(a, resp)
-	}
-	if a.Writer == nil {
-		return resp.api("this daemon cannot write: no server connection")
+		return d.bubbleList(resp)
 	}
 
 	when, now, err := d.bubbleWhen(req)
@@ -39,8 +37,8 @@ func (d *Daemon) handleBubble(ctx context.Context, req Request, resp Response) R
 	if err != nil {
 		return resp.failed(err)
 	}
-	if !acct.Primary {
-		return resp.usage("bubble belongs to the primary account")
+	if acct.Writer == nil {
+		return resp.api("this daemon cannot write: no server connection")
 	}
 	// Set the whole conversation aside, like `aside`: the id is expanded to its
 	// Thread and every member in the Inbox or a pile moves with it. A Sent copy
@@ -83,16 +81,24 @@ type bubbleRow struct {
 }
 
 // bubbleList reports the bubbled threads, soonest-due first, one row per Thread.
-func (d *Daemon) bubbleList(a *Account, resp Response) Response {
-	box, ok := a.boxNamed(routing.BoxAside)
-	if !ok {
-		return resp.ok([]bubbleRow{})
+func (d *Daemon) bubbleList(resp Response) Response {
+	// A listing spans accounts; each row's id names its own.
+	out := []bubbleRow{}
+	for _, a := range d.accounts() {
+		box, ok := a.boxNamed(routing.BoxAside)
+		if !ok {
+			continue
+		}
+		refs, err := d.Mirror.Bubbled(a.Name, box)
+		if err != nil {
+			return resp.api(err.Error())
+		}
+		out = append(out, bubbleRows(a, refs, nil)...)
 	}
-	refs, err := d.Mirror.Bubbled(a.Name, box)
-	if err != nil {
-		return resp.api(err.Error())
-	}
-	return resp.ok(bubbleRows(a, refs, nil))
+	// Soonest first across accounts, as each account's own list already is.
+	// The format sorts as text.
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Return < out[j].Return })
+	return resp.ok(out)
 }
 
 // bubbleRows folds bubbled placements to one row per Thread. keep, when set,
@@ -126,6 +132,19 @@ func bubbleRows(a *Account, refs []mirror.BubbleRef, keep map[int64]bool) []bubb
 func (d *Daemon) setBubble(ctx context.Context, a *Account, refs []mailsync.Ref, when time.Time) ([]bubbleRow, error) {
 	keyword := bubble.Keyword(when)
 
+	// Refused before anything is written: a keyword stored on an Inbox thread
+	// that then cannot move is a bubble set on nothing.
+	aside, hasAside := a.boxNamed(routing.BoxAside)
+	var toAside []mailsync.Ref
+	for _, ref := range refs {
+		if strings.EqualFold(ref.Folder, routing.BoxInbox) {
+			toAside = append(toAside, ref)
+		}
+	}
+	if len(toAside) > 0 && !hasAside {
+		return nil, fmt.Errorf("this account has no %q box — `mailbox setup`, repair, creates it", routing.BoxAside)
+	}
+
 	// Strip any keyword already there, so a re-timed thread carries exactly one.
 	// Grouped by the old keyword, because a STORE removes a named flag.
 	drop := map[string][]mailsync.Ref{}
@@ -146,21 +165,21 @@ func (d *Daemon) setBubble(ctx context.Context, a *Account, refs []mailsync.Ref,
 		}
 	}
 	// Add the new keyword. It rides the MOVE below into Aside like any flag.
-	if _, err := a.Writer.StoreFlags(ctx, refs, []string{keyword}, nil); err != nil {
+	stored, err := a.Writer.StoreFlags(ctx, refs, []string{keyword}, nil)
+	if err != nil {
 		return nil, err
 	}
-
-	aside, hasAside := a.boxNamed(routing.BoxAside)
-	var toAside []mailsync.Ref
-	for _, ref := range refs {
-		if strings.EqualFold(ref.Folder, routing.BoxInbox) {
-			toAside = append(toAside, ref)
+	// The flags are the server's answer, not our request. A server without
+	// `\*` in PERMANENTFLAGS accepts the STORE and keeps no keyword, and a
+	// bubble with no keyword is a return that never comes (ADR-0023) — so
+	// refuse before the move sets the thread aside for good.
+	for _, r := range stored {
+		if !slices.Contains(r.Flags, keyword) {
+			return nil, fmt.Errorf("this account's server does not keep custom keywords, so it cannot bubble")
 		}
 	}
+
 	if len(toAside) > 0 {
-		if !hasAside {
-			return nil, fmt.Errorf("this account has no %q box", routing.BoxAside)
-		}
 		if _, err := a.Writer.Move(ctx, toAside, aside); err != nil {
 			return nil, err
 		}
@@ -242,13 +261,10 @@ func (d *Daemon) stripBubble(ctx context.Context, a *Account, refs []mailsync.Re
 
 // bubbleLoop returns bubbled threads whose instant has passed. It scans by wall
 // clock rather than sleeping on a per-message timer, so a Daemon that was down
-// across the instant catches it on the first tick after startup. It runs the
-// Primary Account only — the piles and the Routing are the Primary's.
+// across the instant catches it on the first tick after startup. It runs every
+// account, read afresh each tick, because Secondaries come and go with the
+// config (ADR-0021).
 func (d *Daemon) bubbleLoop(ctx context.Context) {
-	a := d.primaryAccount()
-	if a.Writer == nil {
-		return
-	}
 	every := d.PollEvery
 	if every <= 0 {
 		every = time.Minute
@@ -256,7 +272,11 @@ func (d *Daemon) bubbleLoop(ctx context.Context) {
 	t := time.NewTicker(every)
 	defer t.Stop()
 	for {
-		d.returnDue(ctx, a)
+		for _, a := range d.accounts() {
+			if a.Writer != nil {
+				d.returnDue(ctx, a)
+			}
+		}
 		select {
 		case <-ctx.Done():
 			return

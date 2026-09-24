@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"mailbox/internal/bubble"
 	compose "mailbox/internal/message"
 	"mailbox/internal/mirror"
 	"mailbox/internal/outbox"
@@ -22,15 +23,21 @@ func twoAccounts(t *testing.T) (*Daemon, *mailsync.Fake, *stubTransport) {
 
 	second := mailsync.NewFake("INBOX")
 	second.AddFolder("Sent")
-	second.Deliver("INBOX", "gmx-one@x", "Rechnung von GMX", "zahlen bitte").From = "buchhaltung@gmx.de"
-	second.Deliver("INBOX", "gmx-two@x", "Newsletter", "nicht wichtig")
+	second.AddFolder("INBOX/Aside")
+	second.AddFolder("INBOX/Reply Later")
+	// One newer and one older than the Primary's Inbox mail (2026-08-29 09:00),
+	// so a merged listing has to interleave them.
+	one := second.Deliver("INBOX", "gmx-one@x", "Rechnung von GMX", "zahlen bitte")
+	one.From, one.Date = "buchhaltung@gmx.de", time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC)
+	second.Deliver("INBOX", "gmx-two@x", "Newsletter", "nicht wichtig").Date = time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC)
 
 	r := &mailsync.Reconciler{Account: "gmx", Mirror: d.Mirror, Driver: second}
-	mirrored := []string{"INBOX", "Sent"}
+	mirrored := []string{"INBOX", "Sent", "INBOX/Aside", "INBOX/Reply Later"}
 	acct := NewAccount("gmx", r,
 		&mailsync.Writer{Account: "gmx", Mirror: d.Mirror, Driver: second, Mirrored: mirrored},
 		mirrored, []string{"INBOX"})
 	acct.From = compose.Address{Name: "Peter", Addr: "peter@gmx.de"}
+	acct.Color = "orange"
 	transport := &stubTransport{}
 	acct.Courier = &outbox.Courier{
 		Box: d.Outbox, Account: "gmx", Transport: transport, Filer: second, SentBox: "Sent",
@@ -294,4 +301,96 @@ func TestOneMirrorHoldsBothAccounts(t *testing.T) {
 		t.Fatal("the accounts are sharing rows")
 	}
 	_ = time.Now
+}
+
+// boxRows runs box view and returns its rows.
+func boxRows(t *testing.T, d *Daemon, args map[string]any) []row {
+	t.Helper()
+	return mustAsk(t, d, []string{"box", "view"}, args).Data.([]row)
+}
+
+func idsOf(rows []row) string {
+	ids := make([]string, len(rows))
+	for i, r := range rows {
+		ids[i] = r.ID + "@" + r.Account
+	}
+	return strings.Join(ids, " ")
+}
+
+// A listing spans accounts, an id names one: the Inbox is both accounts',
+// newest first, each row carrying its own account.
+func TestTheInboxListsEveryAccountNewestFirst(t *testing.T) {
+	d, _, _ := twoAccounts(t)
+	if got := idsOf(boxRows(t, d, map[string]any{"positional": "inbox"})); got != "gmx/1@gmx 7@ gmx/2@gmx" {
+		t.Fatalf("merged inbox = %s", got)
+	}
+	// The limit is on the merged listing.
+	if got := idsOf(boxRows(t, d, map[string]any{"positional": "inbox", "limit": 2.0})); got != "gmx/1@gmx 7@" {
+		t.Fatalf("limit 2 = %s", got)
+	}
+	// Naming an account narrows, the Primary included.
+	if got := idsOf(boxRows(t, d, map[string]any{"positional": "gmx"})); got != "gmx/1@gmx gmx/2@gmx" {
+		t.Fatalf("gmx = %s", got)
+	}
+	if got := idsOf(boxRows(t, d, map[string]any{"positional": "primary"})); got != "7@" {
+		t.Fatalf("primary = %s", got)
+	}
+	// A Box only one account has is that account's, as it always was.
+	if got := idsOf(boxRows(t, d, map[string]any{"positional": "Screener"})); got != "Screener:42@" {
+		t.Fatalf("screener = %s", got)
+	}
+}
+
+// The piles work on a Secondary: bubble sets the keyword on its server, the
+// return brings the thread back there, and the Primary is untouched.
+func TestASecondaryHasThePiles(t *testing.T) {
+	d, second, _ := twoAccounts(t)
+	ctx := context.Background()
+	gmx := d.Others[0]
+
+	yesterday := startOfDay(time.Now()).AddDate(0, 0, -1).Format("2006-01-02")
+	mustAsk(t, d, []string{"bubble"}, map[string]any{"positional": "gmx/1", "on": yesterday})
+	if msgs := second.Folder("INBOX/Aside").Msgs; len(msgs) != 1 || bubble.KeywordOf(msgs[0].Flags) == "" {
+		t.Fatalf("gmx Aside = %+v, want the thread with its keyword", msgs)
+	}
+	if got := idsOf(boxRows(t, d, map[string]any{"positional": "primary"})); got != "7@" {
+		t.Fatalf("the primary moved: %s", got)
+	}
+
+	d.returnDue(ctx, gmx)
+	if len(second.Folder("INBOX/Aside").Msgs) != 0 {
+		t.Fatal("the bubbled thread did not come back to the gmx Inbox")
+	}
+
+	mustAsk(t, d, []string{"aside"}, map[string]any{"positional": "gmx/2"})
+	if len(second.Folder("INBOX/Aside").Msgs) != 1 {
+		t.Fatal("aside did not move on the gmx server")
+	}
+}
+
+// A server that takes the STORE and keeps no keyword would make a bubble that
+// never returns. It is refused, and nothing is moved.
+func TestABubbleTheServerWillNotKeepIsRefused(t *testing.T) {
+	d, second, _ := twoAccounts(t)
+	second.NoKeywords = true
+	resp := ask(t, d, []string{"bubble"}, map[string]any{"positional": "gmx/1", "tomorrow": true})
+	if resp.OK || !strings.Contains(resp.Error, "keywords") {
+		t.Fatalf("resp = %+v, want a refusal naming keywords", resp)
+	}
+	if len(second.Folder("INBOX/Aside").Msgs) != 0 {
+		t.Fatal("the thread was set aside with no way back")
+	}
+}
+
+func TestAccountListNamesEveryAccountAndItsColour(t *testing.T) {
+	d, _, _ := twoAccounts(t)
+	d.Color = "accent"
+	got := mustAsk(t, d, []string{"account", "list"}, nil).Data.([]accountRow)
+	want := []accountRow{
+		{Name: "primary", Email: "me@example.com", Primary: true, Color: "accent"},
+		{Name: "gmx", Email: "peter@gmx.de", Color: "orange"},
+	}
+	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("accounts = %+v", got)
+	}
 }

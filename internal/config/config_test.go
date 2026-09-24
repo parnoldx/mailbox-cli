@@ -66,3 +66,35 @@ func TestTheSocketIsNeverABareNameInTheSharedTempDir(t *testing.T) {
 		t.Fatalf("SocketPath() ignored the override: %q", got)
 	}
 }
+
+// An account's colour is its identity on screen, so one left empty is filled
+// in, the same on every load, and never with a colour another account has.
+func TestEveryAccountHasAColourAndNoTwoShareOne(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	src := valid +
+		"[accounts.work]\nemail = \"w@example.com\"\npassword = \"x\"\nimap_host = \"imap.example.com\"\n" +
+		"[accounts.club]\nemail = \"c@example.com\"\npassword = \"x\"\nimap_host = \"imap.example.com\"\ncolor = \"orange\"\n" +
+		"[accounts.alt]\nemail = \"a@example.com\"\npassword = \"x\"\nimap_host = \"imap.example.com\"\n"
+	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		cfg, err := LoadFrom(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := []string{cfg.Account.Color, cfg.Secondary["alt"].Color, cfg.Secondary["club"].Color, cfg.Secondary["work"].Color}
+		want := []string{"accent", "magenta", "orange", "green"}
+		if strings.Join(got, " ") != strings.Join(want, " ") {
+			t.Fatalf("colours = %v, want %v", got, want)
+		}
+	}
+
+	bad := valid + "color = \"teal\"\n"
+	if err := os.WriteFile(path, []byte(bad), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadFrom(path); err == nil || !strings.Contains(err.Error(), "teal") {
+		t.Fatalf("an unknown colour loaded: %v", err)
+	}
+}

@@ -29,6 +29,8 @@ type server struct {
 	// disk when it was called.
 	configPath string
 	afterWrite bool
+	// piled is every set of Boxes Piles was asked to complete.
+	piled [][]string
 }
 
 // note records that a server was talked to, and when.
@@ -65,6 +67,12 @@ func (s *server) Routing(ctx context.Context, a Answers, boxes []string) (Bootst
 	b := Bootstrap{Created: MissingBoxes(boxes), Wrote: true, Active: "Open-Xchange"}
 	s.booted = &b
 	return b, nil
+}
+
+func (s *server) Piles(ctx context.Context, host string, port int, user, password string, boxes []string) ([]string, error) {
+	s.note()
+	s.piled = append(s.piled, boxes)
+	return MissingPiles(boxes), nil
 }
 
 func account() *server {
@@ -265,8 +273,9 @@ func TestASecondRunAddsAnAccountWithoutRewritingTheFile(t *testing.T) {
 	// password, the derived imap host, the display name, then quit.
 	answers := "a\n\ngmx\nme@gmx.de\nsecond\n\nMax\nq\n"
 	var out strings.Builder
+	srv := account()
 	w := &Wizard{
-		In: strings.NewReader(answers), Out: &out, Prober: account(), ConfigPath: path,
+		In: strings.NewReader(answers), Out: &out, Prober: srv, ConfigPath: path,
 		Units: Units{Dir: filepath.Join(dir, "systemd"), Exec: "/usr/bin/mailbox"},
 		Skill: Skill{Dir: filepath.Join(dir, "skills", "mailbox")},
 	}
@@ -277,10 +286,15 @@ func TestASecondRunAddsAnAccountWithoutRewritingTheFile(t *testing.T) {
 	if !strings.HasPrefix(string(got), handWritten) {
 		t.Fatalf("the hand-written config was rewritten:\n%s", got)
 	}
-	for _, want := range []string{`[accounts.gmx]`, `imap_host = "imap.gmx.de"`, `smtp_host = "smtp.gmx.de"`} {
+	// The colour is written, not asked, and is not the Primary's accent.
+	for _, want := range []string{`[accounts.gmx]`, `imap_host = "imap.gmx.de"`, `smtp_host = "smtp.gmx.de"`, `color = "orange"`} {
 		if !strings.Contains(string(got), want) {
 			t.Errorf("the config does not contain %s:\n%s", want, got)
 		}
+	}
+	// The piles are made on the new account, before anything is written.
+	if len(srv.piled) != 1 || !strings.Contains(out.String(), "created INBOX/Aside, INBOX/Reply Later") {
+		t.Errorf("piles asked %v, said:\n%s", srv.piled, out.String())
 	}
 }
 

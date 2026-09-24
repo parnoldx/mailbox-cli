@@ -42,10 +42,17 @@ ID means.
 _Avoid_: main account, default account
 
 **Secondary Account**:
-An Account with an Inbox, Drafts and Sent, and the ability to Send. No Screener,
-no Routing. Its own connections and its own cycle, sharing the one Mirror: every
-row in it carries an Account.
+An Account with an Inbox, Drafts and Sent, the ability to Send, and the piles —
+Aside, Reply Later and Bubble Up. No Screener, no Feed, no Paper Trail, no Routing.
+Its own connections and its own cycle, sharing the one Mirror: every row in it
+carries an Account. A listing spans every Account; an id names one.
 _Avoid_: extra account, sub-account
+
+**Account Colour**:
+An Account's identity on screen: the edge of its rows and the Send button of a mail
+leaving from it. An Omarchy palette name, so it follows the theme, or a fixed
+`#rrggbb`. The Primary's is the accent unless the config says otherwise.
+_Avoid_: account tag, badge colour
 
 ## Mail
 

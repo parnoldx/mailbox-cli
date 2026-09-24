@@ -203,6 +203,7 @@ func runDaemon(systemdSocket bool) error {
 	}
 	d.Outbox = box
 	d.From = compose.Address{Name: cfg.Account.DisplayName, Addr: cfg.Account.Email}
+	d.Color = cfg.Account.Color
 	d.Courier = &outbox.Courier{
 		Box: box, Account: "primary", Filer: drv, SentBox: sentBox, Log: logger,
 		Transport: smtpdrv.New(smtpdrv.Config{
@@ -433,6 +434,7 @@ func buildSecondary(ctx context.Context, name string, sec config.Account,
 		&mailsync.Writer{Account: name, Mirror: m, Driver: drv, Mirrored: mirrored},
 		mirrored, watched)
 	acct.From = compose.Address{Name: sec.DisplayName, Addr: sec.Email}
+	acct.Color = sec.Color
 	acct.Close = func() { drv.Close() }
 
 	sent := sec.SentBox

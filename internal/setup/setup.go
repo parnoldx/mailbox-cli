@@ -62,6 +62,9 @@ type Prober interface {
 	// Routing script up if there is none. It is the last thing that talks to a
 	// server here.
 	Routing(ctx context.Context, a Answers, boxes []string) (Bootstrap, error)
+	// Piles creates the Set Aside and Reply Later Boxes a Secondary Account
+	// has not got, and returns the ones it created.
+	Piles(ctx context.Context, host string, port int, user, password string, boxes []string) ([]string, error)
 }
 
 // Wizard asks the questions.

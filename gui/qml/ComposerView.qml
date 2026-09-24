@@ -27,6 +27,18 @@ Item {
     // works them out (message.reply_all). Reply all puts these on the Cc row.
     property var replyAllCc: []
     property string replyFrom: ""
+    // The Secondary Account this mail goes out from; "" is the Primary. A new
+    // mail starts on the Primary and can be switched; a reply, forward or
+    // draft stays on the account its id names (daemon/send.go).
+    property string account: ""
+    readonly property var sender: win.accountNamed(root.account)
+    readonly property color senderColor: win.multiAccount ? win.accountColor(root.account) : Theme.accent
+    function cycleAccount() {
+        if (root.mode !== "new" || !win.multiAccount) return
+        var i = win.accounts.indexOf(root.sender)
+        var next = win.accounts[(i + 1) % win.accounts.length]
+        root.account = next.primary ? "" : next.name
+    }
     property string baseSubject: ""
     // The parent's plain text and date, kept from openReply — the agent draft
     // reads them, and re-quotes them when it replaces the editor's text.
@@ -79,6 +91,7 @@ Item {
         root.mode = "new"; root.replyId = ""; root.forwardId = ""; root.draftId = ""
         root.replyAll = false; root.replyAllCc = []
         root.replyFrom = ""; root.baseSubject = ""; root.showCc = false
+        root.account = ""
         root.replyQuote = ""; root.replyDate = ""
         root.attachments = []
         toPills.recipients = []; ccPills.recipients = []; bccPills.recipients = []
@@ -96,6 +109,7 @@ Item {
         resetForm()
         root.mode = "reply"
         root.replyId = String(ctx.id || "")
+        root.account = win.accountOfId(root.replyId)
         root.replyAllCc = ctx.replyAllCc || []
         root.replyFrom = ctx.from || ""
         root.baseSubject = ctx.subject || ""
@@ -145,6 +159,7 @@ Item {
         resetForm()
         root.mode = "forward"
         root.forwardId = String(ctx.id || "")
+        root.account = win.accountOfId(root.forwardId)
         root.baseSubject = ctx.subject || ""
         subjectField.text = /^\s*(fwd?|aw):/i.test(root.baseSubject)
             ? root.baseSubject : ("Fwd: " + root.baseSubject)
@@ -181,6 +196,7 @@ Item {
         resetForm()
         root.mode = "draft"
         root.draftId = String(msg.id || "")
+        root.account = win.accountOfId(root.draftId)
         root.baseSubject = msg.subject || ""
         subjectField.text = msg.subject || ""
         root._fillRecipients(toPills, msg.to || "")
@@ -240,6 +256,7 @@ Item {
             body_html: html || "",
             attach: root.attachments.map(function (x) { return x.path })
         }
+        if (root.account) a.account = root.account
         if (root.mode === "reply" && !forDraft) {
             a.positional = root.replyId
         } else if (root.mode === "forward" && !forDraft) {
@@ -279,6 +296,7 @@ Item {
             mode: root.mode, replyId: root.replyId, forwardId: root.forwardId,
             draftId: root.draftId, replyAll: root.replyAll, replyAllCc: root.replyAllCc,
             replyFrom: root.replyFrom, baseSubject: root.baseSubject, showCc: root.showCc,
+            account: root.account,
             to: toPills.recipients.slice(), cc: ccPills.recipients.slice(), bcc: bccPills.recipients.slice(),
             subject: subjectField.text, bodyHtml: html || "", attachments: root.attachments.slice()
         }
@@ -288,6 +306,7 @@ Item {
         root.forwardId = s.forwardId || ""; root.draftId = s.draftId || ""
         root.replyAll = s.replyAll; root.replyAllCc = s.replyAllCc || []
         root.replyFrom = s.replyFrom; root.baseSubject = s.baseSubject; root.showCc = s.showCc
+        root.account = s.account || ""
         toPills.recipients = s.to; ccPills.recipients = s.cc; bccPills.recipients = s.bcc
         subjectField.text = s.subject; root.attachments = s.attachments
         lexxy.setHtml(s.bodyHtml)
@@ -441,6 +460,29 @@ Item {
             TapHandler { onTapped: root.requestClose() }
         }
         Kbd { anchors.verticalCenter: parent.verticalCenter; text: "Esc" }
+
+        // Who this goes out as — only with more than one account. A new mail
+        // switches account on a click; anything else is fixed to its account.
+        Rectangle {
+            visible: win.multiAccount && !!root.sender
+            anchors.verticalCenter: parent.verticalCenter
+            width: fromText.implicitWidth + 28; height: 28; radius: 14
+            color: Qt.rgba(root.senderColor.r, root.senderColor.g, root.senderColor.b, 0.18)
+            border.width: 1
+            border.color: root.senderColor
+            Behavior on color { ColorAnimation { duration: Theme.anim } }
+            Text {
+                id: fromText
+                anchors.centerIn: parent
+                text: root.sender ? root.sender.label + "  ·  " + root.sender.email
+                                    + (root.mode === "new" ? "  \uf0dc" : "") : ""
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+                color: root.senderColor
+            }
+            HoverHandler { cursorShape: root.mode === "new" ? Qt.PointingHandCursor : Qt.ArrowCursor }
+            TapHandler { onTapped: root.cycleAccount() }
+        }
     }
 
     // Drafts on the pile — same pill as the Inbox's Compose button, top right.
@@ -476,7 +518,9 @@ Item {
             Row {
                 spacing: 1
                 AppButton {
-                    kind: "primary"; glyph: "\uf1d8"; text: "Send message"
+                    kind: "primary"; glyph: "\uf1d8"
+                    text: win.multiAccount && root.sender ? "Send as " + root.sender.label : "Send message"
+                    fill: root.senderColor
                     active: root.canSend
                     onClicked: root.doSend()
                 }
@@ -487,6 +531,7 @@ Item {
                 AppButton {
                     id: sendCaret
                     kind: "primary"; text: "\uf0d7"
+                    fill: root.senderColor
                     active: root.canSend
                     onClicked: sendMenu.open()
                 }

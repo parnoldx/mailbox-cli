@@ -190,13 +190,17 @@ func tree(l Locals) []*Command {
 				Name: "view", Short: "List the mail in a box",
 				Usage: []string{"mailbox box view [BOX] [--limit N]"},
 				Long: "With no box named this is the inbox. A box under it is named without " +
-					"it — Screener, not INBOX/Screener; see `mailbox help ids`.",
+					"it — Screener, not INBOX/Screener; see `mailbox help ids`. With several " +
+					"accounts a box they all have is listed from all of them, newest first; " +
+					"name one to narrow it — `box view work`, `box view work/Aside`, " +
+					"`box view primary`. A conversation that reached two accounts is two rows.",
 				Flags: []Flag{
 					{Name: "limit", Kind: KindInt, Arg: "N", Int: 50, Desc: "how many messages to show"},
 				},
 				Examples: []string{
 					"mailbox box view",
 					"mailbox box view Screener --limit 10",
+					"mailbox box view work",
 					`mailbox box view "Paper Trail"`,
 				},
 				Run: runBoxView,
@@ -1078,6 +1082,19 @@ func tree(l Locals) []*Command {
 			Usage: []string{"mailbox status"},
 			Long:  "One line per account: how many boxes are held, how much is in the inbox, and what is watched.",
 			Run:   runStatus,
+		},
+		{
+			Name: "account", Section: SectionSystem, Short: "The mail accounts",
+			Long: "A listing spans every account and an id names one: `work/INBOX:412` is " +
+				"on the work account, a bare id on the primary. `box view ACCOUNT` narrows " +
+				"a listing to one.",
+			Sub: []*Command{{
+				Name: "list", Short: "Every account, its address and its colour",
+				Usage: []string{"mailbox account list"},
+				Long: "The colour is an Omarchy palette name, which follows the theme, or " +
+					"#rrggbb. Set it with `color` in the account's block of the config.",
+				Run: runAccountList,
+			}},
 		},
 		{
 			Name: "daemon", Section: SectionSystem, Short: "Run the daemon in the foreground",

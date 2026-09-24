@@ -457,6 +457,31 @@ func printMessage(stdout, stderr io.Writer, resp daemon.Response) {
 
 // printStatus says what the Mirror holds, one line per account. With one
 // account it is one line, which is what it always was.
+func runAccountList(in *input, stdout, stderr io.Writer) int {
+	return request(daemon.Request{Cmd: []string{"account", "list"}},
+		in.JSON(), printAccounts, stdout, stderr)
+}
+
+func printAccounts(stdout, stderr io.Writer, resp daemon.Response) {
+	rows, ok := rowsOf(stdout, resp.Data)
+	if !ok {
+		return
+	}
+	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
+	for _, r := range rows {
+		m, ok := r.(map[string]any)
+		if !ok {
+			continue
+		}
+		mark := " "
+		if primary, _ := m["primary"].(bool); primary {
+			mark = "*"
+		}
+		fmt.Fprintf(tw, "%s\t%v\t%v\t%v\n", mark, str(m["name"]), str(m["email"]), str(m["color"]))
+	}
+	_ = tw.Flush()
+}
+
 func printStatus(stdout, stderr io.Writer, resp daemon.Response) {
 	rows, ok := rowsOf(stdout, resp.Data)
 	if !ok {

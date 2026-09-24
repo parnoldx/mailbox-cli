@@ -209,8 +209,20 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 	case "box view":
 		// A Box is named the same way a Message is: `[account/]box`, with the
 		// Primary Account implicit (ADR-0005).
+		// With no account named, a Box several accounts have is listed from all
+		// of them: a listing spans accounts, an id names one.
 		name := req.Str("positional")
 		prefix, rest := splitAccount(name, d.accountNames())
+		limit := req.Int("limit", 50)
+		if prefix == "" {
+			merged, ok, err := d.mergedView(rest, limit)
+			if err != nil {
+				return resp.api(err.Error())
+			}
+			if ok {
+				return resp.ok(merged)
+			}
+		}
 		acct, err := d.accountNamed(prefix)
 		if err != nil {
 			return resp.usage(err.Error())
@@ -219,7 +231,6 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 		if rest != "" {
 			folder = resolveBox(rest, acct.Mirrored)
 		}
-		limit := req.Int("limit", 50)
 		rows, err := d.Mirror.Rows(acct.Name, folder, limit)
 		if err != nil {
 			return resp.api(err.Error())
@@ -435,6 +446,18 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 
 	case "forward":
 		return d.handleForward(ctx, req, resp)
+
+	case "account list":
+		// What a client needs to paint an account: the name `box view` takes,
+		// the address mail leaves from, and its colour. A row's own account
+		// field is empty for the Primary; primary says which entry that is.
+		out := []accountRow{}
+		for _, a := range d.accounts() {
+			out = append(out, accountRow{
+				Name: a.Name, Email: a.From.Addr, Primary: a.Primary, Color: a.Color,
+			})
+		}
+		return resp.ok(out)
 
 	case "status":
 		resp.Problems = d.Problems()
@@ -919,8 +942,20 @@ func shortBox(folder string, known []string) string {
 	return short
 }
 
+// accountRow is one account as `account list` names it.
+type accountRow struct {
+	Name    string `json:"name"`
+	Email   string `json:"email"`
+	Primary bool   `json:"primary"`
+	Color   string `json:"color"`
+}
+
 type row struct {
-	ID      string `json:"id"`
+	ID string `json:"id"`
+	// Account is the Secondary Account this row is on, and empty for the
+	// Primary — the same rule as the id's prefix, spelled out for a client
+	// that paints the account rather than parsing the id.
+	Account string `json:"account,omitempty"`
 	UID     uint32 `json:"uid"`
 	Date    string `json:"date"`
 	From    string `json:"from"`
@@ -1107,7 +1142,7 @@ func viewRows(a *Account, folder string, rows []mirror.Row, threadSizes map[int6
 		index[r.ThreadID] = len(out)
 		threadOf = append(threadOf, r.ThreadID)
 		newRow := row{
-			ID: a.messageID(folder, r.UID), UID: r.UID, Date: date, From: r.From,
+			ID: a.messageID(folder, r.UID), Account: a.label(), UID: r.UID, Date: date, From: r.From,
 			Subject: r.Subject, Seen: r.Seen(), Body: r.BodyState, Count: 1,
 			Labels: mirror.LabelsOf(r.Placement.Flags),
 		}
@@ -1138,6 +1173,53 @@ func viewRows(a *Account, folder string, rows []mirror.Row, threadSizes map[int6
 		sort.SliceStable(out, func(i, j int) bool { return out[i].Bubbled && !out[j].Bubbled })
 	}
 	return out
+}
+
+// mergedView lists a Box from every account that has it, newest first. ok is
+// false when fewer than two accounts do, and the caller lists the one account
+// exactly as it always has — so a single-account setup never takes this path.
+//
+// Each account is asked for limit rows, since any one of them may hold all of
+// the newest. Threads never cross accounts (ADR-0008), so one conversation
+// reaching both addresses is two rows.
+func (d *Daemon) mergedView(box string, limit int) (out []row, ok bool, err error) {
+	type part struct {
+		acct   *Account
+		folder string
+	}
+	var parts []part
+	for _, a := range d.accounts() {
+		folder := "INBOX"
+		if box != "" {
+			folder = resolveBox(box, a.Mirrored)
+		}
+		if f, has := a.boxNamed(folder); has {
+			parts = append(parts, part{a, f})
+		}
+	}
+	if len(parts) < 2 {
+		return nil, false, nil
+	}
+	floats := false
+	for _, p := range parts {
+		rows, err := d.Mirror.Rows(p.acct.Name, p.folder, limit)
+		if err != nil {
+			return nil, false, err
+		}
+		out = append(out, viewRows(p.acct, p.folder, rows, d.threadSizesFor(p.acct.Name, rows))...)
+		floats = floats || p.folder == routing.BoxInbox
+	}
+	// The date is local "2006-01-02 15:04", which sorts as text; a row with
+	// none sorts last. Stable, so a tie keeps the Primary first.
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Date > out[j].Date })
+	// The same float viewRows gives one account's Inbox, over the merged one.
+	if floats {
+		sort.SliceStable(out, func(i, j int) bool { return out[i].Bubbled && !out[j].Bubbled })
+	}
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, true, nil
 }
 
 // mergeLabels folds a second Message's labels into a Thread's, sorted and

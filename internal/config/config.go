@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -58,6 +60,45 @@ type Account struct {
 	// cycle once the app password is gone, since an empty DAVPassword falls
 	// back to the mail one and mailbox.org refuses that for CalDAV/CardDAV.
 	NoDAV bool `toml:"no_dav"`
+	// Color is the account's identity on screen: the edge of its rows and the
+	// Send button of a mail going out from it. An Omarchy palette name, which
+	// follows the theme, or "#rrggbb", which does not. Empty is filled in by
+	// LoadFrom: the accent for the Primary, the palette in turn for the rest.
+	Color string `toml:"color"`
+}
+
+// AccountColors is the palette a Secondary Account's colour is taken from when
+// it has none, in order. The accent is left out: it is the Primary's.
+var AccountColors = []string{"orange", "magenta", "green", "yellow", "cyan", "red"}
+
+// validColor says whether a colour is one the clients can paint: a palette
+// name they resolve against the live theme, or a literal hex one.
+func validColor(c string) bool {
+	switch c {
+	case "accent", "red", "yellow", "orange", "green", "cyan", "blue", "magenta", "brown":
+		return true
+	}
+	if len(c) != 7 || c[0] != '#' {
+		return false
+	}
+	for _, r := range c[1:] {
+		if !strings.ContainsRune("0123456789abcdefABCDEF", r) {
+			return false
+		}
+	}
+	return true
+}
+
+// NextColor is the first palette colour no account in use has, so an account
+// added by the wizard does not look like one already there. With every one
+// taken it starts again from the top.
+func NextColor(used []string) string {
+	for _, c := range AccountColors {
+		if !slices.Contains(used, c) {
+			return c
+		}
+	}
+	return AccountColors[0]
 }
 
 // Calendar is a Collection on a server we cannot discover: another provider,
@@ -216,6 +257,32 @@ func LoadFrom(path string) (*Config, error) {
 	}
 	if c.Account.SievePort == 0 {
 		c.Account.SievePort = 4190
+	}
+	if c.Account.Color == "" {
+		c.Account.Color = "accent"
+	}
+	if !validColor(c.Account.Color) {
+		return nil, fmt.Errorf("%s: account.color %q is neither a palette name nor #rrggbb", path, c.Account.Color)
+	}
+	// Sorted, so an account without a colour gets the same one on every load
+	// rather than whichever the map hands out first.
+	names := make([]string, 0, len(c.Secondary))
+	used := []string{c.Account.Color}
+	for name, a := range c.Secondary {
+		names = append(names, name)
+		used = append(used, a.Color)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		a := c.Secondary[name]
+		if a.Color == "" {
+			a.Color = NextColor(used)
+			used = append(used, a.Color)
+		}
+		if !validColor(a.Color) {
+			return nil, fmt.Errorf("%s: accounts.%s.color %q is neither a palette name nor #rrggbb", path, name, a.Color)
+		}
+		c.Secondary[name] = a
 	}
 	for name, a := range c.Secondary {
 		if a.Email == "" || a.Password == "" {

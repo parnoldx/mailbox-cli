@@ -26,6 +26,7 @@ qt_add_resources(mailbox-gui "qml"
         qml/ReadingView.qml
         qml/CommandLauncher.qml
         qml/SearchView.qml
+        qml/ContactsPane.qml
         qml/RowActions.qml
         qml/ScreenerMoveMenu.qml
         qml/ReaderMoreMenu.qml

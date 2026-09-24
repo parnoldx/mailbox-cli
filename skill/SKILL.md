@@ -34,6 +34,7 @@ and each help text carries the reason the command works the way it does.
 |---|---|
 | see what is waiting | `mailbox status` then `mailbox box list` |
 | read a box | `mailbox box view Screener --limit 20` |
+| read one account's inbox | `mailbox box view work` — a listing spans every account, `work/INBOX:412` ids are on that one |
 | read one message | `mailbox message view 36722` |
 | read the conversation | `mailbox thread 36722` |
 | find something | `mailbox search rechnung --in feed` |

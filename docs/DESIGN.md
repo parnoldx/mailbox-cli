@@ -457,7 +457,12 @@ Daemon down across the instant catches every overdue return on its first tick �
 never lost, only late. The return strips the keyword, removes `\Seen` (the reminder
 *is* the mail reappearing unread; iOS raises nothing for a silently-moved read
 thread), moves the thread to the Inbox and sets `$bubbled` so it floats. `--now`
-runs the same steps. It needs `\*` in the folder's PERMANENTFLAGS.
+runs the same steps. It needs `\*` in the folder's PERMANENTFLAGS, and the flags
+the STORE reports back are checked for the keyword before the thread moves: a
+server that takes the STORE and keeps nothing refuses the bubble rather than set
+aside a thread that never returns. **Per Account**: every Account with the piles
+bubbles, the return loop scans each, and a reply landing pulls a thread out of
+its piles on whichever Account it lands.
 
 **ADR-0024 — A move out of the Screener is a routing decision.** For a general
 mailbox a move is ambiguous — "file this sender there" or "I have dealt with this
@@ -508,6 +513,18 @@ decided here rather than by the reader: unseen, in a Box where unread means
 something, and an arrival rather than a move landing from another client. Nothing is
 remembered — no `--since`, no journal — because a durable feed needs a table, a
 retention rule and a cursor, and a fresh watch reads from the server anyway.
+
+**ADR-0028 — A listing spans accounts, an id names one.** `box view inbox`
+with no account named lists every Account's Inbox, newest first, each row carrying
+its Account; `box view work` or `box view primary` narrows. Writes do not merge:
+one command, one Account, because a write is a round trip to one server (ADR-0004).
+A Box only one Account has lists from that one, and with a single Account the old
+path runs untouched, so nothing a one-account setup sees changed. Each Account is
+asked for the whole limit before the merge, since any one of them may hold all of
+the newest; Threads still never cross Accounts (ADR-0008), so one conversation
+reaching two addresses is two rows. No `--account` flag: the prefix already names
+an Account everywhere else (ADR-0005). `bubble list` spans accounts the same way,
+and `account list` names each one with its Account Colour for the clients.
 
 ## What the real servers do
 

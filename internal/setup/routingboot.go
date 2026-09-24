@@ -25,6 +25,11 @@ var RoutingBoxes = []string{
 	routing.BoxBlock,
 }
 
+// PileBoxes are the Boxes a Secondary Account needs for the piles: Set Aside
+// and Reply Later, which `aside`, `reply-later` and `bubble` move mail into.
+// Only these two — the Screener and the Routing stay the Primary's.
+var PileBoxes = []string{routing.BoxAside, routing.BoxReplyLater}
+
 // BoxMaker creates a Box on the Primary Account.
 type BoxMaker interface {
 	CreateFolder(ctx context.Context, name string) error
@@ -57,18 +62,36 @@ type Bootstrap struct {
 }
 
 // MissingBoxes are the Routing Boxes the account has not got.
-func MissingBoxes(have []string) []string {
+func MissingBoxes(have []string) []string { return missing(RoutingBoxes, have) }
+
+// MissingPiles are the pile Boxes a Secondary Account has not got.
+func MissingPiles(have []string) []string { return missing(PileBoxes, have) }
+
+func missing(wants, have []string) []string {
 	known := map[string]bool{}
 	for _, h := range have {
 		known[strings.ToUpper(h)] = true
 	}
 	var out []string
-	for _, want := range RoutingBoxes {
+	for _, want := range wants {
 		if !known[strings.ToUpper(want)] {
 			out = append(out, want)
 		}
 	}
 	return out
+}
+
+// EnsurePiles creates the pile Boxes a Secondary Account has not got and
+// returns the ones it created.
+func EnsurePiles(ctx context.Context, mk BoxMaker, have []string) ([]string, error) {
+	var created []string
+	for _, name := range MissingPiles(have) {
+		if err := mk.CreateFolder(ctx, name); err != nil {
+			return created, err
+		}
+		created = append(created, name)
+	}
+	return created, nil
 }
 
 // EnsureRouting creates the missing Boxes and, if the account has no Routing

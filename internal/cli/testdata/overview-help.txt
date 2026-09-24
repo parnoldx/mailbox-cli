@@ -42,6 +42,7 @@ CALENDAR & TASKS & CONTACTS
 
 SYSTEM
   status        What the mirror holds
+  account       The mail accounts
   daemon        Run the daemon in the foreground
   setup         Set up this machine
   doctor        Find what is not working

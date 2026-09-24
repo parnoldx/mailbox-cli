@@ -12,6 +12,7 @@ import (
 
 	"mailbox/internal/config"
 	"mailbox/internal/daemon"
+	"mailbox/internal/imapdrv"
 	"mailbox/skill"
 )
 
@@ -79,6 +80,25 @@ func (w *Wizard) repair(ctx context.Context, s *snapshot) error {
 	if s.cfg == nil {
 		return s.cfgErr
 	}
+	// Each Secondary's piles first, in name order: the Primary's bootstrap
+	// below returns early when it has nothing to do.
+	names := make([]string, 0, len(s.cfg.Secondary))
+	for name := range s.cfg.Secondary {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	for _, name := range names {
+		a := s.cfg.Secondary[name]
+		boxes, err := w.Prober.IMAP(ctx, a.IMAPHost, a.IMAPPort, a.Email, a.Password)
+		if err != nil {
+			return fmt.Errorf("%s: imap: %w", name, err)
+		}
+		block := AccountBlock{Name: name, Email: a.Email, Password: a.Password, IMAPHost: a.IMAPHost, IMAPPort: a.IMAPPort}
+		if err := w.ensurePiles(ctx, block, boxes); err != nil {
+			return fmt.Errorf("%s: %w", name, err)
+		}
+	}
+
 	acc := s.cfg.Account
 	boxes, err := w.Prober.IMAP(ctx, acc.IMAPHost, acc.IMAPPort, acc.Email, acc.Password)
 	if err != nil {
@@ -95,6 +115,24 @@ func (w *Wizard) repair(ctx context.Context, s *snapshot) error {
 		Email: acc.Email, Password: acc.Password,
 		IMAPHost: acc.IMAPHost, IMAPPort: acc.IMAPPort,
 	}, boxes)
+}
+
+// ensurePiles gives a Secondary Account the Set Aside and Reply Later Boxes it
+// has not got, and says which it made. Without them `aside` and `bubble` on
+// that account refuse with the Box named.
+func (w *Wizard) ensurePiles(ctx context.Context, a AccountBlock, boxes []imapdrv.Box) error {
+	have := make([]string, len(boxes))
+	for i, b := range boxes {
+		have[i] = b.Name
+	}
+	created, err := w.Prober.Piles(ctx, a.IMAPHost, a.IMAPPort, a.Email, a.Password, have)
+	if err != nil {
+		return fmt.Errorf("creating the piles: %w", err)
+	}
+	if len(created) > 0 {
+		w.sayf("  created %s", strings.Join(created, ", "))
+	}
+	return nil
 }
 
 // manage is the second run: state, then one action, then the state again.
@@ -326,9 +364,18 @@ func (w *Wizard) addAccount(ctx context.Context, s *snapshot, name string) error
 		return err
 	}
 
+	// The colour is written rather than asked: it is one line to change in the
+	// config, and a question here is one more thing between a person and mail.
+	used := []string{}
+	if s.cfg != nil {
+		used = append(used, s.cfg.Account.Color)
+		for _, a := range s.cfg.Secondary {
+			used = append(used, a.Color)
+		}
+	}
 	block := AccountBlock{
 		Name: name, Email: email, Password: password, DisplayName: display,
-		IMAPHost: imapHost, IMAPPort: 993, SMTPPort: 465,
+		IMAPHost: imapHost, IMAPPort: 993, SMTPPort: 465, Color: config.NextColor(used),
 	}
 	w.sayf("Asking %s what it has…", imapHost)
 	boxes, err := w.Prober.IMAP(ctx, block.IMAPHost, block.IMAPPort, email, password)
@@ -336,6 +383,9 @@ func (w *Wizard) addAccount(ctx context.Context, s *snapshot, name string) error
 		return fmt.Errorf("imap: %w", err)
 	}
 	w.sayf("  %d boxes", len(boxes))
+	if err := w.ensurePiles(ctx, block, boxes); err != nil {
+		return err
+	}
 
 	// Submission is derived and checked rather than asked for. Only a server
 	// that refuses the derived name is worth a question.
@@ -359,7 +409,7 @@ func (w *Wizard) addAccount(ctx context.Context, s *snapshot, name string) error
 	if err := AddAccount(w.ConfigPath, block); err != nil {
 		return err
 	}
-	w.sayf("  added as %q — its ids read %s/INBOX:412", name, name)
+	w.sayf("  added as %q — its ids read %s/INBOX:412, its colour is %s", name, name, block.Color)
 	w.reload(s)
 	return nil
 }

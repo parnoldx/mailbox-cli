@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"os"
+	"slices"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -131,6 +133,28 @@ func localChecks(ctx context.Context, offline bool) []check {
 				Name: "routing", OK: true,
 				Detail: "screener, feed, paper trail, aside, reply later and block are all here",
 			})
+		}
+	}
+	// A Secondary has no Routing, only the two piles `aside` and `bubble` move
+	// mail into.
+	for _, name := range slices.Sorted(maps.Keys(cfg.Secondary)) {
+		s := cfg.Secondary[name]
+		boxes, err := probe.IMAP(ctx, s.IMAPHost, s.IMAPPort, s.Email, s.Password)
+		if err != nil {
+			out = append(out, check{Name: name + " imap", Detail: err.Error()})
+			continue
+		}
+		have := make([]string, len(boxes))
+		for i, b := range boxes {
+			have[i] = b.Name
+		}
+		if missing := setup.MissingPiles(have); len(missing) > 0 {
+			out = append(out, check{Name: name + " piles", Detail: fmt.Sprintf(
+				"this account has no %s — aside and bubble cannot file; run `mailbox setup` and repair",
+				strings.Join(missing, ", "))})
+		} else {
+			out = append(out, check{Name: name + " piles", OK: true,
+				Detail: fmt.Sprintf("%s:%d, %d boxes, aside and reply later are here", s.IMAPHost, s.IMAPPort, len(boxes))})
 		}
 	}
 	if err := probe.SMTP(ctx, a.SMTPHost, a.SMTPPort, a.Email, a.Password); err != nil {

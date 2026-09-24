@@ -191,8 +191,10 @@ Item {
         var _search = [ { id: "search", label: "Search all mail", glyph: "\uf002", kbd: "/" } ]
         // Labels needs no target either: it is the way into browsing one.
         var _labels = [ { id: "labels", label: "Labels\u2026", glyph: "\uf02c", kbd: "" } ]
+        // Contacts needs no target either: it opens the pane.
+        var _contacts = [ { id: "contacts", label: "Contacts", glyph: "\uf007", kbd: "Ctrl+O" } ]
         function _f(list) {
-            var all = list.concat(_compose).concat(_search).concat(_labels)
+            var all = list.concat(_compose).concat(_search).concat(_labels).concat(_contacts)
             return _q ? all.filter(function (a) { return a.label.toLowerCase().indexOf(_q) >= 0 }) : all
         }
         if (win.actionTargetId() === "") return _f([])
@@ -284,6 +286,7 @@ Item {
         // the guard below.
         if (a.id === "compose") { root.close(); win.startCompose(); return }
         if (a.id === "search") { root.close(); win.openSearch(); return }
+        if (a.id === "contacts") { root.close(); contactsPane.open(); return }
         // Archive swaps the launcher into its box picker instead of firing now.
         if (a.id === "archive") { root.enterArchive(); return }
         // Labels needs no target; the picker takes the one the switcher has.

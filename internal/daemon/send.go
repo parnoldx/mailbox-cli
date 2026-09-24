@@ -108,7 +108,7 @@ func (d *Daemon) handleReply(ctx context.Context, req Request, resp Response) Re
 	// (CONTEXT.md). Only once the mail has actually gone — a queued send has
 	// not been answered yet, and the cycle that drains it reclaims the thread
 	// when the Sent copy lands.
-	if resp.OK && acct.Primary {
+	if resp.OK {
 		d.reclaimPiled(ctx, acct, []int64{parent.Message.ThreadID}, justFiled(d, acct, resp))
 	}
 	return resp

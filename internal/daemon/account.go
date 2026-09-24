@@ -36,6 +36,9 @@ type Account struct {
 	// the shared Outbox of its mail.
 	From    compose.Address
 	Courier *outbox.Courier
+	// Color is the account's colour from the config, handed to clients by
+	// `account list` so a row and a Send button can be painted with it.
+	Color string
 
 	// trigger serialises this account's cycles, depth one. Several nudges
 	// during a cycle mean one cycle after it, which is all they can ever mean.
@@ -59,7 +62,7 @@ func (d *Daemon) primaryAccount() *Account {
 		Name: d.Account, Primary: true,
 		Reconciler: d.Reconciler, Writer: d.Writer,
 		Mirrored: d.Mirrored, Watched: d.Watched,
-		From: d.From, Courier: d.Courier,
+		From: d.From, Courier: d.Courier, Color: d.Color,
 		trigger: d.trigger,
 	}
 }
@@ -215,6 +218,15 @@ func (a *Account) qualify(id string) string {
 		return id
 	}
 	return a.Name + "/" + id
+}
+
+// label is the account's name as a row carries it: empty for the Primary, by
+// the same rule as qualify.
+func (a *Account) label() string {
+	if a == nil || a.Primary {
+		return ""
+	}
+	return a.Name
 }
 
 // messageID is the id a caller hands back to a read command.

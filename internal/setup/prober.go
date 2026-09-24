@@ -53,3 +53,16 @@ func (Servers) Routing(ctx context.Context, a Answers, boxes []string) (Bootstra
 	})
 	return EnsureRouting(ctx, drv, sieve, boxes)
 }
+
+// Piles implements Prober.
+func (Servers) Piles(ctx context.Context, host string, port int, user, password string, boxes []string) ([]string, error) {
+	if len(MissingPiles(boxes)) == 0 {
+		return nil, nil
+	}
+	drv, err := imapdrv.Dial(imapdrv.Config{Host: host, Port: port, Username: user, Password: password})
+	if err != nil {
+		return nil, err
+	}
+	defer drv.Close()
+	return EnsurePiles(ctx, drv, boxes)
+}

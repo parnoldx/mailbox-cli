@@ -33,8 +33,11 @@ Item {
             width: 3; radius: 2
             anchors { left: parent.left; top: parent.top; bottom: parent.bottom
                       topMargin: 16; bottomMargin: 16 }
-            color: Theme.accent
-            opacity: root.fresh ? 1 : 0
+            // With more than one account the bar is the row's account colour on
+            // every row — solid when fresh, faded when seen, so it still
+            // carries the fresh signal. One account: the accent, fresh only.
+            color: win.multiAccount ? win.accountColor(root.row.account || "") : Theme.accent
+            opacity: root.fresh ? 1 : win.multiAccount ? 0.35 : 0
             Behavior on opacity { NumberAnimation { duration: Theme.anim } }
             Behavior on color { ColorAnimation { duration: Theme.anim } }
         }
@@ -126,6 +129,25 @@ Item {
         font.pixelSize: 11
         color: Theme.textDim
         Behavior on color { ColorAnimation { duration: Theme.anim } }
+    }
+
+    // Which Secondary this row is on, beside the time, while the list shows
+    // every account. The Primary's rows get none.
+    Rectangle {
+        visible: win.multiAccount && !!root.row.account && win.accountFilter === ""
+        readonly property color tint: win.accountColor(root.row.account || "")
+        anchors { right: date.left; rightMargin: 8; verticalCenter: date.verticalCenter }
+        width: acctText.implicitWidth + 12; height: 16; radius: 8
+        color: Qt.rgba(tint.r, tint.g, tint.b, 0.18)
+        Text {
+            id: acctText
+            anchors.centerIn: parent
+            text: (win.accountNamed(root.row.account || "") || { label: root.row.account || "" }).label
+            font.family: Theme.fontFamily
+            font.pixelSize: 10
+            font.weight: Font.DemiBold
+            color: parent.tint
+        }
     }
 
     // Fast-delete affordance, pinned to the far right and vertically centred.

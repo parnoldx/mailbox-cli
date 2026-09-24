@@ -26,6 +26,7 @@ public:
         SeenRole,
         CountRole,
         LabelsRole,
+        AccountRole,
     };
 
     using QAbstractListModel::QAbstractListModel;
@@ -55,6 +56,9 @@ private:
         // The labels on this row's Thread — keywords somebody chose, already
         // filtered of the server's own by the daemon.
         QStringList labels;
+        // The Secondary Account this row is on — empty for the Primary's, and
+        // for every row when only one account is configured.
+        QString account;
     };
     static QVariantMap rowMap(const Row &r);
     QList<Row> m_rows;

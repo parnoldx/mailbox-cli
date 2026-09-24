@@ -33,6 +33,10 @@ type Fake struct {
 	// NoUIDPlus makes Move answer without COPYUID, like a server that cannot
 	// say where the message landed.
 	NoUIDPlus bool
+	// NoKeywords makes StoreFlags drop every flag that is not a system one,
+	// like a server without `\*` in PERMANENTFLAGS: the STORE succeeds and
+	// the keyword is not kept.
+	NoKeywords bool
 
 	events chan Event
 }
@@ -357,6 +361,15 @@ func (f *Fake) StoreFlags(ctx context.Context, folder string, uids []uint32, add
 				continue
 			}
 			m.Flags = withFlags(m.Flags, add, remove)
+			if f.NoKeywords {
+				var kept []string
+				for _, fl := range m.Flags {
+					if strings.HasPrefix(fl, `\`) {
+						kept = append(kept, fl)
+					}
+				}
+				m.Flags = kept
+			}
 			m.ModSeq = fo.HighestModSeq
 			out = append(out, FlagUpdate{UID: m.UID, Flags: append([]string(nil), m.Flags...)})
 		}

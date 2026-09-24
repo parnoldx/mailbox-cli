@@ -41,6 +41,15 @@ instant you switch Omarchy themes.
 - **Command launcher.** `Ctrl+K` (or `Ctrl+P`) opens a centred switcher with the
   search field already focused, destinations numbered 1–7, and live per-bucket
   counts. Type to filter, digits or arrows to pick.
+- **Contacts pane.** `Ctrl+O` (or "Contacts" in the launcher) slides a 380px column in from the
+  right while the mail view shrinks beside it: every card from the address book in one list,
+  filtered as you type across name, emails, phones and organisation, and a detail view where a
+  click on an email writes to it (the icon beside it copies) and a click on a phone copies it.
+  The `+` button (or `n` on the list) adds a card; Edit (`e`) opens a form that changes name,
+  org and note and appends a new email or phone — existing addresses cannot be removed or
+  cleared, the daemon never throws one away (ADR-0010). Delete (`d`) asks inline first.
+  `Shift+P` in the reader opens the sender's card, or the Add form prefilled with their name
+  and address when they are not on one yet.
 - **Live Omarchy theming.** `OmarchyTheme` (C++) reads the active palette from
   `~/.local/state/omarchy/current/theme/colors.toml` and re-emits `changed()` the
   moment it moves. Every colour in the UI is a binding with a `ColorAnimation`,
