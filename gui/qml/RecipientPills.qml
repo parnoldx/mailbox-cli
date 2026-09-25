@@ -212,9 +212,11 @@ Item {
 
             TextField {
                 id: input
-                // A fixed width keeps the Flow layout out of a width⇄x loop; it
-                // wraps to its own line when the pills fill the row.
-                width: 180
+                // Grows with what is typed, so a long address stays readable
+                // end to end. The Flow's width is fixed by the row, so this
+                // binding cannot loop; a wide input just wraps to its own line
+                // when the pills fill the row.
+                width: Math.min(flow.width, Math.max(180, input.implicitWidth))
                 height: 26
                 placeholderText: root.recipients.length === 0 ? "name or address" : ""
                 color: Theme.textPrimary
