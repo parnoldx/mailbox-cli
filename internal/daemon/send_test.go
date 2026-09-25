@@ -472,7 +472,7 @@ func TestForwardSubjectIsPrefixedOnce(t *testing.T) {
 // configured for it.
 func TestFileeeMailsTheAttachment(t *testing.T) {
 	d, _ := seedSend(t)
-	d.FileeeAddress = "abc123@in.fileee.com"
+	d.FileeeAddress = "abc123@example.com"
 	resp := d.handle(context.Background(), Request{ID: "1", Cmd: []string{"attachment", "fileee"},
 		Args: map[string]any{"positional": "7:1"}})
 	if !resp.OK {
@@ -481,7 +481,7 @@ func TestFileeeMailsTheAttachment(t *testing.T) {
 	out := resp.Data.(sent)
 
 	copyOf := filedCopy(t, d, out.UID)
-	if !strings.Contains(copyOf.To, "abc123@in.fileee.com") {
+	if !strings.Contains(copyOf.To, "abc123@example.com") {
 		t.Errorf("to = %q", copyOf.To)
 	}
 	if strings.TrimSpace(copyOf.Plain) != "" {

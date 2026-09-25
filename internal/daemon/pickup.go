@@ -101,9 +101,9 @@ func (d *Daemon) collectPickups(ctx context.Context, a *Account, outcomes map[st
 // the only body an HTML-only code mail has (reconciler.go searchText).
 func bodyOf(row mirror.Row) string {
 	if strings.TrimSpace(row.Message.TextPlain) != "" {
-		return row.Message.TextPlain
+		return mailsync.StripForwarderHeader(row.Message.TextPlain)
 	}
-	return htmlmd.HTMLToMarkdown(row.Message.TextHTML)
+	return htmlmd.HTMLToMarkdown(mailsync.StripForwarderHeader(row.Message.TextHTML))
 }
 
 // takePickup is what happens to one Pickup, in the order that matters: hand the

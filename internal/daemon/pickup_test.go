@@ -120,10 +120,10 @@ func TestPickupReadsAnHTMLOnlyBody(t *testing.T) {
 	if _, err := a.Reconciler.SyncAll(ctx, d.Mirrored); err != nil {
 		t.Fatal(err)
 	}
-	m := fakeOf(d).Deliver(routing.BoxScreener, "suresse@example.de",
+	m := fakeOf(d).Deliver(routing.BoxScreener, "beispiel@example.de",
 		"Ihre Anmeldung im Präferenz-Center", "")
 	m.HTML = "<p>Sie haben kürzlich einen Verifizierungscode angefordert.</p>\n<p>Ihr Geheimcode zur einmaligen Verwendung :</p>\n<p><b>110263</b></p>\n"
-	m.From, m.Date = "Suresse Direkt Bank <no-reply@gdpr.suressedirektbank.de>", time.Now()
+	m.From, m.Date = "Beispiel Bank <no-reply@example.de>", time.Now()
 	out, err := a.Reconciler.SyncAll(ctx, d.Mirrored)
 	if err != nil {
 		t.Fatal(err)

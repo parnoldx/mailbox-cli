@@ -2,9 +2,10 @@ package pickup
 
 import "testing"
 
-// The mails a Pickup is for. The Charm one is verbatim from the Mirror — it was
-// the single true positive in 1445 real messages, and it is the reason the
-// subject gate allows words between "verify your" and "email".
+// The mails a Pickup is for. The first one is from the Mirror — it was the
+// single true positive in 1445 real messages, and it is the reason the subject
+// gate allows words between "verify your" and "email". Real senders are
+// anonymized to example.com with random tokens; the URL shapes are kept.
 func TestFindsCodesAndLinks(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -15,8 +16,8 @@ func TestFindsCodesAndLinks(t *testing.T) {
 	}{
 		{
 			name:     "magic link, real mail",
-			subject:  "Verify your Charm™ Hyper Email",
-			body:     "Click to verify:\n\nhttps://hyper.charm.land/auth/verify?token=y02NzwzMVMWNmniK1mmFRQ%3D%3D\n",
+			subject:  "Verify your Acme™ Web Mail Email",
+			body:     "Click to verify:\n\nhttps://example.com/auth/verify?token=pQ7vXwR4nK2mZ9bT3sY6cF1d%3D%3D\n",
 			wantLink: true,
 		},
 		{
@@ -76,6 +77,15 @@ func TestFindsCodesAndLinks(t *testing.T) {
 			body:     "Sie haben kürzlich einen Verifizierungscode angefordert, um sich in Ihr Kommunikationspräferenzzentrum einzuloggen. Der Code ist 10 Minuten lang gültig.\n\nIhr Geheimcode zur einmaligen Verwendung :\n\n**110263**\n\nAus Sicherheitsgründen bitten wir Sie, diesen Code nicht weiterzugeben.\n",
 			wantCode: "110263",
 		},
+		{
+			// From the Inbox, 2026-09-24, sender anonymized: the subject is noun over noun
+			// with no code word, so the gate stays shut — the link is the whole
+			// errand and classifies the mail on its own.
+			name:     "act-named link without a vouching subject",
+			subject:  "Ihr Konto Login Bestätigung",
+			body:     "…klicken Sie bitte auf den nachfolgenden Link, um zu Ihrem Konto zu gelangen.[Jetzt Login bestätigen](https://www.example.com/user/verify/?dec=4b7f2e91a6c3d805f19e27b4c6a8d031)",
+			wantLink: true,
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -113,7 +123,27 @@ func TestIgnoresMailThatIsNotAPickup(t *testing.T) {
 		{
 			"unsubscribe link with an opaque token",
 			"Smart Home – neu gestaltet",
-			"https://manage.kmail-lists.com/subscriptions/unsubscribe?a=Kx8Tq2mV9pLd0aZr",
+			"https://example.com/subscriptions/unsubscribe?a=N3pQxV7mK2wR9sT4",
+		},
+		{
+			// token and auth name no act, which is why they are subject-gated:
+			// without the gate this shape is every unsubscribe link ever sent.
+			"unsubscribe link with a token in the query",
+			"Unsere Sommerhöhe",
+			"Abmelden: https://news.example.com/u/unsubscribe?token=a83bca31\n",
+		},
+		{
+			"tracking pixel URL with auth in the path",
+			"Ihre Rechnung ist da",
+			"https://mail.example.com/c/auth/eyJpbWciOiJ0cmFja2luZyJ9",
+		},
+		{
+			// "deactivate" contains "activate" as a substring; without the \b in
+			// front of linkAct the provider's cancel link classified the whole
+			// mail as a Pickup (a broker's trading-hours mail, 2026-09-25).
+			"unsubscribe link whose path says deactivate",
+			"Bevorstehende Änderungen der Handelszeiten der Märkte",
+			"https://example.com/deactivate/f3a9c2e1-7b4d-4a86-9c5f-2e8b1d6a4c73?signature=a9d4f17b2c8e5036b1f9a7d4c2e8b6053f9a1d7c4e2b8f605a3d9c1e7b4f2a8d",
 		},
 		{
 			"discount code in a shop mail",

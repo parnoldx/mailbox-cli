@@ -16,8 +16,15 @@
 //
 // The same subject gate over the same corpus matched one message, and it was
 // the right one. So the body is where the code is *extracted*, never where the
-// mail is *classified*: once the subject says "verification code", a bare
-// six-digit line means the code rather than an order number.
+// mail is *classified* — with one exception: a URL whose path names the act
+// (…/verify/…, …/login?…) is a classification of its own. A sender rarely
+// points a tracking pixel-shaped URL at a page called verify, and the mail
+// that carries one is waiting on a click whatever its subject says. (Seen in
+// the field: a German "Login Bestätigung" subject over [Jetzt Login
+// bestätigen](…/user/verify/?dec=…) — the subject is noun over noun, no code
+// word, and the link is the whole errand.) Only the strong act words qualify
+// on their own; token and auth stay subject-gated, because an opaque token in
+// a query string is every unsubscribe link ever sent.
 //
 // The ignore list comes from OTPHelper, the Android notification reader, which
 // has taken this class of false positive in the field for years.
@@ -37,7 +44,7 @@ const Keyword = "$pickup"
 // subject is the gate. Noun phrases in English and German, never a lone word:
 // "code" on its own is in every second order confirmation, "Einmalkennwort" is
 // in none of them. Up to three intervening words are allowed after the verb so
-// that "Verify your Charm™ Hyper Email" still reads as one phrase.
+// that "Verify your Acme™ Web Mail Email" still reads as one phrase.
 var subject = regexp.MustCompile(`(?i)` +
 	`\b(otp|magic ?link|passcode)\b` +
 	`|\bone[- ]?time[ -](code|password|passcode|link|pin)\b` +
@@ -97,11 +104,24 @@ var lone = regexp.MustCompile(`(?m)^[^\p{L}\p{N}\n]{0,4}([0-9]{4,8})[^\p{L}\p{N}
 
 // link is a URL that logs you in by being followed. The path or query has to
 // name the act — a bare opaque token is every tracking and unsubscribe link
-// ever sent.
+// ever sent. token and auth are in the wide form only: the subject gate has
+// already classified the mail by then, so the token is a detail and not the
+// criterion.
+const actWords = `(login|signin|sign-in|magic|verify|verifizier|confirm|bestaetig|activate|aktivier|freischalt|passwordless|registr|anmeld|otp|token|auth)`
+
 var link = regexp.MustCompile(`(?i)https?://[^\s<>"'\]]*` +
-	`(login|signin|sign-in|magic|verify|verifizier|confirm|bestaetig|activate|aktivier|freischalt|` +
-	`token|auth|otp|passwordless|registr|anmeld)` +
+	actWords +
 	`[^\s<>"'\]]*`)
+
+// linkAct is the narrow form, for when no subject has vouched for the mail:
+// the act named in the path is the classification, and token and auth are left
+// out of it — they name no act an unsubscribe link does not also carry.
+var linkAct = regexp.MustCompile(`(?i)\b` +
+	`(login|signin|sign-in|magic|verify|verifizier|confirm|bestaetig|activate|aktivier|freischalt|passwordless|registr|anmeld|otp)`)
+
+// The \b keeps "deactivate" from reading as an activate link: without it the
+// provider's own cancel URL classified a broker's trading-hours mail as a
+// Pickup (2026-09-25).
 
 // ignore is the false-positive list OTPHelper learned the hard way, plus the
 // German shopping equivalents. A discount code is not a login.
@@ -112,12 +132,20 @@ var ignore = regexp.MustCompile(`(?i)discount code|promo code|coupon code|barcod
 // on a mail that is not one; a caller treats "neither" as "not a Pickup", so a
 // subject that reads like an auth mail but carries nothing to collect is
 // correctly ignored rather than raised with nothing in it.
+//
+// Two ways in: a subject that reads like an auth mail (which unlocks code
+// extraction — the lone-code net is only safe after it), or a URL whose path
+// names the act, which classifies the mail on its own and yields the link
+// only. A code-shaped line without a vouching subject stays prose.
 func Find(subject_, body string) (code, link_ string) {
-	if !subject.MatchString(subject_) {
-		return "", ""
-	}
 	if m := link.FindString(body); m != "" {
 		link_ = trimLink(m)
+	}
+	if !subject.MatchString(subject_) {
+		if link_ == "" || !linkAct.MatchString(link_) {
+			return "", ""
+		}
+		return "", link_
 	}
 	code = findCode(body)
 	return code, link_
