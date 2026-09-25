@@ -409,6 +409,8 @@ func (r *Reconciler) fetchBodies(ctx context.Context, tx *mirror.Tx, folder stri
 		if !ok {
 			continue
 		}
+		b.Plain = StripForwarderHeader(b.Plain)
+		b.HTML = StripForwarderHeader(b.HTML)
 		if err := tx.SetBody(id, b.Plain, b.HTML, searchText(b)); err != nil {
 			return err
 		}
