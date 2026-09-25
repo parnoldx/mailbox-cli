@@ -1,12 +1,21 @@
 #include "PixelBlock.hpp"
 
 #include <QUrl>
+#include <QCoreApplication>
 #include <QTimer>
 #include <QWebEngineProfile>
 
 PixelBlock::PixelBlock(QObject *parent)
     : QWebEngineUrlRequestInterceptor(parent)
 {
+    // The profile keeps only a raw pointer to its interceptor, and it is gone
+    // before our destructor runs (the app deletes us after WebEngine teardown).
+    // Uninstall while Chromium is still alive.
+    connect(qApp, &QCoreApplication::aboutToQuit, this, [this] {
+        m_armed = false;
+        QWebEngineProfile::defaultProfile()->setUrlRequestInterceptor(nullptr);
+    });
+
     // Pure analytics / open-tracking hosts. Kept deliberately tight so that a
     // newsletter's real images and CDN assets still load.
     // Keep in step with internal/trackers: named ESPs plus generic open paths.
@@ -39,8 +48,8 @@ PixelBlock::PixelBlock(QObject *parent)
 
 PixelBlock::~PixelBlock()
 {
-    // The profile keeps only a raw pointer to its interceptor. Going away while
-    // still installed leaves it calling into freed memory on the next request.
+    // Fallback only: aboutToQuit already disarmed us while the profile was
+    // still alive. Reaching here with m_armed set means quit never ran.
     if (m_armed)
         QWebEngineProfile::defaultProfile()->setUrlRequestInterceptor(nullptr);
 }
