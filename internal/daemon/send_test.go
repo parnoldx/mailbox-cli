@@ -176,6 +176,49 @@ func TestAnAttachmentPathMustBeAbsolute(t *testing.T) {
 	}
 }
 
+// A dry run builds the same reply the real send would — sender from the
+// account, recipients from the parent plus --to/--cc/--bcc — and stops there:
+// nothing is enqueued and nothing goes to SMTP.
+func TestReplyDryRunShowsWhoWouldGetItAndSendsNothing(t *testing.T) {
+	d, tr := seedSend(t)
+	resp := d.handle(context.Background(), Request{ID: "1", Cmd: []string{"reply"}, Args: map[string]any{
+		"positional": "7", "body": "schon überwiesen",
+		"cc": []string{"kollege@example.com"}, "bcc": []string{"privat@example.com"},
+		"dry_run": true,
+	}})
+	if !resp.OK {
+		t.Fatalf("reply: %s (%s)", resp.Error, resp.Code)
+	}
+	preview, ok := resp.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("reply returned %T", resp.Data)
+	}
+	if preview["from"] != "me@example.com" {
+		t.Fatalf("from = %v", preview["from"])
+	}
+	want := map[string][]string{
+		"to":      {"billing@example.com"},
+		"cc":      {"kollege@example.com"},
+		"bcc":     {"privat@example.com"},
+	}
+	for key, wantList := range want {
+		gotList, _ := preview[key].([]string)
+		if len(gotList) != len(wantList) || gotList[0] != wantList[0] {
+			t.Fatalf("%s = %v, want %v", key, gotList, wantList)
+		}
+	}
+	if preview["subject"] != "Re: Rechnung" {
+		t.Fatalf("subject = %v", preview["subject"])
+	}
+	// Nothing went out and nothing is waiting to.
+	if tr.count() != 0 {
+		t.Fatalf("smtp saw %d mails", tr.count())
+	}
+	if pending, err := d.Outbox.PendingFor("primary"); err != nil || len(pending) != 0 {
+		t.Fatalf("outbox holds %d items (%v)", len(pending), err)
+	}
+}
+
 func TestReplyAnswersTheSenderInTheSameThread(t *testing.T) {
 	d, _ := seedSend(t)
 	resp := d.handle(context.Background(), Request{ID: "1", Cmd: []string{"reply"}, Args: map[string]any{

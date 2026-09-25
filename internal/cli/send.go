@@ -86,16 +86,18 @@ func runReply(in *input, stdout, stderr io.Writer) int {
 	// belongs to come from the parent, so --draft changes where it lands and
 	// nothing else.
 	render := printSent
-	if in.Bool("draft") {
+	if in.Bool("dry-run") {
+		render = printWouldSend
+	} else if in.Bool("draft") {
 		render = printDraftSaved
 	}
 	return request(daemon.Request{
 		Cmd: []string{"reply"},
 		Args: withReplyWatch(map[string]any{
 			"positional": in.First(), "all": in.Bool("all"),
-			"to": in.List("to"), "cc": in.List("cc"),
+			"to": in.List("to"), "cc": in.List("cc"), "bcc": in.List("bcc"),
 			"subject": in.Str("subject"), "body": text, "attach": paths,
-			"body_html": html, "draft": in.Bool("draft"),
+			"body_html": html, "draft": in.Bool("draft"), "dry_run": in.Bool("dry-run"),
 		}, in),
 	}, in.JSON(), render, stdout, stderr)
 }
@@ -232,6 +234,29 @@ func printUnsubscribed(stdout, stderr io.Writer, resp daemon.Response) {
 
 // printSent says what happened to the mail, in two facts: it went, and where
 // the copy of it is.
+// printWouldSend shows what a reply would do instead of doing it: the sender
+// and everyone it would reach, per line, so an agent can check --to, --cc and
+// --bcc before anything leaves.
+func printWouldSend(stdout, stderr io.Writer, resp daemon.Response) {
+	m, ok := fieldsOf(stdout, resp.Data)
+	if !ok {
+		return
+	}
+	if from := str(m["from"]); from != "" {
+		fmt.Fprintf(stdout, "from %s\n", from)
+	}
+	for _, line := range []struct{ label, key string }{
+		{"to", "to"}, {"cc", "cc"}, {"bcc", "bcc"},
+	} {
+		if list := strs(asAny(m[line.key])); len(list) > 0 {
+			fmt.Fprintf(stdout, "%s %s\n", line.label, strings.Join(list, ", "))
+		}
+	}
+	if subject := str(m["subject"]); subject != "" {
+		fmt.Fprintf(stdout, "subject %s\n", subject)
+	}
+}
+
 func printSent(stdout, stderr io.Writer, resp daemon.Response) {
 	m, ok := fieldsOf(stdout, resp.Data)
 	if !ok {

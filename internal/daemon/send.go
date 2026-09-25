@@ -71,7 +71,7 @@ func (d *Daemon) handleReply(ctx context.Context, req Request, resp Response) Re
 	if err != nil {
 		return resp.usage(err.Error())
 	}
-	if !req.Bool("draft") && (d.Outbox == nil || acct.Courier == nil) {
+	if !req.Bool("draft") && !req.Bool("dry_run") && (d.Outbox == nil || acct.Courier == nil) {
 		return resp.api(fmt.Sprintf("account %q cannot send: no outbox", acct.Name))
 	}
 	parent, err := d.Mirror.Row(acct.Name, folder, uid)
@@ -89,6 +89,16 @@ func (d *Daemon) handleReply(ctx context.Context, req Request, resp Response) Re
 	all := req.Bool("all")
 	if err := d.answer(acct, &draft, parent.Message, all); err != nil {
 		return resp.usage(err.Error())
+	}
+	// A dry run stops here: the draft is built, so the caller sees exactly the
+	// sender, the recipients and the subject the real send would carry, and
+	// nothing is enqueued or filed.
+	if req.Bool("dry_run") {
+		return resp.ok(map[string]any{
+			"from": draft.From.Addr,
+			"to":   addressesOf(draft.To), "cc": addressesOf(draft.Cc),
+			"bcc": addressesOf(draft.Bcc), "subject": draft.Subject,
+		})
 	}
 	// Filing it is the same reply, written to the drafts box instead of the
 	// outbox. It is built here rather than by `draft save` because who to
@@ -187,6 +197,15 @@ func replyAllCc(a *Account, parent mirror.Message, to, have []compose.Address) (
 		}
 	}
 	return cc, nil
+}
+
+// addressesOf is one address list as the bare addresses a listing prints.
+func addressesOf(list []compose.Address) []string {
+	out := make([]string, 0, len(list))
+	for _, a := range list {
+		out = append(out, a.Addr)
+	}
+	return out
 }
 
 // replySubject prefixes Re: exactly once. "Re: Re: Re:" is somebody's client

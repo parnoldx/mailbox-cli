@@ -274,24 +274,29 @@ func tree(l Locals) []*Command {
 		},
 		{
 			Name: "reply", Section: SectionMail, Short: "Answer, in its thread", Needs: true,
-			Usage: []string{"mailbox reply ID [--all] [--body TEXT] [--attach PATH] [--draft]"},
+			Usage: []string{"mailbox reply ID [--all] [--bcc ADDR] [--body TEXT] [--attach PATH] [--draft] [--dry-run]"},
 			Long: "The recipients and the References come from the message being answered, " +
-				"so a thread is never assembled by hand. With --draft it goes to the " +
-				"drafts box instead of out, and it stays in the thread when it is sent " +
-				"from there.",
+				"so a thread is never assembled by hand. --to, --cc and --bcc name " +
+				"extra people the answer goes to. With --draft it goes to the drafts " +
+				"box instead of out, and it stays in the thread when it is sent from " +
+				"there. With --dry-run nothing goes anywhere: the reply prints who " +
+				"would get it.",
 			Flags: append([]Flag{
 				{Name: "all", Kind: KindBool, Desc: "copy everyone the message was addressed to"},
 				{Name: "body", Kind: KindString, Arg: "TEXT", Desc: "the text, as Markdown; omit to read it from stdin"},
 				{Name: "body-html", Kind: KindString, Arg: "HTML", Desc: "send this HTML as the body instead of rendering --body"},
 				{Name: "to", Kind: KindList, Arg: "ADDR", Desc: "answer somebody other than the sender"},
 				{Name: "cc", Kind: KindList, Arg: "ADDR", Desc: "an extra copied recipient"},
+				{Name: "bcc", Kind: KindList, Arg: "ADDR", Desc: "a blind copied recipient"},
 				{Name: "subject", Kind: KindString, Arg: "S", Desc: "override the Re: subject"},
 				{Name: "attach", Kind: KindList, Arg: "PATH", Desc: "a file to attach (repeatable)"},
 				{Name: "draft", Kind: KindBool, Desc: "file it in drafts instead of sending it"},
+				{Name: "dry-run", Kind: KindBool, Desc: "show who would get it, and send nothing"},
 			}, replyWatchFlags...),
 			Examples: []string{
 				`mailbox reply 36722 --body "Danke, passt."`,
 				`mailbox reply Screener:342 --all --body "Cc an alle."`,
+				`mailbox reply 36722 --cc kollege@example.com --bcc privat@example.com --dry-run`,
 				`mailbox reply 36722 --body "Erster Entwurf." --draft`,
 				`mailbox reply 36722 --body "Bin dran." --if-no-reply --tomorrow`,
 			},

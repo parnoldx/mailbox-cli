@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"mailbox/internal/daemon"
+	compose "mailbox/internal/message"
 	"mailbox/internal/mirror"
 )
 
@@ -78,6 +79,7 @@ func serveSeeded(t *testing.T) {
 	socket := filepath.Join(dir, "s.sock")
 	d := daemon.New("primary", m, nil, []string{"INBOX", "INBOX/Screener", "INBOX/Paper Trail"}, nil,
 		log.New(&bytes.Buffer{}, "", 0))
+	d.From = compose.Address{Name: "Max Mustermann", Addr: "me@example.com"}
 	ln, err := daemon.Listen(socket, false)
 	if err != nil {
 		t.Fatal(err)
@@ -316,6 +318,24 @@ func TestChangeFlagsReachTheDaemon(t *testing.T) {
 		}
 		if got.Args[key] != want {
 			t.Errorf("%v: Args[%s] = %v, want %q", tt, key, got.Args[key], want)
+		}
+	}
+}
+
+// --dry-run must stop at the preview: who would get the reply, printed as
+// plain lines — never the "sent to" wording of a real send.
+func TestReplyDryRunPrintsRecipientsWithoutSending(t *testing.T) {
+	serveSeeded(t)
+	out, errs, code := run(t, "reply", "Screener:40", "--bcc", "privat@example.com", "--dry-run", "--body", "checking first")
+	if code != ExitOK {
+		t.Fatalf("exit %d: %s", code, errs)
+	}
+	if strings.Contains(out, "sent to") {
+		t.Errorf("dry-run used the sent wording:\n%s", out)
+	}
+	for _, want := range []string{"from me@example.com", "to news@example.com", "bcc privat@example.com"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("dry-run output missing %q:\n%s", want, out)
 		}
 	}
 }
