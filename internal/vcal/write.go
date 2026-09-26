@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -333,27 +334,240 @@ func (e EventEdit) Empty() bool {
 // is refused as an outdated update.
 func SetEvent(raw string, e EventEdit) (string, error) {
 	return edit(raw, func(c *ical.Component) {
-		if e.Summary != "" {
-			c.Props.SetText(ical.PropSummary, e.Summary)
-		}
-		if e.Description != "" {
-			c.Props.SetText(ical.PropDescription, e.Description)
-		}
-		if e.Location != "" {
-			c.Props.SetText(ical.PropLocation, e.Location)
-		}
-		setURL(c, e.URL)
+		applyEvent(c, e)
 		setRepeat(c, e.Repeat)
-		setAlarms(c, e.Alarms, summaryOf(c, e.Summary))
-		if e.Start.IsZero() {
-			return
-		}
-		end := e.End
-		if end.IsZero() {
-			end = defaultEnd(e.Start, e.AllDay)
-		}
-		setWhen(c, e.Start, end, e.AllDay)
 	})
+}
+
+// applyEvent writes onto a component what an EventEdit names, and touches
+// nothing it does not. It is the body SetEvent and the occurrence writer
+// share; the rule is SetEvent's business alone, because an override of one
+// instance cannot carry a rule of its own.
+func applyEvent(c *ical.Component, e EventEdit) {
+	if e.Summary != "" {
+		c.Props.SetText(ical.PropSummary, e.Summary)
+	}
+	if e.Description != "" {
+		c.Props.SetText(ical.PropDescription, e.Description)
+	}
+	if e.Location != "" {
+		c.Props.SetText(ical.PropLocation, e.Location)
+	}
+	setURL(c, e.URL)
+	setAlarms(c, e.Alarms, summaryOf(c, e.Summary))
+	if e.Start.IsZero() {
+		return
+	}
+	end := e.End
+	if end.IsZero() {
+		end = defaultEnd(e.Start, e.AllDay)
+	}
+	setWhen(c, e.Start, end, e.AllDay)
+}
+
+// SetOccurrence edits one instance of a repeating event and leaves the rule
+// and every other instance alone. named is the day — or the day and time — of
+// the instance to change, matched against the instances the rule really
+// produces, so a day with nothing on it is an error rather than a silent
+// nothing. The change is written the way every calendar reads "this one
+// changed": a second VEVENT with the same UID and a RECURRENCE-ID naming the
+// instance it replaces, starting from a copy of the master so the instance
+// keeps the description, link and reminders the rule gave it.
+func SetOccurrence(raw string, named time.Time, namedIsDay bool, e EventEdit) (string, error) {
+	return setOccurrence(raw, named, namedIsDay, e, nil)
+}
+
+// CancelOccurrence takes one instance of a repeating event off: an override
+// with STATUS:CANCELLED, which every client reads as that day not happening.
+func CancelOccurrence(raw string, named time.Time, namedIsDay bool) (string, error) {
+	return setOccurrence(raw, named, namedIsDay, EventEdit{}, func(c *ical.Component) {
+		c.Props.SetText(ical.PropStatus, "CANCELLED")
+	})
+}
+
+func setOccurrence(raw string, named time.Time, namedIsDay bool, e EventEdit, extra func(*ical.Component)) (string, error) {
+	cal, err := decode(raw)
+	if err != nil {
+		return "", err
+	}
+	master, kind := primary(cal)
+	if master == nil || kind != KindEvent {
+		return "", fmt.Errorf("this object is not an event")
+	}
+	if master.Props.Get(ical.PropRecurrenceRule) == nil {
+		return "", fmt.Errorf("this event does not repeat, so there is no occurrence to change")
+	}
+	at, allDay, err := occurrenceSlot(master, cal, named, namedIsDay)
+	if err != nil {
+		return "", err
+	}
+	// The length an instance keeps when the edit does not name one: the
+	// master's, whatever shape it was written in.
+	start, _ := timeOf(master, ical.PropDateTimeStart, time.Local)
+	end, _ := endOf(master, start, allDay, time.Local)
+	duration := end.Sub(start)
+	if duration <= 0 {
+		duration = defaultEnd(at, allDay).Sub(at)
+	}
+	child := overrideOf(cal, at, allDay)
+	if child == nil {
+		child = copyMaster(master)
+		setRecurrenceID(child, at, allDay)
+		// An override starts at its own slot. The master's DTSTART is the
+		// first instance's, and copying it would move this instance to the
+		// head of the series — so it is set here, and left to the edit when
+		// the edit names a start of its own.
+		if e.Start.IsZero() {
+			end := at.Add(duration)
+			if allDay {
+				// A day is a date here, not 24 clock hours: on the day the
+				// clocks change, 24 hours land back inside the same day.
+				days := int(math.Round(duration.Hours() / 24))
+				if days < 1 {
+					days = 1
+				}
+				end = at.AddDate(0, 0, days)
+			}
+			setWhen(child, at, end, allDay)
+		}
+		cal.Children = append(cal.Children, child)
+	}
+	applyEvent(child, e)
+	if extra != nil {
+		extra(child)
+	}
+	child.Props.SetDateTime(ical.PropDateTimeStamp, time.Now().UTC())
+	return encode(cal)
+}
+
+// occurrenceSlot finds the start of the instance the caller named. The
+// candidates are the starts the rule produces around that day and the slots
+// of overrides already written — an instance moved once is named by the slot
+// it came from, not the day it now sits on. A bare date is enough when the
+// day holds one instance; with several, a clock is required.
+func occurrenceSlot(master *ical.Component, cal *ical.Calendar, named time.Time, namedIsDay bool) (time.Time, bool, error) {
+	_, allDay := timeOf(master, ical.PropDateTimeStart, time.Local)
+	set, err := recurrenceSet(master, time.Local)
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("this event's rule could not be read: %v", err)
+	}
+	if set == nil {
+		return time.Time{}, false, fmt.Errorf("this event does not repeat, so there is no occurrence to change")
+	}
+	candidates := set.Between(named.AddDate(0, 0, -7), named.AddDate(0, 0, 8), true)
+	for _, child := range cal.Children {
+		if child.Name != ical.CompEvent || child == master {
+			continue
+		}
+		if prop := child.Props.Get("RECURRENCE-ID"); prop != nil {
+			if at, err := prop.DateTime(time.Local); err == nil {
+				candidates = append(candidates, at)
+			}
+		}
+	}
+	var slots []time.Time
+	seen := map[int64]bool{}
+	for _, at := range candidates {
+		// The rule's slot and an override already written for it are the same
+		// instance named twice; only distinct instants are choices.
+		if sameDay(at, named) && !seen[at.Unix()] {
+			seen[at.Unix()] = true
+			slots = append(slots, at)
+		}
+	}
+	if len(slots) == 0 {
+		return time.Time{}, false, fmt.Errorf("no instance of this event on %s", named.Format("2006-01-02"))
+	}
+	if !namedIsDay {
+		for _, at := range slots {
+			// The clock a caller typed is local; the slot's may be any zone
+			// the server wrote the rule in.
+			if at.Local().Format("15:04") == named.Local().Format("15:04") {
+				return at, allDay, nil
+			}
+		}
+		times := make([]string, 0, len(slots))
+		for _, at := range slots {
+			times = append(times, at.Local().Format("15:04"))
+		}
+		return time.Time{}, false, fmt.Errorf(
+			"no instance at %s on %s; that day holds: %s",
+			named.Format("15:04"), named.Format("2006-01-02"), strings.Join(times, ", "))
+	}
+	if len(slots) > 1 {
+		return time.Time{}, false, fmt.Errorf(
+			"more than one instance on %s; name a time, like --occurrence %s 09:00",
+			named.Format("2006-01-02"), named.Format("2006-01-02"))
+	}
+	return slots[0], allDay, nil
+}
+
+// overrideOf finds the override written for the instance starting at at. An
+// all-day master names its slots by date, so the comparison is a day; a timed
+// one by instant.
+func overrideOf(cal *ical.Calendar, at time.Time, allDay bool) *ical.Component {
+	for _, child := range cal.Children {
+		if child.Name != ical.CompEvent {
+			continue
+		}
+		prop := child.Props.Get("RECURRENCE-ID")
+		if prop == nil {
+			continue
+		}
+		id, err := prop.DateTime(time.Local)
+		if err != nil {
+			continue
+		}
+		if (allDay && sameDay(id, at)) || (!allDay && id.Unix() == at.Unix()) {
+			return child
+		}
+	}
+	return nil
+}
+
+// copyMaster starts an override from the master, so an instance keeps
+// everything the rule gave it and carries only what the edit changed. The
+// schedule and its exceptions belong to the master alone: an override
+// carrying DTSTART, DTEND, DURATION, the rule or an exception is not an
+// override. Multi-valued properties keep every value — a single ATTENDEE or
+// CATEGORY on the copy would silently drop the rest.
+func copyMaster(master *ical.Component) *ical.Component {
+	child := ical.NewComponent(ical.CompEvent)
+	for name, list := range master.Props {
+		switch name {
+		case ical.PropRecurrenceRule, "EXDATE", "RECURRENCE-ID",
+			ical.PropDateTimeStart, ical.PropDateTimeEnd, ical.PropDuration:
+			continue
+		}
+		child.Props[name] = append([]ical.Prop(nil), list...)
+	}
+	for _, alarm := range master.Children {
+		if alarm.Name == ical.CompAlarm {
+			child.Children = append(child.Children, alarm)
+		}
+	}
+	return child
+}
+
+// setRecurrenceID names the instance an override replaces, in the form the
+// master's start is written in: a DATE for an all-day event, and for a timed
+// one the same form the master's DTSTART has — the master's TZID, or floating
+// when the master is floating. RFC 5545 expects the two to match, and other
+// clients match them as written rather than as instants.
+func setRecurrenceID(c *ical.Component, at time.Time, allDay bool) {
+	if allDay {
+		c.Props.SetDate("RECURRENCE-ID", dayOf(at))
+		return
+	}
+	setLocalOrZoned(c, "RECURRENCE-ID", at)
+}
+
+// sameDay says whether two instants fall on one calendar day locally, which
+// is what a caller naming a bare date means.
+func sameDay(a, b time.Time) bool {
+	y1, m1, d1 := a.Local().Date()
+	y2, m2, d2 := b.Local().Date()
+	return y1 == y2 && m1 == m2 && d1 == d2
 }
 
 // URLNone takes a link off, the way RepeatNone takes a rule off. Without it an
@@ -500,8 +714,23 @@ func setWhen(c *ical.Component, start, end time.Time, allDay bool) {
 		c.Props.SetDate(ical.PropDateTimeEnd, dayOf(end))
 		return
 	}
-	c.Props.SetDateTime(ical.PropDateTimeStart, start)
-	c.Props.SetDateTime(ical.PropDateTimeEnd, end)
+	setLocalOrZoned(c, ical.PropDateTimeStart, start)
+	setLocalOrZoned(c, ical.PropDateTimeEnd, end)
+}
+
+// setLocalOrZoned writes a date-time. A real zone keeps its TZID; the
+// machine's own zone is written floating, because TZID=Local is a name no
+// other client knows, and a floating time means exactly what this machine's
+// zone means: the calendar owner's wall clock.
+func setLocalOrZoned(c *ical.Component, name string, t time.Time) {
+	if t.Location() != time.Local {
+		c.Props.SetDateTime(name, t)
+		return
+	}
+	prop := ical.NewProp(name)
+	prop.SetValueType(ical.ValueDateTime)
+	prop.Value = t.Format("20060102T150405")
+	c.Props.Set(prop)
 }
 
 // defaultEnd is how long an event lasts when nobody said: a whole day, or an

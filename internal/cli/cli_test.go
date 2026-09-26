@@ -339,3 +339,22 @@ func TestReplyDryRunPrintsRecipientsWithoutSending(t *testing.T) {
 		}
 	}
 }
+
+// --occurrence has to survive the CLI: dropped here it would be parsed,
+// ignored, and the edit would land on every instance of the rule instead of
+// the one day the caller named.
+func TestEventOccurrenceReachesTheDaemon(t *testing.T) {
+	got := serveCapture(t)
+	out, errs, code := run(t, "event", "edit", "41", "--occurrence", "2026-10-07", "--title", "Verschoben")
+	if code != ExitOK {
+		t.Fatalf("exit %d: %s", code, errs)
+	} else if strings.TrimSpace(out) == "" {
+		t.Errorf("printed nothing")
+	}
+	if got.Args["occurrence"] != "2026-10-07" {
+		t.Errorf("Args[occurrence] = %v, want 2026-10-07", got.Args["occurrence"])
+	}
+	if got.Args["title"] != "Verschoben" {
+		t.Errorf("Args[title] = %v, want Verschoben", got.Args["title"])
+	}
+}

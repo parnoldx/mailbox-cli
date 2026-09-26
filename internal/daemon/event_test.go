@@ -2,8 +2,12 @@ package daemon
 
 import (
 	"context"
+	"fmt"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"mailbox/internal/sync/davsync"
 )
@@ -256,4 +260,93 @@ func TestEventEditTakesTheRuleAndTheRemindersOff(t *testing.T) {
 		strings.Contains(raw, "URL:") {
 		t.Errorf("none left something behind:\n%s", raw)
 	}
+}
+
+// One instance of a repeating event moves on its own: the rule keeps every
+// other Monday, and the moved day is an override beside the master.
+func TestEventEditOccurrenceMovesOneInstanceOnly(t *testing.T) {
+	d, f, _ := seedTasks(t)
+	added := mustAsk(t, d, []string{"event", "add"}, map[string]any{
+		"positional": "Standup", "start": mondayAt(9, 0), "repeat": "FREQ=WEEKLY;BYDAY=MO",
+	}).Data.(map[string]any)
+
+	if resp := ask(t, d, []string{"event", "edit"}, map[string]any{
+		"positional": added["id"], "occurrence": "2026-10-05", "repeat": "none",
+	}); resp.OK || !strings.Contains(resp.Error, "cannot be combined") {
+		t.Errorf("an occurrence took a rule of its own: %+v", resp)
+	}
+	if resp := ask(t, d, []string{"event", "edit"}, map[string]any{
+		"positional": added["id"], "occurrence": "2026-10-06", "title": "x",
+	}); resp.OK || !strings.Contains(resp.Error, "no instance") {
+		t.Errorf("an empty day was edited: %+v", resp)
+	}
+
+	moved := "2026-10-06 14:00"
+	mustAsk(t, d, []string{"event", "edit"}, map[string]any{
+		"positional": added["id"], "occurrence": "2026-10-05",
+		"title": "Standup verschoben", "start": moved,
+	})
+	raw := onlyEvent(t, f)
+	if !strings.Contains(raw, "RECURRENCE-ID") || !strings.Contains(raw, "Standup verschoben") {
+		t.Errorf("the override is not there:\n%s", raw)
+	}
+	if !strings.Contains(raw, "RRULE:FREQ=WEEKLY;BYDAY=MO") {
+		t.Errorf("the rule did not survive:\n%s", raw)
+	}
+
+	// And the agenda says so: the Monday slot is empty, the Tuesday 14:00 is
+	// filled, and the next Monday still at 09:00.
+	agenda := mustAsk(t, d, []string{"agenda"}, map[string]any{
+		"from": "2026-10-05", "days": 10.0,
+	}).Data.([]occurrence)
+	if len(agenda) != 2 {
+		t.Fatalf("agenda holds %d entries, want 2: %v", len(agenda), agenda)
+	}
+	var days []string
+	for _, row := range agenda {
+		days = append(days, row.Start[:16])
+	}
+	sort.Strings(days)
+	want := []string{"2026-10-06T14:00", "2026-10-12T09:00"}
+	if !slices.Equal(days, want) {
+		t.Errorf("agenda holds %v, want %v", days, want)
+	}
+}
+
+func TestEventDeleteOccurrenceTakesOneInstanceOff(t *testing.T) {
+	d, f, _ := seedTasks(t)
+	added := mustAsk(t, d, []string{"event", "add"}, map[string]any{
+		"positional": "Standup", "start": mondayAt(9, 0), "repeat": "FREQ=WEEKLY;BYDAY=MO",
+	}).Data.(map[string]any)
+
+	mustAsk(t, d, []string{"event", "delete"}, map[string]any{
+		"positional": added["id"], "occurrence": "2026-10-05",
+	})
+	raw := onlyEvent(t, f)
+	if !strings.Contains(raw, "STATUS:CANCELLED") {
+		t.Errorf("the instance was not cancelled:\n%s", raw)
+	}
+	if !strings.Contains(raw, "RRULE:") {
+		t.Errorf("the whole rule went with the one instance:\n%s", raw)
+	}
+	agenda := mustAsk(t, d, []string{"agenda"}, map[string]any{
+		"from": "2026-10-05", "days": 10.0,
+	}).Data.([]occurrence)
+	if len(agenda) != 1 || agenda[0].Start[:16] != "2026-10-12T09:00" {
+		t.Fatalf("agenda holds %v, want the surviving Monday only", agenda)
+	}
+}
+
+// mondayAt is next Monday at hour:minute local, the same helper shape the
+// vcal tests use: a repeating event needs a weekday the rule can land on.
+func mondayAt(hour, minute int) string {
+	day := time.Now()
+	for day.Weekday() != time.Monday {
+		day = day.AddDate(0, 0, 1)
+	}
+	y, m, d := day.Date()
+	if minute == 0 {
+		return fmt.Sprintf("%s %02d:%02d", time.Date(y, m, d, 0, 0, 0, 0, time.Local).Format("2006-01-02"), hour, minute)
+	}
+	return time.Date(y, m, d, hour, minute, 0, 0, time.Local).Format("2006-01-02 15:04")
 }

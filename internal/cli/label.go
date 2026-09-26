@@ -133,6 +133,7 @@ func eventVerb(verb string) func(*input, io.Writer, io.Writer) int {
 				"calendar": in.Str("calendar"), "location": in.Str("location"),
 				"notes": in.Str("notes"), "all_day": in.Bool("all-day"),
 				"url": in.Str("url"), "repeat": in.Str("repeat"), "alarm": in.Str("alarm"),
+				"occurrence": in.Str("occurrence"),
 			},
 		}, in.JSON(), printEventChange, stdout, stderr)
 	}

@@ -841,10 +841,13 @@ func tree(l Locals) []*Command {
 					Usage: []string{
 						"mailbox event edit ID [--title TEXT] [--start WHEN] [--end WHEN]",
 						"                      [--url URL] [--repeat RULE] [--alarm MINUTES]",
+						"                      [--occurrence WHEN]",
 					},
 					Long: "Only what is named changes. A repeating entry is one rule, so " +
-						"editing its time moves every instance of it. --repeat none takes " +
-						"the rule off, and --alarm none takes the reminders off.",
+						"editing its time moves every instance of it — unless --occurrence " +
+						"names one day, which is changed on its own and leaves the rest of " +
+						"the rule standing. --repeat none takes the rule off, and --alarm " +
+						"none takes the reminders off.",
 					Flags: []Flag{
 						{Name: "title", Kind: KindString, Arg: "TEXT", Desc: "a new summary"},
 						{Name: "start", Kind: KindString, Arg: "WHEN", Desc: "2026-09-01, or 2026-09-01 14:00"},
@@ -857,17 +860,25 @@ func tree(l Locals) []*Command {
 						{Name: "alarm", Kind: KindString, Arg: "MINUTES",
 							Desc: "minutes before the start, or none"},
 						{Name: "all-day", Kind: KindBool, Desc: "make it an all-day entry"},
+						{Name: "occurrence", Kind: KindString, Arg: "WHEN",
+							Desc: "change only the instance on this day: 2026-10-02, or 2026-10-02 09:00"},
 					},
 					Examples: []string{
 						`mailbox event edit 41 --start "2026-09-02 08:10"`,
 						"mailbox event edit 41 --repeat weekly --alarm 15",
+						`mailbox event edit 41 --occurrence 2026-10-07 --start "2026-10-08 08:10"`,
 					},
 					Run: eventVerb("edit"),
 				},
 				{
 					Name: "delete", Short: "Take an entry off", Needs: true,
-					Usage:    []string{"mailbox event delete ID"},
-					Examples: []string{"mailbox event delete 41"},
+					Usage: []string{"mailbox event delete ID [--occurrence WHEN]"},
+					Long:  "With --occurrence only that day's instance is taken off, and the rest of the rule stands.",
+					Flags: []Flag{
+						{Name: "occurrence", Kind: KindString, Arg: "WHEN",
+							Desc: "take only the instance on this day off: 2026-10-02, or 2026-10-02 09:00"},
+					},
+					Examples: []string{"mailbox event delete 41", "mailbox event delete 41 --occurrence 2026-10-07"},
 					Run:      eventVerb("delete"),
 				},
 			},

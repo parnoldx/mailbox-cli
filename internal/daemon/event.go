@@ -28,6 +28,25 @@ func (d *Daemon) changeEvent(ctx context.Context, verb string, req Request, resp
 	}
 
 	if verb == "delete" {
+		// One instance off, the rest of the rule standing: an override with
+		// STATUS:CANCELLED, not the whole object.
+		if raw := strings.TrimSpace(req.Str("occurrence")); raw != "" {
+			at, isDay, ok := parseWhen(raw)
+			if !ok {
+				return resp.usage(fmt.Sprintf("--occurrence takes 2026-09-01 or 2026-09-01 14:00, got %q", raw))
+			}
+			edited, err := vcal.CancelOccurrence(object.Raw, at, isDay)
+			if err != nil {
+				return resp.api(err.Error())
+			}
+			if _, err := d.put(ctx, eventChanged, col, object.Href, edited, object.ETag); err != nil {
+				return resp.api(err.Error())
+			}
+			return resp.ok(map[string]any{
+				"id": object.ID, "state": "deleted", "occurrence": at.Format("2006-01-02"),
+				"summary": object.Summary, "calendar": col.Name,
+			})
+		}
 		if err := d.remove(ctx, eventChanged, col, object); err != nil {
 			return resp.api(err.Error())
 		}
@@ -47,6 +66,27 @@ func (d *Daemon) changeEvent(ctx context.Context, verb string, req Request, resp
 		return resp.usage(
 			"event edit needs something to change: --title, --start, --end, --location, " +
 				"--notes, --url, --repeat or --alarm")
+	}
+	// One instance of a repeating event, the rest of the rule standing. An
+	// override cannot carry a rule of its own, so --repeat beside --occurrence
+	// is a caller confusing the two scopes.
+	if raw := strings.TrimSpace(req.Str("occurrence")); raw != "" {
+		if edit.Repeat != "" {
+			return resp.usage("--repeat changes every instance of a rule; --occurrence changes one, and cannot be combined with it")
+		}
+		at, isDay, ok := parseWhen(raw)
+		if !ok {
+			return resp.usage(fmt.Sprintf("--occurrence takes 2026-09-01 or 2026-09-01 14:00, got %q", raw))
+		}
+		edited, err := vcal.SetOccurrence(object.Raw, at, isDay, edit)
+		if err != nil {
+			return resp.api(err.Error())
+		}
+		written, err := d.put(ctx, eventChanged, col, object.Href, edited, object.ETag)
+		if err != nil {
+			return resp.api(err.Error())
+		}
+		return resp.ok(viewEventObject(written, col))
 	}
 	raw, err := vcal.SetEvent(object.Raw, edit)
 	if err != nil {

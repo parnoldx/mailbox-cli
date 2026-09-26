@@ -1,6 +1,7 @@
 package vcal
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -402,4 +403,274 @@ func TestRuleReadsWordsAndRules(t *testing.T) {
 	if _, err := Rule("every other thursday"); err == nil {
 		t.Errorf("a rule nobody could act on was accepted")
 	}
+}
+
+// A repeating Monday 09:00 standup, written the way the daemon writes one:
+// instants in UTC, matched against the local dates a caller types.
+func weeklyRaw(t *testing.T) string {
+	t.Helper()
+	raw, err := NewEvent("standup-mailbox", EventEdit{
+		Summary: "Standup",
+		Start:   mondayAt(9, 0),
+		End:     mondayAt(9, 30),
+		Repeat:  "FREQ=WEEKLY;BYDAY=MO",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+// mondayAt is next Monday at hour:minute local time, which is where the
+// standup sits.
+func mondayAt(hour, minute int) time.Time {
+	day := time.Now()
+	for day.Weekday() != time.Monday {
+		day = day.AddDate(0, 0, 1)
+	}
+	y, m, d := day.Date()
+	return time.Date(y, m, d, hour, minute, 0, 0, time.Local)
+}
+
+func TestSetOccurrenceMovesOneInstance(t *testing.T) {
+	raw := weeklyRaw(t)
+	first, second := mondayAt(9, 0), mondayAt(9, 0).AddDate(0, 0, 7)
+	moved := time.Date(second.Year(), second.Month(), second.Day(), 14, 0, 0, 0, time.Local)
+
+	edited, err := SetOccurrence(raw, second, true, EventEdit{
+		Summary: "Standup verschoben",
+		Start:   moved,
+		End:     moved.Add(30 * time.Minute),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(edited, "RECURRENCE-ID"); n != 1 {
+		t.Fatalf("%d overrides written:\n%s", n, edited)
+	}
+	if strings.Count(edited, "RRULE:") != 1 {
+		t.Errorf("the rule did not survive, or landed on the override:\n%s", edited)
+	}
+
+	got, err := Occurrences(edited, mondayAt(0, 0), mondayAt(0, 0).AddDate(0, 0, 22), time.Local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 4 {
+		t.Fatalf("%d occurrences, want 4: %+v", len(got), got)
+	}
+	for _, o := range got {
+		switch day := o.Start.Format("2006-01-02"); day {
+		case moved.Format("2006-01-02"):
+			if o.Start.Format("15:04") != "14:00" || o.Summary != "Standup verschoben" {
+				t.Errorf("the moved instance is %+v", o)
+			}
+		case second.Format("2006-01-02"):
+			t.Errorf("the old slot still holds an instance: %+v", got)
+		case first.Format("2006-01-02"):
+			if o.Summary != "Standup" || o.Start.Format("15:04") != "09:00" {
+				t.Errorf("an untouched instance was changed: %+v", o)
+			}
+		}
+	}
+}
+
+func TestSetOccurrenceEditsTheOverrideItAlreadyWrote(t *testing.T) {
+	raw := weeklyRaw(t)
+	day := mondayAt(9, 0).AddDate(0, 0, 7)
+
+	once, err := SetOccurrence(raw, day, true, EventEdit{
+		Summary: "Erst verschoben",
+		Start:   mondayAt(14, 0).AddDate(0, 0, 7),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	twice, err := SetOccurrence(once, day, true, EventEdit{Summary: "Dann umbenannt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(twice, "RECURRENCE-ID"); n != 1 {
+		t.Fatalf("%d overrides after two edits:\n%s", n, twice)
+	}
+	if !strings.Contains(twice, "Dann umbenannt") {
+		t.Errorf("the second edit did not land:\n%s", twice)
+	}
+}
+
+func TestCancelOccurrenceTakesOneInstanceOff(t *testing.T) {
+	raw := weeklyRaw(t)
+	second := mondayAt(9, 0).AddDate(0, 0, 7)
+
+	cancelled, err := CancelOccurrence(raw, second, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(cancelled, "STATUS:CANCELLED") {
+		t.Errorf("the override carries no cancellation:\n%s", cancelled)
+	}
+	got, err := Occurrences(cancelled, mondayAt(0, 0), mondayAt(0, 0).AddDate(0, 0, 22), time.Local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range got {
+		if o.Start.Format("2006-01-02") == second.Format("2006-01-02") {
+			t.Errorf("the cancelled instance happened anyway: %+v", got)
+		}
+	}
+	if len(got) != 3 {
+		t.Fatalf("%d occurrences, want 3: %+v", len(got), got)
+	}
+}
+
+func TestSetOccurrenceRefusesWhatItCannotMean(t *testing.T) {
+	raw := weeklyRaw(t)
+	day := mondayAt(9, 0)
+
+	// A day with no instance on it.
+	if _, err := SetOccurrence(raw, day.AddDate(0, 0, 2), true, EventEdit{Summary: "x"}); err == nil ||
+		!strings.Contains(err.Error(), "no instance") {
+		t.Errorf("an empty day was accepted: %v", err)
+	}
+	// A clock that names no instance is refused, even when the day has one.
+	if _, err := SetOccurrence(raw, day.Add(3*time.Hour+33*time.Minute), false, EventEdit{Summary: "x"}); err == nil ||
+		!strings.Contains(err.Error(), "no instance at 12:33") {
+		t.Errorf("a wrong clock picked the day's instance anyway: %v", err)
+	}
+	// An event that does not repeat.
+	plain, err := NewEvent("once-mailbox", EventEdit{Summary: "Einmal", Start: day.Add(10 * time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SetOccurrence(plain, day, true, EventEdit{Summary: "x"}); err == nil ||
+		!strings.Contains(err.Error(), "does not repeat") {
+		t.Errorf("a plain event was overridden: %v", err)
+	}
+}
+
+// A rename-only override keeps its own slot: the master's start is the first
+// instance's, and copying it wholesale would silently move this instance to
+// the head of the series.
+func TestSetOccurrenceKeepsItsOwnSlotAndLength(t *testing.T) {
+	raw := weeklyRaw(t)
+	second := mondayAt(9, 0).AddDate(0, 0, 7)
+
+	edited, err := SetOccurrence(raw, second, true, EventEdit{Summary: "Nur umbenannt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := Occurrences(edited, mondayAt(0, 0), mondayAt(0, 0).AddDate(0, 0, 15), time.Local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var renamed bool
+	for _, o := range got {
+		if o.Summary == "Nur umbenannt" {
+			renamed = true
+			if !o.Start.Equal(second) || !o.End.Equal(second.Add(30*time.Minute)) {
+				t.Errorf("the renamed instance moved or changed length: %+v", o)
+			}
+		}
+	}
+	if !renamed {
+		t.Errorf("the renamed instance is not in the expansion: %+v", got)
+	}
+}
+
+// Multi-valued properties keep every value on the override.
+func TestSetOccurrenceKeepsEveryAttendee(t *testing.T) {
+	raw := wrap(`BEGIN:VEVENT
+UID:many@example.org
+DTSTAMP:20260901T000000Z
+DTSTART:20261005T090000Z
+DTEND:20261005T100000Z
+RRULE:FREQ=WEEKLY;BYDAY=MO
+SUMMARY:Standup
+ATTENDEE:mailto:anna@example.com
+ATTENDEE:mailto:bert@example.com
+END:VEVENT
+`)
+	day := time.Date(2026, 10, 12, 9, 0, 0, 0, time.Local)
+	edited, err := SetOccurrence(raw, day, true, EventEdit{Summary: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The master keeps its two, and the override must carry both of its own.
+	if n := strings.Count(edited, "ATTENDEE"); n != 4 {
+		t.Errorf("%d attendees on the object, want 2 on each component:\n%s", n, edited)
+	}
+}
+
+// The machine's own zone is written floating, not as TZID=Local — a name no
+// other client knows.
+func TestALocalEventIsWrittenFloating(t *testing.T) {
+	raw := weeklyRaw(t)
+	if strings.Contains(raw, "TZID=Local") {
+		t.Errorf("the local zone was written as a TZID:\n%s", raw)
+	}
+	if !strings.Contains(raw, "DTSTART:") {
+		t.Errorf("the start is not a plain date-time:\n%s", raw)
+	}
+}
+
+// On the day the clocks change, an all-day override keeps its whole day:
+// 24 clock hours from local midnight land back inside it.
+func TestAnAllDayOverrideKeepsItsDayAcrossTheClockChange(t *testing.T) {
+	// 2026-10-25 is the Sunday this account's zone (Europe/Berlin) leaves
+	// summer time; the 23-hour day is where a clock-hour length went wrong.
+	raw, err := NewEvent("urlaub-mailbox", EventEdit{
+		Summary: "Urlaub",
+		Start:   time.Date(2026, 10, 20, 0, 0, 0, 0, time.Local),
+		AllDay:  true,
+		Repeat:  "FREQ=DAILY",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited, err := SetOccurrence(raw, time.Date(2026, 10, 25, 0, 0, 0, 0, time.Local), true,
+		EventEdit{Summary: "Urlaub (gekippt)"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The master's dates are the 20th and the 21st, so these can only be the
+	// override's.
+	if !strings.Contains(edited, "DTSTART;VALUE=DATE:20261025") ||
+		!strings.Contains(edited, "DTEND;VALUE=DATE:20261026") {
+		t.Errorf("the all-day override lost its day:\n%s", edited)
+	}
+}
+
+// A floating master gets a floating RECURRENCE-ID: RFC 5545 expects the two
+// in the same form, and other clients match them as written.
+func TestAFloatingMasterGetsAFloatingRecurrenceID(t *testing.T) {
+	raw, err := NewEvent("float-mailbox", EventEdit{
+		Summary: "Standup",
+		Start:   mondayAt(9, 0),
+		End:     mondayAt(9, 30),
+		Repeat:  "FREQ=DAILY",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited, err := SetOccurrence(raw, mondayAt(9, 0).AddDate(0, 0, 7), true, EventEdit{Summary: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := indexLine(edited, "RECURRENCE-ID:")
+	if id == "" {
+		t.Fatal("no RECURRENCE-ID was written:\n" + edited)
+	}
+	if strings.HasSuffix(id, "Z") {
+		t.Errorf("the override's RECURRENCE-ID is UTC over a floating master: %s", id)
+	}
+}
+
+// indexLine returns the first line of raw that starts with name.
+func indexLine(raw, name string) string {
+	for _, line := range strings.Split(raw, "\n") {
+		if strings.HasPrefix(line, name) {
+			return strings.TrimSpace(line)
+		}
+	}
+	return ""
 }
