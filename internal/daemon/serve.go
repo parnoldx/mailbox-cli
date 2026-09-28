@@ -197,7 +197,7 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 				out = append(out, boxRow{
 					Box:     acct.qualify(shortBox(folder, acct.Mirrored)),
 					Folder:  folder,
-					Account: acct.Name,
+					Account: acct.label(),
 					Count:   c.Count,
 					Unseen:  c.Unseen,
 					Watched: slices.Contains(acct.Watched, folder),

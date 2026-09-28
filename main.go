@@ -178,6 +178,11 @@ func runDaemon(systemdSocket bool) error {
 	if err != nil {
 		return err
 	}
+	// What discovery no longer offers, the Mirror forgets — a folder deleted
+	// in webmail must not keep haunting listings and search.
+	if err := m.KeepFolders("primary", mirrored); err != nil {
+		return err
+	}
 	logger.Printf("mirroring %d boxes, watching %v", len(mirrored), watched)
 	d := daemon.New("primary", m, r, mirrored, watched, logger)
 
@@ -378,8 +383,11 @@ func boxes(ctx context.Context, drv interface {
 		wanted = watchable
 	}
 	for _, b := range all {
-		// Trash is excluded from the Mirror entirely (ADR-0003).
-		if strings.EqualFold(b, "Trash") {
+		// Trash is excluded from the Mirror entirely (ADR-0003) — the folder
+		// itself and everything under it: a folder deleted in webmail lands
+		// inside Trash, and mirroring the subtree would keep listing what the
+		// user threw away.
+		if head, _, _ := strings.Cut(b, "/"); strings.EqualFold(head, "Trash") {
 			continue
 		}
 		mirrored = append(mirrored, b)
@@ -452,6 +460,10 @@ func buildSecondary(ctx context.Context, name string, sec config.Account,
 	}
 	mirrored, watched, err := boxes(ctx, drv, sec.Watch)
 	if err != nil {
+		drv.Close()
+		return nil, err
+	}
+	if err := m.KeepFolders(name, mirrored); err != nil {
 		drv.Close()
 		return nil, err
 	}
@@ -535,6 +547,9 @@ func buildGraph(ctx context.Context, name string, sec config.Account,
 	drv := graphdrv.NewMail(g.client, g.store)
 	mirrored, _, err := boxes(ctx, drv, nil)
 	if err != nil {
+		return nil, err
+	}
+	if err := m.KeepFolders(name, mirrored); err != nil {
 		return nil, err
 	}
 	acct := daemon.NewAccount(name,

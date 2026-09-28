@@ -124,3 +124,86 @@ func TestForgettingACollectionTakesItsObjects(t *testing.T) {
 		t.Fatalf("%d objects survived the collection", len(todos))
 	}
 }
+
+// A folder the server no longer offers — deleted in webmail, or sitting inside
+// Trash — leaves the Mirror: its mail stops showing up in search and listings,
+// and a message it alone held goes with it. A message another Box still holds
+// stays, minus the one placement.
+func TestKeepFoldersForgetsWhatDiscoveryDropped(t *testing.T) {
+	m, err := Open(filepath.Join(t.TempDir(), "mirror.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+
+	seed := func(folder string, subject string) {
+		t.Helper()
+		tx, err := m.Begin("primary")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := tx.SaveFolder(FolderState{Name: folder}); err != nil {
+			t.Fatal(err)
+		}
+		id, _, err := tx.UpsertMessage(Message{
+			Key: subject + "@example.com", Subject: subject, From: "a@example.com",
+			Date: time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := tx.SetBody(id, "the text\n", "", "the text"); err != nil {
+			t.Fatal(err)
+		}
+		if err := tx.PutPlacement(Placement{Folder: folder, UID: 7, MessageID: id}); err != nil {
+			t.Fatal(err)
+		}
+		if err := tx.Commit(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seed("INBOX", "stays")
+	seed("Trash/Archiv_0", "gone alone")
+	seed("Alt", "gone but held") // also in INBOX
+
+	tx, err := m.Begin("primary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, _, err := tx.UpsertMessage(Message{
+		Key: "held@example.com", Subject: "gone but held", From: "a@example.com",
+		Date: time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.PutPlacement(Placement{Folder: "INBOX", UID: 8, MessageID: id}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := m.KeepFolders("primary", []string{"INBOX"}); err != nil {
+		t.Fatal(err)
+	}
+	for folder, want := range map[string]int{"INBOX": 2, "Trash/Archiv_0": 0, "Alt": 0} {
+		if rows, err := m.Rows("primary", folder, 10); err != nil {
+			t.Fatal(err)
+		} else if len(rows) != want {
+			t.Fatalf("%s kept %d rows, want %d", folder, len(rows), want)
+		}
+	}
+	// Nothing of the dropped folders is left for search to find.
+	if hits, err := m.Search("primary", Query{Text: "alone"}); err != nil {
+		t.Fatal(err)
+	} else if len(hits) != 0 {
+		t.Fatalf("%d hits survived the forgotten folders", len(hits))
+	}
+	// The untouched account rows and the still-held message are intact.
+	if rows, err := m.Rows("primary", "INBOX", 10); err != nil {
+		t.Fatal(err)
+	} else if len(rows) != 2 {
+		t.Fatalf("INBOX holds %d rows, want 2", len(rows))
+	}
+}

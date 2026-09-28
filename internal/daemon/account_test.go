@@ -382,6 +382,21 @@ func TestABubbleTheServerWillNotKeepIsRefused(t *testing.T) {
 	}
 }
 
+// A box row carries the account the way an id does: the Primary is unnamed
+// (ADR-0005), so a caller can match a row to the account of a mail it holds.
+func TestBoxListAccountsMatchIds(t *testing.T) {
+	d, _, _ := twoAccounts(t)
+	rows := mustAsk(t, d, []string{"box", "list"}, map[string]any{"archive": true}).Data.([]boxRow)
+	seen := map[string]string{}
+	for _, r := range rows {
+		seen[r.Box] = r.Account
+	}
+	// The Primary's Inbox has no account on it; the Secondary's does.
+	if seen["INBOX"] != "" || seen["gmx/INBOX"] != "gmx" {
+		t.Fatalf("box rows carry %v; the Primary is unnamed, a Secondary is not", seen)
+	}
+}
+
 func TestAccountListNamesEveryAccountAndItsColour(t *testing.T) {
 	d, _, _ := twoAccounts(t)
 	d.Color = "accent"
