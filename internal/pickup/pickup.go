@@ -99,8 +99,11 @@ var trailing = regexp.MustCompile(
 
 // lone is a code sitting on a line of its own, which is how a rendered HTML
 // code block flattens to text. Only safe after the subject gate: on its own
-// this shape is an order number far more often than it is a code.
-var lone = regexp.MustCompile(`(?m)^[^\p{L}\p{N}\n]{0,4}([0-9]{4,8})[^\p{L}\p{N}\n]{0,4}$`)
+// this shape is an order number far more often than it is a code. Alphanumeric
+// codes (Basecamp's 5HT3KD) qualify too, but must carry a digit — an all-caps
+// word is a heading, and an eight-letter heading after an auth-looking subject
+// would otherwise be copied as somebody's login code.
+var lone = regexp.MustCompile(`(?m)^[^\p{L}\p{N}\n]{0,4}([0-9A-Z]{4,8})[^\p{L}\p{N}\n]{0,4}$`)
 
 // link is a URL that logs you in by being followed. The path or query has to
 // name the act — a bare opaque token is every tracking and unsubscribe link
@@ -186,6 +189,9 @@ func findCode(body string) string {
 		}
 	}
 	for _, m := range lone.FindAllStringSubmatch(body, -1) {
+		if !strings.ContainsAny(m[1], "0123456789") {
+			continue
+		}
 		return m[1]
 	}
 	return ""

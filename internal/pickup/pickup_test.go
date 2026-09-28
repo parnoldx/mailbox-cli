@@ -47,6 +47,15 @@ func TestFindsCodesAndLinks(t *testing.T) {
 			wantCode: "19624929",
 		},
 		{
+			// Verbatim from the Screener, 2026-09-28: the code is alphanumeric
+			// and sits on a line of its own, which is how Basecamp renders it.
+			// The lone-line net was digits-only and let it through.
+			name:     "alphanumeric code on its own line",
+			subject:  "Your Basecamp 5 verification code",
+			body:     "Please enter this 6-character verification code in Basecamp.\n\n5HT3KD\n\nThis code will work for 10 minutes.\n",
+			wantCode: "5HT3KD",
+		},
+		{
 			name:     "german verb phrase",
 			subject:  "Bitte bestätigen Sie Ihre E-Mail-Adresse",
 			body:     "Zum Aktivieren: https://example.de/konto/aktivieren/8f2ad91c4b\n",
