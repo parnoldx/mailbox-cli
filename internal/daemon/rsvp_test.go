@@ -128,15 +128,64 @@ func TestRSVPAcceptPutsTheEventOnTheHomeCalendar(t *testing.T) {
 	}
 }
 
-func TestThreadViewSurfacesAnInvite(t *testing.T) {
+func TestThreadViewMarksAnInviteWithoutFetchingIt(t *testing.T) {
 	d, _, id := seedInvite(t)
 	resp := mustAsk(t, d, []string{"thread", "view"}, map[string]any{"positional": id})
 	rows, ok := resp.Data.([]message)
-	if !ok || len(rows) != 1 || rows[0].Invite == nil {
+	if !ok || len(rows) != 1 || !rows[0].HasInvite {
 		t.Fatalf("thread = %T %+v", resp.Data, resp.Data)
 	}
-	if rows[0].Invite.Summary != "Design review" {
-		t.Errorf("summary = %q", rows[0].Invite.Summary)
+	if rows[0].Invite != nil {
+		t.Errorf("thread view fetched the card; it must stay lazy")
+	}
+}
+
+func TestInviteShowReturnsTheCard(t *testing.T) {
+	d, _, id := seedInvite(t)
+	resp := mustAsk(t, d, []string{"invite", "show"}, map[string]any{"positional": id})
+	card, ok := resp.Data.(*inviteCard)
+	if !ok || card == nil || card.Summary != "Design review" {
+		t.Fatalf("card = %T %+v", resp.Data, resp.Data)
+	}
+	if card.Organizer != "boss@example.org" {
+		t.Errorf("organizer = %q", card.Organizer)
+	}
+}
+
+func TestInviteShowCachesTheFetch(t *testing.T) {
+	d, _, id := seedInvite(t)
+	for i := 0; i < 2; i++ {
+		if resp := mustAsk(t, d, []string{"invite", "show"}, map[string]any{"positional": id}); !resp.OK {
+			t.Fatalf("invite show: %s", resp.Error)
+		}
+	}
+	f := fakeOf(d)
+	if got := f.CallCount("FetchPart"); got != 1 {
+		t.Errorf("the part was fetched %d times, want once", got)
+	}
+}
+
+func TestInviteShowWithoutAnInviteIsNull(t *testing.T) {
+	d, _ := seedSend(t)
+	msg := fakeOf(d).Deliver("INBOX", "a@example.com", "plain", "hi")
+	tx, err := d.Mirror.Begin("primary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	mid, _, err := tx.UpsertMessage(mirror.Message{Key: "a@example.com", Subject: "plain"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.PutPlacement(mirror.Placement{Folder: "INBOX", UID: msg.UID, MessageID: mid}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	resp := mustAsk(t, d, []string{"invite", "show"}, map[string]any{"positional": d.primaryAccount().messageID("INBOX", msg.UID)})
+	if !resp.OK || resp.Data != nil {
+		t.Fatalf("resp = %+v", resp)
 	}
 }
 
@@ -186,5 +235,24 @@ func TestParsePartstatFromFlags(t *testing.T) {
 	got, err := rsvpPartstat(Request{Args: map[string]any{"decline": true}})
 	if err != nil || got != vcal.PartstatDeclined {
 		t.Fatalf("got %q (%v)", got, err)
+	}
+}
+
+// An invite sent without a UID can be shown but not answered: the iMIP reply
+// and the calendar event would both name an event that has no identity.
+func TestRSVPWithoutAUIDIsRefused(t *testing.T) {
+	d, _ := seedSend(t)
+	f := fakeOf(d)
+	msg := f.Deliver("INBOX", "nouid@example.org", "Invitation: no uid", "come")
+	msg.From = "Boss <boss@example.org>"
+	f.Deliver("INBOX", "x", "", "") // keep the folder non-empty for the sync
+	uidless := strings.Replace(testInviteICS, "UID:meet-1@example.org\n", "", 1)
+	msg.Attach("2", "text/calendar", "invite.ics", []byte(uidless))
+	if _, err := d.primaryAccount().Reconciler.SyncAll(context.Background(), d.Mirrored); err != nil {
+		t.Fatal(err)
+	}
+	resp := ask(t, d, []string{"rsvp"}, map[string]any{"positional": d.primaryAccount().messageID("INBOX", msg.UID), "accept": true})
+	if resp.OK || resp.Code != "usage" {
+		t.Fatalf("resp = %+v", resp)
 	}
 }

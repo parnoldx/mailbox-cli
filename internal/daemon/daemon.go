@@ -16,6 +16,7 @@ import (
 	"mailbox/internal/routing"
 	"mailbox/internal/sync/davsync"
 	"mailbox/internal/sync/mailsync"
+	"mailbox/internal/vcal"
 )
 
 // Daemon owns the Mirror and every server connection. Nothing else opens
@@ -101,6 +102,14 @@ type Daemon struct {
 	ConfigPath string
 	Apply      Applier
 	reload     reloadState
+
+	// invites caches parsed calendar parts, keyed by Message Key. A calendar
+	// part never changes once it exists, so the first read pays the server
+	// round trip and every later one — thread view, rsvp — answers from
+	// memory. Only successes are cached: a part that cannot be fetched is
+	// retried, and a Mirror rebuild hands out fresh Keys anyway.
+	invites   map[string]vcal.Invite
+	invitesMu sync.Mutex
 
 	// trigger serialises cycles. A cold start takes minutes and the poll fires
 	// every minute, so without this a second cycle starts inside the first,

@@ -254,7 +254,7 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 		if err != nil {
 			return resp.api(err.Error())
 		}
-		m := d.withInvite(ctx, acct, folder, uid, r.Message.ID, r.To, viewMessage(acct, folder, r, places))
+		m := d.withInvite(ctx, acct, folder, uid, r.Message.ID, r.Message.Key, r.To, viewMessage(acct, folder, r, places))
 		return resp.ok(m)
 
 	case "attachment list":
@@ -347,9 +347,35 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 		out := make([]message, 0, len(rows))
 		for _, row := range rows {
 			m := viewMessage(acct, row.Placement.Folder, row, nil)
-			out = append(out, d.withInvite(ctx, acct, row.Placement.Folder, row.Placement.UID, row.Message.ID, row.To, m))
+			m.HasInvite = d.hasCalendarPart(acct, row.Message.ID)
+			out = append(out, m)
 		}
 		return resp.ok(out)
+
+	case "invite show":
+		// The one server read in the invite path, and only on demand: a
+		// client asks for it when it is about to draw the card, not when it
+		// lists the thread. The cache in loadInvite makes the second ask free.
+		id := req.Str("positional")
+		acct, folder, uid, err := d.resolveID(id)
+		if err != nil {
+			return resp.usage(err.Error())
+		}
+		if acct.Graph {
+			return resp.ok(nil)
+		}
+		r, err := d.Mirror.Row(acct.Name, folder, uid)
+		if errors.Is(err, mirror.ErrNotFound) {
+			return resp.notFound(noSuchMessage(id))
+		}
+		if err != nil {
+			return resp.api(err.Error())
+		}
+		card := d.inviteCardOf(ctx, acct, folder, uid, r.Message.ID, r.Message.Key, r.To)
+		if card == nil {
+			return resp.ok(nil)
+		}
+		return resp.ok(card)
 
 	case "search":
 		text := req.Str("positional")
@@ -1025,8 +1051,12 @@ type message struct {
 	// Labels are the keywords somebody chose, out of the Flags above: the
 	// server's own ones are not labels and are left out (mirror.LabelsOf).
 	Labels []string `json:"labels,omitempty"`
-	// Invite is a meeting request this Message carries, when a text/calendar
-	// or .ics part is present. Details may be empty until the part is fetched.
+	// HasInvite says a card is there for the asking: `invite show` fetches it
+	// (cached after the first time). The card itself is not embedded, so
+	// reading a Thread never waits on the server.
+	HasInvite bool `json:"has_invite,omitempty"`
+	// Invite is the card itself, fetched on demand — `message view` and
+	// `invite show` attach it; `thread view` does not.
 	Invite *inviteCard `json:"invite,omitempty"`
 	// Unsubscribe is how to leave this list, when the message offers a way —
 	// its own List-Unsubscribe headers, or a link its body carries. Nil means

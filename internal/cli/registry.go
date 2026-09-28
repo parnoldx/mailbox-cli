@@ -226,6 +226,18 @@ func tree(l Locals) []*Command {
 			}},
 		},
 		{
+			Name: "invite", Section: SectionMail, Short: "Read a meeting invite",
+			Sub: []*Command{{
+				Name: "show", Short: "Read a meeting's card", Needs: true,
+				Usage:    []string{"mailbox invite show ID"},
+				Examples: []string{"mailbox invite show 36722"},
+				Notes: []string{
+					"The card is fetched from the server once and cached; reading a thread never fetches it. Graph (Microsoft 365) mail carries no card — the event is already on the calendar.",
+				},
+				Run: runInvite,
+			}},
+		},
+		{
 			Name: "thread", Section: SectionMail, Short: "A whole conversation", Needs: true,
 			Usage: []string{"mailbox thread ID"},
 			Long: "Any message in the conversation names the whole of it, and the " +

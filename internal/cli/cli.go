@@ -50,6 +50,41 @@ func runMessageView(in *input, stdout, stderr io.Writer) int {
 	}, in.JSON(), printMessage, stdout, stderr)
 }
 
+// runInvite reads a meeting's card: the one server read in the invite path,
+// served from the daemon's cache after the first ask.
+func runInvite(in *input, stdout, stderr io.Writer) int {
+	return request(daemon.Request{
+		Cmd:  []string{"invite", "show"},
+		Args: map[string]any{"positional": in.First()},
+	}, in.JSON(), printInvite, stdout, stderr)
+}
+
+func printInvite(stdout, stderr io.Writer, resp daemon.Response) {
+	m, ok := fieldsOf(stdout, resp.Data)
+	if !ok {
+		return
+	}
+	if str(m["summary"]) != "" {
+		fmt.Fprintln(stdout, str(m["summary"]))
+	}
+	if when := str(m["start"]); when != "" {
+		fmt.Fprintf(stdout, "when: %s", when)
+		if until := str(m["end"]); until != "" {
+			fmt.Fprintf(stdout, " – %s", until)
+		}
+		fmt.Fprintln(stdout)
+	}
+	if where := str(m["location"]); where != "" {
+		fmt.Fprintf(stdout, "where: %s\n", where)
+	}
+	if who := str(m["organizer"]); who != "" {
+		fmt.Fprintf(stdout, "organizer: %s\n", who)
+	}
+	if cal := str(m["calendar"]); cal != "" {
+		fmt.Fprintf(stdout, "calendar: %s\n", cal)
+	}
+}
+
 func runStatus(in *input, stdout, stderr io.Writer) int {
 	return request(daemon.Request{Cmd: []string{"status"}},
 		in.JSON(), printStatus, stdout, stderr)

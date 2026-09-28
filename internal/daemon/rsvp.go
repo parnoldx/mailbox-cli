@@ -50,7 +50,13 @@ func (d *Daemon) calendarPart(messageID int64) (mirror.Part, error) {
 	return mirror.Part{}, errors.New("this message is not a meeting invite")
 }
 
-func (d *Daemon) loadInvite(ctx context.Context, acct *Account, folder string, uid uint32, messageID int64) (vcal.Invite, error) {
+func (d *Daemon) loadInvite(ctx context.Context, acct *Account, folder string, uid uint32, messageID int64, key string) (vcal.Invite, error) {
+	d.invitesMu.Lock()
+	in, ok := d.invites[key]
+	d.invitesMu.Unlock()
+	if ok {
+		return in, nil
+	}
 	part, err := d.calendarPart(messageID)
 	if err != nil {
 		return vcal.Invite{}, err
@@ -62,12 +68,25 @@ func (d *Daemon) loadInvite(ctx context.Context, acct *Account, folder string, u
 	if err != nil {
 		return vcal.Invite{}, err
 	}
-	return vcal.ParseInvite(string(body), time.Local)
+	in, err = vcal.ParseInvite(string(body), time.Local)
+	if err != nil {
+		return vcal.Invite{}, err
+	}
+	d.invitesMu.Lock()
+	if d.invites == nil {
+		d.invites = make(map[string]vcal.Invite)
+	}
+	d.invites[key] = in
+	d.invitesMu.Unlock()
+	return in, nil
 }
 
-func (d *Daemon) inviteCardOf(ctx context.Context, acct *Account, folder string, uid uint32, messageID int64, msgTo string) *inviteCard {
-	in, err := d.loadInvite(ctx, acct, folder, uid, messageID)
+func (d *Daemon) inviteCardOf(ctx context.Context, acct *Account, folder string, uid uint32, messageID int64, key, msgTo string) *inviteCard {
+	in, err := d.loadInvite(ctx, acct, folder, uid, messageID, key)
 	if err != nil {
+		// A card with only the filename is still worth showing, but why the
+		// fetch failed is not guessable from outside: log it.
+		d.logf("invite: %s: %v", key, err)
 		part, perr := d.calendarPart(messageID)
 		if perr != nil {
 			return nil
@@ -98,11 +117,23 @@ func (d *Daemon) inviteCardOf(ctx context.Context, acct *Account, folder string,
 	return card
 }
 
-func (d *Daemon) withInvite(ctx context.Context, acct *Account, folder string, uid uint32, messageID int64, msgTo string, m message) message {
+// hasCalendarPart is the mirror-only check behind HasInvite: it marks a
+// Message whose card `invite show` can fetch. It never touches the server, so
+// reading a Thread does not wait on one. Graph mail carries no invite card —
+// Exchange already holds the event — so it reads as false there.
+func (d *Daemon) hasCalendarPart(acct *Account, messageID int64) bool {
+	if acct == nil || acct.Graph {
+		return false
+	}
+	_, err := d.calendarPart(messageID)
+	return err == nil
+}
+
+func (d *Daemon) withInvite(ctx context.Context, acct *Account, folder string, uid uint32, messageID int64, key, msgTo string, m message) message {
 	if acct != nil && acct.Graph {
 		return m
 	}
-	if card := d.inviteCardOf(ctx, acct, folder, uid, messageID, msgTo); card != nil {
+	if card := d.inviteCardOf(ctx, acct, folder, uid, messageID, key, msgTo); card != nil {
 		m.Invite = card
 	}
 	return m
@@ -265,12 +296,17 @@ func (d *Daemon) handleRSVP(ctx context.Context, req Request, resp Response) Res
 	if err != nil {
 		return resp.api(err.Error())
 	}
-	in, err := d.loadInvite(ctx, acct, folder, uid, row.Message.ID)
+	in, err := d.loadInvite(ctx, acct, folder, uid, row.Message.ID, row.Message.Key)
 	if err != nil {
 		return resp.usage(err.Error())
 	}
 	if in.Organizer == "" {
 		return resp.usage("this invite has no organizer to reply to")
+	}
+	if in.UID == "" {
+		// A reply names the event it answers; an invite sent without one
+		// cannot be answered without inventing an identity it never had.
+		return resp.usage("this invite has no UID, so it cannot be answered")
 	}
 
 	ics, err := vcal.Reply(in, acct.From.Addr, partstat)

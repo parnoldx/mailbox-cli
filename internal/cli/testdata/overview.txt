@@ -6,6 +6,7 @@ USAGE
 MAIL
   box           The mail in a box
   message       One message, read whole
+  invite        Read a meeting invite
   thread        A whole conversation
   search        Search every box
   compose       Write and send a mail

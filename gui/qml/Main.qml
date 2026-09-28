@@ -633,6 +633,7 @@ ApplicationWindow {
             }
             win.openThread = thread
             win.openMsg = thread.length ? thread[thread.length - 1] : null
+            win._loadInvites()
             // "Reply now" opened this only to hand it straight to the composer.
             if (win._replyOnOpen) { win._replyOnOpen = false; win.startReply(false) }
             var open = {}
@@ -644,6 +645,25 @@ ApplicationWindow {
             // gets the QuickLook demo treatment (--ql) if it carries an image.
             for (var eid in open) win._loadExpanded(eid, eid === id)
         })
+    }
+
+    // Invite cards arrive off the critical path: thread view only marks which
+    // rows carry one (has_invite), the card itself is one cached daemon call
+    // per row, patched in as it lands — the reader never waits on the server
+    // to open.
+    function _loadInvites() {
+        for (var i = 0; i < win.openThread.length; i++) {
+            if (!win.openThread[i].has_invite || win.openThread[i].invite) continue
+            (function (idx, id) {
+                Mailbox.call(["invite", "show"], { positional: id }, function (r) {
+                    if (!win.openThread[idx] || win.openThread[idx].id !== id) return
+                    if (!r.ok || !r.data) return
+                    var t = win.openThread.slice()
+                    t[idx] = Object.assign({}, t[idx], { invite: r.data })
+                    win.openThread = t
+                })
+            })(i, win.openThread[i].id)
+        }
     }
 
     // Fetches attachments (once) and marks read a Message that just became

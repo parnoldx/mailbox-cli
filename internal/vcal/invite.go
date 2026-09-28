@@ -60,9 +60,9 @@ func ParseInvite(raw string, loc *time.Location) (Invite, error) {
 			in.Attendees = append(in.Attendees, a)
 		}
 	}
-	if in.UID == "" {
-		return Invite{}, fmt.Errorf("this meeting has no UID")
-	}
+	// A missing UID is not a reason to refuse the card: booking systems in
+	// the wild send VEVENTs without one, and the reader only displays it.
+	// Answering one is what needs a UID — handleRSVP refuses that.
 	return in, nil
 }
 

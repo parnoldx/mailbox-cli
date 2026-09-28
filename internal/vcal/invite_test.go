@@ -92,3 +92,17 @@ func TestParsePartstat(t *testing.T) {
 		t.Fatal("shrug was accepted")
 	}
 }
+
+// Booking systems in the wild send VEVENTs without a UID. The card still
+// displays; only answering one needs a UID, and that refusal lives in the
+// daemon's rsvp, not here.
+func TestParseInviteWithoutAUIDStillReadsTheCard(t *testing.T) {
+	raw := strings.Replace(meeting, "UID:meet-1@example.org\n", "", 1)
+	in, err := ParseInvite(raw, berlin)
+	if err != nil {
+		t.Fatalf("a UID-less invite must still parse: %v", err)
+	}
+	if in.Summary != "Design review" || in.Organizer != "boss@example.org" {
+		t.Fatalf("invite = %+v", in)
+	}
+}
