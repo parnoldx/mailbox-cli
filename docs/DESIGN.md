@@ -41,6 +41,7 @@ internal/
     davsync/           the sync-collection reconciler
   imapdrv/             Driver impl over go-imap/v2   (+ scripted fake for tests)
   davdrv/              CalDAV/CardDAV: discovery, sync-collection, multiget
+  graphdrv/            Microsoft 365 over Graph: a mailsync Driver and a davsync one
   smtpdrv/ sievedrv/ message/ vcal/ vcard/        the other four protocols, and composition
   outbox/              durable send queue, its own SQLite file
   routing/             the Sieve script's format, and the four sender lists in it
@@ -166,6 +167,32 @@ store, and the window belongs to the question rather than the calendar, so
 window query can rule out a rule that has finished, and NULL — unbounded — counts
 as always possibly relevant. Expansion is in local time: a weekly 09:30 meeting is
 at 09:30 on both sides of the October clock change, which it would not be in UTC.
+
+## The Graph sync cycle
+
+A Microsoft 365 Account (ADR-0029) runs the two cycles above unchanged, through
+drivers that make Graph answer their questions. Mail: `Status` runs each folder's
+`messages/delta` from its stored link and folds the answer into the driver's own
+store — a local uid per Graph message id in arrival order, and a per-folder modseq
+bumped on every change — which then answers UIDNEXT, HIGHESTMODSEQ, "changed since"
+and the uid list. A `410` or `syncStateNotFound` starts the folder over under a new
+UIDVALIDITY, so the reconciler resyncs and re-maps by `message_key`. Ids are
+immutable (`Prefer: IdType="ImmutableId"`), so a move keeps its message and gets its
+destination uid at once. Envelopes are twenty to a `$batch`; bodies and parts come
+from the MIME (`$value`), walked with IMAP part numbers. Nothing is watched: Graph
+pushes only to a public webhook, and the minute poll finds new mail.
+
+Calendars read `calendarView/delta` over a window from 60 days back to 540 ahead,
+started again once it is 30 days stale. A series comes back as occurrences; the
+driver folds them into one object — the master with its RRULE in local time, an
+override per moved instance, a cancelled override per instance the rule makes and
+the server no longer has — so a repeating event is still one row. Contacts read
+`contacts/delta` per folder. An event or contact is iCalendar or vCard by the time
+it leaves the driver, and a write is a `POST`, or a `PATCH` of only the fields that
+differ from what the server has now.
+
+The store (`graph-<account>.db`, beside the Mirror) is not the Mirror: it outlives a
+rebuild, so uids stay put, and losing it costs one resync.
 
 ## Socket contract
 
@@ -526,6 +553,36 @@ reaching two addresses is two rows. No `--account` flag: the prefix already name
 an Account everywhere else (ADR-0005). `bubble list` spans accounts the same way,
 and `account list` names each one with its Account Colour for the clients.
 
+**ADR-0029 — A Microsoft 365 Account is spoken to over Microsoft Graph.** Mail,
+calendars and contacts, one protocol, one sign-in. Exchange Online has no CalDAV or
+CardDAV and EWS is retired, so Graph is required for two of the three already; its
+IMAP lacks CONDSTORE and SMTP AUTH is off in many tenants. The drivers make Graph
+look like what the reconcilers already drive — a local uid map and modseq for mail,
+iCalendar and vCard for the rest — so no reconciler, command or id format knows
+there are two backends. An edit is a `PATCH` of the fields that changed, so
+ADR-0010's concern, losing what we do not model on a rewrite, cannot happen. Graph
+is the server here, not a hosted intermediary; ADR-0015's rejection of Nylas stands.
+Rejected: IMAP+XOAUTH2 beside Graph (two protocols and two token audiences for one
+account), and `msgraph-sdk-go` (very large for a dozen endpoints). No webhook push:
+a laptop Daemon has no public endpoint. Exchange puts an invite on the calendar
+itself, so a Graph Account's mail carries no invite card.
+
+**ADR-0030 — A sign-in lives in its own file.** A refresh is a write and the Daemon
+never writes the config (ADR-0021), so the token goes in `graph-<account>.token.json`
+beside the Outbox: 0600 from creation, temp file and rename on every refresh. Same
+reasoning as ADR-0014 for not using the Secret Service. Each Daemon signs in on its
+own through the browser (authorization code with PKCE, loopback redirect — the
+device-code flow is refused by security defaults, AADSTS530035), so the home and
+the VPS Daemon never share one
+refresh token (ADR-0025). A refused refresh is a credentials problem in `status`,
+fixed by `mailbox setup` → repair.
+
+**ADR-0031 — A keyword on Graph is a category.** `\Seen` is `isRead`, `\Flagged` the
+follow-up flag, and any other keyword — `$bubbled`, `bubble-YYYYMMDDTHHMM` — an
+Outlook category of the same name, so ADR-0023's bubble works unchanged and two
+Daemons still coordinate through the server. Categories that could not be a keyword
+("Red category") stay on the message and out of the Mirror, and a write keeps them.
+
 ## What the real servers do
 
 Every one of these was measured against mailbox.org, SOGo or Open-Xchange, and each
@@ -581,6 +638,8 @@ against the real servers, and the scratch folder is `INBOX/mailbox-selftest`.
 | `go test -tags live ./internal/davdrv/` | discovery, first sync + token, a forgotten token, multiget — reads and writes nothing |
 | `… -run TestLiveWrite` | a task list created with MKCALENDAR, a Todo with an umlaut and a due date read back parsed and completed with `If-Match`, a stale `If-Match` refused |
 | `go test -tags live ./internal/sievedrv/` | the server is the only Sieve compiler in reach: PUTSCRIPT either takes the generated script or refuses it, and the Routing is reachable under its name |
+
+| `MAILBOX_GRAPH_ACCOUNT=work go test -tags live ./internal/graphdrv/` | a Microsoft 365 account: who the sign-in is, folders, a delta carried on, envelopes and a body; a scratch folder with a message appended, keyworded as categories and moved keeping its id; an event created, edited with a field we do not model kept, and read back under our uid (`MAILBOX_GRAPH_SEND=1` also sends one mail to itself) |
 
 No live test exists for the Secondary Accounts or the two-Daemon slices: this
 account has no second mail account to invent, and the scripted driver covers what a

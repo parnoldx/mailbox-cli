@@ -2,8 +2,10 @@ package setup
 
 import (
 	"context"
+	"io"
 
 	"mailbox/internal/davdrv"
+	"mailbox/internal/graphdrv"
 	"mailbox/internal/imapdrv"
 	"mailbox/internal/sievedrv"
 	"mailbox/internal/smtpdrv"
@@ -65,4 +67,38 @@ func (Servers) Piles(ctx context.Context, host string, port int, user, password 
 	}
 	defer drv.Close()
 	return EnsurePiles(ctx, drv, boxes)
+}
+
+// Graph implements Prober. The piles are made through a throwaway uid map: the
+// wizard only names folders, and the Daemon keeps the real one.
+func (Servers) Graph(ctx context.Context, g GraphLogin, out io.Writer) (GraphState, error) {
+	auth := graphdrv.NewAuth(g.Tenant, g.ClientID, g.TokenPath)
+	if g.SignIn {
+		if err := auth.BrowserLogin(ctx, out); err != nil {
+			return GraphState{}, err
+		}
+	}
+	client := graphdrv.NewClient(auth)
+	var st GraphState
+	var err error
+	if st.Email, err = client.Me(ctx); err != nil {
+		return st, err
+	}
+	store, err := graphdrv.OpenStore(":memory:")
+	if err != nil {
+		return st, err
+	}
+	defer store.Close()
+	mail := graphdrv.NewMail(client, store)
+	boxes, err := mail.Folders(ctx)
+	if err != nil {
+		return st, err
+	}
+	st.Boxes = len(boxes)
+	if !g.MakePiles {
+		st.Missing = MissingPiles(boxes)
+		return st, nil
+	}
+	st.Created, err = EnsurePiles(ctx, mail, boxes)
+	return st, err
 }

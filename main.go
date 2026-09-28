@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"mailbox/internal/config"
 	"mailbox/internal/daemon"
 	"mailbox/internal/davdrv"
+	"mailbox/internal/graphdrv"
 	"mailbox/internal/imapdrv"
 	compose "mailbox/internal/message"
 	"mailbox/internal/mirror"
@@ -219,10 +221,11 @@ func runDaemon(systemdSocket bool) error {
 	// when NoDAV is set (ADR-0025's VPS Daemon): d.DAV stays nil, which the
 	// reconciler and every command already treat as "no calendars configured".
 	if !cfg.Account.NoDAV {
-		clients := []*davdrv.Client{davdrv.New(davdrv.Config{
+		primaryDAV := davdrv.New(davdrv.Config{
 			Endpoint: cfg.Account.DAVEndpoint,
 			Username: cfg.Account.Email, Password: cfg.Account.DAVPassword,
-		})}
+		})
+		clients := []davdrv.Server{primaryDAV}
 		for key, cal := range cfg.CalDAV {
 			if cal.URL == "" || cal.Password == "" {
 				continue // on our own server: discovery finds it
@@ -245,7 +248,22 @@ func runDaemon(systemdSocket bool) error {
 			))
 			logger.Printf("calendar %q comes from %s with its own credentials", name, cal.URL)
 		}
-		primaryDAV := clients[0]
+		// A Microsoft 365 account's calendars and contacts are its own Graph
+		// driver in the same set, so the agenda and contact lookups read them
+		// like any other collection (ADR-0029).
+		for _, name := range sortedNames(cfg.Secondary) {
+			sec := cfg.Secondary[name]
+			if !sec.Graph() {
+				continue
+			}
+			g, err := openGraph(name, sec)
+			if err != nil {
+				logger.Printf("account %s: calendars and contacts: %v (skipped)", name, err)
+				continue
+			}
+			clients = append(clients, graphdrv.NewDAV(g.client, g.store, name))
+			logger.Printf("account %s: calendars and contacts come from Microsoft 365", name)
+		}
 		d.DAV = &davsync.Reconciler{
 			Account: "primary", Mirror: m, Driver: davdrv.NewSet(clients...),
 			Location: time.Local,
@@ -303,7 +321,10 @@ func runDaemon(systemdSocket bool) error {
 	for _, name := range sortedNames(cfg.Secondary) {
 		acct, err := buildSecondary(ctx0, name, cfg.Secondary[name], m, box, logger)
 		if err != nil {
+			// A problem as well as a log line, as on a reload: a sign-in refused
+			// while the Daemon was down does not resolve itself.
 			logger.Printf("account %s: %v (skipped)", name, err)
+			d.SetProblem("account "+name, err.Error())
 			continue
 		}
 		d.StartAccount(acct)
@@ -333,7 +354,9 @@ var watchable = []string{"INBOX", "INBOX/Screener"}
 // and what to watch. Discovery rather than a hardcoded list, because a Box added
 // in webmail should just appear — and because a URL or name copied by hand is
 // how the CardDAV collection ended up pointing at the wrong address book.
-func boxes(ctx context.Context, drv *imapdrv.Driver, watch []string) (mirrored, watched []string, err error) {
+func boxes(ctx context.Context, drv interface {
+	Folders(context.Context) ([]string, error)
+}, watch []string) (mirrored, watched []string, err error) {
 	// A development escape hatch: mirror only these Boxes, comma separated, so
 	// a change can be tried against a real account in seconds rather than after
 	// a full cold start.
@@ -418,6 +441,9 @@ func sortedNames(m map[string]config.Account) []string {
 func buildSecondary(ctx context.Context, name string, sec config.Account,
 	m *mirror.Mirror, box *outbox.Outbox, logger *log.Logger) (*daemon.Account, error) {
 
+	if sec.Graph() {
+		return buildGraph(ctx, name, sec, m, box, logger)
+	}
 	drv, err := imapdrv.Dial(imapdrv.Config{
 		Host: sec.IMAPHost, Port: sec.IMAPPort, Username: sec.Email, Password: sec.Password,
 	})
@@ -454,6 +480,72 @@ func buildSecondary(ctx context.Context, name string, sec config.Account,
 	}
 	logger.Printf("account %s: %d boxes, watching %v, filing sent mail in %q",
 		name, len(mirrored), watched, sent)
+	return acct, nil
+}
+
+// graphAccount is what a Microsoft 365 account's mail and its calendars share:
+// one sign-in and one id map. Opened once per process, because both halves are
+// built from it and two handles on one token file would race a refresh.
+type graphAccount struct {
+	client *graphdrv.Client
+	store  *graphdrv.Store
+}
+
+var (
+	graphMu   sync.Mutex
+	graphOpen = map[string]graphAccount{}
+)
+
+func openGraph(name string, sec config.Account) (graphAccount, error) {
+	graphMu.Lock()
+	defer graphMu.Unlock()
+	if g, ok := graphOpen[name]; ok {
+		return g, nil
+	}
+	tokenPath, err := config.GraphTokenPath(name)
+	if err != nil {
+		return graphAccount{}, err
+	}
+	statePath, err := config.GraphStatePath(name)
+	if err != nil {
+		return graphAccount{}, err
+	}
+	store, err := graphdrv.OpenStore(statePath)
+	if err != nil {
+		return graphAccount{}, err
+	}
+	g := graphAccount{
+		client: graphdrv.NewClient(graphdrv.NewAuth(sec.Tenant, sec.ClientID, tokenPath)),
+		store:  store,
+	}
+	graphOpen[name] = g
+	return g, nil
+}
+
+// buildGraph is buildSecondary for a Microsoft 365 account. Nothing is
+// watched: Graph has no IDLE, and the minute poll is how new mail is found.
+// Graph files what it sends in Sent Items itself, so the Courier has no Filer.
+func buildGraph(ctx context.Context, name string, sec config.Account,
+	m *mirror.Mirror, box *outbox.Outbox, logger *log.Logger) (*daemon.Account, error) {
+
+	g, err := openGraph(name, sec)
+	if err != nil {
+		return nil, err
+	}
+	drv := graphdrv.NewMail(g.client, g.store)
+	mirrored, _, err := boxes(ctx, drv, nil)
+	if err != nil {
+		return nil, err
+	}
+	acct := daemon.NewAccount(name,
+		&mailsync.Reconciler{Account: name, Mirror: m, Driver: drv},
+		&mailsync.Writer{Account: name, Mirror: m, Driver: drv, Mirrored: mirrored},
+		mirrored, nil)
+	acct.From = compose.Address{Name: sec.DisplayName, Addr: sec.Email}
+	acct.Color = sec.Color
+	acct.Graph = true
+	acct.Courier = &outbox.Courier{Box: box, Account: name, Transport: drv, Log: logger}
+	logger.Printf("account %s: Microsoft 365, %d boxes", name, len(mirrored))
 	return acct, nil
 }
 

@@ -1,6 +1,7 @@
 # Adding the work account
 
-Planned 2026-09-05, rewritten 2026-09-23 for Microsoft Graph. Not built yet. This
+Planned 2026-09-05, rewritten 2026-09-23 for Microsoft Graph, re-ordered
+2026-09-26 (work mail is already on M365). Part A built; Part B not. This
 is a plan, not design: the design is [docs/DESIGN.md](DESIGN.md) and the
 vocabulary is [CONTEXT.md](../CONTEXT.md). The three decisions it needs are
 drafted at the end as ADR-0029 to ADR-0031 and move into DESIGN.md with the slice
@@ -10,7 +11,7 @@ that builds them.
 
 There is one mail account today (mailbox.org, the Primary) and one hand-added
 work calendar (`[caldav.work]`, SOGo at `sogo.ext.iils.de`). The work account —
-IONOS today, moving to M365 — should join it with its **mail, calendar and
+on M365 (mail since before 2026-09-26, calendar moving) — should join it with its **mail, calendar and
 contacts**.
 
 The plumbing for a second account already exists (ADR-0005): its own
@@ -56,14 +57,118 @@ Decided:
 
 ## Ask IT first — it blocks Part B
 
-1. An **Entra app registration**: public client, device-code flow allowed,
-   delegated scopes `Mail.ReadWrite Mail.Send Calendars.ReadWrite
+1. An **Entra app registration**: public client, browser sign-in with PKCE
+   (`http://localhost` redirect, "allow public client flows"), delegated
+   scopes `Mail.ReadWrite Mail.Send Calendars.ReadWrite
    Contacts.ReadWrite offline_access User.Read`.
 2. **Consent**: many tenants block user consent. If so, an admin grants it once.
-3. Conditional access that would refuse a device-code sign-in from the VPS
-   (ADR-0025's second Daemon).
+3. Conditional access or security defaults that would refuse the sign-in from
+   the VPS (ADR-0025's second Daemon) — there the browser is reached through
+   an SSH tunnel to the loopback port.
 
 The answer decides whether Part B can start. Part A does not wait for it.
+
+Business Basic includes Exchange Online and Graph, so nothing above changes with
+the plan tier. Conditional access needs Entra ID P1, which Business Basic does
+not include, so item 3 only matters if the tenant bought P1. Security defaults
+(Microsoft-managed) DO block the device-code flow ("Block device code flow",
+AADSTS530035 — found live 2026-09-28, the plan above first said otherwise), so
+the sign-in is authorization code with PKCE against `http://localhost`, which
+those same defaults are built to allow.
+
+## Built 2026-09-26 (branch `m365-graph`) — not yet run against the tenant
+
+B1–B5 are in; the decisions are ADR-0029 to ADR-0031 in DESIGN.md, and the cycle
+is "The Graph sync cycle" there. Everything is tested against a scripted Graph
+(`internal/graphdrv/fake_test.go`); the live suite waits for the app
+registration. Where the build differs from the text below:
+
+- **No `graphsync` package and no `Writer` interface.** Graph mail sits behind the
+  existing `mailsync.Driver`: the driver keeps its own uid map and modseq in
+  `graph-<account>.db` beside the Mirror, so the reconciler, the writer and the
+  daemon are unchanged. No `graph_ids` table and no schema bump.
+- The token is `graph-<account>.token.json` beside the Outbox, not in
+  `$XDG_STATE_HOME`.
+- Calendars read `calendarView/delta` (the one documented in v1.0) over a
+  −60/+540-day window restarted when 30 days stale; series are folded back into
+  one object. The default contacts folder is found through any contact's
+  `parentFolderId`: an empty default folder shows no default address book yet.
+- Invites: option (a) — a Graph account's mail carries no invite card.
+- `setup` has "a Microsoft 365 account": it signs in, checks the address, makes
+  the piles, and removes a hand-added calendar with the same name or address.
+  Repair signs in again when the sign-in is refused. `doctor` checks it.
+- Found on the way, in the shared reconciler: an expunge and an arrival in one
+  cycle left the count unchanged and hid the expunge — on the IMAP account too.
+  Fixed in `mailsync.incremental`.
+
+To go live: IT's app registration → `mailbox setup` → a → Microsoft 365 → then
+`MAILBOX_GRAPH_ACCOUNT=work make live LIVE=./internal/graphdrv/`, and
+`make update-daemon` for both Daemons (the VPS one signs in on its own).
+
+## Order: one Graph account, all three domains (2026-09-26)
+
+Work mail is already in M365, so the work account is added whole:
+`[accounts.work] backend = "graph"` carries mail, calendar and contacts
+behind one sign-in. The account's calendars and contact folders are discovered
+from Graph, the way the Primary's are from its DAV server, not written down by
+hand. The SOGo entry `[caldav.work]` is deleted in the same change, so the
+work calendar is never shown twice.
+
+Build order, each step shippable and committed on its own:
+
+1. **B1** sign-in and `tokens.json`.
+2. **B4 calendar + contacts.** It is the smaller half and the one used daily.
+   Nothing about mail is needed for it.
+3. **B2 + B3** mail sync, writes, Send.
+4. **B5** doctor, status, docs.
+
+**The calendar and contacts driver translates at its edge. This replaces the
+"raw is Graph JSON" line in B4.** `Sync`/`MultiGet` return each event as
+iCalendar and each contact as vCard, so `Project`, `vcal`, `vcard`,
+`event.go`, `contact.go` and `rsvp.go` don't change. `Put` parses what it gets
+and sends `POST` for a new object, or `PATCH` with only the fields that differ
+from the stored copy. ADR-0010's concern (a rewrite drops what we don't model)
+can't happen, because a PATCH never sends what we don't model. Branching every
+reader on "iCal/vCard or Graph JSON" would touch six files; this touches one
+package.
+
+What step 2 needs:
+
+- `davdrv.Set` holds a small interface (`davsync.WriteDriver` + the host it
+  owns) instead of `*Client`. Graph URLs route by host (`graph.microsoft.com`)
+  like any other server. The work account's Graph driver joins the Set; the
+  Reconciler and Writer stay single.
+- `internal/graphdrv`: `auth.go` (B1); `dav.go` (Collections from
+  `/me/calendars` and `/me/contactFolders` + the default `/me/contacts`; Sync
+  from the delta endpoints, where the stored delta link is the sync token and a
+  `410` gives `ErrTokenExpired`; Put/Delete); `ical.go` (Graph event ↔
+  VEVENT: times with their `timeZone`, all-day, location, body as text,
+  attendees, `recurrence` ↔ RRULE for the patterns `vcal.Rule` makes,
+  exceptions via `seriesMasterId` → RECURRENCE-ID); `card.go` (Graph contact
+  ↔ vCard: name, emails, phones, company, notes).
+- A recurrence that doesn't translate is still stored, with its master's
+  summary and no RRULE, and logged. It is shown, never guessed.
+- `mailbox setup`: "add work account (Microsoft 365)" opens the browser for the
+  sign-in (PKCE, loopback redirect) and
+  lists the mail folders, calendars and contact folders to pick from.
+- Tests: table tests for `ical.go` and `card.go` round-tripping anonymised Graph
+  JSON (AGENTS.md), a fake delta that pages and one that returns `410`, and a
+  `-tags live` create → patch → read back that keeps a field we don't model
+  (e.g. `isReminderOn`).
+
+**Meeting invites (undecided).** Exchange already puts an invite to the work
+address on the work calendar as tentative, before any client sees it. So the
+mailbox app has two choices:
+
+- (a) Nothing: the invite shows in the agenda as tentative, and you answer in
+  Outlook/OWA. The invite card in the reader stays hidden for Graph accounts,
+  so it cannot write a second copy.
+- (b) The invite card's Accept / Maybe / Decline calls
+  `POST /me/events/{id}/accept|tentativelyAccept|decline` on the event
+  Exchange already made (found by iCalUId), in place of `rsvp.go`'s Put.
+
+(a) is the default until you ask for (b). (b) is about one handler plus a
+lookup.
 
 ---
 
@@ -212,14 +317,16 @@ not a real Secondary). Where it differs:
 - Config: `[accounts.work]` gains `backend = "graph"`, `tenant` and
   `client_id`. No hosts, no password. `backend` empty means IMAP, so every
   existing config is unchanged.
-- New `internal/graphdrv/auth.go`: device-code sign-in and refresh through
+- New `internal/graphdrv/auth.go`: browser sign-in (authorization code with
+  PKCE, loopback redirect) and refresh through
   `golang.org/x/oauth2`, a `TokenSource` that persists every refreshed token.
 - Tokens live in **their own file**, `$XDG_STATE_HOME/mailbox/tokens.json`,
   mode 0600, opened 0600 rather than chmodded (ADR-0014) and written by
   temp-file-and-rename. Not in `config.toml`: the Daemon never writes the config
   (ADR-0021), and a refresh is a write.
-- `mailbox setup` runs the device-code flow when adding a Graph account (print
-  the code and URL, wait), then enumerates folders, calendars and address books
+- `mailbox setup` opens the browser for a Graph account's sign-in (print the
+  URL, wait for the loopback answer), then enumerates folders, calendars and
+  address books
   from Graph and offers them as a choice — it still never asks for a URL.
 - A refused refresh (revoked, expired after 90 idle days, password change)
   becomes a `status` problem, "work: sign in again — `mailbox setup`", like
@@ -290,10 +397,7 @@ token.
   does not do what this needs on the tenant, fall back to
   `calendarView/delta` over a rolling window. Decide with a live probe, not
   from the docs.
-- **The record is Graph's JSON** (ADR-0029 amends ADR-0010): `dav_objects.raw`
-  holds the object as Graph returned it, and the projection columns are filled
-  from it. An edit is a `PATCH` of the changed fields, which cannot drop what we
-  do not model — the reason ADR-0010 exists — so the rule's intent holds.
+- The record is iCalendar / vCard, translated at the driver; see "Order" above.
 - Tasks: Graph To Do (`/me/todo/lists`) is a separate API. **Not in this
   plan**; work tasks stay where they are until there is a reason.
 - Habits (ADR-0018) stay on the Primary. Nothing moves.
@@ -362,10 +466,10 @@ CONDSTORE (ADR-0006 would degrade to a full flag fetch per cycle) and SMTP AUTH 
 disabled in many tenants. The Graph sync is shaped like the DAV cycle — a delta
 link is a sync token, committed with the changes it describes, so no journal.
 Messages keep `[account/]box:uid` ids through a local uid map, so nothing above the
-Mirror knows there are two backends. The raw record of an event or contact is
-Graph's JSON, and an edit is a `PATCH` of the changed fields: ADR-0010's concern,
-losing what we do not model on a rewrite, cannot happen with a partial update, so
-this amends its letter and keeps its reason. Graph is the server here, not a
+Mirror knows there are two backends. Events and contacts are translated to
+iCalendar and vCard at the driver, so nothing above the Mirror knows either; an
+edit goes back as a `PATCH` of the changed fields, so ADR-0010's concern, losing
+what we do not model on a rewrite, cannot happen. Graph is the server here, not a
 hosted intermediary; ADR-0015's rejection of Nylas stands. Rejected: IMAP+XOAUTH2
 for mail beside Graph for the rest (two protocols and two token audiences for one
 account), and `msgraph-sdk-go` (a very large dependency for about eight endpoints).

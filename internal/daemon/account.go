@@ -21,6 +21,10 @@ type Account struct {
 	// Account's name is never written in an id.
 	Name    string
 	Primary bool
+	// Graph is a Microsoft 365 account. Exchange puts an invite on its
+	// calendar before any client sees it, so its mail carries no invite card:
+	// answering one here would write a second copy of the event.
+	Graph bool
 
 	Reconciler *mailsync.Reconciler
 	Writer     *mailsync.Writer

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- M365 account icon: same house style as mailbox-gui.svg (dark squircle,
+       cream envelope), with a Microsoft four-square badge bottom-right. -->
+  <rect width="512" height="512" rx="112" fill="#101010"/>
+  <rect x="80" y="124" width="352" height="264" rx="32" fill="#f5f1e8"/>
+  <path d="M108 160 L244 272 Q256 284 268 272 L404 160"
+        fill="none" stroke="#101010" stroke-width="26"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- four-square badge -->
+  <rect x="332" y="332" width="136" height="136" rx="30" fill="#101010"
+        stroke="#f5f1e8" stroke-width="8"/>
+  <rect x="356" y="356" width="40" height="40" rx="6" fill="#f25022"/>
+  <rect x="404" y="356" width="40" height="40" rx="6" fill="#7fba00"/>
+  <rect x="356" y="404" width="40" height="40" rx="6" fill="#00a4ef"/>
+  <rect x="404" y="404" width="40" height="40" rx="6" fill="#ffb900"/>
+</svg>

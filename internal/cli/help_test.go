@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -429,5 +430,43 @@ func TestDoctorFlagsAWorldReadableConfig(t *testing.T) {
 	out, _, _ := run(t, "doctor", "--offline")
 	if !strings.Contains(out, "FAIL  config mode") || !strings.Contains(out, "0644") {
 		t.Errorf("a world-readable config passed:\n%s", out)
+	}
+}
+
+// The notes are the edge cases an agent would otherwise find out about by
+// trying: they are on the help page and in the machine index alike, and every
+// command that names an ID carries the exit-2 note without having to declare it.
+func TestNotesReachPageAndIndex(t *testing.T) {
+	page, _, code := run(t, "route", "set", "--help")
+	if code != ExitOK {
+		t.Fatalf("exit %d", code)
+	}
+	if !strings.Contains(page, "NOTES") || !strings.Contains(page, "brings nothing back from Trash") {
+		t.Errorf("route set page is missing its notes:\n%s", page)
+	}
+
+	out, _, code := run(t, "commands")
+	if code != ExitOK {
+		t.Fatalf("exit %d", code)
+	}
+	var got []commandInfo
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatal(err)
+	}
+	byPath := map[string]commandInfo{}
+	for _, c := range got {
+		byPath[strings.Join(c.Path, " ")] = c
+	}
+	if n := byPath["route set"]; len(n.Notes) == 0 {
+		t.Errorf("route set carries no notes in the index")
+	}
+	if n := byPath["search"]; len(n.Notes) == 0 || !strings.Contains(n.Notes[0], "Trash is never mirrored") {
+		t.Errorf("search is missing its mirror-only note: %+v", n.Notes)
+	}
+	if n := byPath["message view"]; !slices.Contains(n.Notes, idNote) {
+		t.Errorf("message view is missing the derived exit-2 note: %+v", n.Notes)
+	}
+	if n := byPath["search"]; slices.Contains(n.Notes, idNote) {
+		t.Errorf("search takes a query, not an id, yet carries the exit-2 note")
 	}
 }

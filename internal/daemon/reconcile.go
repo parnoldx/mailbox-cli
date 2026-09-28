@@ -40,6 +40,13 @@ func (d *Daemon) Reconcile(was, now *config.Config, a Accounts) Applied {
 		return out
 	}
 
+	// A Microsoft 365 account's calendars and contacts are in the same DAV
+	// driver set as the hand-added calendars, for the same reason.
+	if name := graphChanged(was.Secondary, now.Secondary); name != "" {
+		out.Restart, out.Reason = true, "the microsoft 365 account "+name+" changed"
+		return out
+	}
+
 	for _, name := range sortedAccounts(now.Secondary) {
 		sec := now.Secondary[name]
 		old, had := was.Secondary[name]
@@ -154,7 +161,25 @@ func sameAccount(a, b config.Account) bool {
 		a.DAVEndpoint == b.DAVEndpoint &&
 		a.TaskList == b.TaskList && a.AddressBook == b.AddressBook &&
 		a.SieveHost == b.SieveHost && a.SievePort == b.SievePort &&
+		a.Backend == b.Backend && a.Tenant == b.Tenant && a.ClientID == b.ClientID &&
 		sameStrings(a.Watch, b.Watch)
+}
+
+// graphChanged names a Microsoft 365 account that was added, removed or
+// changed, or returns "".
+func graphChanged(was, now map[string]config.Account) string {
+	for _, name := range sortedAccounts(now) {
+		old, had := was[name]
+		if (now[name].Graph() || (had && old.Graph())) && (!had || !sameAccount(old, now[name])) {
+			return name
+		}
+	}
+	for _, name := range sortedAccounts(was) {
+		if _, still := now[name]; !still && was[name].Graph() {
+			return name
+		}
+	}
+	return ""
 }
 
 func sameCalDAV(was, now map[string]config.Calendar) bool {

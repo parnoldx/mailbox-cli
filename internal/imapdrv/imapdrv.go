@@ -1125,6 +1125,10 @@ func headerField(section []byte, name string) string {
 	return msg.Header.Get(name)
 }
 
+// MessageIDs is messageIDs for the Graph driver, which reads the same headers
+// out of JSON rather than a FETCH.
+func MessageIDs(value string) []string { return messageIDs(value) }
+
 // messageIDs pulls Message-IDs out of a header value. Real mail puts all sorts
 // of things in References — commas, folded lines, bare ids without brackets —
 // so this takes what is inside angle brackets and, failing that, whitespace

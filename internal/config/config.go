@@ -65,7 +65,18 @@ type Account struct {
 	// follows the theme, or "#rrggbb", which does not. Empty is filled in by
 	// LoadFrom: the accent for the Primary, the palette in turn for the rest.
 	Color string `toml:"color"`
+	// Backend is how a Secondary Account is spoken to: empty for IMAP, SMTP and
+	// DAV, "graph" for Microsoft 365, where mail, calendars and contacts all go
+	// over Microsoft Graph with one sign-in and no password (ADR-0029).
+	Backend string `toml:"backend"`
+	// Tenant and ClientID name the Entra app a Graph account signs in through.
+	// Tenant defaults to "organizations"; ClientID is the app registration.
+	Tenant   string `toml:"tenant"`
+	ClientID string `toml:"client_id"`
 }
+
+// Graph says whether this account is a Microsoft 365 one.
+func (a Account) Graph() bool { return a.Backend == "graph" }
 
 // AccountColors is the palette a Secondary Account's colour is taken from when
 // it has none, in order. The accent is left out: it is the Primary's.
@@ -285,6 +296,19 @@ func LoadFrom(path string) (*Config, error) {
 		c.Secondary[name] = a
 	}
 	for name, a := range c.Secondary {
+		if a.Graph() {
+			if a.Email == "" || a.ClientID == "" {
+				return nil, fmt.Errorf("%s: accounts.%s needs an email and a client_id", path, name)
+			}
+			if a.Tenant == "" {
+				a.Tenant = "organizations"
+			}
+			c.Secondary[name] = a
+			continue
+		}
+		if a.Backend != "" {
+			return nil, fmt.Errorf("%s: accounts.%s backend %q is neither empty nor \"graph\"", path, name, a.Backend)
+		}
 		if a.Email == "" || a.Password == "" {
 			return nil, fmt.Errorf("%s: accounts.%s needs an email and a password", path, name)
 		}
@@ -337,6 +361,29 @@ func OutboxPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(dir, "outbox.db"), nil
+}
+
+// GraphTokenPath is where a Graph account's sign-in is kept. It is not derived
+// state — losing it means signing in again — so it sits beside the Outbox, and
+// not in the config, because the Daemon writes it on every refresh and never
+// writes the config (ADR-0030).
+func GraphTokenPath(account string) (string, error) {
+	out, err := OutboxPath()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(filepath.Dir(out), "graph-"+account+".token.json"), nil
+}
+
+// GraphStatePath is a Graph account's id map: which local uid each Graph
+// message has, and the delta links. It goes with the Mirror; losing it costs a
+// resync, which a new UIDVALIDITY makes happen by itself.
+func GraphStatePath(account string) (string, error) {
+	m, err := MirrorPath()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(filepath.Dir(m), "graph-"+account+".db"), nil
 }
 
 // SocketPath is where the Daemon listens.

@@ -99,6 +99,9 @@ func (d *Daemon) inviteCardOf(ctx context.Context, acct *Account, folder string,
 }
 
 func (d *Daemon) withInvite(ctx context.Context, acct *Account, folder string, uid uint32, messageID int64, msgTo string, m message) message {
+	if acct != nil && acct.Graph {
+		return m
+	}
 	if card := d.inviteCardOf(ctx, acct, folder, uid, messageID, msgTo); card != nil {
 		m.Invite = card
 	}

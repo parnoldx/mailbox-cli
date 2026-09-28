@@ -41,6 +41,10 @@ test:
 #                                         creates and removes its own task list
 #   make live LIVE=./internal/imapdrv/    creates and destroys scratch folders,
 #                                         and TestLiveSend sends a real mail
+#   MAILBOX_GRAPH_ACCOUNT=work make live LIVE=./internal/graphdrv/
+#                                         the Microsoft 365 account: a scratch
+#                                         folder and one event tomorrow, both
+#                                         removed; MAILBOX_GRAPH_SEND=1 sends one
 #
 # `go test -tags live ./...` would run all of them, including that send. That is
 # why this target has a default of one package and not a wildcard.

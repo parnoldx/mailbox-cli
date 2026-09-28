@@ -90,6 +90,25 @@ func TestGate2_NewMessageArrives(t *testing.T) {
 	}
 }
 
+// An expunge and an arrival in the same cycle leave the count unchanged; the
+// expunge is still found.
+func TestAnExpungeHiddenByAnArrivalIsFound(t *testing.T) {
+	r, f, m := setup(t)
+	f.Deliver(box, "a@x", "first", "hello")
+	f.Deliver(box, "b@x", "second", "world")
+	runSync(t, r)
+
+	f.Expunge(box, 1)
+	f.Deliver(box, "c@x", "third", "again")
+	out := runSync(t, r)
+	if out.Expunged != 1 || out.NewMessages != 1 {
+		t.Fatalf("outcome %+v", out)
+	}
+	if got := rows(t, m); len(got) != 2 {
+		t.Fatalf("got %d rows, want 2", len(got))
+	}
+}
+
 // Gate 3: a flag changed by another client converges, without refetching a body.
 func TestGate3_FlagConverges(t *testing.T) {
 	r, f, m := setup(t)

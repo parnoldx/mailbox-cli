@@ -649,13 +649,20 @@ func Static(cfg Config, collections ...davsync.Collection) *Client {
 // host, because that is the only thing a collection URL carries that says which
 // server it is on.
 type Set struct {
-	clients []*Client
+	clients []Server
 }
 
-// NewSet groups clients. A request is routed to the client whose host the URL
-// names (clientFor); one whose host matches none is an error rather than a
-// guess.
-func NewSet(clients ...*Client) *Set { return &Set{clients: clients} }
+// Server is one member of a Set: a DAV server, or anything else that speaks
+// for its collections as one — a Microsoft 365 account over Graph (ADR-0029).
+type Server interface {
+	davsync.WriteDriver
+	// Owns says whether a collection or object URL is on this server.
+	Owns(url string) bool
+}
+
+// NewSet groups servers. A request is routed to the one that owns the URL
+// (clientFor); one no server owns is an error rather than a guess.
+func NewSet(clients ...Server) *Set { return &Set{clients: clients} }
 
 // Collections implements davsync.Driver over every server.
 //
@@ -720,19 +727,28 @@ func (s *Set) Delete(ctx context.Context, href, ifMatch string) error {
 // clientFor names the server a URL belongs to. A URL whose host matches no
 // client has no server here: falling back to the first one would send the
 // primary account's Basic credentials to whatever host that stale URL names.
-func (s *Set) clientFor(collection string) (*Client, error) {
-	want := hostOf(collection)
+func (s *Set) clientFor(collection string) (Server, error) {
 	for _, c := range s.clients {
-		if hostOf(c.cfg.Endpoint) == want {
+		if c.Owns(collection) {
 			return c, nil
-		}
-		for _, col := range c.static {
-			if hostOf(col.URL) == want {
-				return c, nil
-			}
 		}
 	}
 	return nil, fmt.Errorf("no DAV server is configured for %s", collection)
+}
+
+// Owns implements Server: a URL on this client's host, or on the host of a
+// collection it was configured with.
+func (c *Client) Owns(raw string) bool {
+	want := hostOf(raw)
+	if hostOf(c.cfg.Endpoint) == want {
+		return true
+	}
+	for _, col := range c.static {
+		if hostOf(col.URL) == want {
+			return true
+		}
+	}
+	return false
 }
 
 func hostOf(raw string) string {

@@ -65,6 +65,28 @@ type Prober interface {
 	// Piles creates the Set Aside and Reply Later Boxes a Secondary Account
 	// has not got, and returns the ones it created.
 	Piles(ctx context.Context, host string, port int, user, password string, boxes []string) ([]string, error)
+	// Graph checks a Microsoft 365 account: it signs in first when asked to,
+	// printing the code to type to out, says whose account the sign-in is, and
+	// makes the piles it has not got when asked to.
+	Graph(ctx context.Context, g GraphLogin, out io.Writer) (GraphState, error)
+}
+
+// GraphLogin is a Microsoft 365 account as the wizard and doctor probe it.
+type GraphLogin struct {
+	Tenant, ClientID string
+	// TokenPath is where the sign-in is kept, the file the Daemon reads.
+	TokenPath string
+	// SignIn runs the device-code flow before anything else; MakePiles creates
+	// Set Aside and Reply Later where they are missing.
+	SignIn, MakePiles bool
+}
+
+// GraphState is what the probe found.
+type GraphState struct {
+	Email   string
+	Boxes   int
+	Created []string
+	Missing []string
 }
 
 // Wizard asks the questions.

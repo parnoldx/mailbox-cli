@@ -32,8 +32,16 @@ _Avoid_: stale, dirty, offline (that describes the network, not the Mirror)
 ## Accounts
 
 **Account**:
-One IMAP + SMTP login. Several may be configured.
+One login that mail comes from: IMAP + SMTP, or a Microsoft 365 sign-in. Several
+may be configured.
 _Avoid_: mailbox (that named the single account before there were several), profile
+
+**Backend**:
+How an Account is spoken to: IMAP, SMTP and DAV, or Microsoft Graph for a
+Microsoft 365 Account, which carries its mail, calendars and contacts behind one
+sign-in. Nothing above the drivers knows which: a Graph Account has the same ids,
+Boxes and Collections as any other.
+_Avoid_: provider, server type
 
 **Primary Account**:
 The Account carrying the Screener, Feed, Paper Trail, Aside and Block, and the

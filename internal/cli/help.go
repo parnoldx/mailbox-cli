@@ -196,6 +196,25 @@ func topicNames() []string {
 	return out
 }
 
+// idNote is added to every command whose usage names an ID. That a missing id
+// is exit 2 and ordinary belongs where an agent first meets the command, not
+// only in `mailbox help exit-codes`.
+const idNote = "Nothing has that id: exit 2 — usually it was expunged since the listing " +
+	"that named it. A retry asks the same question."
+
+// notesFor is a command's own notes plus, when its usage names an ID, the
+// exit-2 note. Derived rather than stored: no registry entry repeats it.
+func notesFor(c *Command) []string {
+	notes := c.Notes
+	for _, u := range c.Usage {
+		if strings.Contains(u, "ID") {
+			notes = append(append([]string{}, notes...), idNote)
+			break
+		}
+	}
+	return notes
+}
+
 // page is one command's own help: a group's index, or a leaf's usage, flags and
 // examples. Both are rendered from the registry, so neither can drift from what
 // the command actually accepts.
@@ -235,6 +254,13 @@ func page(c *Command, path []string) string {
 		b.WriteString("\nFLAGS\n")
 		for _, f := range c.Flags {
 			fmt.Fprintf(&b, "  %-*s  %s%s\n", w, flagName(f), f.Desc, flagDefault(f))
+		}
+	}
+
+	if notes := notesFor(c); len(notes) > 0 {
+		b.WriteString("\nNOTES\n")
+		for _, n := range notes {
+			fmt.Fprintf(&b, "%s\n", strings.ReplaceAll("  "+wrap(n, 72), "\n", "\n  "))
 		}
 	}
 
@@ -323,6 +349,7 @@ type commandInfo struct {
 	Short    string     `json:"short"`
 	Flags    []flagInfo `json:"flags"`
 	Examples []string   `json:"examples,omitempty"`
+	Notes    []string   `json:"notes,omitempty"`
 }
 
 // flagInfo says whether a flag takes a value, which the name alone does not.
@@ -360,7 +387,7 @@ func collect(out []commandInfo, c *Command, path []string, section Section) []co
 	}
 	info := commandInfo{
 		Path: path, Group: string(section), Short: c.Short,
-		Flags: []flagInfo{}, Examples: c.Examples,
+		Flags: []flagInfo{}, Examples: c.Examples, Notes: notesFor(c),
 	}
 	if len(c.Usage) > 0 {
 		info.Usage = c.Usage[0]

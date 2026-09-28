@@ -108,12 +108,27 @@ type AccountBlock struct {
 	SMTPHost    string
 	SMTPPort    int
 	Color       string
+	// Tenant and ClientID make it a Microsoft 365 account, spoken to over
+	// Graph with no password and no hosts (ADR-0029).
+	Tenant   string
+	ClientID string
 }
 
 func (a AccountBlock) body() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Added by `mailbox setup`. Ids on this account read %s/INBOX:412.\n", a.Name)
 	fmt.Fprintf(&b, "[accounts.%s]\n", a.Name)
+	if a.ClientID != "" {
+		fmt.Fprintf(&b, "# Microsoft 365: mail, calendars and contacts over Graph. The sign-in is\n")
+		fmt.Fprintf(&b, "# kept beside the outbox, not here.\n")
+		line(&b, "email", a.Email)
+		line(&b, "display_name", a.DisplayName)
+		line(&b, "backend", "graph")
+		line(&b, "tenant", a.Tenant)
+		line(&b, "client_id", a.ClientID)
+		line(&b, "color", a.Color)
+		return b.String()
+	}
 	line(&b, "email", a.Email)
 	line(&b, "password", a.Password)
 	line(&b, "display_name", a.DisplayName)

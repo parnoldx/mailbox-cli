@@ -81,6 +81,15 @@ func (c *Courier) file(ctx context.Context, id int64) (Item, error) {
 	if err != nil {
 		return Item{}, err
 	}
+	if c.Filer == nil && c.Transport != nil {
+		// No Filer means the transport files the copy itself — Graph puts what
+		// it sends in Sent Items — so the mail is done, not waiting to be filed
+		// on every drain for ever.
+		if err := c.Box.MarkFiled(id, c.SentBox, 0); err != nil {
+			return it, err
+		}
+		return c.Box.Get(id)
+	}
 	if c.SentBox == "" || c.Filer == nil {
 		return it, nil
 	}

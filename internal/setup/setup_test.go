@@ -3,11 +3,13 @@ package setup
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"mailbox/internal/config"
 	"mailbox/internal/imapdrv"
 	"mailbox/internal/sync/davsync"
 )
@@ -31,6 +33,11 @@ type server struct {
 	afterWrite bool
 	// piled is every set of Boxes Piles was asked to complete.
 	piled [][]string
+	// graph is what the Microsoft 365 probe answers, and logins what it was
+	// asked to do.
+	graph    GraphState
+	graphErr error
+	logins   []GraphLogin
 }
 
 // note records that a server was talked to, and when.
@@ -73,6 +80,16 @@ func (s *server) Piles(ctx context.Context, host string, port int, user, passwor
 	s.note()
 	s.piled = append(s.piled, boxes)
 	return MissingPiles(boxes), nil
+}
+
+func (s *server) Graph(ctx context.Context, g GraphLogin, out io.Writer) (GraphState, error) {
+	s.note()
+	s.logins = append(s.logins, g)
+	st := s.graph
+	if g.MakePiles {
+		st.Created = PileBoxes
+	}
+	return st, s.graphErr
 }
 
 func account() *server {
@@ -330,7 +347,7 @@ func TestACalendarOnAnotherServerIsFoundRatherThanTyped(t *testing.T) {
 	}
 	// add, the second kind, a name, the server, the default user, a password,
 	// the fifth collection it offered, then quit.
-	answers := "a\n2\nkontakte\nhttps://dav.example.org/\n\nsecret\n5\nq\n"
+	answers := "a\n3\nkontakte\nhttps://dav.example.org/\n\nsecret\n5\nq\n"
 	var out strings.Builder
 	w := &Wizard{
 		In: strings.NewReader(answers), Out: &out, Prober: account(), ConfigPath: path,
@@ -354,5 +371,89 @@ func TestACalendarOnAnotherServerIsFoundRatherThanTyped(t *testing.T) {
 	}
 	if strings.Contains(string(got), `url = "https://dav.example.org/"`) {
 		t.Errorf("the typed address was written as the collection's url:\n%s", got)
+	}
+}
+
+// The work calendar was added by hand while the work account was elsewhere.
+const withWorkCalendar = handWritten + `
+[caldav.work]
+name = "Work"
+url = "https://sogo.example.de/SOGo/dav/me/Calendar/personal/"
+password = "secret"
+email = "me@example.de"
+`
+
+func TestAMicrosoft365AccountSignsInAndTakesOverItsCalendar(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte(withWorkCalendar), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	srv := account()
+	srv.graph = GraphState{Email: "Me@example.de", Boxes: 9}
+	// add, the second kind, a name, the address, the client id, the default
+	// tenant, a display name, yes to dropping the hand-added calendar, quit.
+	answers := "a\n2\nwork\nme@example.de\n00000000-1111-2222-3333-444444444444\n\nPeter\n\nq\n"
+	var out strings.Builder
+	w := &Wizard{
+		In: strings.NewReader(answers), Out: &out, Prober: srv, ConfigPath: path,
+		Units: Units{Dir: filepath.Join(dir, "systemd"), Exec: "/usr/bin/mailbox"},
+		Skill: Skill{Dir: filepath.Join(dir, "skills", "mailbox")},
+	}
+	if err := w.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(srv.logins) != 1 || !srv.logins[0].SignIn || !srv.logins[0].MakePiles ||
+		srv.logins[0].Tenant != "example.de" || !strings.HasSuffix(srv.logins[0].TokenPath, "graph-work.token.json") {
+		t.Fatalf("the probe was asked %+v\n%s", srv.logins, out.String())
+	}
+	got, _ := os.ReadFile(path)
+	for _, want := range []string{
+		`[accounts.work]`, `backend = "graph"`, `tenant = "example.de"`,
+		`client_id = "00000000-1111-2222-3333-444444444444"`, `display_name = "Peter"`,
+	} {
+		if !strings.Contains(string(got), want) {
+			t.Errorf("the config does not contain %s:\n%s", want, got)
+		}
+	}
+	if strings.Contains(string(got), "[caldav.work]") || strings.Contains(string(got), "password = \"secret\"\nemail") {
+		t.Errorf("the hand-added work calendar is still there, and would show twice:\n%s", got)
+	}
+	if !strings.Contains(string(got), "[caldav.verein]") {
+		t.Errorf("a calendar of another address was removed:\n%s", got)
+	}
+	cfg, err := config.LoadFrom(path)
+	if err != nil {
+		t.Fatalf("the written config does not load: %v", err)
+	}
+	if a := cfg.Secondary["work"]; !a.Graph() || a.Email != "me@example.de" {
+		t.Fatalf("loaded as %+v", a)
+	}
+}
+
+func TestAMicrosoft365SignInAsSomebodyElseWritesNothing(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte(handWritten), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	srv := account()
+	srv.graph = GraphState{Email: "someone@example.de"}
+	answers := "a\n2\nwork\nme@example.de\n00000000-1111-2222-3333-444444444444\n\n\nq\n"
+	var out strings.Builder
+	w := &Wizard{
+		In: strings.NewReader(answers), Out: &out, Prober: srv, ConfigPath: path,
+		Units: Units{Dir: filepath.Join(dir, "systemd"), Exec: "/usr/bin/mailbox"},
+		Skill: Skill{Dir: filepath.Join(dir, "skills", "mailbox")},
+	}
+	if err := w.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(path)
+	if strings.Contains(string(got), "accounts.work") {
+		t.Fatalf("an account signed in as somebody else was written:\n%s", got)
+	}
+	if !strings.Contains(out.String(), "not me@example.de") {
+		t.Fatalf("nobody was told why:\n%s", out.String())
 	}
 }

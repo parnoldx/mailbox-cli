@@ -2,6 +2,7 @@ package setup
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -12,6 +13,7 @@ import (
 
 	"mailbox/internal/config"
 	"mailbox/internal/daemon"
+	"mailbox/internal/graphdrv"
 	"mailbox/internal/imapdrv"
 	"mailbox/skill"
 )
@@ -89,6 +91,12 @@ func (w *Wizard) repair(ctx context.Context, s *snapshot) error {
 	slices.Sort(names)
 	for _, name := range names {
 		a := s.cfg.Secondary[name]
+		if a.Graph() {
+			if err := w.repairGraph(ctx, name, a); err != nil {
+				return fmt.Errorf("%s: %w", name, err)
+			}
+			continue
+		}
 		boxes, err := w.Prober.IMAP(ctx, a.IMAPHost, a.IMAPPort, a.Email, a.Password)
 		if err != nil {
 			return fmt.Errorf("%s: imap: %w", name, err)
@@ -115,6 +123,30 @@ func (w *Wizard) repair(ctx context.Context, s *snapshot) error {
 		Email: acc.Email, Password: acc.Password,
 		IMAPHost: acc.IMAPHost, IMAPPort: acc.IMAPPort,
 	}, boxes)
+}
+
+// repairGraph makes a Microsoft 365 account's missing piles, and signs in
+// again when the sign-in on disk is refused — which is what the Daemon's
+// problem for it tells a person to come here for.
+func (w *Wizard) repairGraph(ctx context.Context, name string, a config.Account) error {
+	login, err := graphLogin(name, a.Tenant, a.ClientID)
+	if err != nil {
+		return err
+	}
+	login.MakePiles = true
+	st, err := w.Prober.Graph(ctx, login, w.Out)
+	if errors.Is(err, graphdrv.ErrSignIn) {
+		w.sayf("  %s needs signing in again", name)
+		login.SignIn = true
+		st, err = w.Prober.Graph(ctx, login, w.Out)
+	}
+	if err != nil {
+		return err
+	}
+	if len(st.Created) > 0 {
+		w.sayf("  created %s", strings.Join(st.Created, ", "))
+	}
+	return nil
 }
 
 // ensurePiles gives a Secondary Account the Set Aside and Reply Later Boxes it
@@ -292,16 +324,21 @@ func (w *Wizard) pending() []string {
 // one cannot be asked about.
 func (w *Wizard) add(ctx context.Context, s *snapshot) error {
 	w.say("")
-	kind, err := w.pickOne([]string{"a mail account", "a calendar or address book"}, "a mail account")
+	kind, err := w.pickOne([]string{"a mail account", "a Microsoft 365 account", "a calendar or address book"}, "a mail account")
 	if err != nil {
 		return err
 	}
-	name, err := w.newName(s)
+	// A Microsoft 365 account may take the name of the calendar it replaces:
+	// the work calendar added by hand is usually called what the account is.
+	name, err := w.newName(s, strings.HasPrefix(kind, "a Microsoft"))
 	if err != nil {
 		return err
 	}
-	if strings.HasPrefix(kind, "a mail") {
+	switch {
+	case strings.HasPrefix(kind, "a mail"):
 		return w.addAccount(ctx, s, name)
+	case strings.HasPrefix(kind, "a Microsoft"):
+		return w.addGraphAccount(ctx, s, name)
 	}
 	return w.addCalendar(ctx, s, name)
 }
@@ -309,7 +346,7 @@ func (w *Wizard) add(ctx context.Context, s *snapshot) error {
 // newName takes the short name the thing is known by. One namespace across both
 // tables: `search --in gmx` and the agenda reading two different `gmx` is a bug
 // nobody would suspect.
-func (w *Wizard) newName(s *snapshot) (string, error) {
+func (w *Wizard) newName(s *snapshot, replacesCalendar bool) (string, error) {
 	name, err := w.ask("A short name for it (this is the id prefix)", "")
 	if err != nil {
 		return "", err
@@ -327,7 +364,7 @@ func (w *Wizard) newName(s *snapshot) (string, error) {
 		if _, taken := s.cfg.Secondary[name]; taken {
 			return "", fmt.Errorf("there is already an account called %q", name)
 		}
-		if _, taken := s.cfg.CalDAV[name]; taken {
+		if _, taken := s.cfg.CalDAV[name]; taken && !replacesCalendar {
 			return "", fmt.Errorf("there is already a calendar called %q", name)
 		}
 	}
@@ -412,6 +449,107 @@ func (w *Wizard) addAccount(ctx context.Context, s *snapshot, name string) error
 	w.sayf("  added as %q — its ids read %s/INBOX:412, its colour is %s", name, name, block.Color)
 	w.reload(s)
 	return nil
+}
+
+// addGraphAccount adds a Microsoft 365 account: mail, calendars and contacts
+// over Graph, behind one sign-in and no password (ADR-0029). The sign-in is the
+// device-code flow, so any browser will do — the one on this machine, or a
+// phone, when this is the VPS.
+func (w *Wizard) addGraphAccount(ctx context.Context, s *snapshot, name string) error {
+	email, err := w.ask("Email address", "")
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(email) == "" {
+		return fmt.Errorf("an account needs an address")
+	}
+	clientID, err := w.ask("Application (client) ID of the app registration IT made", "")
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(clientID) == "" {
+		return fmt.Errorf("signing in needs the app registration's client id")
+	}
+	tenant, err := w.ask("Tenant (directory) ID or domain", domainOf(email))
+	if err != nil {
+		return err
+	}
+	display, err := w.ask("The name mail goes out under", "")
+	if err != nil {
+		return err
+	}
+	login, err := graphLogin(name, tenant, clientID)
+	if err != nil {
+		return err
+	}
+	login.SignIn, login.MakePiles = true, true
+	w.say("Signing in to Microsoft 365…")
+	st, err := w.Prober.Graph(ctx, login, w.Out)
+	if err != nil {
+		return fmt.Errorf("microsoft 365: %w", err)
+	}
+	if !strings.EqualFold(st.Email, strings.TrimSpace(email)) {
+		return fmt.Errorf("that sign-in is %s, not %s — run it again and sign in as %s", st.Email, email, email)
+	}
+	w.sayf("  signed in as %s, %d boxes", st.Email, st.Boxes)
+	if len(st.Created) > 0 {
+		w.sayf("  created %s", strings.Join(st.Created, ", "))
+	}
+
+	used := []string{}
+	if s.cfg != nil {
+		used = append(used, s.cfg.Account.Color)
+		for _, a := range s.cfg.Secondary {
+			used = append(used, a.Color)
+		}
+	}
+	block := AccountBlock{
+		Name: name, Email: strings.TrimSpace(email), DisplayName: display,
+		Tenant: tenant, ClientID: strings.TrimSpace(clientID), Color: config.NextColor(used),
+	}
+	// The work calendar that was added by hand before the account moved would
+	// now be shown twice; one under this account's name has to go, because a
+	// name means one thing.
+	if s.cfg != nil {
+		for _, key := range sortedKeys(s.cfg.CalDAV) {
+			same := strings.EqualFold(key, name)
+			if !same && !strings.EqualFold(s.cfg.CalDAV[key].Email, block.Email) {
+				continue
+			}
+			drop, err := w.confirm(fmt.Sprintf("Remove the calendar %s (%s)? This account brings its own calendar",
+				key, hostOf(s.cfg.CalDAV[key].URL)), true)
+			if err != nil {
+				return err
+			}
+			if !drop && same {
+				return fmt.Errorf("%q is still the name of calendar %s", name, key)
+			}
+			if drop {
+				if err := RemoveBlock(w.ConfigPath, "caldav."+key); err != nil {
+					return err
+				}
+				w.sayf("  removed calendar %s", key)
+			}
+		}
+	}
+	if err := AddAccount(w.ConfigPath, block); err != nil {
+		return err
+	}
+	w.sayf("  added as %q — its ids read %s/INBOX:412, its colour is %s", name, name, block.Color)
+	w.sayf("  its calendars and contacts come with it: the default calendar is %q", name)
+
+	w.reload(s)
+	return nil
+}
+
+// graphLogin is where an account's sign-in is kept: the same file the Daemon
+// reads.
+func graphLogin(name, tenant, clientID string) (GraphLogin, error) {
+	path, err := config.GraphTokenPath(name)
+	if err != nil {
+		return GraphLogin{}, err
+	}
+	return GraphLogin{Tenant: tenant, ClientID: clientID, TokenPath: path}, nil
 }
 
 // addCalendar finds a Collection on another provider's server. It asks for the

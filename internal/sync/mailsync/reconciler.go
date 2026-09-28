@@ -244,6 +244,14 @@ func (r *Reconciler) incremental(ctx context.Context, folder string, local mirro
 		sort.Slice(newUIDs, func(i, j int) bool { return newUIDs[i] < newUIDs[j] })
 	}
 
+	// An expunge and an arrival in one cycle leave the count where it was,
+	// which hides the expunge from MakePlan. The arrivals are known now, so the
+	// count is checked against them; a uid counted as new that the Mirror
+	// already holds only costs one more uid list.
+	if !plan.ExpungeDiff && local.Count+len(newUIDs) != int(remote.NumMessages) {
+		plan.ExpungeDiff = true
+	}
+
 	var envs []Envelope
 	if len(newUIDs) > 0 {
 		var err error

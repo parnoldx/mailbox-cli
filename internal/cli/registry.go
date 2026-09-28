@@ -67,6 +67,13 @@ type Command struct {
 	Flags    []Flag
 	Examples []string
 
+	// Notes are the edge cases: what happens when it goes wrong or meets its
+	// limits, one line each. Long is why the command works the way it does;
+	// a note is what happens at the edges, written so an agent that has only
+	// read the index does not have to find out by trying. Commands that name
+	// an ID in their usage get the exit-2 note added for them, see help.go.
+	Notes []string
+
 	// Needs says the command cannot run without at least one word before its
 	// flags. The dispatcher enforces it, so no Run body repeats the check.
 	Needs bool
@@ -212,7 +219,10 @@ func tree(l Locals) []*Command {
 				Name: "view", Short: "Read one message", Needs: true,
 				Usage:    []string{"mailbox message view ID"},
 				Examples: []string{"mailbox message view 36722", "mailbox message view Screener:342"},
-				Run:      runMessageView,
+				Notes: []string{
+					"Reading a message leaves it unread — the unread count belongs to whoever is looking in another client; run `mailbox seen` when it should be read.",
+				},
+				Run: runMessageView,
 			}},
 		},
 		{
@@ -228,6 +238,9 @@ func tree(l Locals) []*Command {
 			Usage: []string{"mailbox search QUERY [--in BOX] [--from ADDR] [--limit N]"},
 			Long: "Ranked full-text over senders, recipients, subjects and text. " +
 				"Words before the flags are the query.",
+			Notes: []string{
+				"Search reads the mirror only: no query reaches the server, and Trash is never mirrored, so nothing found means nothing mirrored.",
+			},
 			Flags: []Flag{
 				{Name: "in", Kind: KindString, Arg: "BOX", Desc: "only this box"},
 				{Name: "from", Kind: KindString, Arg: "ADDR", Desc: "only mail from a sender containing this"},
@@ -327,6 +340,9 @@ func tree(l Locals) []*Command {
 			Long: "Uses whatever the message itself offers: a one-click POST when the " +
 				"sender declared RFC 8058 support, a plain email when List-Unsubscribe " +
 				"names only a mailto:, or — failing both — the link to open by hand.",
+			Notes: []string{
+				"When the only way out is a page, the answer is `Open to finish: URL` — nothing has left the list until that page is opened.",
+			},
 			Examples: []string{"mailbox unsubscribe 36722"},
 			Run:      runUnsubscribe,
 		},
@@ -352,9 +368,7 @@ func tree(l Locals) []*Command {
 		{
 			Name: "draft", Section: SectionMail, Short: "Mail written but not sent",
 			Long: "A draft is mail in the drafts box carrying the \\Draft flag, so one " +
-				"written in webmail and one written here are the same thing. Imap has no " +
-				"in-place edit: changing one writes a new version and trashes the old, so " +
-				"its id changes and the reply says what the new one is.",
+				"written in webmail and one written here are the same thing.",
 			Sub: []*Command{
 				{
 					Name: "list", Short: "What is waiting to be finished",
@@ -377,6 +391,9 @@ func tree(l Locals) []*Command {
 					Usage: []string{"mailbox draft edit ID [--to ADDR] [--subject S] [--body TEXT]"},
 					Long: "What is not named keeps what the draft already said. Naming --to " +
 						"replaces the recipients rather than adding to them.",
+					Notes: []string{
+						"IMAP has no in-place edit: an edit writes a new draft and trashes the old, so the id changes and the reply names the new one.",
+					},
 					Flags: []Flag{
 						{Name: "to", Kind: KindList, Arg: "ADDR", Desc: "replace the recipients"},
 						{Name: "cc", Kind: KindList, Arg: "ADDR", Desc: "replace the copied recipients"},
@@ -421,7 +438,10 @@ func tree(l Locals) []*Command {
 					Name: "retry", Short: "Send a held mail again", Needs: true,
 					Usage:    []string{"mailbox outbox retry ID"},
 					Examples: []string{"mailbox outbox retry 3"},
-					Run:      outboxVerb("retry"),
+					Notes: []string{
+						"A held mail was at the SMTP server when the daemon stopped and may already be out; retrying can deliver it twice.",
+					},
+					Run: outboxVerb("retry"),
 				},
 				{
 					Name: "cancel", Short: "Drop a mail from the queue", Needs: true,
@@ -444,6 +464,9 @@ func tree(l Locals) []*Command {
 				{
 					Name: "save", Short: "Fetch one file", Needs: true,
 					Usage: []string{"mailbox attachment save ID[:INDEX] [--output PATH] [--force]"},
+					Notes: []string{
+						"Writes into the working directory unless --output names somewhere else.",
+					},
 					Flags: []Flag{
 						{Name: "output", Kind: KindString, Arg: "PATH", Desc: "where to write it: a file, or a directory"},
 						{Name: "force", Kind: KindBool, Desc: "overwrite an existing file"},
@@ -586,6 +609,9 @@ func tree(l Locals) []*Command {
 						"screener, which forgets the sender and puts their next mail back there. " +
 						"Every box but block moves the sender's waiting mail there; block " +
 						"marks it read and moves it to Trash.",
+					Notes: []string{
+						"block marks the sender's waiting mail read and moves it to Trash; `--to screener` undoes the route but brings nothing back from Trash.",
+					},
 					Flags: []Flag{
 						{Name: "to", Kind: KindString, Arg: "BOX", Desc: "inbox, feed, paper, block, or screener"},
 					},

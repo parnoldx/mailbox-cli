@@ -139,6 +139,10 @@ func localChecks(ctx context.Context, offline bool) []check {
 	// mail into.
 	for _, name := range slices.Sorted(maps.Keys(cfg.Secondary)) {
 		s := cfg.Secondary[name]
+		if s.Graph() {
+			out = append(out, graphCheck(ctx, probe, name, s))
+			continue
+		}
 		boxes, err := probe.IMAP(ctx, s.IMAPHost, s.IMAPPort, s.Email, s.Password)
 		if err != nil {
 			out = append(out, check{Name: name + " imap", Detail: err.Error()})
@@ -194,6 +198,30 @@ func localChecks(ctx context.Context, offline bool) []check {
 
 // daemonChecks ask the daemon what it holds. Nothing here dials a server: the
 // point is what the process every other command talks to actually has.
+// graphCheck is a Microsoft 365 account: the sign-in is still honoured, it is
+// the configured address's, and the piles are there. It writes nothing but a
+// refreshed token.
+func graphCheck(ctx context.Context, probe setup.Servers, name string, a config.Account) check {
+	tokens, err := config.GraphTokenPath(name)
+	if err != nil {
+		return check{Name: name + " microsoft 365", Detail: err.Error()}
+	}
+	st, err := probe.Graph(ctx, setup.GraphLogin{Tenant: a.Tenant, ClientID: a.ClientID, TokenPath: tokens}, io.Discard)
+	switch {
+	case err != nil:
+		return check{Name: name + " microsoft 365", Detail: err.Error()}
+	case !strings.EqualFold(st.Email, a.Email):
+		return check{Name: name + " microsoft 365", Detail: fmt.Sprintf(
+			"signed in as %s, not %s — run `mailbox setup` and repair", st.Email, a.Email)}
+	case len(st.Missing) > 0:
+		return check{Name: name + " piles", Detail: fmt.Sprintf(
+			"this account has no %s — aside and bubble cannot file; run `mailbox setup` and repair",
+			strings.Join(st.Missing, ", "))}
+	}
+	return check{Name: name + " microsoft 365", OK: true,
+		Detail: fmt.Sprintf("signed in as %s, %d boxes, aside and reply later are here", st.Email, st.Boxes)}
+}
+
 func daemonChecks(stdout io.Writer) []check {
 	socket := config.SocketPath()
 	conn, err := net.Dial("unix", socket)
