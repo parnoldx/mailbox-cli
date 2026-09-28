@@ -14,12 +14,16 @@ Item {
 
     // "" is the switcher. Everything else is a second pane opened over it, each
     // one a list the field filters and Enter picks from:
-    //   archive       every archive box — Enter moves the target Thread there
+    //   archive       the target's archive boxes — Enter moves the Thread there
     //   labels        every label — Enter opens it as a view
     //   label-apply   every label — Enter puts one on the target, or takes it off
     //   label-rename  no list: the field is the new name for the label being viewed
     property string pane: ""
     property string archiveTargetId: ""
+    // The account the target Thread is in: the picker narrows to that
+    // account's archive tree — work mail moves into the work archive, personal
+    // into the personal one ("" is the Primary).
+    property string archiveAccount: ""
     property var archiveBoxes: []
     // The Thread the label picker is labelling, and the labels it already
     // carries — kept here rather than re-read after every toggle so the ticks
@@ -96,6 +100,7 @@ Item {
         for (var i = 0; i < archiveBoxes.length; i++) {
             var b = archiveBoxes[i]
             if (root.routingKeys.indexOf(b.box) >= 0) continue
+            if (b.account !== root.archiveAccount) continue
             if (!q || root.fuzzy(q, b.box)) out.push(b)
         }
         return out
@@ -106,6 +111,7 @@ Item {
         root.archiveTargetId = win.actionTargetId()
         if (!root.archiveTargetId) { root.close(); return }
         root.pane = "archive"
+        root.archiveAccount = win.accountOfId(root.archiveTargetId)
         root.active = 0
         query.text = ""
         win.loadArchiveBoxes(function (list) { root.archiveBoxes = list; root.active = 0 })
