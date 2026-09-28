@@ -267,6 +267,26 @@ func TestADeletedEventGoesAndAStaleWindowStartsOver(t *testing.T) {
 	}
 }
 
+func TestADeleteOfAnEventDeletedSomewhereElseStillGoes(t *testing.T) {
+	f, d := davSetup(t)
+	ctx := context.Background()
+	cal := byName(t, d)["events work"]
+	if _, err := d.Sync(ctx, cal.URL, ""); err != nil {
+		t.Fatal(err)
+	}
+	href := "/v1.0/me/calendars/cal-1/040000008200E00074C5B7101A82E00800000000AAAA.ics"
+	f.mu.Lock()
+	delete(f.events, "ev-a")    // gone from the folder...
+	f.softDeleted["ev-a"] = true // ...but known to Graph, which says 400 not 404
+	f.mu.Unlock()
+	if err := d.Delete(ctx, f.srv.URL+href, ""); err != nil {
+		t.Fatalf("delete of an already-deleted event: %v", err)
+	}
+	if _, ok := d.s.objectID(href); ok {
+		t.Fatal("the store still maps the deleted event")
+	}
+}
+
 func TestContactsArriveAsVCardAndKeepTheirPhoneKinds(t *testing.T) {
 	f, d := davSetup(t)
 	ctx := context.Background()

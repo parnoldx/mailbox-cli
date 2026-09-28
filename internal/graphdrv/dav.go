@@ -522,11 +522,19 @@ func (d *DAV) Delete(ctx context.Context, raw, ifMatch string) error {
 	if !ok {
 		return fmt.Errorf("no object at %s", href)
 	}
-	path := "/me/contacts/" + url.PathEscape(id)
+	kind := "/me/contacts/"
 	if isCalendar(collection) {
-		path = "/me/events/" + url.PathEscape(id)
+		kind = "/me/events/"
 	}
+	path := kind + url.PathEscape(id)
 	if err := d.c.do(ctx, request{method: http.MethodDelete, path: path}, nil); err != nil && !notFound(err) {
+		// A Graph item deleted somewhere else sits unbound in the deletions
+		// folder and a delete of it comes back 400 ErrorInvalidRequest — "non
+		// calendar folder" — where another server would say 404. One read
+		// settles whether anything is left; if it is not, the delete is done.
+		if gerr := d.c.do(ctx, request{method: http.MethodGet, path: kind + url.PathEscape(id)}, nil); gerr != nil && notFound(gerr) {
+			return d.s.dropObject(id)
+		}
 		return err
 	}
 	return d.s.dropObject(id)

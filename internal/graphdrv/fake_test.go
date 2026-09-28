@@ -35,6 +35,10 @@ type fakeGraph struct {
 	log []fakeChange
 	// gone makes the next delta of a collection a 410.
 	gone map[string]bool
+	// softDeleted marks an event deleted in another client that Graph still
+	// knows about: a GET says 404 but a DELETE says 400, the item sitting
+	// unbound in the deletions folder.
+	softDeleted map[string]bool
 	// pageSize makes every first delta page, to exercise nextLink.
 	pageSize int
 	next     int
@@ -61,7 +65,7 @@ func newFakeGraph(t *testing.T) (*fakeGraph, *Client) {
 	f := &fakeGraph{
 		t: t, messages: map[string]*fakeMessage{}, events: map[string]map[string]any{},
 		instances: map[string][]map[string]any{}, contacts: map[string]map[string]any{},
-		gone: map[string]bool{}, pageSize: 2,
+		gone: map[string]bool{}, softDeleted: map[string]bool{}, pageSize: 2,
 	}
 	f.folders = []fakeFolder{
 		{id: "f-inbox", name: "Posteingang", wellKnown: "inbox"},
@@ -462,6 +466,14 @@ func (f *fakeGraph) calendars(w http.ResponseWriter, r *http.Request, parts []st
 
 func (f *fakeGraph) event(w http.ResponseWriter, r *http.Request, parts []string, body []byte) {
 	id, _ := url.PathUnescape(parts[2])
+	if f.softDeleted[id] {
+		if r.Method == http.MethodDelete {
+			f.fail(w, http.StatusBadRequest, "ErrorInvalidRequest")
+			return
+		}
+		f.fail(w, http.StatusNotFound, "ErrorItemNotFound")
+		return
+	}
 	e, ok := f.events[id]
 	if !ok {
 		f.fail(w, http.StatusNotFound, "ErrorItemNotFound")
