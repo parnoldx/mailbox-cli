@@ -325,8 +325,9 @@ Item {
         })
     }
     // Send from the keyboard, matching every desktop composer: Ctrl+Return
-    // fires Send wherever focus sits in the form.
-    Shortcut { sequence: "Ctrl+Return"; enabled: root.visible; onActivated: root.doSend() }
+    // fires Send wherever focus sits in the form. Bound in Main.qml — a second
+    // Shortcut here would be an ambiguous duplicate and make Qt swallow the
+    // key without firing either.
     // Same send, plus a "no reply by" reminder: the daemon writes the return
     // keyword onto the filed copy once it's out (see internal/daemon/bubble.go
     // replyWatch), so this only needs to merge the same timing shape
@@ -776,8 +777,8 @@ Item {
                 if (root.mode === "reply") root.doAgentDraft()
                 else win.flash("AI drafts replies — open a reply first")
             }
-            // Ctrl+Enter inside the body editor — the QML Shortcut above cannot
-            // fire while the web view has focus, so Lexxy hands the key out.
+            // Ctrl+Enter inside the body editor — belt and braces alongside the
+            // window-level Ctrl+Return Shortcut in Main.qml.
             onSendRequested: root.doSend()
         }
 
