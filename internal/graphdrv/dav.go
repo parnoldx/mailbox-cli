@@ -151,14 +151,26 @@ const (
 	windowStale   = 30 * 24 * time.Hour
 )
 
+// tokenLife retires a delta token a day after it was issued. Graph's delta
+// cursor is not to be trusted with deletions: one observed from an OWA delete
+// never arrived on a cursor that reported everything else, and a cursor that
+// misses a change never reports it later. A token that starts over sweeps the
+// whole window from nothing, which is what heals what the delta dropped —
+// daily, since the alternative was a ghost event for the month and a half the
+// old expiry took to come round.
+const tokenLife = 24 * time.Hour
+
 type calToken struct {
 	From, To time.Time
-	Link     string
+	// Issued is when the token was taken. Tokens written before it existed
+	// carry none and are treated as spent, which starts them over once.
+	Issued time.Time
+	Link   string
 }
 
 func parseCalToken(tok string) (calToken, bool) {
-	parts := strings.SplitN(tok, "|", 3)
-	if len(parts) != 3 {
+	parts := strings.SplitN(tok, "|", 4)
+	if len(parts) < 3 {
 		return calToken{}, false
 	}
 	from, err1 := strconv.ParseInt(parts[0], 10, 64)
@@ -166,11 +178,18 @@ func parseCalToken(tok string) (calToken, bool) {
 	if err1 != nil || err2 != nil {
 		return calToken{}, false
 	}
-	return calToken{From: time.Unix(from, 0).UTC(), To: time.Unix(to, 0).UTC(), Link: parts[2]}, true
+	t := calToken{From: time.Unix(from, 0).UTC(), To: time.Unix(to, 0).UTC(), Link: parts[2]}
+	if len(parts) == 4 {
+		t.Link = parts[3]
+		if issued, err := strconv.ParseInt(parts[2], 10, 64); err == nil {
+			t.Issued = time.Unix(issued, 0).UTC()
+		}
+	}
+	return t, true
 }
 
 func (t calToken) String() string {
-	return fmt.Sprintf("%d|%d|%s", t.From.Unix(), t.To.Unix(), t.Link)
+	return fmt.Sprintf("%d|%d|%d|%s", t.From.Unix(), t.To.Unix(), t.Issued.Unix(), t.Link)
 }
 
 // Sync implements davsync.Driver: a delta link is a sync token.
@@ -234,12 +253,12 @@ const utc = `outlook.timezone="UTC"`
 
 func (d *DAV) syncCalendar(ctx context.Context, api, token string) (davsync.Changes, error) {
 	tok, ok := parseCalToken(token)
-	if token != "" && (!ok || d.now().Sub(tok.From) > windowBack+windowStale) {
+	if token != "" && (!ok || d.now().Sub(tok.Issued) > tokenLife || d.now().Sub(tok.From) > windowBack+windowStale) {
 		return davsync.Changes{}, davsync.ErrTokenExpired
 	}
 	if token == "" {
 		day := d.now().UTC().Truncate(24 * time.Hour)
-		tok = calToken{From: day.Add(-windowBack), To: day.Add(windowForward)}
+		tok = calToken{From: day.Add(-windowBack), To: day.Add(windowForward), Issued: d.now()}
 		tok.Link = api + "/calendarView/delta?startDateTime=" + tok.From.Format(time.RFC3339) +
 			"&endDateTime=" + tok.To.Format(time.RFC3339)
 	}

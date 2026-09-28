@@ -3,6 +3,7 @@ package graphdrv
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -264,6 +265,30 @@ func TestADeletedEventGoesAndAStaleWindowStartsOver(t *testing.T) {
 	d.now = func() time.Time { return time.Date(2026, 12, 26, 12, 0, 0, 0, time.UTC) }
 	if _, err := d.Sync(ctx, cal.URL, next.Token); !errors.Is(err, davsync.ErrTokenExpired) {
 		t.Fatalf("a window three months old: %v", err)
+	}
+}
+
+func TestADayOldDeltaTokenStartsOver(t *testing.T) {
+	_, d := davSetup(t)
+	ctx := context.Background()
+	cal := byName(t, d)["events work"]
+	ch, err := d.Sync(ctx, cal.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A day later the token is retired: delta has been known to sit on a
+	// deletion forever, and the sweep from nothing is what heals it.
+	d.now = func() time.Time { return time.Now().Add(25 * time.Hour) }
+	if _, err := d.Sync(ctx, cal.URL, ch.Token); !errors.Is(err, davsync.ErrTokenExpired) {
+		t.Fatalf("a day-old token: %v", err)
+	}
+	// A token from before tokens carried their issue time is spent too: it
+	// starts over once and comes back in the new shape.
+	day := time.Now().UTC().Truncate(24 * time.Hour)
+	old := fmt.Sprintf("%d|%d|%s", day.Add(-windowBack).Unix(), day.Add(windowForward).Unix(),
+		cal.URL+"/calendarView/delta?$deltatoken=old")
+	if _, err := d.Sync(ctx, cal.URL, old); !errors.Is(err, davsync.ErrTokenExpired) {
+		t.Fatalf("a token without an issue time: %v", err)
 	}
 }
 
