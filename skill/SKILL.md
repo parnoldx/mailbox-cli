@@ -40,6 +40,7 @@ and each help text carries the reason the command works the way it does.
 | find something | `mailbox search rechnung --in feed` |
 | answer one | `mailbox reply 36722 --body "..."` |
 | write a new one | `mailbox compose --to a@b.de --subject "..." --body "..."` |
+| write or answer from the work account | `mailbox compose --account work --to a@b.de ...` — a `reply` needs no flag, it answers on the account the thread lives on |
 | decide about a sender | `mailbox screener`, then `mailbox route set ID --to feed` |
 | route a whole domain | `mailbox route set @stripe.com --to paper` |
 | accept a meeting | `mailbox rsvp ID --accept` |
