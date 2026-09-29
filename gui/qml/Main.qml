@@ -1143,4 +1143,17 @@ ApplicationWindow {
         id: flashToast
         anchors.fill: parent
     }
+
+    // The HTML renderer warms up in the background once the Inbox has had the
+    // stage to itself — see WebWarmup for why it is not simply armed at boot.
+    Timer {
+        interval: 2500
+        running: true
+        onTriggered: warmup.active = true
+    }
+    Loader {
+        id: warmup
+        active: false
+        sourceComponent: Component { WebWarmup {} }
+    }
 }
