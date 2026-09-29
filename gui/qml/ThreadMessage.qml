@@ -22,6 +22,13 @@ Item {
     readonly property var invite: root.msg.invite || null
     readonly property string msgId: (root.msg && root.msg.id) ? root.msg.id : ""
     property string rsvpState: ""
+    // The answer already on the calendar, as the card carries it; a click in
+    // this session overrides it until the next read catches up.
+    readonly property string answered: {
+        var r = root.invite ? (root.invite.response || "") : ""
+        return r === "ACCEPTED" ? "accept" : r === "TENTATIVE" ? "tentative" : r === "DECLINED" ? "decline" : ""
+    }
+    readonly property string shownAnswer: (root.rsvpState !== "" && root.rsvpState !== "busy") ? root.rsvpState : root.answered
     property string pickedCalendar: ""
     readonly property var unsubscribe: root.msg.unsubscribe || null
     property string unsubState: ""
@@ -712,14 +719,14 @@ Item {
                         }
                     }
                     Text {
-                        visible: root.rsvpState === "accept" || root.rsvpState === "tentative" || root.rsvpState === "decline"
-                        text: root.rsvpState === "accept" ? "Accepted"
-                            : root.rsvpState === "tentative" ? "Maybe"
+                        visible: root.shownAnswer !== ""
+                        text: root.shownAnswer === "accept" ? "Accepted"
+                            : root.shownAnswer === "tentative" ? "Maybe"
                             : "Declined"
                         font.family: Theme.fontFamily
                         font.pixelSize: 12
                         font.weight: Font.DemiBold
-                        color: root.rsvpState === "decline" ? Theme.red : Theme.green
+                        color: root.shownAnswer === "decline" ? Theme.red : Theme.green
                         Behavior on color { ColorAnimation { duration: Theme.anim } }
                     }
                     Row {

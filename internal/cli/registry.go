@@ -332,7 +332,8 @@ func tree(l Locals) []*Command {
 			Usage: []string{"mailbox rsvp ID --accept|--decline|--tentative"},
 			Long: "Answers a meeting invite carried on a message: sends an iMIP reply " +
 				"to the organizer, and on accept or tentative also puts the event on " +
-				"the calendar.",
+				"the calendar. On a Microsoft 365 account the event is already on its " +
+				"calendar, so the answer goes to Exchange, which replies to the organizer.",
 			Flags: []Flag{
 				{Name: "accept", Kind: KindBool, Desc: "accept the meeting"},
 				{Name: "decline", Kind: KindBool, Desc: "decline the meeting"},

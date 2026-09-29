@@ -83,6 +83,9 @@ func printInvite(stdout, stderr io.Writer, resp daemon.Response) {
 	if cal := str(m["calendar"]); cal != "" {
 		fmt.Fprintf(stdout, "calendar: %s\n", cal)
 	}
+	if answer := str(m["response"]); answer != "" {
+		fmt.Fprintf(stdout, "answered: %s\n", strings.ToLower(answer))
+	}
 }
 
 func runStatus(in *input, stdout, stderr io.Writer) int {
@@ -475,6 +478,9 @@ func printMessage(stdout, stderr io.Writer, resp daemon.Response) {
 		fmt.Fprintf(stdout, "%-8s %s", "Invite:", str(inv["summary"]))
 		if org := str(inv["organizer"]); org != "" {
 			fmt.Fprintf(stdout, " (%s)", org)
+		}
+		if answer := str(inv["response"]); answer != "" {
+			fmt.Fprintf(stdout, " — %s", strings.ToLower(answer))
 		}
 		fmt.Fprintln(stdout)
 	}

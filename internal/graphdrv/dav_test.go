@@ -23,6 +23,7 @@ func davSetup(t *testing.T) (*fakeGraph, *DAV) {
 	}
 	t.Cleanup(func() { s.Close() })
 	d := NewDAV(c, s, "work")
+	d.Email = "Me@Example.de"
 	d.loc, _ = time.LoadLocation("Europe/Berlin")
 	d.zoneName = "Europe/Berlin"
 	d.now = func() time.Time { return time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC) }
@@ -35,7 +36,8 @@ func davSetup(t *testing.T) (*fakeGraph, *DAV) {
 		"start":        map[string]any{"dateTime": "2026-09-28T08:00:00.0000000", "timeZone": "UTC"},
 		"end":          map[string]any{"dateTime": "2026-09-28T09:00:00.0000000", "timeZone": "UTC"},
 		"isReminderOn": true, "reminderMinutesBeforeStart": 15,
-		"onlineMeeting": map[string]any{"joinUrl": "https://teams.example.com/l/meetup-join/19%3ameeting_Zm9vYmFy%40thread.v2/0"},
+		"onlineMeeting":  map[string]any{"joinUrl": "https://teams.example.com/l/meetup-join/19%3ameeting_Zm9vYmFy%40thread.v2/0"},
+		"responseStatus": map[string]any{"response": "notResponded"},
 	}
 	// Mondays at ten Berlin time, four of them, across the end of summer time:
 	// the second is an hour later in UTC than the first.
@@ -289,6 +291,39 @@ func TestADayOldDeltaTokenStartsOver(t *testing.T) {
 		cal.URL+"/calendarView/delta?$deltatoken=old")
 	if _, err := d.Sync(ctx, cal.URL, old); !errors.Is(err, davsync.ErrTokenExpired) {
 		t.Fatalf("a token without an issue time: %v", err)
+	}
+}
+
+// Exchange put the invite on the calendar unanswered; answering it goes to
+// Exchange, which replies to the organizer, and the answer comes back on the
+// next read as the account's PARTSTAT.
+func TestAnInviteIsAnsweredOnExchange(t *testing.T) {
+	f, d := davSetup(t)
+	ctx := context.Background()
+	cal := byName(t, d)["events work"]
+	ch, err := d.Sync(ctx, cal.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	href := "/v1.0/me/calendars/cal-1/040000008200E00074C5B7101A82E00800000000AAAA.ics"
+	if got := vcal.AnswerOf(objects(t, ch)[href].Data, "me@example.de"); got != vcal.PartstatNeedsAction {
+		t.Fatalf("before: %q\n%s", got, objects(t, ch)[href].Data)
+	}
+	if err := d.Respond(ctx, href, vcal.PartstatTentative); err != nil {
+		t.Fatal(err)
+	}
+	if w := f.writes(); len(w) != 1 || w[0] != `POST /me/events/ev-a/tentativelyAccept {"sendResponse":true}` {
+		t.Fatalf("writes %v", w)
+	}
+	ch, err = d.Sync(ctx, cal.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := vcal.AnswerOf(objects(t, ch)[href].Data, "me@example.de"); got != vcal.PartstatTentative {
+		t.Fatalf("after: %q", got)
+	}
+	if err := d.Respond(ctx, "/v1.0/me/calendars/cal-1/nope.ics", vcal.PartstatAccepted); err == nil {
+		t.Fatal("answered an event that is not there")
 	}
 }
 

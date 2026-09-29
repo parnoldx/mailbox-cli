@@ -12,6 +12,8 @@ const (
 	PartstatAccepted  = "ACCEPTED"
 	PartstatDeclined  = "DECLINED"
 	PartstatTentative = "TENTATIVE"
+	// PartstatNeedsAction is an invite not answered yet.
+	PartstatNeedsAction = "NEEDS-ACTION"
 )
 
 // Invite is a meeting request as a mail carries it: the VEVENT plus who
@@ -148,4 +150,26 @@ func mailtoAddr(v string) string {
 	v = strings.TrimPrefix(v, "MAILTO:")
 	v = strings.TrimPrefix(v, "mailto:")
 	return strings.ToLower(strings.TrimSpace(v))
+}
+
+// AnswerOf is how one of addrs answered the event in a calendar object: the
+// PARTSTAT on its ATTENDEE, upper-cased, or "" when none of them is one.
+func AnswerOf(raw string, addrs ...string) string {
+	cal, err := decode(raw)
+	if err != nil {
+		return ""
+	}
+	master, _ := primary(cal)
+	if master == nil {
+		return ""
+	}
+	for _, p := range master.Props[ical.PropAttendee] {
+		a := mailtoAddr(p.Value)
+		for _, want := range addrs {
+			if a != "" && strings.EqualFold(a, strings.TrimSpace(want)) {
+				return strings.ToUpper(p.Params.Get("PARTSTAT"))
+			}
+		}
+	}
+	return ""
 }

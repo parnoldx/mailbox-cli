@@ -23,6 +23,10 @@ type inviteCard struct {
 	End       string `json:"end,omitempty"`
 	AllDay    bool   `json:"all_day,omitempty"`
 	UID       string `json:"uid,omitempty"`
+	// Response is how this account answered, as the event on its calendar
+	// says: ACCEPTED, TENTATIVE, DECLINED, NEEDS-ACTION, or empty when the
+	// calendar has no answer of ours.
+	Response string `json:"response,omitempty"`
 	// Calendar is the unique target when an invite is clearly to one of our
 	// addresses. Empty plus Calendars means the caller has to pick.
 	Calendar  string   `json:"calendar,omitempty"`
@@ -102,6 +106,7 @@ func (d *Daemon) inviteCardOf(ctx context.Context, acct *Account, folder string,
 		Summary: in.Summary, Organizer: in.Organizer, Location: in.Location,
 		AllDay: in.AllDay, UID: in.UID,
 	}
+	card.Response = d.inviteAnswer(in.UID, acct)
 	if !in.Start.IsZero() {
 		card.Start = in.Start.Format(time.RFC3339)
 	}
@@ -119,10 +124,9 @@ func (d *Daemon) inviteCardOf(ctx context.Context, acct *Account, folder string,
 
 // hasCalendarPart is the mirror-only check behind HasInvite: it marks a
 // Message whose card `invite show` can fetch. It never touches the server, so
-// reading a Thread does not wait on one. Graph mail carries no invite card —
-// Exchange already holds the event — so it reads as false there.
+// reading a Thread does not wait on one.
 func (d *Daemon) hasCalendarPart(acct *Account, messageID int64) bool {
-	if acct == nil || acct.Graph {
+	if acct == nil {
 		return false
 	}
 	_, err := d.calendarPart(messageID)
@@ -130,13 +134,31 @@ func (d *Daemon) hasCalendarPart(acct *Account, messageID int64) bool {
 }
 
 func (d *Daemon) withInvite(ctx context.Context, acct *Account, folder string, uid uint32, messageID int64, key, msgTo string, m message) message {
-	if acct != nil && acct.Graph {
-		return m
-	}
 	if card := d.inviteCardOf(ctx, acct, folder, uid, messageID, key, msgTo); card != nil {
 		m.Invite = card
 	}
 	return m
+}
+
+// inviteAnswer is this account's PARTSTAT on the invite's event, read from the
+// Mirror: a CalDAV event carries it once an RSVP stored it, a Microsoft 365
+// one from the moment Exchange put it on the calendar.
+func (d *Daemon) inviteAnswer(uid string, acct *Account) string {
+	if uid == "" {
+		return ""
+	}
+	o, err := d.Mirror.ObjectByUID(d.Account, uid)
+	if err != nil {
+		return ""
+	}
+	addrs := []string{d.From.Addr}
+	if acct != nil {
+		addrs = append(addrs, acct.From.Addr)
+	}
+	for a := range d.CalendarEmail {
+		addrs = append(addrs, a)
+	}
+	return vcal.AnswerOf(o.Raw, addrs...)
 }
 
 // inviteTarget decides which calendar an RSVP writes to. An invite to the
@@ -286,9 +308,6 @@ func (d *Daemon) handleRSVP(ctx context.Context, req Request, resp Response) Res
 	if err != nil {
 		return resp.usage(err.Error())
 	}
-	if d.Outbox == nil || acct.Courier == nil {
-		return resp.api(fmt.Sprintf("account %q cannot send: no outbox", acct.Name))
-	}
 	row, err := d.Mirror.Row(acct.Name, folder, uid)
 	if errors.Is(err, mirror.ErrNotFound) {
 		return resp.notFound(noSuchMessage(id))
@@ -307,6 +326,12 @@ func (d *Daemon) handleRSVP(ctx context.Context, req Request, resp Response) Res
 		// A reply names the event it answers; an invite sent without one
 		// cannot be answered without inventing an identity it never had.
 		return resp.usage("this invite has no UID, so it cannot be answered")
+	}
+	if acct.Graph {
+		return d.respondOnExchange(ctx, acct, in, partstat, resp)
+	}
+	if d.Outbox == nil || acct.Courier == nil {
+		return resp.api(fmt.Sprintf("account %q cannot send: no outbox", acct.Name))
 	}
 
 	ics, err := vcal.Reply(in, acct.From.Addr, partstat)
@@ -335,6 +360,32 @@ func (d *Daemon) handleRSVP(ctx context.Context, req Request, resp Response) Res
 		}
 	}
 	return resp
+}
+
+// respondOnExchange answers a Microsoft 365 invite on the event Exchange
+// already put on the calendar; Exchange sends the reply to the organizer. The
+// event is found by the invite's UID, which is the href graphdrv gave it.
+func (d *Daemon) respondOnExchange(ctx context.Context, acct *Account, in vcal.Invite, partstat string, resp Response) Response {
+	if acct.Respond == nil {
+		return resp.api(fmt.Sprintf("account %q cannot answer invites: no calendar connection", acct.Name))
+	}
+	o, err := d.Mirror.ObjectByUID(d.Account, in.UID)
+	if errors.Is(err, mirror.ErrNotFound) {
+		return resp.notFound(fmt.Sprintf("%q is not on the %s calendar yet", in.Summary, acct.Name))
+	}
+	if err != nil {
+		return resp.api(err.Error())
+	}
+	if err := acct.Respond(ctx, o.Href, partstat); err != nil {
+		return resp.failed(err)
+	}
+	// The answer is on the server; the next cycle brings it into the Mirror,
+	// where the card reads it.
+	select {
+	case d.davTrigger <- davKick{reason: "rsvp", kinds: []string{calendars.kind}}:
+	default:
+	}
+	return resp.ok(sent{State: "answered", Subject: rsvpWord(partstat) + ": " + in.Summary, Recipients: []string{in.Organizer}})
 }
 
 func (d *Daemon) storeInvite(ctx context.Context, req Request, in vcal.Invite, acct *Account, msgTo, attendee, partstat string) error {

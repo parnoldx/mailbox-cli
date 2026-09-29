@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"mailbox/internal/sync/davsync"
+	"mailbox/internal/vcal"
 )
 
 // DAV is a Graph account's calendars and contacts behind davsync's driver
@@ -29,6 +30,9 @@ type DAV struct {
 	// "account/name". The default calendar is where a work invite belongs, and
 	// the account's name is what the invite routing already maps its address to.
 	Account string
+	// Email is the account's address, which an event's answer to its invite
+	// is written against.
+	Email string
 
 	loc      *time.Location
 	zoneName string
@@ -350,7 +354,7 @@ func (d *DAV) singleChange(api string, g graphEvent) (davsync.Change, error) {
 		return davsync.Change{}, err
 	}
 	_, key, _ := d.split(href)
-	data, err := singleICal(key, g, d.loc)
+	data, err := singleICal(key, g, d.loc, d.Email)
 	if err != nil {
 		return davsync.Change{}, err
 	}
@@ -384,7 +388,7 @@ func (d *DAV) seriesChange(ctx context.Context, api, master string, from, to tim
 		return davsync.Change{}, err
 	}
 	_, key, _ := d.split(href)
-	data, err := seriesICal(key, m, instances, from, to, d.loc)
+	data, err := seriesICal(key, m, instances, from, to, d.loc, d.Email)
 	if err != nil {
 		return davsync.Change{}, err
 	}
@@ -532,6 +536,27 @@ func changed(have, want map[string]any) map[string]any {
 		}
 	}
 	return out
+}
+
+// Respond answers an invite on the event Exchange already made for it, and
+// Exchange sends the reply to the organizer. href is the event's, as the
+// Mirror holds it.
+func (d *DAV) Respond(ctx context.Context, href, partstat string) error {
+	_, _, href = d.split(href)
+	id, ok := d.s.objectID(href)
+	if !ok {
+		return fmt.Errorf("no event at %s", href)
+	}
+	verb := map[string]string{
+		vcal.PartstatAccepted:  "accept",
+		vcal.PartstatTentative: "tentativelyAccept",
+		vcal.PartstatDeclined:  "decline",
+	}[partstat]
+	if verb == "" {
+		return fmt.Errorf("unknown RSVP %q: accept, decline or tentative", partstat)
+	}
+	return d.c.do(ctx, request{method: http.MethodPost, path: "/me/events/" + url.PathEscape(id) + "/" + verb,
+		body: jsonBody(map[string]any{"sendResponse": true})}, nil)
 }
 
 // Delete implements davsync.WriteDriver. Already gone is done.

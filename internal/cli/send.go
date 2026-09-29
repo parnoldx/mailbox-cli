@@ -266,6 +266,11 @@ func printSent(stdout, stderr io.Writer, resp daemon.Response) {
 		fmt.Fprintf(stdout, "cancelled #%v\n", m["id"])
 		return
 	}
+	if state := str(m["state"]); state == "answered" {
+		// A Microsoft 365 invite: Exchange sends the reply, not our Outbox.
+		fmt.Fprintf(stdout, "%s — Exchange replies to %s\n", m["subject"], strings.Join(strs(asAny(m["recipients"])), ", "))
+		return
+	}
 	if state := str(m["state"]); state == "scheduled" {
 		fmt.Fprintf(stdout, "scheduled for %s, to %s\n", m["scheduled"], strings.Join(strs(asAny(m["recipients"])), ", "))
 		return

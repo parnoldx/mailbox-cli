@@ -22,9 +22,11 @@ type Account struct {
 	Name    string
 	Primary bool
 	// Graph is a Microsoft 365 account. Exchange puts an invite on its
-	// calendar before any client sees it, so its mail carries no invite card:
-	// answering one here would write a second copy of the event.
-	Graph bool
+	// calendar before any client sees it, so an RSVP answers that event
+	// through Respond — Exchange tells the organizer — rather than sending
+	// iMIP and writing a second copy.
+	Graph   bool
+	Respond func(ctx context.Context, href, partstat string) error
 
 	Reconciler *mailsync.Reconciler
 	Writer     *mailsync.Writer

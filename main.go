@@ -266,7 +266,9 @@ func runDaemon(systemdSocket bool) error {
 				logger.Printf("account %s: calendars and contacts: %v (skipped)", name, err)
 				continue
 			}
-			clients = append(clients, graphdrv.NewDAV(g.client, g.store, name))
+			dav := graphdrv.NewDAV(g.client, g.store, name)
+			dav.Email = sec.Email
+			clients = append(clients, dav)
 			logger.Printf("account %s: calendars and contacts come from Microsoft 365", name)
 		}
 		d.DAV = &davsync.Reconciler{
@@ -559,6 +561,7 @@ func buildGraph(ctx context.Context, name string, sec config.Account,
 	acct.From = compose.Address{Name: sec.DisplayName, Addr: sec.Email}
 	acct.Color = sec.Color
 	acct.Graph = true
+	acct.Respond = graphdrv.NewDAV(g.client, g.store, name).Respond
 	acct.Courier = &outbox.Courier{Box: box, Account: name, Transport: drv, Log: logger}
 	logger.Printf("account %s: Microsoft 365, %d boxes", name, len(mirrored))
 	return acct, nil

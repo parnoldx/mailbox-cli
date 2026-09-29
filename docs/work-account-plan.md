@@ -93,7 +93,7 @@ registration. Where the build differs from the text below:
   −60/+540-day window restarted when 30 days stale; series are folded back into
   one object. The default contacts folder is found through any contact's
   `parentFolderId`: an empty default folder shows no default address book yet.
-- Invites: option (a) — a Graph account's mail carries no invite card.
+- Invites: option (b), built 2026-09-29 — see "Meeting invites" below.
 - `setup` has "a Microsoft 365 account": it signs in, checks the address, makes
   the piles, and removes a hand-added calendar with the same name or address.
   Repair signs in again when the sign-in is refused. `doctor` checks it.
@@ -156,7 +156,15 @@ What step 2 needs:
   `-tags live` create → patch → read back that keeps a field we don't model
   (e.g. `isReminderOn`).
 
-**Meeting invites (undecided).** Exchange already puts an invite to the work
+**Meeting invites — (b) built 2026-09-29** on branch `graph-invite-rsvp`: the
+card shows on work mail, `rsvp` calls `graphdrv.DAV.Respond` with
+`sendResponse: true` on the event found by UID (no iMIP, no Put), and the
+event's `responseStatus` comes into the Mirror as the account's ATTENDEE
+PARTSTAT, which the card carries as `response` — on CalDAV invites too, once
+an RSVP stored one. Events already mirrored show their answer after their next
+change or a restarted window.
+
+**Meeting invites (as first weighed).** Exchange already puts an invite to the work
 address on the work calendar as tentative, before any client sees it. So the
 mailbox app has two choices:
 

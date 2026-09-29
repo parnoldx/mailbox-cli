@@ -44,7 +44,10 @@ type graphEvent struct {
 	OnlineMeeting              *struct {
 		JoinURL string `json:"joinUrl"`
 	} `json:"onlineMeeting"`
-	Recurrence *recurrence `json:"recurrence"`
+	Recurrence     *recurrence `json:"recurrence"`
+	ResponseStatus struct {
+		Response string `json:"response"`
+	} `json:"responseStatus"`
 }
 
 type zonedTime struct {
@@ -87,7 +90,7 @@ type recurrence struct {
 
 // eventSelect is every property the translation reads.
 const eventSelect = "$select=iCalUId,type,seriesMasterId,changeKey,subject,body,location,start,end," +
-	"originalStart,isAllDay,isCancelled,isReminderOn,reminderMinutesBeforeStart,onlineMeeting,recurrence"
+	"originalStart,isAllDay,isCancelled,isReminderOn,reminderMinutesBeforeStart,onlineMeeting,recurrence,responseStatus"
 
 // zone is the time zone a repeating event is written in, so that "every Monday
 // at ten" stays at ten across a DST change; and the zone an event we write is
@@ -109,8 +112,10 @@ func zone() (*time.Location, string) {
 }
 
 // veventOf is one Graph event as a VEVENT. A repeating one keeps its rule and
-// is written in loc; a single one is written in UTC, which cannot drift.
-func veventOf(uid string, g graphEvent, loc *time.Location) *ical.Component {
+// is written in loc; a single one is written in UTC, which cannot drift. self
+// is the account's address: how it answered an invite is its ATTENDEE's
+// PARTSTAT, where a CalDAV invite stored after an RSVP carries it too.
+func veventOf(uid string, g graphEvent, loc *time.Location, self string) *ical.Component {
 	ev := ical.NewComponent(ical.CompEvent)
 	ev.Props.SetText(ical.PropUID, uid)
 	ev.Props.SetDateTime(ical.PropDateTimeStamp, time.Now().UTC())
@@ -143,6 +148,12 @@ func veventOf(uid string, g graphEvent, loc *time.Location) *ical.Component {
 	if g.IsCancelled {
 		ev.Props.SetText(ical.PropStatus, "CANCELLED")
 	}
+	if ps := partstatOf(g.ResponseStatus.Response); ps != "" && self != "" {
+		att := ical.NewProp(ical.PropAttendee)
+		att.Params.Set("PARTSTAT", ps)
+		att.Value = "mailto:" + strings.ToLower(self)
+		ev.Props.Set(att)
+	}
 	if g.Recurrence != nil {
 		if rule, err := ruleOf(*g.Recurrence, loc); err == nil {
 			prop := ical.NewProp(ical.PropRecurrenceRule)
@@ -166,6 +177,22 @@ func veventOf(uid string, g graphEvent, loc *time.Location) *ical.Component {
 	return ev
 }
 
+// partstatOf is Graph's responseStatus as a PARTSTAT. An event the account
+// organised has no answer of its own to show.
+func partstatOf(response string) string {
+	switch response {
+	case "accepted":
+		return vcal.PartstatAccepted
+	case "tentativelyAccepted":
+		return vcal.PartstatTentative
+	case "declined":
+		return vcal.PartstatDeclined
+	case "none", "notResponded":
+		return vcal.PartstatNeedsAction
+	}
+	return ""
+}
+
 // bodyText is the event's notes as text. An Outlook invite's body is HTML,
 // rendered down the way a mail's is (ADR-0009).
 func bodyText(g graphEvent) string {
@@ -176,8 +203,8 @@ func bodyText(g graphEvent) string {
 }
 
 // singleICal is a one-off event as a calendar object.
-func singleICal(uid string, g graphEvent, loc *time.Location) (string, error) {
-	cal := calendarOf(veventOf(uid, g, loc))
+func singleICal(uid string, g graphEvent, loc *time.Location, self string) (string, error) {
+	cal := calendarOf(veventOf(uid, g, loc, self))
 	return encodeCal(cal)
 }
 
@@ -186,8 +213,8 @@ func singleICal(uid string, g graphEvent, loc *time.Location) (string, error) {
 // cancelled override for every instance the rule makes and the server no longer
 // has. That is what vcal expands — "a repeating event is one row" — and only the
 // window the instances were read for is described.
-func seriesICal(uid string, master graphEvent, instances []graphEvent, from, to time.Time, loc *time.Location) (string, error) {
-	mc := veventOf(uid, master, loc)
+func seriesICal(uid string, master graphEvent, instances []graphEvent, from, to time.Time, loc *time.Location, self string) (string, error) {
+	mc := veventOf(uid, master, loc, self)
 	cal := calendarOf(mc)
 	have := map[time.Time]bool{}
 	for _, in := range instances {

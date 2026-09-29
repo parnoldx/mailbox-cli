@@ -7,8 +7,10 @@ import (
 	"testing"
 	"time"
 
+	compose "mailbox/internal/message"
 	"mailbox/internal/mirror"
 	"mailbox/internal/sync/davsync"
+	"mailbox/internal/sync/mailsync"
 	"mailbox/internal/vcal"
 )
 
@@ -125,6 +127,10 @@ func TestRSVPAcceptPutsTheEventOnTheHomeCalendar(t *testing.T) {
 	raw := eventNamed(t, f, "Design review")
 	if !strings.Contains(raw, "PARTSTAT=ACCEPTED") {
 		t.Errorf("accepted event missing PARTSTAT:\n%s", raw)
+	}
+	card := mustAsk(t, d, []string{"invite", "show"}, map[string]any{"positional": id}).Data.(*inviteCard)
+	if card.Response != vcal.PartstatAccepted {
+		t.Errorf("card response = %q", card.Response)
 	}
 }
 
@@ -254,5 +260,80 @@ func TestRSVPWithoutAUIDIsRefused(t *testing.T) {
 	resp := ask(t, d, []string{"rsvp"}, map[string]any{"positional": d.primaryAccount().messageID("INBOX", msg.UID), "accept": true})
 	if resp.OK || resp.Code != "usage" {
 		t.Fatalf("resp = %+v", resp)
+	}
+}
+
+// seedGraphInvite adds a Microsoft 365 account "work" whose Inbox holds an
+// invite to me@work.test, with Respond recorded into the returned slice.
+func seedGraphInvite(t *testing.T) (*Daemon, *davsync.Fake, string, *[]string) {
+	t.Helper()
+	d, f, _ := seedInviteDAV(t)
+	mail := mailsync.NewFake("INBOX")
+	ics := strings.Replace(testInviteICS, "me@example.com", "me@work.test", 1)
+	msg := mail.Deliver("INBOX", "meet-1@example.org", "Invitation: Design review", "please come")
+	msg.From = "Boss <boss@example.org>"
+	msg.Attach("2", "text/calendar", "invite.ics", []byte(ics))
+	r := &mailsync.Reconciler{Account: "work", Mirror: d.Mirror, Driver: mail}
+	acct := NewAccount("work", r, &mailsync.Writer{Account: "work", Mirror: d.Mirror, Driver: mail, Mirrored: []string{"INBOX"}},
+		[]string{"INBOX"}, nil)
+	acct.From = compose.Address{Addr: "me@work.test"}
+	acct.Graph = true
+	var answered []string
+	acct.Respond = func(_ context.Context, href, partstat string) error {
+		answered = append(answered, href+" "+partstat)
+		return nil
+	}
+	d.Others = append(d.Others, acct)
+	if _, err := r.SyncAll(context.Background(), []string{"INBOX"}); err != nil {
+		t.Fatal(err)
+	}
+	return d, f, acct.messageID("INBOX", msg.UID), &answered
+}
+
+// A Microsoft 365 invite is already on the calendar when it arrives: the card
+// shows the answer that event holds, and an RSVP goes to Exchange through
+// Respond — no iMIP mail leaves and no second copy is written.
+func TestRSVPOnMicrosoft365AnswersTheEventExchangeMade(t *testing.T) {
+	d, f, id, answered := seedGraphInvite(t)
+	ctx := context.Background()
+	onCalendar := strings.Replace(strings.Replace(testInviteICS, "METHOD:REQUEST\n", "", 1),
+		"ATTENDEE;RSVP=TRUE:mailto:me@example.com", "ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:me@work.test", 1)
+	f.Deliver("https://sogo.example.org/work/", "/work/meet-1.ics", onCalendar)
+	if _, err := d.DAV.SyncKinds(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	card := mustAsk(t, d, []string{"invite", "show"}, map[string]any{"positional": id}).Data.(*inviteCard)
+	if card.Response != vcal.PartstatNeedsAction || card.Calendar != "Work" {
+		t.Fatalf("card = %+v", card)
+	}
+
+	resp := mustAsk(t, d, []string{"rsvp"}, map[string]any{"positional": id, "accept": true})
+	if out := resp.Data.(sent); out.State != "answered" || out.Recipients[0] != "boss@example.org" {
+		t.Fatalf("resp = %+v", out)
+	}
+	if len(*answered) != 1 || (*answered)[0] != "/work/meet-1.ics ACCEPTED" {
+		t.Fatalf("respond = %v", *answered)
+	}
+	if n := f.CallCount("Put"); n != 0 {
+		t.Errorf("wrote the event %d times; Exchange already has it", n)
+	}
+	rows, err := d.Outbox.List(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 0 {
+		t.Errorf("an iMIP reply went into the outbox: %+v", rows)
+	}
+}
+
+// Not synced yet, or deleted in Outlook: nothing to answer on Exchange.
+func TestRSVPOnMicrosoft365WithoutTheEventIsNotFound(t *testing.T) {
+	d, _, id, answered := seedGraphInvite(t)
+	if resp := ask(t, d, []string{"rsvp"}, map[string]any{"positional": id, "accept": true}); resp.OK || resp.Code != "not_found" {
+		t.Fatalf("resp = %+v", resp)
+	}
+	if len(*answered) != 0 {
+		t.Fatalf("answered %v", *answered)
 	}
 }

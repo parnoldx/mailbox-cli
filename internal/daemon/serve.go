@@ -361,9 +361,6 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 		if err != nil {
 			return resp.usage(err.Error())
 		}
-		if acct.Graph {
-			return resp.ok(nil)
-		}
 		r, err := d.Mirror.Row(acct.Name, folder, uid)
 		if errors.Is(err, mirror.ErrNotFound) {
 			return resp.notFound(noSuchMessage(id))

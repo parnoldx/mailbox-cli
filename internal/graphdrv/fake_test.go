@@ -482,6 +482,16 @@ func (f *fakeGraph) event(w http.ResponseWriter, r *http.Request, parts []string
 	switch {
 	case len(parts) == 4 && parts[3] == "instances":
 		f.writeJSON(w, map[string]any{"value": f.instances[id]})
+	case len(parts) == 4 && r.Method == http.MethodPost:
+		answer := map[string]string{"accept": "accepted", "tentativelyAccept": "tentativelyAccepted", "decline": "declined"}[parts[3]]
+		if answer == "" {
+			f.fail(w, http.StatusBadRequest, "ErrorInvalidRequest")
+			return
+		}
+		e["responseStatus"] = map[string]any{"response": answer}
+		e["changeKey"] = fmt.Sprintf("%v+", e["changeKey"])
+		f.change(fmt.Sprint(e["calendar"]), id, false)
+		w.WriteHeader(http.StatusAccepted)
 	case r.Method == http.MethodPatch:
 		var in map[string]any
 		_ = json.Unmarshal(body, &in)
