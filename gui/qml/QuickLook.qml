@@ -80,6 +80,12 @@ Item {
         Keys.onEscapePressed: root.close()
         Keys.onPressed: function (e) {
             if (e.key === Qt.Key_Q) { root.close(); e.accepted = true }
+            else if (e.key === Qt.Key_C && (e.modifiers & Qt.ControlModifier)) {
+                // keyGrab owns focus while the preview is open, so Ctrl+C has
+                // to be relayed to the PDF view (drag-select highlight works,
+                // but the stock PdfMultiPageView wires no copy key itself).
+                if (root.isPdf) pdfLoader.item?.copySelectionToClipboard()
+            }
         }
     }
 
@@ -175,6 +181,7 @@ Item {
             }
 
             Loader {
+                id: pdfLoader
                 anchors.fill: parent
                 active: root.opened && root.isPdf && root.path !== ""
                 sourceComponent: Component {
