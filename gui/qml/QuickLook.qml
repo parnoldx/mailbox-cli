@@ -185,7 +185,10 @@ Item {
                 anchors.fill: parent
                 active: root.opened && root.isPdf && root.path !== ""
                 sourceComponent: Component {
-                    PdfMultiPageView {
+                    // Vendored Qt PdfMultiPageView, patched: drag selects
+                    // text instead of the Flickable stealing the drag to
+                    // scroll (gui/qml/SelectingPdfView.qml).
+                    SelectingPdfView {
                         anchors.fill: parent
                         document: PdfDocument { source: root.fileUrl(root.path) }
                     }

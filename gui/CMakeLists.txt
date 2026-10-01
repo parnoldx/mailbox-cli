@@ -45,6 +45,7 @@ qt_add_resources(mailbox-gui "qml"
         qml/ThreadMessage.qml
         qml/WebWarmup.qml
         qml/WebRevive.qml
+        qml/SelectingPdfView.qml
         qml/BottomStacks.qml
         qml/PileStack.qml
         qml/SectionLabel.qml
