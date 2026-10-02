@@ -153,3 +153,39 @@ func TestAServerThatIsDownKeepsTheAccountAndReportsIt(t *testing.T) {
 		t.Fatalf("problems = %v", problems)
 	}
 }
+
+// Every field of the file is acted on: rebuilt, applied or an exit. A field the
+// reload did not list used to change in the file and nowhere else.
+func TestAFieldNobodyListedStillTakesEffect(t *testing.T) {
+	d := seed(t)
+	built := 0
+	acc := Accounts{
+		Build: func(name string, _ config.Account) (*Account, error) {
+			built++
+			return NewAccount(name, nil, nil, []string{"INBOX"}, nil), nil
+		},
+		Forget:   func(string) error { return nil },
+		InFlight: func(string) (int, error) { return 0, nil },
+	}
+	was := cfgWith(map[string]config.Account{"gmx": {Email: "me@gmx.de", Color: "blue"}})
+	now := cfgWith(map[string]config.Account{"gmx": {Email: "me@gmx.de", Color: "red"}})
+	if applied := d.Reconcile(was, now, acc); applied.Restart || built != 1 {
+		t.Fatalf("a Secondary's colour: built %d, %+v", built, applied)
+	}
+
+	for name, edit := range map[string]func(*config.Config){
+		"primary colour": func(c *config.Config) { c.Account.Color = "red" },
+		"bubble hours":   func(c *config.Config) { c.Bubble.Morning = 7 },
+		"pickup expiry":  func(c *config.Config) { c.Pickup.Expiry = "1h" },
+		"fileee":         func(c *config.Config) { c.Fileee.Address = "x@example.com" },
+	} {
+		now := cfgWith(nil)
+		edit(now)
+		if applied := d.Reconcile(cfgWith(nil), now, acc); !applied.Restart {
+			t.Errorf("%s: no restart, %+v", name, applied)
+		}
+	}
+	if applied := d.Reconcile(cfgWith(nil), cfgWith(nil), acc); applied.Restart {
+		t.Fatal("an unchanged file restarted the daemon")
+	}
+}

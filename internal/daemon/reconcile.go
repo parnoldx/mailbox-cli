@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"fmt"
+	"reflect"
 	"sort"
 
 	"mailbox/internal/config"
@@ -44,6 +45,13 @@ func (d *Daemon) Reconcile(was, now *config.Config, a Accounts) Applied {
 	// driver set as the hand-added calendars, for the same reason.
 	if name := graphChanged(was.Secondary, now.Secondary); name != "" {
 		out.Restart, out.Reason = true, "the microsoft 365 account "+name+" changed"
+		return out
+	}
+	// Anything not applied below is an exit too. Listing what forces one meant
+	// every field nobody listed — an Account's colour, the bubble hours —
+	// changed in the file and nowhere else.
+	if !reflect.DeepEqual(notInPlace(*was), notInPlace(*now)) {
+		out.Restart, out.Reason = true, "the config changed"
 		return out
 	}
 
@@ -150,19 +158,18 @@ func primaryDiffers(was, now config.Account) string {
 	return ""
 }
 
-// sameAccount compares two Secondary Account blocks. A Watch list makes the
-// struct uncomparable, which is why this is spelt out rather than ==.
+// sameAccount compares two Secondary Account blocks, every field of them: one
+// left out of the comparison is a change the reload never makes.
 func sameAccount(a, b config.Account) bool {
-	return a.Email == b.Email && a.Password == b.Password &&
-		a.DisplayName == b.DisplayName &&
-		a.IMAPHost == b.IMAPHost && a.IMAPPort == b.IMAPPort &&
-		a.SMTPHost == b.SMTPHost && a.SMTPPort == b.SMTPPort &&
-		a.SentBox == b.SentBox && a.DAVPassword == b.DAVPassword &&
-		a.DAVEndpoint == b.DAVEndpoint &&
-		a.TaskList == b.TaskList && a.AddressBook == b.AddressBook &&
-		a.SieveHost == b.SieveHost && a.SievePort == b.SievePort &&
-		a.Backend == b.Backend && a.Tenant == b.Tenant && a.ClientID == b.ClientID &&
-		sameStrings(a.Watch, b.Watch)
+	return reflect.DeepEqual(a, b)
+}
+
+// notInPlace is the config less what Reconcile applies without an exit.
+func notInPlace(c config.Config) config.Config {
+	c.Secondary = nil
+	c.Collections = config.Collections{}
+	c.Account.TaskList, c.Account.AddressBook = "", ""
+	return c
 }
 
 // graphChanged names a Microsoft 365 account that was added, removed or
