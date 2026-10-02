@@ -480,6 +480,17 @@ ApplicationWindow {
             })
             out.sort(function (x, y) { return (y.primary ? 1 : 0) - (x.primary ? 1 : 0) })
             win.accounts = out
+            // Once on startup: outside work hours (Mon–Fri 9–18) open on the
+            // Personal account instead of all of them. Never re-applied, so a
+            // reconnect or a manual filter pick is not second-guessed.
+            if (!win._filterChosen) {
+                win._filterChosen = true
+                var d = new Date(), work = d.getDay() >= 1 && d.getDay() <= 5
+                                              && d.getHours() >= 9 && d.getHours() < 18
+                if (win.multiAccount && !work)
+                    for (var i = 0; i < out.length; i++)
+                        if (out[i].primary) { win.setAccountFilter(out[i].name); break }
+            }
         })
     }
     // The account a row or an id belongs to. Rows carry "" for the Primary;
@@ -512,6 +523,7 @@ ApplicationWindow {
     // buckets a Secondary has too — the Screener, Feed and Paper Trail are the
     // Primary's alone (a Secondary has no Routing).
     property string accountFilter: ""
+    property bool _filterChosen: false
     function filterApplies() {
         return win.multiAccount && win.labelView === ""
             && ["INBOX", "Aside", "Reply Later", "Sent"].indexOf(currentKey()) >= 0
