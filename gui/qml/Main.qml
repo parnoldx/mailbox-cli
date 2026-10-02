@@ -495,6 +495,13 @@ ApplicationWindow {
         var a = slash > 0 ? accountNamed(s.slice(0, slash)) : null
         return a && !a.primary ? a.name : ""
     }
+    // The Primary Account's own name, for qualifying an id when a mail moves
+    // off it — ids never name the Primary, so "primary/Drafts:6" is how a
+    // draft that lives there says so while --account points elsewhere.
+    function primaryName() {
+        var a = accountNamed("")
+        return a ? a.name : ""
+    }
     // A palette name (accent, orange, …) or #rrggbb, as `account list` gives it.
     function accountColor(name) {
         var a = accountNamed(name)

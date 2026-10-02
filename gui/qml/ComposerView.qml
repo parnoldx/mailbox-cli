@@ -28,13 +28,13 @@ Item {
     property var replyAllCc: []
     property string replyFrom: ""
     // The Secondary Account this mail goes out from; "" is the Primary. A new
-    // mail starts on the Primary and can be switched; a reply, forward or
-    // draft stays on the account its id names (daemon/send.go).
+    // mail and a draft can be switched; a reply or forward stays on the
+    // account its thread lives on (daemon/send.go).
     property string account: ""
     readonly property var sender: win.accountNamed(root.account)
     readonly property color senderColor: win.multiAccount ? win.accountColor(root.account) : Theme.accent
     function cycleAccount() {
-        if (root.mode !== "new" || !win.multiAccount) return
+        if ((root.mode !== "new" && root.mode !== "draft") || !win.multiAccount) return
         var i = win.accounts.indexOf(root.sender)
         var next = win.accounts[(i + 1) % win.accounts.length]
         root.account = next.primary ? "" : next.name
@@ -268,6 +268,13 @@ Item {
         } else if (root.mode === "draft") {
             // edit / send an existing draft in place, not a fresh append.
             a.positional = root.draftId
+            // The id names the account the draft lives in. When the From pill
+            // has moved it, qualify the id with that account, so the daemon
+            // files the new version under the account switched to and bins
+            // the old copy where it was.
+            var home = win.accountOfId(root.draftId) || win.primaryName()
+            var dest = root.account ? root.account : win.primaryName()
+            if (dest !== home) a.positional = home + "/" + root.draftId
             // draft edit/send keeps the old plain twin unless `body` is given,
             // so hand it a stripped copy alongside the real HTML.
             a.body = root._stripTags(html).replace(/[ \t]+\n/g, "\n").trim()
@@ -476,12 +483,12 @@ Item {
                 id: fromText
                 anchors.centerIn: parent
                 text: root.sender ? root.sender.label + "  ·  " + root.sender.email
-                                    + (root.mode === "new" ? "  \uf0dc" : "") : ""
+                                    + (root.mode === "new" || root.mode === "draft" ? "  \uf0dc" : "") : ""
                 font.family: Theme.fontFamily
                 font.pixelSize: 12
                 color: root.senderColor
             }
-            HoverHandler { cursorShape: root.mode === "new" ? Qt.PointingHandCursor : Qt.ArrowCursor }
+            HoverHandler { cursorShape: root.mode === "new" || root.mode === "draft" ? Qt.PointingHandCursor : Qt.ArrowCursor }
             TapHandler { onTapped: root.cycleAccount() }
         }
     }

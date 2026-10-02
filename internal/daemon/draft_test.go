@@ -6,6 +6,9 @@ import (
 	"testing"
 
 	"mailbox/internal/mirror"
+	"mailbox/internal/outbox"
+	"mailbox/internal/sync/mailsync"
+	compose "mailbox/internal/message"
 )
 
 // seedDraft puts one unsent mail in Drafts, both on the fake server and in the
@@ -152,6 +155,79 @@ func TestDraftWithNoDraftsBoxIsARefusal(t *testing.T) {
 	resp := d.handle(context.Background(), Request{ID: "1", Cmd: []string{"draft", "list"}})
 	if resp.OK || !strings.Contains(resp.Error, "drafts box") {
 		t.Fatalf("resp = %+v", resp)
+	}
+}
+
+// twoDraftAccounts is seedDraft's Primary with a Secondary called "work" whose
+// server keeps a Drafts box, so a draft can be moved between the two.
+func twoDraftAccounts(t *testing.T) (*Daemon, *stubTransport) {
+	t.Helper()
+	d, _ := seedDraft(t)
+
+	second := mailsync.NewFake("INBOX")
+	second.AddFolder("Drafts")
+	r := &mailsync.Reconciler{Account: "work", Mirror: d.Mirror, Driver: second}
+	mirrored := []string{"INBOX", "Drafts"}
+	acct := NewAccount("work", r,
+		&mailsync.Writer{Account: "work", Mirror: d.Mirror, Driver: second, Mirrored: mirrored},
+		mirrored, []string{"INBOX"})
+	acct.From = compose.Address{Name: "Peter", Addr: "peter@iils.de"}
+	transport := &stubTransport{}
+	acct.Courier = &outbox.Courier{
+		Box: d.Outbox, Account: "work", Transport: transport, Filer: second, SentBox: "Sent",
+	}
+	d.Others = append(d.Others, acct)
+	if _, err := r.SyncAll(context.Background(), mirrored); err != nil {
+		t.Fatal(err)
+	}
+	return d, transport
+}
+
+// A draft being sent from another account moves: the id names where it lives,
+// --account names where it is going. The edit files the new version in the
+// second account's drafts box and bins the old one in the first's — a mail
+// that never existed on the account it is leaving is not a copy that lingers.
+func TestDraftEditMovesItToAnotherAccount(t *testing.T) {
+	d, _ := twoDraftAccounts(t)
+	resp := mustAsk(t, d, []string{"draft", "edit"}, map[string]any{
+		"positional": "primary/Drafts:1", "account": "work",
+		"subject": "Angebot",
+	})
+	got := resp.Data.(map[string]any)
+	if got["id"] != "work/Drafts:1" {
+		t.Fatalf("the moved draft's id = %v", got["id"])
+	}
+	left, err := d.Mirror.Rows("primary", "Drafts", 25)
+	if err != nil || len(left) != 0 {
+		t.Fatalf("the old copy is still in the Primary's drafts box: %v %v", left, err)
+	}
+	rows, err := d.Mirror.Rows("work", "Drafts", 25)
+	if err != nil || len(rows) != 1 || rows[0].Message.Subject != "Angebot" {
+		t.Fatalf("the moved draft is not in the Secondary's drafts box: %v %v", rows, err)
+	}
+	// And it goes out under the account it moved to.
+	if !strings.Contains(rows[0].Message.From, "peter@iils.de") {
+		t.Errorf("moved draft From = %q", rows[0].Message.From)
+	}
+}
+
+// Sending a draft through another account delivers the mail from that
+// account's sender and clears the draft from where it was.
+func TestDraftSendFromAnotherAccount(t *testing.T) {
+	d, tr := twoDraftAccounts(t)
+	resp := mustAsk(t, d, []string{"draft", "send"}, map[string]any{
+		"positional": "primary/Drafts:1", "account": "work",
+		"to": []any{"anna@example.com"},
+	})
+	if out := resp.Data.(sent); out.State != "filed" && out.State != "sent" {
+		t.Fatalf("draft send gave %+v", out)
+	}
+	if len(tr.sent) != 1 || !strings.Contains(string(tr.sent[0]), "peter@iils.de") {
+		t.Fatalf("the mail did not go out from the Secondary: %q", tr.sent)
+	}
+	left, err := d.Mirror.Rows("primary", "Drafts", 25)
+	if err != nil || len(left) != 0 {
+		t.Fatalf("the draft is still in the Primary's drafts box: %v %v", left, err)
 	}
 }
 
