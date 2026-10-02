@@ -275,6 +275,13 @@ func serveCapture(t *testing.T) *daemon.Request {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A command that never connects — a flag the parser refuses, say — must
+	// not hang the test in its cleanup, waiting for a request that never
+	// comes. Any real request arrives at once, so a short deadline is free.
+	type deadliner interface{ SetDeadline(time.Time) error }
+	if dl, ok := ln.(deadliner); ok {
+		dl.SetDeadline(time.Now().Add(5 * time.Second))
+	}
 	t.Cleanup(func() { ln.Close() })
 	t.Setenv("MAILBOX_SOCKET", socket)
 
@@ -318,6 +325,43 @@ func TestChangeFlagsReachTheDaemon(t *testing.T) {
 		}
 		if got.Args[key] != want {
 			t.Errorf("%v: Args[%s] = %v, want %q", tt, key, got.Args[key], want)
+		}
+	}
+}
+
+// --account on the draft verbs says whose drafts box the command looks in. The
+// daemon has always read it, but the CLI never put it on the wire, so a draft
+// saved on a Secondary — `compose --account work --draft` — was invisible to
+// `draft list` and could not be opened, edited or sent.
+func TestDraftAccountReachesTheDaemon(t *testing.T) {
+	serveSeeded(t)
+	// A named account reaches the daemon and names a real one: the same box,
+	// the same answer as the bare form. Before the flag existed the parser
+	// refused it and nothing reached the daemon at all.
+	bareOut, _, bareCode := run(t, "draft", "list")
+	namedOut, _, namedCode := run(t, "draft", "list", "--account", "primary")
+	if namedCode != bareCode || namedOut != bareOut {
+		t.Fatalf("--account primary: exit %d, out %q — bare: exit %d, out %q",
+			namedCode, namedOut, bareCode, bareOut)
+	}
+	if _, errs, code := run(t, "draft", "list", "--account", "gmx"); code == ExitOK || !strings.Contains(errs, "no account called") {
+		t.Errorf("unknown account: exit %d, stderr %q", code, errs)
+	}
+
+	// And the flag rides the wire on every verb of the pile.
+	for _, tt := range [][]string{
+		{"draft", "list", "--account", "work"},
+		{"draft", "show", "Drafts:6", "--account", "work"},
+		{"draft", "send", "Drafts:6", "--account", "work"},
+		{"draft", "delete", "Drafts:6", "--account", "work"},
+		{"draft", "edit", "Drafts:6", "--account", "work", "--subject", "x"},
+	} {
+		got := serveCapture(t)
+		if _, errs, code := run(t, tt...); code != ExitOK {
+			t.Fatalf("%v: exit %d: %s", tt, code, errs)
+		}
+		if got.Args["account"] != "work" {
+			t.Errorf("%v: Args[account] = %v, want %q", tt, got.Args["account"], "work")
 		}
 	}
 }

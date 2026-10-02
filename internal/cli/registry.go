@@ -385,8 +385,9 @@ func tree(l Locals) []*Command {
 			Sub: []*Command{
 				{
 					Name: "list", Short: "What is waiting to be finished",
-					Usage: []string{"mailbox draft list [--limit N]"},
+					Usage: []string{"mailbox draft list [--account NAME] [--limit N]"},
 					Flags: []Flag{
+						{Name: "account", Kind: KindString, Arg: "NAME", Desc: "whose drafts (default the primary)"},
 						{Name: "limit", Kind: KindInt, Arg: "N", Int: 25, Desc: "how many to show"},
 					},
 					Run: draftVerb("list"),
@@ -397,6 +398,7 @@ func tree(l Locals) []*Command {
 					Long: "The id draft list printed, or a bare uid — the command has already " +
 						"said which box this is about.",
 					Examples: []string{"mailbox draft show Drafts:12", "mailbox draft show 12"},
+					Flags:    []Flag{{Name: "account", Kind: KindString, Arg: "NAME", Desc: "whose drafts (default the primary)"}},
 					Run:      draftVerb("show"),
 				},
 				{
@@ -408,6 +410,7 @@ func tree(l Locals) []*Command {
 						"IMAP has no in-place edit: an edit writes a new draft and trashes the old, so the id changes and the reply names the new one.",
 					},
 					Flags: []Flag{
+						{Name: "account", Kind: KindString, Arg: "NAME", Desc: "whose drafts (default the primary)"},
 						{Name: "to", Kind: KindList, Arg: "ADDR", Desc: "replace the recipients"},
 						{Name: "cc", Kind: KindList, Arg: "ADDR", Desc: "replace the copied recipients"},
 						{Name: "subject", Kind: KindString, Arg: "S", Desc: "a new subject"},
@@ -422,6 +425,7 @@ func tree(l Locals) []*Command {
 					Long: "It goes through the outbox like any other send, and the draft is " +
 						"trashed only once the mail is out.",
 					Flags: append([]Flag{
+						{Name: "account", Kind: KindString, Arg: "NAME", Desc: "whose drafts (default the primary)"},
 						{Name: "to", Kind: KindList, Arg: "ADDR", Desc: "replace the recipients"},
 						{Name: "cc", Kind: KindList, Arg: "ADDR", Desc: "replace the copied recipients"},
 						{Name: "subject", Kind: KindString, Arg: "S", Desc: "a new subject"},
@@ -432,7 +436,8 @@ func tree(l Locals) []*Command {
 				},
 				{
 					Name: "delete", Short: "Trash a draft", Needs: true,
-					Usage: []string{"mailbox draft delete ID"},
+					Usage: []string{"mailbox draft delete ID [--account NAME]"},
+					Flags: []Flag{{Name: "account", Kind: KindString, Arg: "NAME", Desc: "whose drafts (default the primary)"}},
 					Run:   draftVerb("delete"),
 				},
 			},

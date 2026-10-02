@@ -169,6 +169,7 @@ func draftVerb(verb string) func(*input, io.Writer, io.Writer) int {
 		}
 		args := map[string]any{
 			"positional": in.First(), "limit": in.Int("limit"),
+			"account": in.Str("account"),
 			"to": in.List("to"), "cc": in.List("cc"),
 			"subject": in.Str("subject"), "body": in.Str("body"),
 		}
