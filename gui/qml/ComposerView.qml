@@ -33,11 +33,31 @@ Item {
     property string account: ""
     readonly property var sender: win.accountNamed(root.account)
     readonly property color senderColor: win.multiAccount ? win.accountColor(root.account) : Theme.accent
+    // The text keeps the account's hue but not its lightness: a dark colour
+    // does not read on the dark theme, a light one not on the light one.
+    readonly property color senderTextColor: {
+        var c = root.senderColor
+        if (Theme.dark && c.hslLightness < 0.55)
+            return Qt.hsla(c.hslHue, c.hslSaturation, Math.min(0.8, c.hslLightness + 0.3), 1)
+        if (!Theme.dark && c.hslLightness > 0.5)
+            return Qt.hsla(c.hslHue, c.hslSaturation, Math.max(0.25, c.hslLightness - 0.25), 1)
+        return c
+    }
+    // The next account after the one showing, by name — the accounts array is
+    // C++-converted JSON, so every read hands out a fresh copy and indexOf by
+    // object identity always misses.
     function cycleAccount() {
         if ((root.mode !== "new" && root.mode !== "draft") || !win.multiAccount) return
-        var i = win.accounts.indexOf(root.sender)
-        var next = win.accounts[(i + 1) % win.accounts.length]
-        root.account = next.primary ? "" : next.name
+        var n = win.accounts.length
+        for (var i = 0; i < n; i++) {
+            var row = win.accounts[i]
+            if (root.account ? row.name === root.account : row.primary) {
+                var next = win.accounts[(i + 1) % n]
+                root.account = next.primary ? "" : next.name
+                return
+            }
+        }
+        root.account = ""
     }
     property string baseSubject: ""
     // The parent's plain text and date, kept from openReply — the agent draft
@@ -486,7 +506,7 @@ Item {
                                     + (root.mode === "new" || root.mode === "draft" ? "  \uf0dc" : "") : ""
                 font.family: Theme.fontFamily
                 font.pixelSize: 12
-                color: root.senderColor
+                color: root.senderTextColor
             }
             HoverHandler { cursorShape: root.mode === "new" || root.mode === "draft" ? Qt.PointingHandCursor : Qt.ArrowCursor }
             TapHandler { onTapped: root.cycleAccount() }
