@@ -111,6 +111,19 @@ func (a *Auth) load() (*Token, error) {
 	return &tok, nil
 }
 
+// Expire makes the next Token call refresh regardless of what the local clock
+// thinks. After a resume the clock can be behind until the first NTP sync, and
+// then a token that Graph has already expired still looks good locally — the
+// client keeps presenting it and gets 401 InvalidAuthenticationToken forever.
+// This is what a refused request does to escape that.
+func (a *Auth) Expire() {
+	a.mu.Lock()
+	if a.tok != nil {
+		a.tok.Expiry = time.Time{}
+	}
+	a.mu.Unlock()
+}
+
 // save writes the token by temp file and rename, created 0600 rather than
 // chmodded after: a refresh is a write, and a crash halfway through one must
 // leave the old sign-in, not half of a new one (ADR-0014, ADR-0030).

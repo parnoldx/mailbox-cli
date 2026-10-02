@@ -33,11 +33,14 @@ type Client struct {
 	HTTP *http.Client
 	// Token returns a current access token, refreshing it when it has to.
 	Token func(ctx context.Context) (string, error)
+	// ForceRefresh makes the next Token call refresh even if the local clock
+	// still calls the current token fresh. Nil where there is nothing to force.
+	ForceRefresh func()
 }
 
 // NewClient talks to the real Graph as whoever auth signed in.
 func NewClient(auth *Auth) *Client {
-	return &Client{Base: Base, HTTP: &http.Client{Timeout: 60 * time.Second}, Token: auth.Token}
+	return &Client{Base: Base, HTTP: &http.Client{Timeout: 60 * time.Second}, Token: auth.Token, ForceRefresh: auth.Expire}
 }
 
 // APIError is Graph refusing a request, with its code — "ErrorItemNotFound",
@@ -148,6 +151,17 @@ func (c *Client) raw(ctx context.Context, r request) ([]byte, error) {
 				}
 				continue
 			}
+		}
+		if resp.StatusCode == http.StatusUnauthorized && attempt == 0 {
+			// Graph refused the token. The usual cause is a lying clock: between a
+			// resume and the first NTP sync the local time is off, so the expiry
+			// check keeps a token that Graph already calls stale. Force one refresh
+			// and retry; a genuinely dead sign-in comes back as invalid_grant and
+			// surfaces as ErrSignIn as before.
+			if c.ForceRefresh != nil {
+				c.ForceRefresh()
+			}
+			continue
 		}
 		if resp.StatusCode >= 300 {
 			return nil, apiError(resp.StatusCode, data)
