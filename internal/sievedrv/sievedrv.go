@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"time"
 
 	"go.guido-berhoerster.org/managesieve"
 )
@@ -43,9 +44,22 @@ func (d *Driver) addr() string {
 // clear on 4190, so a server that does not offer STARTTLS is refused rather
 // than downgraded: the password goes over this connection.
 func (d *Driver) dial() (*managesieve.Client, error) {
-	c, err := managesieve.Dial(d.addr())
+	// A filtered port must not hang the dial (and with it the caller) forever:
+	// the daemon answers requests one at a time, so a stuck dial wedges every
+	// client until the daemon is restarted.
+	conn, err := net.DialTimeout("tcp", d.addr(), 10*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("connect to %s: %w", d.addr(), err)
+	}
+	host, _, err := net.SplitHostPort(d.addr())
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+	c, err := managesieve.NewClient(conn, host)
+	if err != nil {
+		conn.Close()
+		return nil, err
 	}
 	if !c.SupportsTLS() {
 		c.Close()
