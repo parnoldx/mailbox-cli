@@ -86,6 +86,47 @@ func printInvite(stdout, stderr io.Writer, resp daemon.Response) {
 	if answer := str(m["response"]); answer != "" {
 		fmt.Fprintf(stdout, "answered: %s\n", strings.ToLower(answer))
 	}
+	printInviteDay(stdout, m["day"])
+}
+
+// printInviteDay is the same day the reader draws: the invite, and what else
+// is already on that day, so a yes/no/maybe is not a guess.
+func printInviteDay(stdout io.Writer, raw any) {
+	rows, ok := raw.([]any)
+	if !ok || len(rows) == 0 {
+		return
+	}
+	fmt.Fprintln(stdout, "that day:")
+	for _, row := range rows {
+		b, ok := row.(map[string]any)
+		if !ok {
+			continue
+		}
+		summary := str(b["summary"])
+		if summary == "" {
+			summary = "Busy"
+		}
+		mark := ""
+		if proposed, _ := b["proposed"].(bool); proposed {
+			mark = "  ← this"
+		}
+		if all, _ := b["all_day"].(bool); all {
+			fmt.Fprintf(stdout, "  all day     %s%s\n", summary, mark)
+			continue
+		}
+		fmt.Fprintf(stdout, "  %s–%s  %s%s\n", clockOf(str(b["start"])), clockOf(str(b["end"])), summary, mark)
+	}
+}
+
+func clockOf(rfc string) string {
+	t, err := time.Parse(time.RFC3339, rfc)
+	if err != nil {
+		if rfc == "" {
+			return "?"
+		}
+		return rfc
+	}
+	return t.Local().Format("15:04")
 }
 
 func runStatus(in *input, stdout, stderr io.Writer) int {

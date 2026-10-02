@@ -32,7 +32,7 @@ func (d *Daemon) handleContact(ctx context.Context, req Request, resp Response) 
 	case "list", "search":
 		query := req.Str("positional")
 		limit := req.Int("limit", 25)
-		objects, err := d.Mirror.Contacts(d.Account, query, limit)
+		objects, err := d.Mirror.Contacts(d.Primary.Name, query, limit)
 		if err != nil {
 			return resp.api(err.Error())
 		}
@@ -47,7 +47,7 @@ func (d *Daemon) handleContact(ctx context.Context, req Request, resp Response) 
 		if err != nil {
 			return resp.usage(err.Error())
 		}
-		o, err := d.Mirror.Object(d.Account, id)
+		o, err := d.Mirror.Object(d.Primary.Name, id)
 		if errors.Is(err, mirror.ErrNotFound) {
 			return resp.notFound(fmt.Sprintf("no contact %d in the mirror", id))
 		}

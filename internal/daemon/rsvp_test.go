@@ -3,6 +3,8 @@ package daemon
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -63,7 +65,7 @@ func seedInvite(t *testing.T) (*Daemon, *stubTransport, string) {
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	return d, tr, d.primaryAccount().messageID("INBOX", msg.UID)
+	return d, tr, d.Primary.messageID("INBOX", msg.UID)
 }
 
 func seedInviteDAV(t *testing.T) (*Daemon, *davsync.Fake, string) {
@@ -97,7 +99,7 @@ func TestInviteToTheAccountAddressPicksTheHomeCalendar(t *testing.T) {
 func TestInviteToAWorkAddressPicksWork(t *testing.T) {
 	d, _, _ := seedInviteDAV(t)
 	in := vcal.Invite{Attendees: []string{"me@work.test"}}
-	name, names, err := d.inviteTarget(in, "", d.primaryAccount())
+	name, names, err := d.inviteTarget(in, "", d.Primary)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +111,7 @@ func TestInviteToAWorkAddressPicksWork(t *testing.T) {
 func TestInviteToAnUnknownAddressNeedsAChoice(t *testing.T) {
 	d, _, _ := seedInviteDAV(t)
 	in := vcal.Invite{Attendees: []string{"stranger@example.org"}}
-	name, names, err := d.inviteTarget(in, "", d.primaryAccount())
+	name, names, err := d.inviteTarget(in, "", d.Primary)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,6 +145,76 @@ func TestThreadViewMarksAnInviteWithoutFetchingIt(t *testing.T) {
 	}
 	if rows[0].Invite != nil {
 		t.Errorf("thread view fetched the card; it must stay lazy")
+	}
+}
+
+func TestInviteDayIsJustTheInviteWhenNothingElseIsOn(t *testing.T) {
+	d, _, id := seedInvite(t)
+	card := mustAsk(t, d, []string{"invite", "show"}, map[string]any{"positional": id}).Data.(*inviteCard)
+	if len(card.Day) != 1 || !card.Day[0].Proposed || card.Day[0].Summary != "Design review" {
+		t.Fatalf("day = %+v", card.Day)
+	}
+	if card.Day[0].Start != card.Start || card.Day[0].End == "" {
+		t.Fatalf("proposed times = %+v", card.Day[0])
+	}
+}
+
+// The strip is the day the mail names: an event that morning belongs on it,
+// the next day does not, a decline does not take the slot, and the calendar's
+// own copy of this invite is not a second block.
+func TestInviteDayShowsTheRestOfThatDay(t *testing.T) {
+	d, f, id := seedInviteDAV(t)
+	inviteAt := time.Date(2026, 9, 10, 14, 0, 0, 0, time.UTC)
+	localDay := inviteAt.In(time.Local)
+	at := func(day time.Time, hour int) time.Time {
+		return time.Date(day.Year(), day.Month(), day.Day(), hour, 0, 0, 0, time.Local)
+	}
+	stamp := func(t time.Time) string { return t.UTC().Format("20060102T150405Z") }
+	vevent := func(uid, summary string, start, end time.Time, extra string) string {
+		return ics(fmt.Sprintf("BEGIN:VEVENT\nUID:%s\nDTSTART:%s\nDTEND:%s\nSUMMARY:%s\n%sEND:VEVENT",
+			uid, stamp(start), stamp(end), summary, extra))
+	}
+	f.Deliver(testCalURL, "standup.ics", vevent("standup@example.org", "Standup",
+		at(localDay, 9), at(localDay, 10), ""))
+	f.Deliver(testCalURL, "later.ics", vevent("later@example.org", "Tomorrow",
+		at(localDay.AddDate(0, 0, 1), 9), at(localDay.AddDate(0, 0, 1), 10), ""))
+	f.Deliver(testCalURL, "no.ics", vevent("no@example.org", "Declined",
+		at(localDay, 11), at(localDay, 12),
+		"ATTENDEE;PARTSTAT=DECLINED:mailto:me@example.com\n"))
+	f.Deliver(testCalURL, "gone.ics", vevent("gone@example.org", "Cancelled",
+		at(localDay, 12), at(localDay, 13), "STATUS:CANCELLED\n"))
+	f.Deliver(testCalURL, "same.ics", vevent("meet-1@example.org", "Design review",
+		at(localDay, 16), at(localDay, 17), ""))
+	d.davCycle(context.Background(), "day", "events")
+
+	card := mustAsk(t, d, []string{"invite", "show"}, map[string]any{"positional": id}).Data.(*inviteCard)
+	var names []string
+	proposed := 0
+	for _, b := range card.Day {
+		names = append(names, b.Summary)
+		if !b.Proposed {
+			continue
+		}
+		proposed++
+		if b.Summary != "Design review" {
+			t.Errorf("proposed = %+v", b)
+		}
+	}
+	if proposed != 1 || !slices.Contains(names, "Standup") {
+		t.Fatalf("day = %+v", card.Day)
+	}
+	for _, b := range card.Day {
+		if b.Summary != "Standup" {
+			continue
+		}
+		if b.Calendar != "Kalender" || b.Color != "#3355ff" {
+			t.Errorf("standup = %+v", b)
+		}
+	}
+	for _, bad := range []string{"Tomorrow", "Declined", "Cancelled"} {
+		if slices.Contains(names, bad) {
+			t.Fatalf("%s showed up in %+v", bad, card.Day)
+		}
 	}
 }
 
@@ -189,7 +261,7 @@ func TestInviteShowWithoutAnInviteIsNull(t *testing.T) {
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	resp := mustAsk(t, d, []string{"invite", "show"}, map[string]any{"positional": d.primaryAccount().messageID("INBOX", msg.UID)})
+	resp := mustAsk(t, d, []string{"invite", "show"}, map[string]any{"positional": d.Primary.messageID("INBOX", msg.UID)})
 	if !resp.OK || resp.Data != nil {
 		t.Fatalf("resp = %+v", resp)
 	}
@@ -254,10 +326,10 @@ func TestRSVPWithoutAUIDIsRefused(t *testing.T) {
 	f.Deliver("INBOX", "x", "", "") // keep the folder non-empty for the sync
 	uidless := strings.Replace(testInviteICS, "UID:meet-1@example.org\n", "", 1)
 	msg.Attach("2", "text/calendar", "invite.ics", []byte(uidless))
-	if _, err := d.primaryAccount().Reconciler.SyncAll(context.Background(), d.Mirrored); err != nil {
+	if _, err := d.Primary.Reconciler.SyncAll(context.Background(), d.Primary.Mirrored); err != nil {
 		t.Fatal(err)
 	}
-	resp := ask(t, d, []string{"rsvp"}, map[string]any{"positional": d.primaryAccount().messageID("INBOX", msg.UID), "accept": true})
+	resp := ask(t, d, []string{"rsvp"}, map[string]any{"positional": d.Primary.messageID("INBOX", msg.UID), "accept": true})
 	if resp.OK || resp.Code != "usage" {
 		t.Fatalf("resp = %+v", resp)
 	}

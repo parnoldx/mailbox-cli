@@ -19,7 +19,7 @@ func (d *Daemon) handleCorrespondent(req Request, resp Response) Response {
 	}
 	query := req.Str("positional")
 	limit := req.Int("limit", 6)
-	hits, err := d.Mirror.SearchCorrespondents(d.Account, query, limit)
+	hits, err := d.Mirror.SearchCorrespondents(d.Primary.Name, query, limit)
 	if err != nil {
 		return resp.api(err.Error())
 	}

@@ -201,7 +201,7 @@ var run = func(name string, args ...string) error {
 // down when one came due bins it on the first tick after startup (ADR-0023's
 // reasoning, and the reason the arrival instant is the only state).
 func (d *Daemon) pickupLoop(ctx context.Context) {
-	a := d.primaryAccount()
+	a := d.Primary
 	if a == nil || a.Writer == nil {
 		return
 	}
@@ -296,7 +296,7 @@ func arrivedAt(row mirror.Row) time.Time {
 // clipboard, out of sight (see the regression test on the alert's shape). A
 // surface that stays on screen does not have that failure mode.
 func (d *Daemon) handlePickup(ctx context.Context, req Request, resp Response) Response {
-	a := d.primaryAccount()
+	a := d.Primary
 	if a == nil {
 		return resp.usage("no account is configured")
 	}

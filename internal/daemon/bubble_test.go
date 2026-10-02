@@ -21,7 +21,7 @@ func deliverInbox(t *testing.T, d *Daemon, key, subject, from string, when time.
 	f := fakeOf(d)
 	m := f.Deliver("INBOX", key, subject, subject)
 	m.From, m.Date = from, when
-	if _, err := d.primaryAccount().Reconciler.SyncAll(context.Background(), d.Mirrored); err != nil {
+	if _, err := d.Primary.Reconciler.SyncAll(context.Background(), d.Primary.Mirrored); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -50,10 +50,10 @@ func TestBubblePutsTheThreadInAsideWithAReturnTime(t *testing.T) {
 	d, _ := seedScreener(t)
 	f := fakeOf(d)
 	f.AddFolder("INBOX/Sent")
-	a := d.primaryAccount()
+	a := d.Primary
 	a.Mirrored = append(a.Mirrored, "INBOX/Sent")
-	d.Mirrored = a.Mirrored
-	d.Writer.Mirrored = a.Mirrored
+	d.Primary.Mirrored = a.Mirrored
+	d.Primary.Writer.Mirrored = a.Mirrored
 	ctx := context.Background()
 
 	when := time.Date(2026, 9, 3, 9, 0, 0, 0, time.UTC)
@@ -113,7 +113,7 @@ func TestBubbleReturnsOnTheFirstTickAfterTheInstant(t *testing.T) {
 	}
 
 	// The first bubbleLoop tick.
-	d.returnDue(ctx, d.primaryAccount())
+	d.returnDue(ctx, d.Primary)
 
 	inbox := boxView(t, d, "inbox")
 	if len(inbox) != 1 {
@@ -145,7 +145,7 @@ func TestReturnDueLeavesAnUnrelatedAsideAlone(t *testing.T) {
 
 	yesterday := startOfDay(time.Now()).AddDate(0, 0, -1).Format("2006-01-02")
 	mustAsk(t, d, []string{"bubble"}, map[string]any{"positional": "1", "on": yesterday})
-	d.returnDue(ctx, d.primaryAccount())
+	d.returnDue(ctx, d.Primary)
 	inbox := boxView(t, d, "inbox")
 	if len(inbox) != 1 {
 		t.Fatalf("inbox = %+v, want the returned thread", inbox)
@@ -175,7 +175,7 @@ func TestReturnDueLeavesAnUnrelatedAsideAlone(t *testing.T) {
 		t.Fatal("the thread did not move to Aside")
 	}
 
-	d.returnDue(ctx, d.primaryAccount())
+	d.returnDue(ctx, d.Primary)
 
 	if got := boxView(t, d, "Aside"); len(got) != 1 {
 		t.Fatalf("Aside = %+v, the stale bubble record pulled it back out", got)
@@ -208,8 +208,8 @@ func TestASecondDaemonsFirstLookAtAsideDoesNotReclaimIt(t *testing.T) {
 	defer m.Close()
 	vps := New("primary", m,
 		&mailsync.Reconciler{Account: "primary", Mirror: m, Driver: fakeOf(d)},
-		d.Mirrored, nil, nil)
-	vps.cycle(ctx, vps.primaryAccount(), "startup")
+		d.Primary.Mirrored, nil, nil)
+	vps.cycle(ctx, vps.Primary, "startup")
 	if got := boxView(t, vps, "inbox"); len(got) != 1 {
 		t.Fatalf("inbox on the second Daemon = %+v, want the newsletter already synced", got)
 	}
@@ -226,7 +226,7 @@ func TestASecondDaemonsFirstLookAtAsideDoesNotReclaimIt(t *testing.T) {
 	// The VPS Daemon's next ordinary cycle: an incremental sync, not a resync —
 	// it already knew this account, it just had not looked at Aside since the
 	// move.
-	vps.cycle(ctx, vps.primaryAccount(), "next tick")
+	vps.cycle(ctx, vps.Primary, "next tick")
 
 	if got := boxView(t, vps, routing.BoxAside); len(got) != 1 {
 		t.Fatalf("Aside on the second Daemon = %+v, its first look at Aside reclaimed the thread", got)
@@ -245,12 +245,12 @@ func TestBubbleReturnsUnreadAndFloated(t *testing.T) {
 		time.Date(2026, 9, 1, 9, 0, 0, 0, time.UTC))
 	// Read it before bubbling, so "returns unread" is a change and not the
 	// starting state.
-	if _, err := d.Writer.SetSeen(ctx, []mailsync.Ref{{Folder: "INBOX", UID: 1}}, true); err != nil {
+	if _, err := d.Primary.Writer.SetSeen(ctx, []mailsync.Ref{{Folder: "INBOX", UID: 1}}, true); err != nil {
 		t.Fatal(err)
 	}
 	yesterday := startOfDay(time.Now()).AddDate(0, 0, -1).Format("2006-01-02")
 	mustAsk(t, d, []string{"bubble"}, map[string]any{"positional": "1", "on": yesterday})
-	d.returnDue(ctx, d.primaryAccount())
+	d.returnDue(ctx, d.Primary)
 
 	rows := rowsIn(t, d, routing.BoxInbox)
 	if len(rows) != 1 {
@@ -267,7 +267,7 @@ func TestBubbleReturnsUnreadAndFloated(t *testing.T) {
 		t.Errorf("the Inbox listing does not float the bubbled thread: %+v", view)
 	}
 	// Once read, it is an ordinary Inbox thread again.
-	if _, err := d.Writer.SetSeen(ctx, []mailsync.Ref{{Folder: "INBOX", UID: rows[0].UID}}, true); err != nil {
+	if _, err := d.Primary.Writer.SetSeen(ctx, []mailsync.Ref{{Folder: "INBOX", UID: rows[0].UID}}, true); err != nil {
 		t.Fatal(err)
 	}
 	if view := boxView(t, d, "inbox"); len(view) == 0 || view[0].Bubbled {
@@ -282,7 +282,7 @@ func TestBubbleNowOnAnInboxThreadDoesNotRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	deliverInbox(t, d, "n1@example.com", "Newsletter", "news@example.com",
 		time.Date(2026, 9, 1, 9, 0, 0, 0, time.UTC))
-	if _, err := d.Writer.SetSeen(ctx, []mailsync.Ref{{Folder: "INBOX", UID: 1}}, true); err != nil {
+	if _, err := d.Primary.Writer.SetSeen(ctx, []mailsync.Ref{{Folder: "INBOX", UID: 1}}, true); err != nil {
 		t.Fatal(err)
 	}
 
@@ -318,8 +318,8 @@ func TestBubbleReturnFiresFromASecondDaemon(t *testing.T) {
 	// the bubble command.
 	vps := New("primary", d.Mirror,
 		&mailsync.Reconciler{Account: "primary", Mirror: d.Mirror, Driver: fakeOf(d)},
-		d.Mirrored, nil, nil)
-	vps.returnDue(ctx, vps.primaryAccount())
+		d.Primary.Mirrored, nil, nil)
+	vps.returnDue(ctx, vps.Primary)
 
 	if len(boxView(t, d, "inbox")) != 1 || len(boxView(t, d, "Aside")) != 0 {
 		t.Fatalf("the VPS Daemon did not return the thread from the shared keyword")
@@ -338,10 +338,10 @@ func TestBubbleReturnIsIdempotentAcrossDaemons(t *testing.T) {
 
 	vps := New("primary", d.Mirror,
 		&mailsync.Reconciler{Account: "primary", Mirror: d.Mirror, Driver: fakeOf(d)},
-		d.Mirrored, nil, nil)
+		d.Primary.Mirrored, nil, nil)
 
-	d.returnDue(ctx, d.primaryAccount())
-	vps.returnDue(ctx, vps.primaryAccount()) // the loser: the uid is already gone
+	d.returnDue(ctx, d.Primary)
+	vps.returnDue(ctx, vps.Primary) // the loser: the uid is already gone
 
 	inbox := fakeOf(d).Folder("INBOX")
 	n := 0
@@ -363,7 +363,7 @@ func TestBubbleReturnIsIdempotentAcrossDaemons(t *testing.T) {
 func TestAReplyReturnsABubbledThreadEarly(t *testing.T) {
 	d, _ := seedScreener(t)
 	f := fakeOf(d)
-	a := d.primaryAccount()
+	a := d.Primary
 	ctx := context.Background()
 
 	opener := f.Deliver("INBOX", "deal@example.com", "Angebot", "das Angebot")
@@ -412,11 +412,11 @@ func TestBubbleAtIsRederivedFromTheKeyword(t *testing.T) {
 	// bubble_at from the `$bubble-*` keyword each one still carries. This is what
 	// a Mirror rebuild does, folder by folder.
 	fakeOf(d).Renumber(routing.BoxAside, 2000)
-	if _, err := d.primaryAccount().Reconciler.SyncAll(ctx, d.Mirrored); err != nil {
+	if _, err := d.Primary.Reconciler.SyncAll(ctx, d.Primary.Mirrored); err != nil {
 		t.Fatal(err)
 	}
 
-	box, _ := d.primaryAccount().boxNamed(routing.BoxAside)
+	box, _ := d.Primary.boxNamed(routing.BoxAside)
 	got, err := d.Mirror.Bubbled("primary", box)
 	if err != nil {
 		t.Fatal(err)
@@ -513,7 +513,7 @@ func TestRouteToBubbleIsRefused(t *testing.T) {
 func TestBubbleListIsGroupedByThread(t *testing.T) {
 	d, _ := seedScreener(t)
 	f := fakeOf(d)
-	a := d.primaryAccount()
+	a := d.Primary
 	ctx := context.Background()
 
 	first := f.Deliver("INBOX", "q1@example.com", "Angebot", "erste")
@@ -580,7 +580,7 @@ func TestIfNoReplyWithoutATimingFlagFailsBeforeSending(t *testing.T) {
 // itself is what shows up in the Inbox.
 func TestAReplyCancelsTheNoReplyWatch(t *testing.T) {
 	d, _ := seedSend(t)
-	a := d.primaryAccount()
+	a := d.Primary
 	ctx := context.Background()
 	// Past its first sync, so the reply below is a genuine incremental cycle —
 	// reclaimPiled only runs on ActionIncremental, never on a folder's first
@@ -617,7 +617,7 @@ func TestAReplyCancelsTheNoReplyWatch(t *testing.T) {
 // every "mail yourself and wait" test of this feature do nothing.
 func TestANoReplyWatchOnAMailToYourselfStillReturns(t *testing.T) {
 	d, _ := seedSend(t)
-	a := d.primaryAccount()
+	a := d.Primary
 	ctx := context.Background()
 	if _, err := a.Reconciler.SyncAll(ctx, a.Mirrored); err != nil {
 		t.Fatal(err)
@@ -656,7 +656,7 @@ func TestNoReplyWatchBringsTheSentCopyToTheInboxWhenDue(t *testing.T) {
 		"body": "Anbei das Angebot.", "if_no_reply": true, "on": yesterday,
 	})
 
-	d.returnDue(ctx, d.primaryAccount())
+	d.returnDue(ctx, d.Primary)
 
 	if sent := boxView(t, d, "Sent"); len(sent) != 0 {
 		t.Errorf("Sent still holds the copy: %+v", sent)
@@ -689,9 +689,9 @@ func TestReturnDueSweepsAsideAndSentTogether(t *testing.T) {
 	d, _ := seedSend(t)
 	f := fakeOf(d)
 	f.AddFolder(routing.BoxAside)
-	d.Mirrored = append(d.Mirrored, routing.BoxAside)
-	d.Writer.Mirrored = d.Mirrored
-	a := d.primaryAccount()
+	d.Primary.Mirrored = append(d.Primary.Mirrored, routing.BoxAside)
+	d.Primary.Writer.Mirrored = d.Primary.Mirrored
+	a := d.Primary
 	ctx := context.Background()
 	yesterday := startOfDay(time.Now()).AddDate(0, 0, -1).Format("2006-01-02")
 
@@ -744,7 +744,7 @@ func TestReturnDueSweepsAsideAndSentTogether(t *testing.T) {
 // what made every "if no reply by" reminder die within a minute of being set.
 func TestASentCopyArrivingFromAnotherDaemonKeepsItsWatch(t *testing.T) {
 	d, _ := seedSend(t)
-	a := d.primaryAccount()
+	a := d.Primary
 	ctx := context.Background()
 	if _, err := a.Reconciler.SyncAll(ctx, a.Mirrored); err != nil {
 		t.Fatal(err)
@@ -773,7 +773,7 @@ func TestASentCopyArrivingFromAnotherDaemonKeepsItsWatch(t *testing.T) {
 // an answer to it, so the reclaim must leave the keyword alone.
 func TestReplyWithAWatchDoesNotCancelItsOwnWatch(t *testing.T) {
 	d, _ := seedSend(t)
-	a := d.primaryAccount()
+	a := d.Primary
 	ctx := context.Background()
 	f := fakeOf(d)
 	ask := f.Deliver("INBOX", "frage@example.com", "Angebot?", "Was kostet das?")

@@ -27,7 +27,7 @@ func dragOut(t *testing.T, d *Daemon, from string, uid uint32, to string) {
 // an incremental one that can carry Added/Gone deltas.
 func baseline(t *testing.T, d *Daemon) {
 	t.Helper()
-	d.cycle(context.Background(), d.primaryAccount(), "baseline")
+	d.cycle(context.Background(), d.Primary, "baseline")
 }
 
 // Gate 1. Screener→Inbox from a second client, no command run, rewrites the
@@ -40,7 +40,7 @@ func TestScreenerToInboxIsInferredAsADecision(t *testing.T) {
 
 	// news@example.com wrote twice — Screener:10 and Screener:12.
 	dragOut(t, d, routing.BoxScreener, 10, routing.BoxInbox)
-	d.cycle(ctx, d.primaryAccount(), "after drag")
+	d.cycle(ctx, d.Primary, "after drag")
 
 	if l := routing.Parse(sieve.scripts[routing.ScriptName]); l.Of("news@example.com") != routing.Inbox {
 		t.Fatalf("the drag did not route the sender to the Inbox:\n%s", sieve.scripts[routing.ScriptName])
@@ -82,7 +82,7 @@ func TestScreenerDragDestinationNamesTheDecision(t *testing.T) {
 			d, sieve := seedScreener(t)
 			baseline(t, d)
 			dragOut(t, d, routing.BoxScreener, 11, tc.folder) // bills@example.com
-			d.cycle(context.Background(), d.primaryAccount(), "drag")
+			d.cycle(context.Background(), d.Primary, "drag")
 			if got := routing.Parse(sieve.scripts[routing.ScriptName]).Of("bills@example.com"); got != tc.want {
 				t.Fatalf("drag to %s decided %q, want %q", tc.folder, got, tc.want)
 			}
@@ -106,9 +106,9 @@ func TestScreenerDragDestinationNamesTheDecision(t *testing.T) {
 	d, sieve := seedScreener(t)
 	f := fakeOf(d)
 	f.AddFolder("Archive")
-	a := d.primaryAccount()
-	d.Mirrored = append(d.Mirrored, "Archive")
-	d.Writer.Mirrored = d.Mirrored
+	a := d.Primary
+	d.Primary.Mirrored = append(d.Primary.Mirrored, "Archive")
+	d.Primary.Writer.Mirrored = d.Primary.Mirrored
 	baseline(t, d)
 	before := sieve.puts
 	dragOut(t, d, routing.BoxScreener, 11, "Archive")
@@ -139,8 +139,8 @@ func TestACommandDecisionDoesNotEchoAsAnInference(t *testing.T) {
 
 	// The cycles that follow re-observe the moved mail in the Feed. That is the
 	// write-through path's own move coming back, not a fresh decision.
-	d.cycle(ctx, d.primaryAccount(), "after route")
-	d.cycle(ctx, d.primaryAccount(), "and again")
+	d.cycle(ctx, d.Primary, "after route")
+	d.cycle(ctx, d.Primary, "and again")
 	if sieve.puts != puts {
 		t.Fatalf("the script was rewritten %d extra times — an echo loop", sieve.puts-puts)
 	}
@@ -164,7 +164,7 @@ func TestMovingIntoTheScreenerUnDecidesTheSender(t *testing.T) {
 		t.Fatal("precondition: the sender is not routed to the inbox")
 	}
 	// Now a message of theirs is dragged from the Inbox back into the Screener.
-	d.cycle(ctx, d.primaryAccount(), "settle")
+	d.cycle(ctx, d.Primary, "settle")
 	inbox, _ := d.Mirror.Rows("primary", "INBOX", 50)
 	var uid uint32
 	for _, r := range inbox {
@@ -176,7 +176,7 @@ func TestMovingIntoTheScreenerUnDecidesTheSender(t *testing.T) {
 		t.Fatal("no inbox mail from the sender to drag back")
 	}
 	dragOut(t, d, "INBOX", uid, routing.BoxScreener)
-	d.cycle(ctx, d.primaryAccount(), "drag back")
+	d.cycle(ctx, d.Primary, "drag back")
 
 	if routing.Parse(sieve.scripts[routing.ScriptName]).Count() != 0 {
 		t.Errorf("the sender is still on a list after being dragged back to the screener:\n%s",
@@ -192,11 +192,11 @@ func TestScreenerInferenceRunsOnASecondDaemon(t *testing.T) {
 	baseline(t, d)
 
 	vps := New("primary", d.Mirror,
-		newReconcilerFor(d), d.Mirrored, nil, nil)
+		newReconcilerFor(d), d.Primary.Mirrored, nil, nil)
 	vps.Sieve = sieve
 
 	dragOut(t, d, routing.BoxScreener, 10, routing.BoxFeed)
-	vps.cycle(ctx, vps.primaryAccount(), "vps sees the drag")
+	vps.cycle(ctx, vps.Primary, "vps sees the drag")
 
 	if routing.Parse(sieve.scripts[routing.ScriptName]).Of("news@example.com") != routing.Feed {
 		t.Fatalf("the VPS Daemon did not infer the decision from the shared server state")
@@ -209,7 +209,7 @@ func TestInferredDecisionsShowUpInStatus(t *testing.T) {
 	ctx := context.Background()
 	baseline(t, d)
 	dragOut(t, d, routing.BoxScreener, 10, routing.BoxFeed)
-	d.cycle(ctx, d.primaryAccount(), "drag")
+	d.cycle(ctx, d.Primary, "drag")
 
 	got := d.RecentInferred()
 	if len(got) != 1 || got[0].Address != "news@example.com" || got[0].To != "feed" {
@@ -233,7 +233,7 @@ func TestInferenceIsRefusedWhenTheRoutingIsUnreachable(t *testing.T) {
 	baseline(t, d)
 
 	dragOut(t, d, routing.BoxScreener, 10, routing.BoxFeed)
-	d.cycle(ctx, d.primaryAccount(), "drag")
+	d.cycle(ctx, d.Primary, "drag")
 
 	if sieve.puts != 0 {
 		t.Errorf("an inferred decision was written into an unreachable routing")

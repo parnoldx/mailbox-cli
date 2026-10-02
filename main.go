@@ -209,9 +209,9 @@ func runDaemon(systemdSocket bool) error {
 		logger.Printf("no \\Sent box found: sent mail will not be filed")
 	}
 	d.Outbox = box
-	d.From = compose.Address{Name: cfg.Account.DisplayName, Addr: cfg.Account.Email}
-	d.Color = cfg.Account.Color
-	d.Courier = &outbox.Courier{
+	d.Primary.From = compose.Address{Name: cfg.Account.DisplayName, Addr: cfg.Account.Email}
+	d.Primary.Color = cfg.Account.Color
+	d.Primary.Courier = &outbox.Courier{
 		Box: box, Account: "primary", Filer: drv, SentBox: sentBox, Log: logger,
 		Transport: smtpdrv.New(smtpdrv.Config{
 			Host: cfg.Account.SMTPHost, Port: cfg.Account.SMTPPort,

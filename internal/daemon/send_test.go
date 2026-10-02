@@ -62,8 +62,8 @@ func seedSend(t *testing.T) (*Daemon, *stubTransport) {
 	t.Cleanup(func() { box.Close() })
 	tr := &stubTransport{}
 	d.Outbox = box
-	d.From = compose.Address{Name: "Max Mustermann", Addr: "me@example.com"}
-	d.Courier = &outbox.Courier{
+	d.Primary.From = compose.Address{Name: "Max Mustermann", Addr: "me@example.com"}
+	d.Primary.Courier = &outbox.Courier{
 		Box: box, Transport: tr, Filer: fakeOf(d), SentBox: "INBOX/Sent",
 	}
 	return d, tr
@@ -267,8 +267,8 @@ func TestReplyingToAPiledMessagePullsTheThreadBackToTheInbox(t *testing.T) {
 	d, _ := seedSend(t)
 	f := fakeOf(d)
 	f.AddFolder(routing.BoxReplyLater)
-	d.Mirrored = append(d.Mirrored, routing.BoxReplyLater)
-	d.Writer.Mirrored = d.Mirrored
+	d.Primary.Mirrored = append(d.Primary.Mirrored, routing.BoxReplyLater)
+	d.Primary.Writer.Mirrored = d.Primary.Mirrored
 
 	// A Message the user has moved into Reply Later, mirrored and on the server.
 	tx, err := d.Mirror.Begin("primary")
@@ -397,7 +397,7 @@ func TestASendSMTPRefusedIsQueuedNotLost(t *testing.T) {
 
 	// The next drain — every cycle runs one — takes it out.
 	tr.fail(nil)
-	d.drain(context.Background(), d.primaryAccount())
+	d.drain(context.Background(), d.Primary)
 	list = d.handle(context.Background(), Request{ID: "1", Cmd: []string{"outbox", "list"}})
 	rows = list.Data.([]outboxRow)
 	if len(rows) != 1 || rows[0].State != string(outbox.Filed) {
@@ -422,11 +422,11 @@ func TestAHeldMailWaitsToBeTold(t *testing.T) {
 	if err := d.Outbox.Claim(id); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := d.Courier.Recover(); err != nil {
+	if _, err := d.Primary.Courier.Recover(); err != nil {
 		t.Fatal(err)
 	}
 
-	d.drain(context.Background(), d.primaryAccount())
+	d.drain(context.Background(), d.Primary)
 	if tr.count() != 0 {
 		t.Fatal("a mail that may already have been delivered must not be sent again on its own")
 	}

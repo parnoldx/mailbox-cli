@@ -332,7 +332,7 @@ func (d *Daemon) watchObjects(name string, out davsync.Outcome) {
 		return
 	}
 	if out.Full {
-		d.change(Change{Event: eventCollectionResync, Account: d.Account, Collection: name})
+		d.change(Change{Event: eventCollectionResync, Account: d.Primary.Name, Collection: name})
 		return
 	}
 	for _, o := range out.Objects {
@@ -344,7 +344,7 @@ func (d *Daemon) watchObjects(name string, out davsync.Outcome) {
 			event = eventObjectDeleted
 		}
 		d.change(Change{
-			Event: event, Account: d.Account, Collection: name,
+			Event: event, Account: d.Primary.Name, Collection: name,
 			Kind: o.Object.Kind, Object: o.Object.ID, Summary: o.Object.Summary,
 		})
 	}
@@ -367,12 +367,12 @@ func (d *Daemon) watchCollections(before, now []mirror.Collection) {
 		delete(was, c.URL)
 		switch {
 		case !held:
-			d.change(Change{Event: eventCollectionAdded, Account: d.Account, Collection: c.Name, Kind: c.Kind})
+			d.change(Change{Event: eventCollectionAdded, Account: d.Primary.Name, Collection: c.Name, Kind: c.Kind})
 		case old.Name != c.Name || old.Color != c.Color:
-			d.change(Change{Event: eventCollectionUpdated, Account: d.Account, Collection: c.Name, Kind: c.Kind})
+			d.change(Change{Event: eventCollectionUpdated, Account: d.Primary.Name, Collection: c.Name, Kind: c.Kind})
 		}
 	}
 	for _, c := range was {
-		d.change(Change{Event: eventCollectionDeleted, Account: d.Account, Collection: c.Name, Kind: c.Kind})
+		d.change(Change{Event: eventCollectionDeleted, Account: d.Primary.Name, Collection: c.Name, Kind: c.Kind})
 	}
 }

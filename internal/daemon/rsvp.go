@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -31,6 +32,21 @@ type inviteCard struct {
 	// addresses. Empty plus Calendars means the caller has to pick.
 	Calendar  string   `json:"calendar,omitempty"`
 	Calendars []string `json:"calendars,omitempty"`
+	// Day is that calendar day: the invite itself, marked proposed, and
+	// whatever else is already on it. A reply can see where it fits.
+	Day []dayBlock `json:"day,omitempty"`
+}
+
+// dayBlock is one thing on the invite's day. Proposed is the invite itself,
+// drawn from the mail rather than from a copy the calendar may already hold.
+type dayBlock struct {
+	Summary  string `json:"summary"`
+	Start    string `json:"start,omitempty"`
+	End      string `json:"end,omitempty"`
+	AllDay   bool   `json:"all_day,omitempty"`
+	Color    string `json:"color,omitempty"`
+	Calendar string `json:"calendar,omitempty"`
+	Proposed bool   `json:"proposed,omitempty"`
 }
 
 func isCalendarPart(p mirror.Part) bool {
@@ -119,7 +135,102 @@ func (d *Daemon) inviteCardOf(ctx context.Context, acct *Account, folder string,
 		d.logf("invite: %v", err)
 		card.Calendar, card.Calendars = "", nil
 	}
+	card.Day = d.inviteDay(in, acct)
 	return card
+}
+
+// inviteDay is the invite's calendar day. The invite is one block, at the
+// time the mail names, even when the calendar already has that UID — a moved
+// copy on the calendar is not what this mail is asking about. Declined and
+// cancelled entries are not on the day: they do not take the time.
+func (d *Daemon) inviteDay(in vcal.Invite, acct *Account) []dayBlock {
+	if in.Start.IsZero() || d.Mirror == nil || d.Primary == nil {
+		return nil
+	}
+	day := startOfDay(in.Start)
+	blocks := []dayBlock{}
+	objects, err := d.Mirror.ObjectsIn(d.Primary.Name, "events", day, day.AddDate(0, 0, 1), "")
+	if err != nil {
+		d.logf("invite day: %v", err)
+		return []dayBlock{proposedBlock(in)}
+	}
+	occ, err := expand(objects, day, day.AddDate(0, 0, 1))
+	if err != nil {
+		d.logf("invite day: %v", err)
+		return []dayBlock{proposedBlock(in)}
+	}
+	raw := make(map[int64]string, len(objects))
+	for _, o := range objects {
+		raw[o.ID] = o.Raw
+	}
+	colors := map[string]string{}
+	if cols, err := d.eventCalendars(); err == nil {
+		for _, c := range cols {
+			colors[c.Name] = c.Color
+		}
+	}
+	want := day.Format("2006-01-02")
+	addrs := d.ourAddrs(acct)
+	for _, o := range occ {
+		if o.Date != want || strings.EqualFold(o.Status, "CANCELLED") {
+			continue
+		}
+		if in.UID != "" && o.UID == in.UID {
+			continue
+		}
+		if vcal.AnswerOf(raw[o.ID], addrs...) == vcal.PartstatDeclined {
+			continue
+		}
+		blocks = append(blocks, dayBlock{
+			Summary: o.Summary, Start: o.Start, End: o.End, AllDay: o.AllDay,
+			Color: colors[o.Calendar], Calendar: o.Calendar,
+		})
+	}
+	blocks = append(blocks, proposedBlock(in))
+	sort.Slice(blocks, func(i, j int) bool {
+		if blocks[i].AllDay != blocks[j].AllDay {
+			return blocks[i].AllDay
+		}
+		if blocks[i].Start == blocks[j].Start {
+			return blocks[i].Summary < blocks[j].Summary
+		}
+		return blocks[i].Start < blocks[j].Start
+	})
+	return blocks
+}
+
+func proposedBlock(in vcal.Invite) dayBlock {
+	end := in.End
+	if !end.After(in.Start) {
+		if in.AllDay {
+			end = in.Start.AddDate(0, 0, 1)
+		} else {
+			end = in.Start.Add(time.Hour)
+		}
+	}
+	summary := in.Summary
+	if summary == "" {
+		summary = "Meeting"
+	}
+	return dayBlock{
+		Summary: summary, AllDay: in.AllDay, Proposed: true,
+		Start: in.Start.Format(time.RFC3339), End: end.Format(time.RFC3339),
+	}
+}
+
+// ourAddrs is every address an invite or a calendar object might name us by.
+func (d *Daemon) ourAddrs(acct *Account) []string {
+	addrs := []string{}
+	if d.Primary != nil {
+		addrs = append(addrs, d.Primary.From.Addr)
+	}
+	if acct != nil {
+		addrs = append(addrs, acct.From.Addr)
+	}
+	for a := range d.CalendarEmail {
+		addrs = append(addrs, a)
+	}
+	return addrs
 }
 
 // hasCalendarPart is the mirror-only check behind HasInvite: it marks a
@@ -147,18 +258,11 @@ func (d *Daemon) inviteAnswer(uid string, acct *Account) string {
 	if uid == "" {
 		return ""
 	}
-	o, err := d.Mirror.ObjectByUID(d.Account, uid)
+	o, err := d.Mirror.ObjectByUID(d.Primary.Name, uid)
 	if err != nil {
 		return ""
 	}
-	addrs := []string{d.From.Addr}
-	if acct != nil {
-		addrs = append(addrs, acct.From.Addr)
-	}
-	for a := range d.CalendarEmail {
-		addrs = append(addrs, a)
-	}
-	return vcal.AnswerOf(o.Raw, addrs...)
+	return vcal.AnswerOf(o.Raw, d.ourAddrs(acct)...)
 }
 
 // inviteTarget decides which calendar an RSVP writes to. An invite to the
@@ -207,7 +311,7 @@ func (d *Daemon) inviteTarget(in vcal.Invite, msgTo string, acct *Account) (stri
 }
 
 func (d *Daemon) eventCalendars() ([]mirror.Collection, error) {
-	all, err := d.Mirror.Collections(d.Account, calendars.kind)
+	all, err := d.Mirror.Collections(d.Primary.Name, calendars.kind)
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +371,7 @@ func (d *Daemon) lookupCalendarEmail(addr string) (string, bool) {
 		n, ok := d.CalendarEmail[addr]
 		return n, ok
 	}
-	if d.From.Addr != "" && strings.EqualFold(d.From.Addr, addr) {
+	if d.Primary.From.Addr != "" && strings.EqualFold(d.Primary.From.Addr, addr) {
 		return "", true
 	}
 	return "", false
@@ -369,7 +473,7 @@ func (d *Daemon) respondOnExchange(ctx context.Context, acct *Account, in vcal.I
 	if acct.Respond == nil {
 		return resp.api(fmt.Sprintf("account %q cannot answer invites: no calendar connection", acct.Name))
 	}
-	o, err := d.Mirror.ObjectByUID(d.Account, in.UID)
+	o, err := d.Mirror.ObjectByUID(d.Primary.Name, in.UID)
 	if errors.Is(err, mirror.ErrNotFound) {
 		return resp.notFound(fmt.Sprintf("%q is not on the %s calendar yet", in.Summary, acct.Name))
 	}
@@ -393,7 +497,7 @@ func (d *Daemon) storeInvite(ctx context.Context, req Request, in vcal.Invite, a
 	if err != nil {
 		return err
 	}
-	if existing, err := d.Mirror.ObjectByUID(d.Account, in.UID); err == nil {
+	if existing, err := d.Mirror.ObjectByUID(d.Primary.Name, in.UID); err == nil {
 		col, err := d.collectionOf(existing)
 		if err != nil {
 			return err

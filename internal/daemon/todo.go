@@ -43,7 +43,7 @@ func (d *Daemon) handleTodo(ctx context.Context, req Request, resp Response) Res
 	case "list":
 		list := req.Str("list")
 		all := req.Bool("all")
-		objects, err := d.Mirror.Todos(d.Account, list, all)
+		objects, err := d.Mirror.Todos(d.Primary.Name, list, all)
 		if err != nil {
 			return resp.api(err.Error())
 		}
@@ -86,7 +86,7 @@ func (d *Daemon) handleTodo(ctx context.Context, req Request, resp Response) Res
 		if err != nil {
 			return resp.usage(err.Error())
 		}
-		o, err := d.Mirror.Object(d.Account, id)
+		o, err := d.Mirror.Object(d.Primary.Name, id)
 		if errors.Is(err, mirror.ErrNotFound) {
 			return resp.notFound(fmt.Sprintf("no todo %d in the mirror", id))
 		}
@@ -303,7 +303,7 @@ func (d *Daemon) handleHabit(ctx context.Context, req Request, resp Response) Re
 // the object if they are not there yet — a list must not create anything, and a
 // change has to.
 func (d *Daemon) habits(ctx context.Context, create bool) (habit.Bag, mirror.Collection, mirror.Object, error) {
-	col, err := d.Mirror.CollectionNamed(d.Account, "", habit.CalendarName)
+	col, err := d.Mirror.CollectionNamed(d.Primary.Name, "", habit.CalendarName)
 	if errors.Is(err, mirror.ErrNotFound) {
 		if !create {
 			return habit.Bag{}, mirror.Collection{}, mirror.Object{}, nil
@@ -313,7 +313,7 @@ func (d *Daemon) habits(ctx context.Context, create bool) (habit.Bag, mirror.Col
 	if err != nil {
 		return habit.Bag{}, mirror.Collection{}, mirror.Object{}, err
 	}
-	object, err := d.Mirror.ObjectByUID(d.Account, habit.UID)
+	object, err := d.Mirror.ObjectByUID(d.Primary.Name, habit.UID)
 	if errors.Is(err, mirror.ErrNotFound) {
 		return habit.Bag{}, col, mirror.Object{}, nil
 	}
@@ -339,14 +339,14 @@ func (d *Daemon) makeHabitsCalendar(ctx context.Context) (mirror.Collection, err
 		return mirror.Collection{}, err
 	}
 	if _, err := d.Mirror.PutCollection(mirror.Collection{
-		Account: d.Account, Kind: found.Kind, URL: found.URL, Name: found.Name, Color: found.Color,
+		Account: d.Primary.Name, Kind: found.Kind, URL: found.URL, Name: found.Name, Color: found.Color,
 	}); err != nil {
 		return mirror.Collection{}, err
 	}
 	// Read back rather than built from `found`: the caller needs the row as the
 	// Mirror holds it, id and all, and that is what a write to a collection is
 	// addressed by.
-	return d.Mirror.CollectionNamed(d.Account, "", habit.CalendarName)
+	return d.Mirror.CollectionNamed(d.Primary.Name, "", habit.CalendarName)
 }
 
 // saveHabits writes the record back, in one PUT.

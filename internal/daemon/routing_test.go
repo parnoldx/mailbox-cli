@@ -379,7 +379,7 @@ func TestASecondDecisionReplacesTheFirst(t *testing.T) {
 // looking as though the decision was never made.
 func TestAMissingBoxIsRefusedBeforeAnythingIsWritten(t *testing.T) {
 	d, sieve := seedScreener(t)
-	d.Mirrored = []string{"INBOX", routing.BoxScreener}
+	d.Primary.Mirrored = []string{"INBOX", routing.BoxScreener}
 	before := sieve.scripts[routing.ScriptName]
 
 	resp := ask(t, d, []string{"route"}, map[string]any{"positional": []any{"news@example.com"}, "to": "feed"})
@@ -574,7 +574,7 @@ fileinto "INBOX/Screener";`
 func TestAReplyPullsAThreadOutOfAside(t *testing.T) {
 	d, _ := seedScreener(t)
 	f := fakeOf(d)
-	a := d.primaryAccount()
+	a := d.Primary
 	ctx := context.Background()
 
 	// The opener of a conversation, sitting in Aside.
@@ -619,7 +619,7 @@ func TestAReplyPullsAThreadOutOfAside(t *testing.T) {
 func TestAReplyLeavesUnrelatedAsideMailAlone(t *testing.T) {
 	d, _ := seedScreener(t)
 	f := fakeOf(d)
-	a := d.primaryAccount()
+	a := d.Primary
 	ctx := context.Background()
 
 	kept := f.Deliver(routing.BoxAside, "later@example.com", "Zum Lesen", "irgendwann")
@@ -644,7 +644,7 @@ func TestAReplyLeavesUnrelatedAsideMailAlone(t *testing.T) {
 func TestAsideMovesTheWholeThread(t *testing.T) {
 	d, _ := seedScreener(t)
 	f := fakeOf(d)
-	a := d.primaryAccount()
+	a := d.Primary
 	ctx := context.Background()
 
 	first := f.Deliver("INBOX", "q1@example.com", "Angebot", "erste Mail")
@@ -697,10 +697,10 @@ func TestAsideLeavesTheSentCopyAlone(t *testing.T) {
 	d, _ := seedScreener(t)
 	f := fakeOf(d)
 	f.AddFolder("INBOX/Sent")
-	a := d.primaryAccount()
+	a := d.Primary
 	a.Mirrored = append(a.Mirrored, "INBOX/Sent")
-	d.Mirrored = a.Mirrored
-	d.Writer.Mirrored = a.Mirrored
+	d.Primary.Mirrored = a.Mirrored
+	d.Primary.Writer.Mirrored = a.Mirrored
 	ctx := context.Background()
 
 	got := f.Deliver("INBOX", "p1@example.com", "Angebot", "ihre Anfrage")
@@ -731,7 +731,7 @@ func TestAsideLeavesTheSentCopyAlone(t *testing.T) {
 func TestAsideSurvivesTheNextSync(t *testing.T) {
 	d, _ := seedScreener(t)
 	f := fakeOf(d)
-	a := d.primaryAccount()
+	a := d.Primary
 	ctx := context.Background()
 
 	m := f.Deliver("INBOX", "sales@example.com", "Angebot", "das Angebot")

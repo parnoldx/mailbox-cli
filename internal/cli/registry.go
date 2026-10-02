@@ -233,6 +233,7 @@ func tree(l Locals) []*Command {
 				Examples: []string{"mailbox invite show 36722"},
 				Notes: []string{
 					"The card is fetched from the server once and cached; reading a thread never fetches it. Graph (Microsoft 365) mail carries no card — the event is already on the calendar.",
+					"The card lists what else is already on that day, with this invite marked, so the answer can see where it fits.",
 				},
 				Run: runInvite,
 			}},

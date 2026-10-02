@@ -24,11 +24,11 @@ func (d *Daemon) handleLabel(ctx context.Context, req Request, resp Response) Re
 
 	switch verb {
 	case "list":
-		names, err := d.Mirror.Labels(d.Account)
+		names, err := d.Mirror.Labels(d.Primary.Name)
 		if err != nil {
 			return resp.api(err.Error())
 		}
-		counts, err := d.Mirror.LabelCounts(d.Account)
+		counts, err := d.Mirror.LabelCounts(d.Primary.Name)
 		if err != nil {
 			return resp.api(err.Error())
 		}
@@ -46,8 +46,8 @@ func (d *Daemon) handleLabel(ctx context.Context, req Request, resp Response) Re
 			return resp.usage("label view needs a label")
 		}
 		limit := req.Int("limit", 50)
-		acct := d.primaryAccount()
-		rows, err := d.Mirror.Labelled(d.Account, name, limit)
+		acct := d.Primary
+		rows, err := d.Mirror.Labelled(d.Primary.Name, name, limit)
 		if err != nil {
 			return resp.api(err.Error())
 		}
@@ -126,7 +126,7 @@ const labelSweep = 5000
 // A label nobody has applied yet has no mail to walk, and is only the remembered
 // name — so that path writes nothing to the server and still holds.
 func (d *Daemon) sweepLabel(ctx context.Context, name, to string, resp Response) Response {
-	rows, err := d.Mirror.Labelled(d.Account, name, labelSweep)
+	rows, err := d.Mirror.Labelled(d.Primary.Name, name, labelSweep)
 	if err != nil {
 		return resp.api(err.Error())
 	}
@@ -134,7 +134,7 @@ func (d *Daemon) sweepLabel(ctx context.Context, name, to string, resp Response)
 	for _, r := range rows {
 		refs = append(refs, mailsync.Ref{Folder: r.Placement.Folder, UID: r.Placement.UID})
 	}
-	acct := d.primaryAccount()
+	acct := d.Primary
 	var results []mailsync.Result
 	if len(refs) > 0 {
 		if acct.Writer == nil {

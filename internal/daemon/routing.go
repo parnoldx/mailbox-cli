@@ -144,14 +144,14 @@ func (d *Daemon) storeRouting(raw string, active bool, lists *routing.Lists) err
 	for _, r := range lists.All() {
 		routes = append(routes, mirror.Route{Address: r.Address, To: string(r.To), Box: r.Box})
 	}
-	return d.Mirror.PutRouting(d.Account, routing.ScriptName, raw, active, routes)
+	return d.Mirror.PutRouting(d.Primary.Name, routing.ScriptName, raw, active, routes)
 }
 
 // handleScreener answers who is waiting for a decision. It is a Mirror read
 // grouped by sender, because the decision is about a sender and not about a
 // mail: five mails from one address are one thing to decide, not five.
 func (d *Daemon) handleScreener(req Request, resp Response) Response {
-	a := d.primaryAccount()
+	a := d.Primary
 	box, ok := a.boxNamed(routing.BoxScreener)
 	if !ok {
 		return resp.usage(fmt.Sprintf("this account has no %s box", routing.BoxScreener))
@@ -249,7 +249,7 @@ type route struct {
 // here: the script is on the server, and what it says is held locally so that
 // "where does this sender's mail go" is answerable with the network down.
 func (d *Daemon) handleRouting(req Request, resp Response) Response {
-	routes, err := d.Mirror.Routing(d.Account)
+	routes, err := d.Mirror.Routing(d.Primary.Name)
 	if err != nil {
 		return resp.api(err.Error())
 	}
@@ -257,7 +257,7 @@ func (d *Daemon) handleRouting(req Request, resp Response) Response {
 	for _, r := range routes {
 		view.Routes = append(view.Routes, route{Address: r.Address, To: r.To, Box: r.Box})
 	}
-	script, err := d.Mirror.RoutingScript(d.Account)
+	script, err := d.Mirror.RoutingScript(d.Primary.Name)
 	switch {
 	case errors.Is(err, mirror.ErrNotFound):
 		// Never read one. That is not an empty Routing, it is no answer, and
@@ -307,7 +307,7 @@ func (d *Daemon) handleRoute(ctx context.Context, req Request, resp Response) Re
 	if len(targets) == 0 {
 		return d.handleRouting(req, resp)
 	}
-	a := d.primaryAccount()
+	a := d.Primary
 	if a.Writer == nil {
 		return resp.api("this daemon cannot write: no server connection")
 	}

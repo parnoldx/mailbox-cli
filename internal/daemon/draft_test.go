@@ -16,8 +16,8 @@ import (
 func seedDraft(t *testing.T) (*Daemon, *stubTransport) {
 	t.Helper()
 	d, tr := seedSend(t)
-	d.Mirrored = append(d.Mirrored, "Drafts")
-	d.Writer.Mirrored = d.Mirrored
+	d.Primary.Mirrored = append(d.Primary.Mirrored, "Drafts")
+	d.Primary.Writer.Mirrored = d.Primary.Mirrored
 	fakeOf(d).AddFolder("Drafts")
 	fakeOf(d).Deliver("Drafts", "draft@example.com", "Rechnung September", "halb fertig\n")
 

@@ -50,7 +50,7 @@ func watchOn(t *testing.T, d *Daemon, args map[string]any) chan Change {
 func TestWatchReportsNewMailAndTellsAMoveApartFromIt(t *testing.T) {
 	d := seed(t)
 	ctx := context.Background()
-	a := d.primaryAccount()
+	a := d.Primary
 	d.cycle(ctx, a, "baseline")
 
 	ch := watchOn(t, d, nil)
@@ -106,7 +106,7 @@ func TestWatchReportsNewMailAndTellsAMoveApartFromIt(t *testing.T) {
 func TestOnlyASubscribedConnectionIsToldWhatMoved(t *testing.T) {
 	d := seed(t)
 	ctx := context.Background()
-	a := d.primaryAccount()
+	a := d.Primary
 	d.cycle(ctx, a, "baseline")
 
 	pushes := make(chan Push, 16)
@@ -231,7 +231,7 @@ func TestWatchReportsACollectionComingAndGoing(t *testing.T) {
 	ctx := context.Background()
 
 	ch := watchOn(t, d, nil)
-	before, err := d.Mirror.Collections(d.Account, "")
+	before, err := d.Mirror.Collections(d.Primary.Name, "")
 	if err != nil {
 		t.Fatal(err)
 	}

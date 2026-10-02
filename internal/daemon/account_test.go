@@ -399,7 +399,7 @@ func TestBoxListAccountsMatchIds(t *testing.T) {
 
 func TestAccountListNamesEveryAccountAndItsColour(t *testing.T) {
 	d, _, _ := twoAccounts(t)
-	d.Color = "accent"
+	d.Primary.Color = "accent"
 	got := mustAsk(t, d, []string{"account", "list"}, nil).Data.([]accountRow)
 	want := []accountRow{
 		{Name: "primary", Email: "me@example.com", Primary: true, Color: "accent"},

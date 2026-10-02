@@ -109,7 +109,7 @@ func seed(t *testing.T) *Daemon {
 }
 
 // fakeOf reaches the scripted server behind a seeded Daemon.
-func fakeOf(d *Daemon) *mailsync.Fake { return d.Reconciler.Driver.(*mailsync.Fake) }
+func fakeOf(d *Daemon) *mailsync.Fake { return d.Primary.Reconciler.Driver.(*mailsync.Fake) }
 
 func view(t *testing.T, d *Daemon, id string) map[string]any {
 	t.Helper()
@@ -185,7 +185,7 @@ func TestParseMessageID(t *testing.T) {
 		{in: "", bad: true},
 		{in: "0", bad: true},
 	} {
-		folder, uid, err := parseMessageID(tc.in, known)
+		folder, uid, err := parseMessageID(tc.in, known, "INBOX")
 		if tc.bad {
 			if err == nil {
 				t.Errorf("parseMessageID(%q) = %s:%d, want error", tc.in, folder, uid)
@@ -634,8 +634,8 @@ func TestBoxListArchiveAddsTheRestAfterThem(t *testing.T) {
 	if strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Fatalf("boxes = %v, want %v", got, want)
 	}
-	if len(rows) != len(d.Mirrored) {
-		t.Errorf("%d rows for %d mirrored boxes", len(rows), len(d.Mirrored))
+	if len(rows) != len(d.Primary.Mirrored) {
+		t.Errorf("%d rows for %d mirrored boxes", len(rows), len(d.Primary.Mirrored))
 	}
 }
 
@@ -643,7 +643,7 @@ func TestBoxListArchiveAddsTheRestAfterThem(t *testing.T) {
 // still be found. Worth having; not worth a line in every listing.
 func TestBoxListLeavesTheBlockPileOutUnlessAsked(t *testing.T) {
 	d := seed(t)
-	d.Mirrored = append(d.Mirrored, "INBOX/Screener/Block")
+	d.Primary.Mirrored = append(d.Primary.Mirrored, "INBOX/Screener/Block")
 
 	for _, c := range []struct {
 		archive bool
@@ -681,7 +681,7 @@ func TestSpamMovesToJunkAndNotToTrash(t *testing.T) {
 // quietly using Trash, which would be a different and worse thing to do.
 func TestSpamWithNoJunkBoxIsARefusal(t *testing.T) {
 	d := seed(t)
-	d.Mirrored = []string{"INBOX"}
+	d.Primary.Mirrored = []string{"INBOX"}
 	resp := ask(t, d, []string{"spam"}, map[string]any{"positional": []any{"7"}})
 	if resp.OK || resp.Code != "usage" {
 		t.Fatalf("resp = %+v", resp)
@@ -708,7 +708,7 @@ func (g *gateTransport) Send(ctx context.Context, from string, to []string, raw 
 func TestSendDoesNotStallTheConnection(t *testing.T) {
 	d, _ := seedSend(t)
 	gate := &gateTransport{release: make(chan struct{})}
-	d.Courier = &outbox.Courier{Box: d.Outbox, Transport: gate, Filer: fakeOf(d), SentBox: "INBOX/Sent"}
+	d.Primary.Courier = &outbox.Courier{Box: d.Outbox, Transport: gate, Filer: fakeOf(d), SentBox: "INBOX/Sent"}
 
 	client, server := net.Pipe()
 	defer client.Close()

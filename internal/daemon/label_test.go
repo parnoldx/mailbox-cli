@@ -81,7 +81,7 @@ func TestSystemKeywordsAreNotLabels(t *testing.T) {
 		t.Fatalf("labels = %+v", rows)
 	}
 
-	tx, err := d.Mirror.Begin(d.Account)
+	tx, err := d.Mirror.Begin(d.Primary.Name)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +213,7 @@ func TestRenamingAndDeletingAnUnusedLabel(t *testing.T) {
 
 func flagsOf(t *testing.T, d *Daemon, folder string, uid uint32) []string {
 	t.Helper()
-	row, err := d.Mirror.Row(d.Account, folder, uid)
+	row, err := d.Mirror.Row(d.Primary.Name, folder, uid)
 	if err != nil {
 		t.Fatal(err)
 	}

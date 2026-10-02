@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"mailbox/internal/bubble"
-	compose "mailbox/internal/message"
 	"mailbox/internal/mirror"
 	"mailbox/internal/outbox"
 	"mailbox/internal/routing"
@@ -22,34 +21,18 @@ import (
 // Daemon owns the Mirror and every server connection. Nothing else opens
 // either (ADR-0012).
 type Daemon struct {
-	Account    string
-	Mirror     *mirror.Mirror
-	Reconciler *mailsync.Reconciler
-	// Mirrored is every Box the Daemon keeps in the Mirror. All of them are
-	// reconciled on every cycle, from one LIST-STATUS round trip.
-	Mirrored []string
-	// Watched is the subset of Mirrored that gets an IDLE connection, for
-	// sub-second latency. Everything else rides the poll (ADR-0006). These are
-	// two different sets: watching is about how fast we hear, mirroring is
-	// about what we hold.
-	Watched []string
-	// Writer is the write-through path: a command that changes something goes
-	// to the server and updates the Mirror from the ack (ADR-0004).
-	Writer *mailsync.Writer
-	// Others are the Secondary Accounts, each with its own connections. The
-	// fields above are the Primary Account's, which is why an id with no
-	// account prefix means that one (ADR-0005).
+	// Primary is the Primary Account: the one an unqualified id means
+	// (ADR-0005), and the one the Screener, the Routing and the collections
+	// belong to.
+	Primary *Account
+	Mirror  *mirror.Mirror
+	// Others are the Secondary Accounts, each with its own connections.
 	Others []*Account
 	// Outbox is the durable send queue, and Courier is what empties it. They
 	// are the one place the Mirror leads the server rather than following it
 	// (ADR-0004), and the Outbox file outlives every rebuild of the Mirror
 	// (ADR-0013).
-	Outbox  *outbox.Outbox
-	Courier *outbox.Courier
-	// From is the address this account sends as.
-	From compose.Address
-	// Color is the Primary Account's colour (config.Account.Color).
-	Color string
+	Outbox *outbox.Outbox
 	// PollEvery is how often the LIST-STATUS cycle runs.
 	PollEvery time.Duration
 	// DAV reconciles the calendars, task lists and address books. It runs on
@@ -111,14 +94,8 @@ type Daemon struct {
 	invites   map[string]vcal.Invite
 	invitesMu sync.Mutex
 
-	// trigger serialises cycles. A cold start takes minutes and the poll fires
-	// every minute, so without this a second cycle starts inside the first,
-	// plans against half-written state, and redoes folders the first one has
-	// already done. Depth one coalesces: several nudges during a cycle mean one
-	// cycle after it, which is all they can ever mean.
-	trigger chan string
-
-	// davTrigger serialises DAV cycles the way trigger serialises mail ones.
+	// davTrigger serialises DAV cycles the way Account.trigger serialises mail
+	// ones.
 	// The timer and a command's nudge both go through it, so two cycles can
 	// never run against the same collection — which would have both of them
 	// asking from the same sync token and one of them committing the older
@@ -161,21 +138,19 @@ type CalendarMaker interface {
 // New builds a Daemon. mirrored is every Box to hold; watched is the subset to
 // hold an IDLE connection on.
 func New(account string, m *mirror.Mirror, r *mailsync.Reconciler, mirrored, watched []string, logger *log.Logger) *Daemon {
-	d := &Daemon{
-		Account: account, Mirror: m, Reconciler: r,
-		Mirrored: mirrored, Watched: watched,
+	var w *mailsync.Writer
+	if r != nil {
+		w = &mailsync.Writer{Account: account, Mirror: m, Driver: r.Driver, Mirrored: mirrored}
+	}
+	primary := NewAccount(account, r, w, mirrored, watched)
+	primary.Primary = true
+	return &Daemon{
+		Primary: primary, Mirror: m,
 		PollEvery: 60 * time.Second, Log: logger,
-		trigger:    make(chan string, 1),
 		davTrigger: make(chan davKick, 1),
 		clients:    map[chan Push]struct{}{},
 		watchers:   map[chan Change]*watcher{},
 	}
-	if r != nil {
-		d.Writer = &mailsync.Writer{
-			Account: account, Mirror: m, Driver: r.Driver, Mirrored: mirrored,
-		}
-	}
-	return d
 }
 
 // Serve serves until ctx is done, on a listener somebody else opened — systemd,

@@ -30,12 +30,15 @@ type Account struct {
 
 	Reconciler *mailsync.Reconciler
 	Writer     *mailsync.Writer
-	// Mirrored is every Box held for this account; Watched is the subset with
-	// an IDLE connection.
+	// Mirrored is every Box held for this account, all of them reconciled on
+	// every cycle from one LIST-STATUS round trip. Watched is the subset that
+	// gets an IDLE connection, for sub-second latency; everything else rides
+	// the poll (ADR-0006). Watching is about how fast we hear, mirroring about
+	// what we hold.
 	Mirrored []string
 	Watched  []string
-	// cancel stops this account's loops, and Close drops its connections. Only
-	// a Secondary has them: the Primary lives as long as the process does.
+	// cancel stops this account's loops, and Close drops its connections. The
+	// Primary has neither: it lives as long as the process does.
 	cancel context.CancelFunc
 	Close  func()
 	// From is the address this account sends as, and Courier is what empties
@@ -46,30 +49,20 @@ type Account struct {
 	// `account list` so a row and a Send button can be painted with it.
 	Color string
 
-	// trigger serialises this account's cycles, depth one. Several nudges
-	// during a cycle mean one cycle after it, which is all they can ever mean.
+	// trigger serialises this account's cycles. A cold start takes minutes and
+	// the poll fires every minute, so without it a second cycle starts inside
+	// the first and plans against half-written state. Depth one coalesces:
+	// several nudges during a cycle mean one cycle after it, which is all they
+	// can ever mean.
 	trigger chan string
 }
 
-// NewAccount builds a Secondary Account. The Primary one is the Daemon's own
-// fields, so that everything written before there were several accounts still
-// works unchanged.
+// NewAccount builds an Account, Secondary unless the caller says otherwise.
 func NewAccount(name string, r *mailsync.Reconciler, w *mailsync.Writer, mirrored, watched []string) *Account {
 	return &Account{
 		Name: name, Reconciler: r, Writer: w,
 		Mirrored: mirrored, Watched: watched,
 		trigger: make(chan string, 1),
-	}
-}
-
-// primaryAccount is the Daemon's own account, as an Account.
-func (d *Daemon) primaryAccount() *Account {
-	return &Account{
-		Name: d.Account, Primary: true,
-		Reconciler: d.Reconciler, Writer: d.Writer,
-		Mirrored: d.Mirrored, Watched: d.Watched,
-		From: d.From, Courier: d.Courier, Color: d.Color,
-		trigger: d.trigger,
 	}
 }
 
@@ -83,7 +76,7 @@ func (d *Daemon) accounts() []*Account {
 	others := append([]*Account(nil), d.Others...)
 	d.reload.mu.Unlock()
 	out := make([]*Account, 0, len(others)+1)
-	out = append(out, d.primaryAccount())
+	out = append(out, d.Primary)
 	out = append(out, others...)
 	return out
 }
@@ -146,7 +139,7 @@ func (d *Daemon) StopAccount(name string) bool {
 // accountNamed finds an account by the name an id prefixes with.
 func (d *Daemon) accountNamed(name string) (*Account, error) {
 	if name == "" {
-		return d.primaryAccount(), nil
+		return d.Primary, nil
 	}
 	for _, a := range d.accounts() {
 		if strings.EqualFold(a.Name, name) {
@@ -154,30 +147,6 @@ func (d *Daemon) accountNamed(name string) (*Account, error) {
 		}
 	}
 	return nil, fmt.Errorf("no account called %q", name)
-}
-
-// resolveID reads `[account/]box:uid`. An unqualified id means the Primary
-// Account, so every id that worked when there was one account still works
-// verbatim (ADR-0005).
-func (d *Daemon) resolveID(value string) (*Account, string, uint32, error) {
-	name, rest := splitAccount(value, d.accountNames())
-	a, err := d.accountNamed(name)
-	if err != nil {
-		return nil, "", 0, err
-	}
-	folder, uid, err := parseMessageID(rest, a.Mirrored)
-	return a, folder, uid, err
-}
-
-// resolveAttachmentID reads `[account/]box:uid[:index]`.
-func (d *Daemon) resolveAttachmentID(value string) (*Account, string, uint32, int, error) {
-	name, rest := splitAccount(value, d.accountNames())
-	a, err := d.accountNamed(name)
-	if err != nil {
-		return nil, "", 0, 0, err
-	}
-	folder, uid, index, err := parseAttachmentID(rest, a.Mirrored)
-	return a, folder, uid, index, err
 }
 
 func (d *Daemon) accountNames() []string {
@@ -191,41 +160,6 @@ func (d *Daemon) accountNames() []string {
 	return out
 }
 
-// splitAccount takes the account prefix off an id. A Box name can contain a
-// slash — `INBOX/Screener` — so only a prefix that names an account counts as
-// one, and everything else is part of the Box.
-func splitAccount(value string, names []string) (account, rest string) {
-	v := strings.TrimSpace(value)
-	// The account on its own names all of it: `box view gmx` is that account's
-	// Inbox, and `search --in gmx` is that account's mail.
-	for _, n := range names {
-		if n != "" && strings.EqualFold(n, v) {
-			return v, ""
-		}
-	}
-	i := strings.Index(v, "/")
-	if i <= 0 {
-		return "", v
-	}
-	head := v[:i]
-	for _, n := range names {
-		if strings.EqualFold(n, head) {
-			return head, v[i+1:]
-		}
-	}
-	return "", v
-}
-
-// qualify puts the account back on an id. The Primary Account is never written:
-// an id from a one-account setup and the same id from a two-account one are the
-// same string (ADR-0005).
-func (a *Account) qualify(id string) string {
-	if a == nil || a.Primary || a.Name == "" {
-		return id
-	}
-	return a.Name + "/" + id
-}
-
 // label is the account's name as a row carries it: empty for the Primary, by
 // the same rule as qualify.
 func (a *Account) label() string {
@@ -233,9 +167,4 @@ func (a *Account) label() string {
 		return ""
 	}
 	return a.Name
-}
-
-// messageID is the id a caller hands back to a read command.
-func (a *Account) messageID(folder string, uid uint32) string {
-	return a.qualify(formatMessageID(folder, uid, a.Mirrored))
 }

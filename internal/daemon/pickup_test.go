@@ -42,17 +42,17 @@ func (h *handedOver) arg(cmd string) []string {
 func deliverScreener(t *testing.T, d *Daemon, key, subject, from, body string) map[string]mailsync.Outcome {
 	t.Helper()
 	ctx := context.Background()
-	a := d.primaryAccount()
+	a := d.Primary
 	// One sync first, so the Boxes the seed wrote straight into the Mirror are
 	// settled. Without it the delivery below lands in the same pass that first
 	// reads every folder, and a resync reports no arrivals — which is exactly
 	// what collectPickups relies on to not fire on a Mirror rebuild.
-	if _, err := a.Reconciler.SyncAll(ctx, d.Mirrored); err != nil {
+	if _, err := a.Reconciler.SyncAll(ctx, d.Primary.Mirrored); err != nil {
 		t.Fatal(err)
 	}
 	m := fakeOf(d).Deliver(routing.BoxScreener, key, subject, body)
 	m.From, m.Date = from, time.Now()
-	out, err := a.Reconciler.SyncAll(ctx, d.Mirrored)
+	out, err := a.Reconciler.SyncAll(ctx, d.Primary.Mirrored)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestPickupCopiesTheCodeAndQuietensTheMail(t *testing.T) {
 	out := deliverScreener(t, d, "otp@example.com", "Your verification code",
 		"Example Login <no-reply@example.com>",
 		"Hi,\n\nYour code is 481920.\n\nIt expires in 10 minutes.\n")
-	got := d.collectPickups(context.Background(), d.primaryAccount(), out)
+	got := d.collectPickups(context.Background(), d.Primary, out)
 
 	if len(got) != 1 {
 		t.Fatalf("collectPickups found %d pickups, want 1", len(got))
@@ -115,21 +115,21 @@ func TestPickupReadsAnHTMLOnlyBody(t *testing.T) {
 	h.install(t)
 
 	ctx := context.Background()
-	a := d.primaryAccount()
+	a := d.Primary
 	// One sync first, so the delivery below lands as an arrival (deliverScreener).
-	if _, err := a.Reconciler.SyncAll(ctx, d.Mirrored); err != nil {
+	if _, err := a.Reconciler.SyncAll(ctx, d.Primary.Mirrored); err != nil {
 		t.Fatal(err)
 	}
 	m := fakeOf(d).Deliver(routing.BoxScreener, "beispiel@example.de",
 		"Ihre Anmeldung im Präferenz-Center", "")
 	m.HTML = "<p>Sie haben kürzlich einen Verifizierungscode angefordert.</p>\n<p>Ihr Geheimcode zur einmaligen Verwendung :</p>\n<p><b>110263</b></p>\n"
 	m.From, m.Date = "Beispiel Bank <no-reply@example.de>", time.Now()
-	out, err := a.Reconciler.SyncAll(ctx, d.Mirrored)
+	out, err := a.Reconciler.SyncAll(ctx, d.Primary.Mirrored)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	got := d.collectPickups(ctx, d.primaryAccount(), out)
+	got := d.collectPickups(ctx, d.Primary, out)
 	if len(got) != 1 {
 		t.Fatalf("collectPickups found %d pickups, want 1", len(got))
 	}
@@ -152,7 +152,7 @@ func TestPickupIsNotAScreenerDecision(t *testing.T) {
 
 	out := deliverScreener(t, d, "otp2@example.com", "Your login code",
 		"Auth <auth@example.net>", "Your code is 771034.\n")
-	if got := d.collectPickups(context.Background(), d.primaryAccount(), out); len(got) != 1 {
+	if got := d.collectPickups(context.Background(), d.Primary, out); len(got) != 1 {
 		t.Fatalf("collectPickups found %d pickups, want 1", len(got))
 	}
 
@@ -178,7 +178,7 @@ func TestOrdinaryMailIsNotAPickup(t *testing.T) {
 	out := deliverScreener(t, d, "order@example.com", "Vielen Dank für deine Bestellung",
 		"Shop <shop@example.com>",
 		"Bestellnummer:\n\n  2818304  \n\nDein Rabattcode: SPAR20\n")
-	if got := d.collectPickups(context.Background(), d.primaryAccount(), out); len(got) != 0 {
+	if got := d.collectPickups(context.Background(), d.Primary, out); len(got) != 0 {
 		t.Fatalf("collectPickups took %v out of an order confirmation", got)
 	}
 	if len(h.calls) != 0 {
@@ -202,13 +202,13 @@ func TestPickupIsBinnedWhenItExpires(t *testing.T) {
 
 	out := deliverScreener(t, d, "otp3@example.com", "Security code",
 		"Bank <no-reply@bank.example>", "Passcode: 9F4KQ2\n")
-	if got := d.collectPickups(ctx, d.primaryAccount(), out); len(got) != 1 {
+	if got := d.collectPickups(ctx, d.Primary, out); len(got) != 1 {
 		t.Fatalf("collectPickups found %d pickups, want 1", len(got))
 	}
 
 	// Still inside the window: nothing moves.
 	d.PickupExpiry = time.Hour
-	d.binExpiredPickups(ctx, d.primaryAccount())
+	d.binExpiredPickups(ctx, d.Primary)
 	if !inScreener(t, d, "Security code") {
 		t.Fatal("a Pickup was binned while it was still current")
 	}
@@ -216,7 +216,7 @@ func TestPickupIsBinnedWhenItExpires(t *testing.T) {
 	// Past it: gone to Trash, where a code you turn out to still need is
 	// recoverable.
 	d.PickupExpiry = time.Nanosecond
-	d.binExpiredPickups(ctx, d.primaryAccount())
+	d.binExpiredPickups(ctx, d.Primary)
 	if inScreener(t, d, "Security code") {
 		t.Fatal("an expired Pickup is still in the Screener")
 	}
@@ -236,8 +236,8 @@ func TestWatchReportsAPickupRatherThanNewMail(t *testing.T) {
 
 	out := deliverScreener(t, d, "otp4@example.com", "Your one-time code",
 		"Example <no-reply@example.org>", "Your code is 224466.\n")
-	pickups := d.collectPickups(ctx, d.primaryAccount(), out)
-	d.watchMail(d.primaryAccount(), out, pickups)
+	pickups := d.collectPickups(ctx, d.Primary, out)
+	d.watchMail(d.Primary, out, pickups)
 	close(ch)
 
 	var saw bool
@@ -271,7 +271,7 @@ func TestPickupCopiesARegistrationLink(t *testing.T) {
 	out := deliverScreener(t, d, "reg@example.com", "Bitte E-Mail-Adresse bestätigen",
 		"Elster <portal@example.de>",
 		"Guten Tag,\n\nzum Aktivieren:\nhttps://portal.example.de/eportal/auth/Registrierung?t=9f2ad91c4b\n")
-	got := d.collectPickups(context.Background(), d.primaryAccount(), out)
+	got := d.collectPickups(context.Background(), d.Primary, out)
 	if len(got) != 1 {
 		t.Fatalf("collectPickups found %d pickups, want 1", len(got))
 	}
@@ -302,7 +302,7 @@ func TestPickupAlertIsTheShapeDoNotDisturbLetsThrough(t *testing.T) {
 
 	out := deliverScreener(t, d, "otp7@example.com", "Ihr Zugriffscode",
 		"Dienst <no-reply@example.org>", "Ihr Code lautet 778812.\n")
-	if got := d.collectPickups(context.Background(), d.primaryAccount(), out); len(got) != 1 {
+	if got := d.collectPickups(context.Background(), d.Primary, out); len(got) != 1 {
 		t.Fatalf("collectPickups found %d pickups, want 1", len(got))
 	}
 
@@ -344,7 +344,7 @@ func TestADaemonWithNoClipboardLeavesThePickupForTheDesktop(t *testing.T) {
 
 	out := deliverScreener(t, d, "otp5@example.com", "Your one-time code",
 		"Example <no-reply@example.org>", "Your code is 224466.\n")
-	if got := d.collectPickups(context.Background(), d.primaryAccount(), out); len(got) != 0 {
+	if got := d.collectPickups(context.Background(), d.Primary, out); len(got) != 0 {
 		t.Fatalf("collectPickups took %v with nowhere to hand it over", got)
 	}
 	if !inScreener(t, d, "Your one-time code") {
@@ -365,7 +365,7 @@ func TestPickupListAndCopyHandItOverAgain(t *testing.T) {
 
 	out := deliverScreener(t, d, "otp8@example.com", "Ihr Bestätigungscode",
 		"Dienst <no-reply@example.org>", "Ihr Code lautet 559013.\n")
-	if got := d.collectPickups(ctx, d.primaryAccount(), out); len(got) != 1 {
+	if got := d.collectPickups(ctx, d.Primary, out); len(got) != 1 {
 		t.Fatalf("collectPickups found %d pickups, want 1", len(got))
 	}
 	// The arrival's own hand-over is not what is under test here.
@@ -402,7 +402,7 @@ func TestPickupListAndCopyHandItOverAgain(t *testing.T) {
 		if r.Message.Subject != "Newsletter #41" {
 			continue
 		}
-		id := d.primaryAccount().messageID(r.Placement.Folder, r.Placement.UID)
+		id := d.Primary.messageID(r.Placement.Folder, r.Placement.UID)
 		resp := d.handle(ctx, Request{ID: "3", Cmd: []string{"pickup", "copy"},
 			Args: map[string]any{"positional": id}})
 		if resp.OK {
@@ -419,7 +419,7 @@ func TestPickupListAndCopyHandItOverAgain(t *testing.T) {
 	link := "https://portal.example.de/eportal/auth/Registrierung?t=9f2ad91c4b"
 	out = deliverScreener(t, d, "reg8@example.com", "Bitte E-Mail-Adresse bestätigen",
 		"Elster <portal@example.de>", "Guten Tag,\n\nzum Aktivieren:\n"+link+"\n")
-	if got := d.collectPickups(ctx, d.primaryAccount(), out); len(got) != 1 {
+	if got := d.collectPickups(ctx, d.Primary, out); len(got) != 1 {
 		t.Fatalf("collectPickups found %d link pickups, want 1", len(got))
 	}
 	list = d.handle(ctx, Request{ID: "4", Cmd: []string{"pickup", "list"}})

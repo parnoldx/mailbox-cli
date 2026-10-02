@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -25,7 +24,7 @@ func (d *Daemon) handleDraft(ctx context.Context, req Request, resp Response) Re
 	verb := req.Verb("list")
 	// --account names the account a new draft is filed in and the one an
 	// edited draft goes out under; the default is the Primary.
-	acct := d.primaryAccount()
+	acct := d.Primary
 	if name := req.Str("account"); name != "" {
 		var err error
 		if acct, err = d.accountNamed(name); err != nil {
@@ -235,29 +234,9 @@ func (d *Daemon) draftRow(acct *Account, req Request) (*Account, string, mirror.
 	if id == "" {
 		return acct, "", mirror.Row{}, errors.New("which draft? give the id draft list printed")
 	}
-	home := acct
-	if prefix, rest := splitAccount(id, d.accountNames()); prefix != "" {
-		var err error
-		if home, err = d.accountNamed(prefix); err != nil {
-			return acct, "", mirror.Row{}, err
-		}
-		id = rest
-	}
-	box, err := draftsBox(home)
+	home, folder, uid, err := d.resolveIDOn(id, acct, draftsBox)
 	if err != nil {
 		return acct, "", mirror.Row{}, err
-	}
-	folder, uid := box, uint32(0)
-	if !strings.Contains(id, ":") {
-		n, err := strconv.ParseUint(id, 10, 32)
-		if err != nil || n == 0 {
-			return acct, "", mirror.Row{}, fmt.Errorf("a draft id is a uid or Drafts:uid, got %q", id)
-		}
-		uid = uint32(n)
-	} else {
-		if folder, uid, err = parseMessageID(id, home.Mirrored); err != nil {
-			return acct, "", mirror.Row{}, err
-		}
 	}
 	row, err := d.Mirror.Row(home.Name, folder, uid)
 	if errors.Is(err, mirror.ErrNotFound) {

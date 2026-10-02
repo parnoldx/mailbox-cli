@@ -36,7 +36,7 @@ type kindOf struct {
 // there, or did not name one when they had to — so they carry their own Code
 // and a handler can hand them straight to Response.failed.
 func (d *Daemon) pick(k kindOf, name string) (mirror.Collection, error) {
-	all, err := d.Mirror.Collections(d.Account, k.kind)
+	all, err := d.Mirror.Collections(d.Primary.Name, k.kind)
 	if err != nil {
 		return mirror.Collection{}, err
 	}
@@ -76,7 +76,7 @@ func (d *Daemon) pick(k kindOf, name string) (mirror.Collection, error) {
 // carries. A miss means the collection went away between the read and now,
 // which a rebuilt Mirror can do.
 func (d *Daemon) collectionOf(o mirror.Object) (mirror.Collection, error) {
-	cols, err := d.Mirror.Collections(d.Account, "")
+	cols, err := d.Mirror.Collections(d.Primary.Name, "")
 	if err != nil {
 		return mirror.Collection{}, err
 	}
@@ -104,7 +104,7 @@ func (d *Daemon) load(req Request, noun string) (mirror.Object, mirror.Collectio
 	if err != nil {
 		return mirror.Object{}, mirror.Collection{}, usageErr("%s", err)
 	}
-	object, err := d.Mirror.Object(d.Account, id)
+	object, err := d.Mirror.Object(d.Primary.Name, id)
 	if errors.Is(err, mirror.ErrNotFound) {
 		return mirror.Object{}, mirror.Collection{}, notFoundErr("no %s %d in the mirror", noun, id)
 	}
@@ -142,7 +142,7 @@ func (d *Daemon) put(ctx context.Context, event string, col mirror.Collection, h
 	if err != nil {
 		return mirror.Object{}, err
 	}
-	d.push(Push{Event: event, Account: d.Account, Box: col.Name})
+	d.push(Push{Event: event, Account: d.Primary.Name, Box: col.Name})
 	return object, nil
 }
 
@@ -157,7 +157,7 @@ func (d *Daemon) remove(ctx context.Context, event string, col mirror.Collection
 	if err := d.DAVWriter.Delete(ctx, col, o); err != nil {
 		return err
 	}
-	d.push(Push{Event: event, Account: d.Account, Box: col.Name})
+	d.push(Push{Event: event, Account: d.Primary.Name, Box: col.Name})
 	return nil
 }
 

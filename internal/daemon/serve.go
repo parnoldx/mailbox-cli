@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -620,12 +619,6 @@ type saved struct {
 	MIMEType string `json:"mime_type"`
 }
 
-// attachmentID names one file on one Message: the Placement id, then which
-// file. Index is 1-based and matches the listing.
-func attachmentID(a *Account, folder string, uid uint32, index int) string {
-	return fmt.Sprintf("%s:%d", a.messageID(folder, uid), index)
-}
-
 // attachment is one row of a listing.
 type attachment struct {
 	ID          string `json:"id"`
@@ -664,21 +657,6 @@ type inlineBytes struct {
 	Size      int    `json:"size"`
 	ContentID string `json:"content_id,omitempty"`
 	Base64    string `json:"base64"`
-}
-
-// parseAttachmentID reads [box:]uid[:index]. The index is optional because a
-// Message with one attachment is named by the Message.
-func parseAttachmentID(value string, known []string) (folder string, uid uint32, index int, err error) {
-	v := strings.TrimSpace(value)
-	if i := strings.LastIndex(v, ":"); i >= 0 {
-		if n, convErr := strconv.Atoi(v[i+1:]); convErr == nil && n > 0 {
-			if f, u, mErr := parseMessageID(v[:i], known); mErr == nil {
-				return f, u, n, nil
-			}
-		}
-	}
-	f, u, err := parseMessageID(v, known)
-	return f, u, 0, err
 }
 
 // refs turns the ids a write command was given into Placements to act on. They
@@ -901,70 +879,6 @@ type change struct {
 	Seen  bool     `json:"seen"`
 }
 
-// parseMessageID reads the [box:]uid a listing printed back into a Placement.
-// A bare uid means the Inbox, which is the Box an agent is usually looking at.
-func parseMessageID(value string, known []string) (string, uint32, error) {
-	v := strings.TrimSpace(value)
-	if v == "" {
-		return "", 0, errors.New("message id must be [box:]uid")
-	}
-	folder := "INBOX"
-	if i := strings.LastIndex(v, ":"); i >= 0 {
-		folder, v = resolveBox(strings.TrimSpace(v[:i]), known), strings.TrimSpace(v[i+1:])
-	}
-	uid, err := strconv.ParseUint(v, 10, 32)
-	if err != nil || uid == 0 {
-		return "", 0, fmt.Errorf("message id must be [box:]uid, got %q", value)
-	}
-	return folder, uint32(uid), nil
-}
-
-// resolveBox maps what a caller typed onto a mirrored folder name. A Box under
-// the Inbox answers to its short name — `Screener`, not `INBOX/Screener` —
-// because that is the name its ids are printed with. A Box named outright wins
-// over one that only matches with the prefix put back, so a top-level folder is
-// never shadowed by a child of the Inbox with the same name.
-func resolveBox(name string, known []string) string {
-	if strings.EqualFold(name, "inbox") {
-		return "INBOX"
-	}
-	for _, k := range known {
-		if strings.EqualFold(k, name) {
-			return k
-		}
-	}
-	for _, k := range known {
-		if strings.EqualFold(k, "INBOX/"+name) {
-			return k
-		}
-	}
-	// The short vocabulary `mailbox route` uses for the boxes the routing files
-	// into — "paper", "trail", "feed", "block" — so a name that names a box there
-	// names the same box here.
-	if d, err := routing.ParseDestination(name); err == nil {
-		if box := d.Box(); box != "" {
-			return box
-		}
-	}
-	return name
-}
-
-// shortBox is the name a Box is printed with. Everything under the Inbox loses
-// the prefix, unless a Box of that name exists at the top level too — there the
-// short form would name two Boxes, so neither gets it.
-func shortBox(folder string, known []string) string {
-	short, ok := strings.CutPrefix(folder, "INBOX/")
-	if !ok {
-		return folder
-	}
-	for _, k := range known {
-		if !strings.EqualFold(k, folder) && strings.EqualFold(k, short) {
-			return folder
-		}
-	}
-	return short
-}
-
 // accountRow is one account as `account list` names it.
 type accountRow struct {
 	Name    string `json:"name"`
@@ -1003,16 +917,6 @@ type row struct {
 	// label is something the conversation carries, so a listing that badged
 	// only its newest mail would hide the one put on the reply before it.
 	Labels []string `json:"labels,omitempty"`
-}
-
-// formatMessageID is the id a caller hands back to message view. The Inbox is
-// implicit, because that is the Box most ids come from, and its children are
-// named without it: `Screener:342`, not `INBOX/Screener:342`.
-func formatMessageID(folder string, uid uint32, known []string) string {
-	if folder == "INBOX" {
-		return fmt.Sprintf("%d", uid)
-	}
-	return fmt.Sprintf("%s:%d", shortBox(folder, known), uid)
 }
 
 // message is one Message read whole: its headers, its text, and every Box it

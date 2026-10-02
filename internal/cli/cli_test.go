@@ -79,7 +79,7 @@ func serveSeeded(t *testing.T) {
 	socket := filepath.Join(dir, "s.sock")
 	d := daemon.New("primary", m, nil, []string{"INBOX", "INBOX/Screener", "INBOX/Paper Trail"}, nil,
 		log.New(&bytes.Buffer{}, "", 0))
-	d.From = compose.Address{Name: "Max Mustermann", Addr: "me@example.com"}
+	d.Primary.From = compose.Address{Name: "Max Mustermann", Addr: "me@example.com"}
 	ln, err := daemon.Listen(socket, false)
 	if err != nil {
 		t.Fatal(err)

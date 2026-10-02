@@ -81,7 +81,7 @@ func (d *Daemon) handleCalendar(req Request, resp Response) Response {
 		return resp.usage(fmt.Sprintf("unknown calendar command %q", verb))
 	}
 	kind := req.Str("kind")
-	cols, err := d.Mirror.Collections(d.Account, kind)
+	cols, err := d.Mirror.Collections(d.Primary.Name, kind)
 	if err != nil {
 		return resp.api(err.Error())
 	}
@@ -113,13 +113,13 @@ func (d *Daemon) handleAgenda(req Request, resp Response) Response {
 	if name != "" {
 		// A calendar nobody has heard of is a mistake worth naming, rather than
 		// an empty agenda that reads like a quiet week.
-		if _, err := d.Mirror.CollectionNamed(d.Account, "", name); errors.Is(err, mirror.ErrNotFound) {
+		if _, err := d.Mirror.CollectionNamed(d.Primary.Name, "", name); errors.Is(err, mirror.ErrNotFound) {
 			return resp.notFound(fmt.Sprintf("no calendar called %q", name))
 		} else if err != nil {
 			return resp.api(err.Error())
 		}
 	}
-	objects, err := d.Mirror.ObjectsIn(d.Account, "events", from, to, name)
+	objects, err := d.Mirror.ObjectsIn(d.Primary.Name, "events", from, to, name)
 	if err != nil {
 		return resp.api(err.Error())
 	}
@@ -147,7 +147,7 @@ func (d *Daemon) handleEvent(ctx context.Context, req Request, resp Response) Re
 	if err != nil {
 		return resp.usage(err.Error())
 	}
-	o, err := d.Mirror.Object(d.Account, id)
+	o, err := d.Mirror.Object(d.Primary.Name, id)
 	if errors.Is(err, mirror.ErrNotFound) {
 		return resp.notFound(fmt.Sprintf("no event %d in the mirror", id))
 	}
@@ -299,7 +299,7 @@ func (d *Daemon) davCycle(ctx context.Context, reason string, kinds ...string) {
 		if out.Changed == 0 && out.Deleted == 0 {
 			continue
 		}
-		d.push(Push{Event: "calendar.changed", Account: d.Account, Box: name})
+		d.push(Push{Event: "calendar.changed", Account: d.Primary.Name, Box: name})
 		// And the same thing described, for whoever asked to watch (ADR-0027).
 		d.watchObjects(name, out)
 	}
@@ -333,7 +333,7 @@ func (d *Daemon) davLoop(ctx context.Context) {
 		var before []mirror.Collection
 		watched := d.watching()
 		if watched {
-			before, _ = d.Mirror.Collections(d.Account, "")
+			before, _ = d.Mirror.Collections(d.Primary.Name, "")
 		}
 		if now, err := d.DAV.Discover(ctx); err != nil {
 			d.logf("dav discover: %v", err)
