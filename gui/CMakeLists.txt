@@ -43,6 +43,7 @@ qt_add_resources(mailbox-gui "qml"
         qml/FlashToast.qml
         qml/MailRow.qml
         qml/ThreadMessage.qml
+        qml/InviteDay.qml
         qml/WebWarmup.qml
         qml/WebRevive.qml
         qml/SelectingPdfView.qml

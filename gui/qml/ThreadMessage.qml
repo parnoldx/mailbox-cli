@@ -668,6 +668,11 @@ Item {
                         color: Theme.textDim
                         Behavior on color { ColorAnimation { duration: Theme.anim } }
                     }
+                    InviteDay {
+                        width: parent.width
+                        visible: !!(root.invite && root.invite.day && root.invite.day.length)
+                        blocks: (root.invite && root.invite.day) ? root.invite.day : []
+                    }
                     Row {
                         spacing: 8
                         visible: root.needCalendarPick || root.targetCalendar.length > 0
