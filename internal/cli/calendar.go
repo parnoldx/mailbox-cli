@@ -39,6 +39,26 @@ func runEventView(in *input, stdout, stderr io.Writer) int {
 	}, in.JSON(), printEvent, stdout, stderr)
 }
 
+// runMeet mints a Teams meeting; the link is the whole answer, so the printer
+// prints it alone and the rest of the reply is for --json.
+func runMeet(in *input, stdout, stderr io.Writer) int {
+	return request(daemon.Request{
+		Cmd: []string{"meet"},
+		Args: map[string]any{
+			"positional": in.Text(), "account": in.Str("account"),
+			"start": in.Str("start"), "end": in.Str("end"),
+		},
+	}, in.JSON(), printMeet, stdout, stderr)
+}
+
+// printMeet writes the join link and nothing else, because the point of the
+// command is to pipe it somewhere.
+func printMeet(stdout, stderr io.Writer, resp daemon.Response) {
+	if m, ok := fieldsOf(stdout, resp.Data); ok {
+		fmt.Fprintln(stdout, str(m["url"]))
+	}
+}
+
 // printAgenda prints the days, each with what is on it. The id comes first,
 // because the next thing a caller does is read one of them.
 func printAgenda(stdout, stderr io.Writer, resp daemon.Response) {

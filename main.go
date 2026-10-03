@@ -573,6 +573,7 @@ func buildGraph(ctx context.Context, name string, sec config.Account,
 		}
 	}
 	acct.Respond = graphdrv.NewDAV(g.client, g.store, name).Respond
+	acct.Meet = g.client.Meet
 	acct.Courier = &outbox.Courier{Box: box, Account: name, Transport: drv, Log: logger}
 	logger.Printf("account %s: Microsoft 365, %d boxes", name, len(mirrored))
 	return acct, nil

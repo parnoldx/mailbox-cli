@@ -52,6 +52,7 @@ and each help text carries the reason the command works the way it does.
 | get a file out | `mailbox attachment list 36722`, then `mailbox attachment save 36722:1` |
 | find a collected code or link again | `mailbox pickup list`, then `mailbox pickup copy Screener:2340` |
 | what is on | `mailbox agenda --days 14` |
+| make a Teams meeting | `mailbox meet TITLE` |
 | tasks and practices | `mailbox todo list`, `mailbox habit list` |
 | who is that | `mailbox contact search jane` |
 | what went out | `mailbox outbox list` |
@@ -64,7 +65,13 @@ the cases route does not cover. A **Pickup** — a login code or a magic link �
 never read but collected: the daemon puts it on the clipboard on arrival, so
 `mailbox pickup` is only how it is found again once the clipboard has moved on.
 `mailbox rsvp ID --accept` answers a meeting
-invite (iMIP to the organizer, and the event on the calendar). `attachment save`
+invite (iMIP to the organizer, and the event on the calendar). `mailbox meet
+TITLE` mints a Teams link with no calendar entry — it prints only the link, so
+it pipes. `event add --teams --invite anna@example.com` makes an event a Teams
+meeting and puts invitees on it — Microsoft 365 calendars only, where Exchange
+sends the invitations itself. A Teams meeting cannot be taken off an event
+again: Microsoft 365 ignores changes to it once set, same as Outlook.
+`attachment save`
 writes into the working directory unless `--output` names somewhere else.
 
 `mailbox unsubscribe ID` leaves the list a message came from. When the sender

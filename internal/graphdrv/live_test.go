@@ -320,6 +320,40 @@ func TestLiveCalendarRoundTrip(t *testing.T) {
 	t.Errorf("the event did not come back under %s in %d changes", href, len(next.Items))
 }
 
+// A Teams meeting minted on the live account comes back with a join link. No
+// event is made and nobody is invited; the meeting is taken down again, so the
+// account is left as it was found.
+func TestLiveMeetMakesALink(t *testing.T) {
+	c, _, _, _ := liveAccount(t)
+	ctx := context.Background()
+	start := time.Now().Add(time.Hour).Truncate(time.Minute)
+	link, err := c.Meet(ctx, "mailbox meet selftest", start, start.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("gate: join link %s", link)
+	if !strings.HasPrefix(link, "https://") {
+		t.Errorf("join link = %q", link)
+	}
+	// Graph hands the id back beside the link, so the meeting is ours to take
+	// down again. Best effort: a leftover meeting costs nothing but clutter.
+	var list struct {
+		Value []struct {
+			ID         string `json:"id"`
+			JoinWebURL string `json:"joinWebUrl"`
+		} `json:"value"`
+	}
+	if err := c.do(ctx, request{method: http.MethodGet, path: "/me/onlineMeetings"}, &list); err != nil {
+		return
+	}
+	for _, m := range list.Value {
+		if m.JoinWebURL == link {
+			_ = c.do(ctx, request{method: http.MethodDelete,
+				path: "/me/onlineMeetings/" + url.PathEscape(m.ID)}, nil)
+		}
+	}
+}
+
 // A Teams meeting made here comes back with the join link Graph minted for
 // it. No attendees: this must not send invitations from a test account.
 func TestLiveTeamsEventGetsAJoinLink(t *testing.T) {

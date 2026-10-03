@@ -947,6 +947,23 @@ func tree(l Locals) []*Command {
 			},
 		},
 		{
+			Name: "meet", Section: SectionTime, Short: "A Teams link, with no calendar entry",
+			Usage: []string{"mailbox meet [TITLE] [--account NAME] [--start WHEN] [--end WHEN]"},
+			Long: "Makes a Teams meeting on a Microsoft 365 account and prints only its " +
+				"join link, so it pipes: `mailbox meet Sync | wl-copy`. Nothing is put " +
+				"on any calendar and nobody is invited — for that, `event add --teams`.",
+			Flags: []Flag{
+				{Name: "account", Kind: KindString, Arg: "NAME", Desc: "which Microsoft 365 account"},
+				{Name: "start", Kind: KindString, Arg: "WHEN", Desc: "2026-09-01 14:00 (default now)"},
+				{Name: "end", Kind: KindString, Arg: "WHEN", Desc: "when it finishes (default an hour after the start)"},
+			},
+			Examples: []string{
+				"mailbox meet Sync | wl-copy",
+				`mailbox meet "Project call" --account work --start "2026-10-05 14:00"`,
+			},
+			Run: runMeet,
+		},
+		{
 			Name: "todo", Section: SectionTime, Short: "The task lists",
 			Sub: []*Command{
 				{

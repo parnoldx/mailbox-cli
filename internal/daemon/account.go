@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	compose "mailbox/internal/message"
 	"mailbox/internal/outbox"
@@ -27,6 +28,10 @@ type Account struct {
 	// iMIP and writing a second copy.
 	Graph   bool
 	Respond func(ctx context.Context, href, partstat string) error
+	// Meet mints a Teams meeting on the account and returns its join link,
+	// with no calendar entry. Nil on a non-Graph account: only Microsoft 365
+	// makes them, through the Teams server it fronts.
+	Meet func(ctx context.Context, subject string, start, end time.Time) (string, error)
 
 	Reconciler *mailsync.Reconciler
 	Writer     *mailsync.Writer

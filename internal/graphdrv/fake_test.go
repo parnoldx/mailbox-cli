@@ -155,6 +155,16 @@ func (f *fakeGraph) serve(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusAccepted)
 	case strings.HasPrefix(path, "/me/messages/"):
 		f.message(w, r, parts, body)
+	case strings.HasPrefix(path, "/me/onlineMeetings") && r.Method == http.MethodPost:
+		if f.failPost > 0 {
+			f.failPost--
+			f.fail(w, http.StatusForbidden, "ErrorAccessDenied")
+			return
+		}
+		var in map[string]any
+		_ = json.Unmarshal(body, &in)
+		id := f.newID("meet")
+		f.writeJSON(w, map[string]any{"id": id, "joinWebUrl": "https://teams.example.com/" + id})
 	case strings.HasPrefix(path, "/me/calendars"):
 		f.calendars(w, r, parts, body)
 	case strings.HasPrefix(path, "/me/events/"):

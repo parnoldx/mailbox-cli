@@ -37,6 +37,7 @@ CALENDAR & TASKS & CONTACTS
   agenda        What is on
   calendar      The calendars and task lists
   event         One entry, and when it repeats
+  meet          A Teams link, with no calendar entry
   todo          The task lists
   habit         The daily practices
   contact       The address books

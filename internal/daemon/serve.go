@@ -137,6 +137,8 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 		return d.handleAgenda(req, resp)
 	case "event":
 		return d.handleEvent(ctx, req, resp)
+	case "meet":
+		return d.handleMeet(ctx, req, resp)
 	case "todo":
 		return d.handleTodo(ctx, req, resp)
 	case "habit":

@@ -24,7 +24,9 @@ import (
 // MailboxSettings.ReadWrite is in it for the Routing: inbox rules are mailbox
 // settings on a work account, and Mail.ReadWrite alone is refused (measured:
 // 403 ErrorAccessDenied on messageRules with every Mail scope but that one).
-const Scopes = "offline_access User.Read Mail.ReadWrite Mail.Send MailboxSettings.ReadWrite Calendars.ReadWrite Contacts.ReadWrite"
+// OnlineMeetings.ReadWrite is in it for `mailbox meet`: a Teams meeting is
+// minted under /me/onlineMeetings, and Calendars.ReadWrite does not cover it.
+const Scopes = "offline_access User.Read Mail.ReadWrite Mail.Send MailboxSettings.ReadWrite Calendars.ReadWrite Contacts.ReadWrite OnlineMeetings.ReadWrite"
 
 // Login is where the device-code flow is spoken; a test points it at a fake.
 var Login = "https://login.microsoftonline.com"

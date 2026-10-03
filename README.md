@@ -250,6 +250,8 @@ mailbox pickup copy Screener:2340  # Back on the clipboard
 mailbox agenda --days 7            # Show upcoming events and due tasks
 mailbox calendar list              # List all discovered calendars and task lists
 mailbox event add "Team Sync" --start "tomorrow 10:00" --end "tomorrow 11:00"
+mailbox event add "Standup" --start "2026-09-01 09:00" --teams --invite a@example.com  # Microsoft 365 calendars
+mailbox meet "Quick call"          # Mint a Teams meeting link; prints only the link, no calendar entry
 mailbox todo list                  # List active tasks
 mailbox todo add "Pay invoice" --due "2026-09-01"
 mailbox todo done 42               # Mark task completed
@@ -258,6 +260,11 @@ mailbox habit done "meditation"    # Log today's habit completion
 mailbox contact search "Jane"      # Search address books
 mailbox contact add "Jane Doe" --email jane@example.com --phone "+1 555 0199"
 ```
+
+`--teams`, `--invite` and `--uninvite` (on `event edit`) work on Microsoft 365
+calendars only, where Exchange sends the invitations itself. A Teams meeting
+cannot be taken off an event again — Microsoft 365 ignores changes to it once
+set, same as Outlook.
 
 ### System & Diagnostics
 ```bash
