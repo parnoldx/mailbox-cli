@@ -26,6 +26,11 @@ type calendar struct {
 	Count    int    `json:"count"`
 	SyncedAt string `json:"synced_at,omitempty"`
 	Internal bool   `json:"internal,omitempty"`
+	// Teams marks a Microsoft 365 events calendar, the only kind whose server
+	// makes Teams links and sends invitations itself. Owner is the address
+	// the calendar belongs to, which a chooser ranks invitee suggestions by.
+	Teams bool   `json:"teams,omitempty"`
+	Owner string `json:"owner,omitempty"`
 }
 
 // occurrence is one instance of an Event in the window that was asked for. A
@@ -68,9 +73,36 @@ type event struct {
 	// minutes before the start. They are read off the raw here rather than
 	// projected into the Mirror: only the caller looking at one entry wants
 	// them, and the raw is the record (ADR-0010).
-	Repeat string       `json:"repeat,omitempty"`
-	Alarms []int        `json:"alarms,omitempty"`
-	Next   []occurrence `json:"next,omitempty"`
+	Repeat string `json:"repeat,omitempty"`
+	Alarms []int  `json:"alarms,omitempty"`
+	// Teams says the event is a Microsoft 365 online meeting, and Attendees
+	// is everyone else on it with the answer they have given so far. The
+	// account's own answer is not among them — it is the caller asking.
+	Teams     bool         `json:"teams"`
+	Attendees []attendee   `json:"attendees"`
+	Next      []occurrence `json:"next,omitempty"`
+}
+
+// attendee is one person on an event, as event view shows them. Answer is
+// accepted, tentative, declined or none — never empty.
+type attendee struct {
+	Address string `json:"address"`
+	Name    string `json:"name,omitempty"`
+	Answer  string `json:"answer"`
+}
+
+// answerOf is a PARTSTAT as the word event view says it in.
+func answerOf(partstat string) string {
+	switch partstat {
+	case vcal.PartstatAccepted:
+		return "accepted"
+	case vcal.PartstatTentative:
+		return "tentative"
+	case vcal.PartstatDeclined:
+		return "declined"
+	default:
+		return "none"
+	}
 }
 
 // handleCalendar lists the Collections the Mirror holds. Like every other list
@@ -92,13 +124,32 @@ func (d *Daemon) handleCalendar(req Request, resp Response) Response {
 		// `event add` already refuses it; saying so here is what stops a
 		// chooser from offering it in the first place.
 		row := calendar{Name: c.Name, Kind: c.Kind, Color: c.Color, Count: c.Count,
-			Internal: c.Name == habit.CalendarName}
+			Internal: c.Name == habit.CalendarName, Teams: graphCalendar(c), Owner: calendarOwner(c.Name, d.CalendarEmail)}
 		if !c.SyncedAt.IsZero() {
 			row.SyncedAt = c.SyncedAt.Local().Format("2006-01-02 15:04")
 		}
 		out = append(out, row)
 	}
 	return resp.ok(out)
+}
+
+// calendarOwner is the address a calendar belongs to. CalendarEmail maps an
+// attendee address to a calendar name, so the row wants the inverse; where
+// several addresses share a name the first in sorted order stands for them.
+// A Microsoft 365 account's default calendar is named after the account and
+// its others "work/Projects", so the account's address owns both.
+func calendarOwner(name string, emails map[string]string) string {
+	var addrs []string
+	for addr, cal := range emails {
+		if cal != "" && (cal == name || strings.HasPrefix(name, cal+"/")) {
+			addrs = append(addrs, addr)
+		}
+	}
+	if len(addrs) == 0 {
+		return ""
+	}
+	sort.Strings(addrs)
+	return addrs[0]
 }
 
 // handleAgenda answers "what is on" for a window. The window is the question:
@@ -163,6 +214,21 @@ func (d *Daemon) handleEvent(ctx context.Context, req Request, resp Response) Re
 	// what gets shown, and the rest of the view stands.
 	if p, perr := vcal.Parse(o.Raw, time.Local); perr == nil {
 		out.URL, out.Repeat, out.Alarms = p.URL, p.Repeat, p.Alarms
+		out.Teams = p.Teams
+		owner := calendarOwner(o.Collection, d.CalendarEmail)
+		for _, a := range p.Attendees {
+			// The account's own ATTENDEE is its answer to an invite, which the
+			// reader already knows; everyone else is who the meeting is with.
+			if owner != "" && strings.EqualFold(a.Address, owner) {
+				continue
+			}
+			out.Attendees = append(out.Attendees, attendee{Address: a.Address, Name: a.Name, Answer: answerOf(a.Partstat)})
+		}
+	}
+	// An empty roster reads as [] rather than null, which is a listing that
+	// failed to say it found nobody.
+	if out.Attendees == nil {
+		out.Attendees = []attendee{}
 	}
 	// The next few times it happens, which for a plain Event is once and for a
 	// weekly one is however many fit in the next year.

@@ -459,7 +459,7 @@ func (d *DAV) Put(ctx context.Context, raw, data, ifMatch string) (string, error
 }
 
 func (d *DAV) putEvent(ctx context.Context, collection, href, id string, known bool, data string) (string, error) {
-	want, err := eventFields(data, d.loc, d.zoneName)
+	want, err := eventFields(data, d.loc, d.zoneName, d.Email)
 	if err != nil {
 		return "", err
 	}
@@ -468,16 +468,24 @@ func (d *DAV) putEvent(ctx context.Context, collection, href, id string, known b
 		if want["recurrence"] == nil {
 			delete(want, "recurrence")
 		}
+		// An empty roster on a new event is the no-attendees ordinary case,
+		// not a list the server needs told about.
+		if att, ok := want["attendees"].([]map[string]any); ok && len(att) == 0 {
+			delete(want, "attendees")
+		}
 		if err := d.c.do(ctx, request{method: http.MethodPost, path: collection + "/events", body: jsonBody(want)}, &g); err != nil {
 			return "", err
 		}
-		return g.ChangeKey, d.s.putObject(href, g.ID)
+		// No ETag back, so the Writer reads the event again: Exchange adds what
+		// we never sent — the Teams join link, attendees' names — and the Mirror
+		// should hold that, not the object as we wrote it.
+		return "", d.s.putObject(href, g.ID)
 	}
 	now, err := d.currentEvent(ctx, collection, id)
 	if err != nil {
 		return "", err
 	}
-	have, err := eventFields(now.Data, d.loc, d.zoneName)
+	have, err := eventFields(now.Data, d.loc, d.zoneName, d.Email)
 	if err != nil {
 		return "", err
 	}
@@ -488,7 +496,7 @@ func (d *DAV) putEvent(ctx context.Context, collection, href, id string, known b
 	if err := d.c.do(ctx, request{method: http.MethodPatch, path: "/me/events/" + url.PathEscape(id), body: jsonBody(patch)}, &g); err != nil {
 		return "", err
 	}
-	return g.ChangeKey, nil
+	return "", nil // read back, as after a POST
 }
 
 func (d *DAV) putContact(ctx context.Context, collection, href, id string, known bool, data string) (string, error) {

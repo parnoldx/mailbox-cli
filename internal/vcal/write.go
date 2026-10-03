@@ -296,6 +296,8 @@ func NewEvent(uid string, e EventEdit) (string, error) {
 	setURL(ev, e.URL)
 	setRepeat(ev, e.Repeat)
 	setAlarms(ev, e.Alarms, e.Summary)
+	setTeams(ev, e.Teams)
+	setAttendees(ev, e.Invite, e.Uninvite)
 	cal.Children = append(cal.Children, ev)
 	return encode(cal)
 }
@@ -319,13 +321,24 @@ type EventEdit struct {
 	// leaves the ones that are there — they may be somebody else's client's —
 	// and a non-nil empty slice takes every one of them off.
 	Alarms []int
+	// Teams makes the event a Microsoft 365 online meeting. There is no off:
+	// Graph ignores changes to isOnlineMeeting once it is set, the same as
+	// Outlook does, so the only way back is delete and recreate.
+	Teams bool
+	// Invite adds required attendees and Uninvite takes them off; Exchange
+	// sends the invitations, updates and cancellations itself. Both match by
+	// lower-cased address, and an invite of somebody already on the list does
+	// nothing.
+	Invite   []string
+	Uninvite []string
 }
 
 // Empty reports that the caller named nothing, which is a usage error for an
 // edit and the ordinary case for the optional half of an add.
 func (e EventEdit) Empty() bool {
 	return e.Summary == "" && e.Description == "" && e.Location == "" && e.URL == "" &&
-		e.Start.IsZero() && e.End.IsZero() && !e.AllDay && e.Repeat == "" && e.Alarms == nil
+		e.Start.IsZero() && e.End.IsZero() && !e.AllDay && e.Repeat == "" && e.Alarms == nil &&
+		!e.Teams && e.Invite == nil && e.Uninvite == nil
 }
 
 // SetEvent applies an edit to an object already on the server. It edits rather
@@ -336,6 +349,8 @@ func SetEvent(raw string, e EventEdit) (string, error) {
 	return edit(raw, func(c *ical.Component) {
 		applyEvent(c, e)
 		setRepeat(c, e.Repeat)
+		setTeams(c, e.Teams)
+		setAttendees(c, e.Invite, e.Uninvite)
 	})
 }
 
@@ -701,6 +716,67 @@ func summaryOf(c *ical.Component, summary string) string {
 	}
 	text, _ := c.Props.Text(ical.PropSummary)
 	return text
+}
+
+// setTeams marks an event as a Microsoft 365 online meeting. There is no off
+// to write: Graph drops a false on the floor once the meeting exists, so an
+// unset flag means leave whatever is there rather than take it off.
+const PropTeams = "X-MAILBOX-TEAMS"
+
+func setTeams(c *ical.Component, teams bool) {
+	if teams {
+		// Written bare, without the VALUE=TEXT SetText adds: an X- property
+		// has no other value type, and the marker is ours to spell.
+		prop := ical.NewProp(PropTeams)
+		prop.Value = "TRUE"
+		c.Props.Set(prop)
+	}
+}
+
+// setAttendees applies the invite and uninvite lists. Matching is by
+// lower-cased address with any mailto: stripped, so a second invite that only
+// differs in case does not put the same person on twice.
+func setAttendees(c *ical.Component, invite, uninvite []string) {
+	for _, addr := range uninvite {
+		want := mailtoAddr(addr)
+		if want == "" {
+			continue
+		}
+		var kept []ical.Prop
+		for _, p := range c.Props[ical.PropAttendee] {
+			if mailtoAddr(p.Value) != want {
+				kept = append(kept, p)
+			}
+		}
+		if len(kept) == 0 {
+			delete(c.Props, ical.PropAttendee)
+		} else {
+			c.Props[ical.PropAttendee] = kept
+		}
+	}
+	for _, addr := range invite {
+		want := mailtoAddr(addr)
+		if want == "" {
+			continue
+		}
+		there := false
+		for _, p := range c.Props[ical.PropAttendee] {
+			if mailtoAddr(p.Value) == want {
+				there = true
+				break
+			}
+		}
+		if there {
+			continue
+		}
+		att := ical.NewProp(ical.PropAttendee)
+		att.Params.Set("PARTSTAT", PartstatNeedsAction)
+		att.Params.Set("RSVP", "TRUE")
+		att.Value = "mailto:" + want
+		// Add rather than Set: an event holds one ATTENDEE per person, and Set
+		// would keep only the last.
+		c.Props.Add(att)
+	}
 }
 
 // setWhen writes the start and the end in the form the kind of event calls for:

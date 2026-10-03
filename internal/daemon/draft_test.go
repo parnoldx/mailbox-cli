@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
+	compose "mailbox/internal/message"
 	"mailbox/internal/mirror"
 	"mailbox/internal/outbox"
 	"mailbox/internal/sync/mailsync"
-	compose "mailbox/internal/message"
 )
 
 // seedDraft puts one unsent mail in Drafts, both on the fake server and in the

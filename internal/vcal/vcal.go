@@ -48,6 +48,13 @@ type Projection struct {
 	// a rule with no end, which is the case a window query has to treat as
 	// "always possibly relevant".
 	RepeatsUntil time.Time
+	// Teams says the event is a Microsoft 365 online meeting, and Attendees
+	// lists everyone on it: the account's own answer to an invite rides its
+	// ATTENDEE like everybody else's, so a caller that wants the others
+	// filters its own address out.
+	Teams bool
+	// Attendee is one person on an event.
+	Attendees []Attendee
 	// Due, DueAllDay, Priority and Completed belong to a Todo and are zero on
 	// an Event. DueAllDay says the due date has no clock on it: "by Friday" is
 	// a different thing from "by Friday at 00:00", and only one of them is
@@ -56,6 +63,15 @@ type Projection struct {
 	DueAllDay bool
 	Priority  int
 	Completed time.Time
+}
+
+// Attendee is one person named on an event. Address is lower-cased with any
+// mailto: stripped, and Partstat is the raw PARTSTAT — whether they have
+// answered is the caller's word for it.
+type Attendee struct {
+	Address  string
+	Name     string
+	Partstat string
 }
 
 // Parse projects one raw object. A component we do not understand is still
@@ -103,7 +119,26 @@ func Parse(raw string, loc *time.Location) (Projection, error) {
 		p.Repeat = rule.Value
 		p.RepeatsUntil = lastStart(master, loc)
 	}
+	if teams, err := master.Props.Text(PropTeams); err == nil && strings.EqualFold(teams, "TRUE") {
+		p.Teams = true
+	}
+	p.Attendees = attendeesOf(master)
 	return p, nil
+}
+
+// attendeesOf reads everyone named on the component: the address lower-cased
+// with any mailto: stripped, the name from CN, and the PARTSTAT as written.
+func attendeesOf(comp *ical.Component) []Attendee {
+	var out []Attendee
+	for _, p := range comp.Props[ical.PropAttendee] {
+		a := Attendee{Address: mailtoAddr(p.Value), Name: p.Params.Get("CN"),
+			Partstat: strings.ToUpper(p.Params.Get("PARTSTAT"))}
+		if a.Address == "" {
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
 }
 
 // Occurrence is one instance of an object in a window: a single event, or one

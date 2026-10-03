@@ -319,3 +319,53 @@ func TestLiveCalendarRoundTrip(t *testing.T) {
 	}
 	t.Errorf("the event did not come back under %s in %d changes", href, len(next.Items))
 }
+
+// A Teams meeting made here comes back with the join link Graph minted for
+// it. No attendees: this must not send invitations from a test account.
+func TestLiveTeamsEventGetsAJoinLink(t *testing.T) {
+	c, s, _, name := liveAccount(t)
+	ctx := context.Background()
+	d := NewDAV(c, s, name)
+	cols, err := d.Collections(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cal davsync.Collection
+	for _, col := range cols {
+		if col.Kind == "events" && col.Name == name {
+			cal = col
+		}
+	}
+	if cal.URL == "" {
+		t.Fatal("no default calendar")
+	}
+	uid := vcal.NewUID()
+	tomorrow := time.Now().Add(24 * time.Hour).Truncate(time.Hour)
+	raw, err := vcal.NewEvent(uid, vcal.EventEdit{Summary: "mailbox teams selftest", Start: tomorrow, Teams: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	href := davsync.Href(mirror.Collection{URL: cal.URL}, uid)
+	abs := strings.TrimSuffix(c.Base, d.basePath()) + href
+	if _, err := d.Put(ctx, abs, raw, ""); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Delete(context.Background(), abs, "") })
+
+	got, err := d.MultiGet(ctx, cal.URL, []string{href})
+	if err != nil || len(got) != 1 {
+		t.Fatalf("read back %v, %v", got, err)
+	}
+	p, err := vcal.Parse(got[0].Data, time.Local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.Teams {
+		t.Errorf("the event did not come back a Teams meeting: %+v", p)
+	}
+	// The join link is what an agenda line wants off the meeting; without it
+	// the marker bought nothing.
+	if p.URL == "" {
+		t.Errorf("no join link came back: %+v", p)
+	}
+}

@@ -3,6 +3,7 @@ package graphdrv
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -44,6 +45,18 @@ type graphEvent struct {
 	OnlineMeeting              *struct {
 		JoinURL string `json:"joinUrl"`
 	} `json:"onlineMeeting"`
+	IsOnlineMeeting bool `json:"isOnlineMeeting"`
+	// Attendees is everyone the event names, the account itself included; its
+	// own answer is what responseStatus carries and veventOf writes first.
+	Attendees []struct {
+		EmailAddress struct {
+			Address string `json:"address"`
+			Name    string `json:"name"`
+		} `json:"emailAddress"`
+		Status struct {
+			Response string `json:"response"`
+		} `json:"status"`
+	} `json:"attendees"`
 	Recurrence     *recurrence `json:"recurrence"`
 	ResponseStatus struct {
 		Response string `json:"response"`
@@ -90,7 +103,8 @@ type recurrence struct {
 
 // eventSelect is every property the translation reads.
 const eventSelect = "$select=iCalUId,type,seriesMasterId,changeKey,subject,body,location,start,end," +
-	"originalStart,isAllDay,isCancelled,isReminderOn,reminderMinutesBeforeStart,onlineMeeting,recurrence,responseStatus"
+	"originalStart,isAllDay,isCancelled,isReminderOn,reminderMinutesBeforeStart,onlineMeeting,recurrence,responseStatus," +
+	"isOnlineMeeting,attendees"
 
 // zone is the time zone a repeating event is written in, so that "every Monday
 // at ten" stays at ten across a DST change; and the zone an event we write is
@@ -148,11 +162,31 @@ func veventOf(uid string, g graphEvent, loc *time.Location, self string) *ical.C
 	if g.IsCancelled {
 		ev.Props.SetText(ical.PropStatus, "CANCELLED")
 	}
+	if g.IsOnlineMeeting {
+		ev.Props.SetText(vcal.PropTeams, "TRUE")
+	}
 	if ps := partstatOf(g.ResponseStatus.Response); ps != "" && self != "" {
 		att := ical.NewProp(ical.PropAttendee)
 		att.Params.Set("PARTSTAT", ps)
 		att.Value = "mailto:" + strings.ToLower(self)
 		ev.Props.Set(att)
+	}
+	// Everyone else the event names, with their answer as the PARTSTAT. The
+	// account's own ATTENDEE above is the RSVP answer and stays where it is.
+	for _, a := range g.Attendees {
+		addr := strings.ToLower(a.EmailAddress.Address)
+		if addr == "" || addr == strings.ToLower(self) {
+			continue
+		}
+		att := ical.NewProp(ical.PropAttendee)
+		att.Value = "mailto:" + addr
+		if a.EmailAddress.Name != "" {
+			att.Params.Set("CN", a.EmailAddress.Name)
+		}
+		if ps := partstatOf(a.Status.Response); ps != "" {
+			att.Params.Set("PARTSTAT", ps)
+		}
+		ev.Props.Add(att)
 	}
 	if g.Recurrence != nil {
 		if rule, err := ruleOf(*g.Recurrence, loc); err == nil {
@@ -432,8 +466,10 @@ func recurrenceOf(rule string, start time.Time, loc *time.Location, zoneName str
 // eventFields is what a write sends: an event's calendar object as the Graph
 // properties it maps to. The same function reads what the server has now, so a
 // field the edit did not touch compares equal and is not sent — a PATCH of what
-// changed, which cannot drop what we do not model (ADR-0010).
-func eventFields(raw string, loc *time.Location, zoneName string) (map[string]any, error) {
+// changed, which cannot drop what we do not model (ADR-0010). self is the
+// account's own address: its own ATTENDEE is its RSVP answer, never a person to
+// invite again.
+func eventFields(raw string, loc *time.Location, zoneName, self string) (map[string]any, error) {
 	p, err := vcal.Parse(raw, loc)
 	if err != nil {
 		return nil, err
@@ -467,5 +503,28 @@ func eventFields(raw string, loc *time.Location, zoneName string) (map[string]an
 	if len(p.Alarms) > 0 {
 		f["reminderMinutesBeforeStart"] = p.Alarms[0]
 	}
+	if p.Teams {
+		f["isOnlineMeeting"] = true
+		f["onlineMeetingProvider"] = "teamsForBusiness"
+	}
+	// The attendees as the server should hold them, sorted by address so that
+	// a read-back in any order compares equal and an unrelated edit does not
+	// PATCH the roster back. Everyone but the account itself is invited as a
+	// required attendee; answers are never sent — they are the server's.
+	att := []map[string]any{}
+	for _, a := range p.Attendees {
+		if a.Address == strings.ToLower(self) {
+			continue
+		}
+		att = append(att, map[string]any{
+			"emailAddress": map[string]string{"address": a.Address, "name": a.Name},
+			"type":         "required",
+		})
+	}
+	sort.Slice(att, func(i, j int) bool {
+		return att[i]["emailAddress"].(map[string]string)["address"] <
+			att[j]["emailAddress"].(map[string]string)["address"]
+	})
+	f["attendees"] = att
 	return f, nil
 }

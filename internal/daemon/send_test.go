@@ -197,9 +197,9 @@ func TestReplyDryRunShowsWhoWouldGetItAndSendsNothing(t *testing.T) {
 		t.Fatalf("from = %v", preview["from"])
 	}
 	want := map[string][]string{
-		"to":      {"billing@example.com"},
-		"cc":      {"kollege@example.com"},
-		"bcc":     {"privat@example.com"},
+		"to":  {"billing@example.com"},
+		"cc":  {"kollege@example.com"},
+		"bcc": {"privat@example.com"},
 	}
 	for key, wantList := range want {
 		gotList, _ := preview[key].([]string)

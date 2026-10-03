@@ -861,9 +861,13 @@ func tree(l Locals) []*Command {
 						"mailbox event add TEXT --start DATE[ TIME] [--end DATE[ TIME]]",
 						"                      [--calendar NAME] [--location TEXT] [--notes TEXT]",
 						"                      [--url URL] [--repeat RULE] [--alarm MINUTES]",
+						"                      [--teams] [--invite ADDR]",
 					},
 					Long: "With no --end it lasts an hour, or a whole day for an all-day entry. " +
-						"--repeat makes it one entry and a rule, not a row per week.",
+						"--repeat makes it one entry and a rule, not a row per week. " +
+						"--teams and --invite work on a Microsoft 365 calendar, where Exchange " +
+						"sends the invitations itself; a Teams meeting cannot be taken off " +
+						"again — Microsoft 365 ignores changes to it once set, same as Outlook.",
 					Flags: []Flag{
 						{Name: "start", Kind: KindString, Arg: "WHEN", Desc: "2026-09-01, or 2026-09-01 14:00"},
 						{Name: "end", Kind: KindString, Arg: "WHEN", Desc: "when it finishes"},
@@ -876,12 +880,16 @@ func tree(l Locals) []*Command {
 						{Name: "alarm", Kind: KindString, Arg: "MINUTES",
 							Desc: "remind this many minutes before: 15, or 10,60"},
 						{Name: "all-day", Kind: KindBool, Desc: "an all-day entry even with a time given"},
+						{Name: "teams", Kind: KindBool, Desc: "make it a Teams meeting (Microsoft 365 calendars)"},
+						{Name: "invite", Kind: KindList, Arg: "ADDR",
+							Desc: "invite someone (repeatable, or comma separated)"},
 					},
 					Examples: []string{
 						`mailbox event add Zahnarzt --start "2026-09-01 08:10" --end "2026-09-01 09:00"`,
 						"mailbox event add Urlaub --start 2026-09-01 --end 2026-09-15",
 						`mailbox event add Standup --start "2026-09-01 09:00" --repeat weekdays --alarm 5`,
 						`mailbox event add Review --start "2026-09-01 10:00" --url https://meet.example.org/r`,
+						`mailbox event add Review --start "2026-09-01 10:00" --calendar Calendar --teams --invite anna@example.com`,
 					},
 					Run: eventVerb("add"),
 				},
@@ -890,7 +898,7 @@ func tree(l Locals) []*Command {
 					Usage: []string{
 						"mailbox event edit ID [--title TEXT] [--start WHEN] [--end WHEN]",
 						"                      [--url URL] [--repeat RULE] [--alarm MINUTES]",
-						"                      [--occurrence WHEN]",
+						"                      [--occurrence WHEN] [--invite ADDR] [--uninvite ADDR]",
 					},
 					Long: "Only what is named changes. A repeating entry is one rule, so " +
 						"editing its time moves every instance of it — unless --occurrence " +
@@ -911,11 +919,17 @@ func tree(l Locals) []*Command {
 						{Name: "all-day", Kind: KindBool, Desc: "make it an all-day entry"},
 						{Name: "occurrence", Kind: KindString, Arg: "WHEN",
 							Desc: "change only the instance on this day: 2026-10-02, or 2026-10-02 09:00"},
+						{Name: "teams", Kind: KindBool, Desc: "make it a Teams meeting (Microsoft 365 calendars)"},
+						{Name: "invite", Kind: KindList, Arg: "ADDR",
+							Desc: "invite someone (repeatable, or comma separated)"},
+						{Name: "uninvite", Kind: KindList, Arg: "ADDR",
+							Desc: "take an invitee off (repeatable, or comma separated)"},
 					},
 					Examples: []string{
 						`mailbox event edit 41 --start "2026-09-02 08:10"`,
 						"mailbox event edit 41 --repeat weekly --alarm 15",
 						`mailbox event edit 41 --occurrence 2026-10-07 --start "2026-10-08 08:10"`,
+						"mailbox event edit 41 --invite bert@example.de",
 					},
 					Run: eventVerb("edit"),
 				},

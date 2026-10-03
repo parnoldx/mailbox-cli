@@ -118,13 +118,19 @@ func printCalendars(stdout, stderr io.Writer, resp daemon.Response) {
 	behindNotice(stderr, resp)
 }
 
+// listOf is an answer field as the list it is; anything else is no list.
+func listOf(v any) []any {
+	list, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	return list
+}
+
 // minutes says the reminders the way somebody sets them: so long before it
 // starts, rather than as a signed duration.
 func minutes(v any) string {
-	list, ok := v.([]any)
-	if !ok || len(list) == 0 {
-		return ""
-	}
+	list := listOf(v)
 	out := make([]string, 0, len(list))
 	for _, n := range list {
 		f, ok := n.(float64)
@@ -158,8 +164,33 @@ func printEvent(stdout, stderr io.Writer, resp daemon.Response) {
 			fmt.Fprintf(stdout, "%-10s %s\n", f.label+":", v)
 		}
 	}
+	if teams, _ := m["teams"].(bool); teams {
+		fmt.Fprintf(stdout, "%-10s %s\n", "Teams:", "yes")
+	}
 	if alarms := minutes(m["alarms"]); alarms != "" {
 		fmt.Fprintf(stdout, "%-10s %s\n", "Reminds:", alarms)
+	}
+	// Who is on it, and whether they have answered — the account's own answer
+	// is left off, because the person reading is the one who gave it.
+	for _, e := range listOf(m["attendees"]) {
+		a, ok := e.(map[string]any)
+		if !ok {
+			continue
+		}
+		mark := "·"
+		switch str(a["answer"]) {
+		case "accepted":
+			mark = "✓"
+		case "tentative":
+			mark = "?"
+		case "declined":
+			mark = "✗"
+		}
+		who := str(a["address"])
+		if name := str(a["name"]); name != "" {
+			who = name + " <" + who + ">"
+		}
+		fmt.Fprintf(stdout, "  %s %s\n", mark, who)
 	}
 	if next, ok := m["next"].([]any); ok && len(next) > 0 {
 		fmt.Fprintln(stdout, "Next:")

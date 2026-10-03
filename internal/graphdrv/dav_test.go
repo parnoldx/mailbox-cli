@@ -201,8 +201,14 @@ func TestANewEventKeepsItsHrefAndUID(t *testing.T) {
 		t.Fatal(err)
 	}
 	href := "/v1.0/me/calendars/cal-1/" + uid + ".ics"
-	if _, err := d.Put(ctx, f.srv.URL+href, raw, ""); err != nil {
+	etag, err := d.Put(ctx, f.srv.URL+href, raw, "")
+	if err != nil {
 		t.Fatal(err)
+	}
+	// No ETag is what makes the Writer read the event back, and the read-back
+	// is the only place the join link Exchange made comes from.
+	if etag != "" {
+		t.Errorf("Put answered ETag %q; the Writer would store the event as sent, without its join link", etag)
 	}
 	w := f.writes()
 	if len(w) != 1 || !strings.HasPrefix(w[0], "POST /me/calendars/cal-1/events ") ||
@@ -336,7 +342,7 @@ func TestADeleteOfAnEventDeletedSomewhereElseStillGoes(t *testing.T) {
 	}
 	href := "/v1.0/me/calendars/cal-1/040000008200E00074C5B7101A82E00800000000AAAA.ics"
 	f.mu.Lock()
-	delete(f.events, "ev-a")    // gone from the folder...
+	delete(f.events, "ev-a")     // gone from the folder...
 	f.softDeleted["ev-a"] = true // ...but known to Graph, which says 400 not 404
 	f.mu.Unlock()
 	if err := d.Delete(ctx, f.srv.URL+href, ""); err != nil {
@@ -458,4 +464,111 @@ func sameRule(a, b string) bool {
 	slices.Sort(pa)
 	slices.Sort(pb)
 	return slices.Equal(pa, pb)
+}
+
+// A Teams meeting and its roster ride the event to Graph as properties: the
+// marker asks for the online meeting, the ATTENDEEs name who to invite. The
+// account's own address is its RSVP answer, never a person to invite again.
+func TestATeamsEventIsPostedWithItsRoster(t *testing.T) {
+	f, d := davSetup(t)
+	ctx := context.Background()
+	uid := "7c1b8e2a-51b8-4d0e-9a6f-2c1d8e7b4a90"
+	raw, err := vcal.NewEvent(uid, vcal.EventEdit{
+		Summary: "Review", Start: time.Date(2026, 10, 1, 14, 0, 0, 0, d.loc),
+		Teams: true, Invite: []string{"Anna@example.com", "ME@EXAMPLE.de", "bert@example.de"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	href := "/v1.0/me/calendars/cal-1/" + uid + ".ics"
+	etag, err := d.Put(ctx, f.srv.URL+href, raw, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No ETag is what makes the Writer read the event back, and the read-back
+	// is the only place the join link Exchange made comes from.
+	if etag != "" {
+		t.Errorf("Put answered ETag %q; the Writer would store the event as sent, without its join link", etag)
+	}
+	w := f.writes()
+	if len(w) != 1 || !strings.HasPrefix(w[0], "POST /me/calendars/cal-1/events ") {
+		t.Fatalf("writes %v", w)
+	}
+	body := strings.ToLower(w[0])
+	for _, want := range []string{`"isonlinemeeting":true`, `"onlinemeetingprovider":"teamsforbusiness"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the POST does not carry %s:\n%s", want, w[0])
+		}
+	}
+	if !strings.Contains(body, `"address":"anna@example.com"`) ||
+		!strings.Contains(body, `"address":"bert@example.de"`) {
+		t.Errorf("the invitees are not on the POST:\n%s", w[0])
+	}
+	// The account itself, in whatever case it was typed, is not invited to
+	// its own meeting.
+	if strings.Contains(body, "me@example.de") {
+		t.Errorf("the account is on its own roster:\n%s", w[0])
+	}
+}
+
+// An event someone else organised reads back with its attendees and its Teams
+// marker. An unrelated edit must PATCH neither: the sorted, answer-free
+// projection compares equal, so the diff stays quiet.
+func TestAnUnrelatedEditLeavesTheRosterAndTheMarkerAlone(t *testing.T) {
+	f, d := davSetup(t)
+	ctx := context.Background()
+	// The attendees come back in whatever order the server holds them, here
+	// the reverse of the sorted projection.
+	f.events["ev-m"] = map[string]any{
+		"id": "ev-m", "iCalUId": "040000008200E00074C5B7101A82E00800000000CCCC", "type": "singleInstance",
+		"changeKey": "ck-m", "calendar": "cal-1", "subject": "Retro",
+		"body":                  map[string]any{"contentType": "text", "content": ""},
+		"start":                 map[string]any{"dateTime": "2026-09-29T13:00:00.0000000", "timeZone": "UTC"},
+		"end":                   map[string]any{"dateTime": "2026-09-29T14:00:00.0000000", "timeZone": "UTC"},
+		"isOnlineMeeting":       true,
+		"onlineMeetingProvider": "teamsForBusiness",
+		"attendees": []any{
+			map[string]any{"emailAddress": map[string]any{"address": "zora@example.com", "name": "Zora"},
+				"status": map[string]any{"response": "accepted"}},
+			map[string]any{"emailAddress": map[string]any{"address": "anna@example.com", "name": "Anna"},
+				"status": map[string]any{"response": "tentativelyAccepted"}},
+			map[string]any{"emailAddress": map[string]any{"address": "Me@example.de"},
+				"status": map[string]any{"response": "notResponded"}},
+		},
+	}
+	cal := byName(t, d)["events work"]
+	ch, err := d.Sync(ctx, cal.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	href := "/v1.0/me/calendars/cal-1/040000008200E00074C5B7101A82E00800000000CCCC.ics"
+	raw := objects(t, ch)[href].Data
+
+	edited, err := vcal.SetEvent(raw, vcal.EventEdit{Summary: "Retro Q4"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Put(ctx, f.srv.URL+href, edited, "ck-m"); err != nil {
+		t.Fatal(err)
+	}
+	if w := f.writes(); len(w) != 1 || w[0] != `PATCH /me/events/ev-m {"subject":"Retro Q4"}` {
+		t.Fatalf("an edit of the title wrote %v", w)
+	}
+
+	// Taking the last two off sends the empty roster, which is how the server
+	// is told the event now has none. The edit starts from what the server now
+	// has, so the title it kept is not sent back as a change.
+	edited, err = vcal.SetEvent(edited, vcal.EventEdit{
+		Uninvite: []string{"ZORA@example.com", "anna@example.com"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Put(ctx, f.srv.URL+href, edited, ""); err != nil {
+		t.Fatal(err)
+	}
+	w := f.writes()
+	if len(w) != 2 || w[1] != `PATCH /me/events/ev-m {"attendees":[]}` {
+		t.Fatalf("an uninvite of the last two wrote %v", w)
+	}
 }

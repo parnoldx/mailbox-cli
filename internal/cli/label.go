@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"strings"
 	"text/tabwriter"
 
 	"mailbox/internal/daemon"
@@ -134,12 +135,16 @@ func eventVerb(verb string) func(*input, io.Writer, io.Writer) int {
 				"notes": in.Str("notes"), "all_day": in.Bool("all-day"),
 				"url": in.Str("url"), "repeat": in.Str("repeat"), "alarm": in.Str("alarm"),
 				"occurrence": in.Str("occurrence"),
+				"teams":      in.Bool("teams"), "invite": in.List("invite"),
+				"uninvite": in.List("uninvite"),
 			},
 		}, in.JSON(), printEventChange, stdout, stderr)
 	}
 }
 
 // printEventChange says what landed and where, in the id form that reads it.
+// The link and the invitees ride their own lines: on a Teams meeting the link
+// is the one the calendar made, and invited is who this call reached.
 func printEventChange(stdout, stderr io.Writer, resp daemon.Response) {
 	m, ok := resp.Data.(map[string]any)
 	if !ok {
@@ -151,6 +156,19 @@ func printEventChange(stdout, stderr io.Writer, resp daemon.Response) {
 		fmt.Fprintf(stdout, "  (%s)", cal)
 	}
 	fmt.Fprintln(stdout)
+	if url := str(m["url"]); url != "" {
+		fmt.Fprintf(stdout, "  %s\n", url)
+	}
+	if invited, ok := m["invited"].([]any); ok && len(invited) > 0 {
+		addrs := make([]string, 0, len(invited))
+		for _, a := range invited {
+			addrs = append(addrs, str(a))
+		}
+		fmt.Fprintf(stdout, "  invited: %s\n", strings.Join(addrs, ", "))
+	}
+	if notice := str(m["notice"]); notice != "" {
+		fmt.Fprintf(stderr, "notice: %s\n", notice)
+	}
 }
 
 // draftVerb reads and changes the unsent pile. The id may be bare — `draft` has
@@ -170,7 +188,7 @@ func draftVerb(verb string) func(*input, io.Writer, io.Writer) int {
 		args := map[string]any{
 			"positional": in.First(), "limit": in.Int("limit"),
 			"account": in.Str("account"),
-			"to": in.List("to"), "cc": in.List("cc"),
+			"to":      in.List("to"), "cc": in.List("cc"),
 			"subject": in.Str("subject"), "body": in.Str("body"),
 		}
 		if verb == "send" {

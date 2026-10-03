@@ -131,8 +131,10 @@ func TestEventAddNamesTheCalendarWhenThereAreSeveral(t *testing.T) {
 
 // eventsOn reads back what is actually on the calendar, through the same
 // sync-collection call the reconciler uses.
-func eventsOn(f *davsync.Fake) []string {
-	changes, err := f.Sync(context.Background(), testCalURL, "")
+func eventsOn(f *davsync.Fake) []string { return eventsOnCal(f, testCalURL) }
+
+func eventsOnCal(f *davsync.Fake, calURL string) []string {
+	changes, err := f.Sync(context.Background(), calURL, "")
 	if err != nil {
 		return nil
 	}
@@ -164,6 +166,18 @@ func eventNamed(t *testing.T, f *davsync.Fake, summary string) string {
 		}
 	}
 	t.Fatalf("no event called %q on the calendar", summary)
+	return ""
+}
+
+// graphEventNamed is eventNamed on the Microsoft 365 calendar.
+func graphEventNamed(t *testing.T, f *davsync.Fake, summary string) string {
+	t.Helper()
+	for _, raw := range eventsOnCal(f, testGraphCal) {
+		if strings.Contains(raw, "SUMMARY:"+summary) {
+			return raw
+		}
+	}
+	t.Fatalf("no event called %q on the Microsoft 365 calendar", summary)
 	return ""
 }
 
@@ -349,4 +363,164 @@ func mondayAt(hour, minute int) string {
 		return fmt.Sprintf("%s %02d:%02d", time.Date(y, m, d, 0, 0, 0, 0, time.Local).Format("2006-01-02"), hour, minute)
 	}
 	return time.Date(y, m, d, hour, minute, 0, 0, time.Local).Format("2006-01-02 15:04")
+}
+
+// testGraphCal is what a Microsoft 365 calendar's collection URL looks like:
+// the /me/calendars/ path is how a Graph calendar is told from a CalDAV one.
+const testGraphCal = "https://graph.microsoft.com/v1.0/me/calendars/cal-1"
+
+// seedGraph is seedTasks with a Microsoft 365 calendar beside the CalDAV one,
+// and the address its invites come from mapped to it.
+func seedGraph(t *testing.T) (*Daemon, *davsync.Fake) {
+	t.Helper()
+	d, f, _ := seedTasks(t, davsync.Collection{Kind: "events", URL: testGraphCal, Name: "Work"})
+	d.CalendarEmail = map[string]string{"work@example.com": "Work"}
+	return d, f
+}
+
+// Teams meetings and invites are things a Microsoft 365 calendar's server
+// does; anywhere else the wish is refused before anything is written.
+func TestTeamsAndInvitesNeedAGraphCalendar(t *testing.T) {
+	d, f, _ := seedTasks(t)
+	if resp := ask(t, d, []string{"event", "add"}, map[string]any{
+		"positional": "Termin", "start": "2026-09-01 10:00", "teams": true,
+	}); resp.OK || !strings.Contains(resp.Error, "Microsoft 365") {
+		t.Errorf("teams on a CalDAV calendar: %+v", resp)
+	}
+	if resp := ask(t, d, []string{"event", "add"}, map[string]any{
+		"positional": "Termin", "start": "2026-09-01 10:00",
+		"invite": []string{"anna@example.com"},
+	}); resp.OK || !strings.Contains(resp.Error, "Microsoft 365") {
+		t.Errorf("an invite on a CalDAV calendar: %+v", resp)
+	}
+	if n := len(eventsOn(f)); n != 0 {
+		t.Errorf("%d events were written anyway", n)
+	}
+}
+
+// --teams, --invite and --uninvite change the whole event; --occurrence
+// changes one instance, and the two scopes do not mix.
+func TestTeamsAndInvitesRefuseAnOccurrence(t *testing.T) {
+	d, _ := seedGraph(t)
+	added := mustAsk(t, d, []string{"event", "add"}, map[string]any{
+		"positional": "Standup", "start": mondayAt(9, 0), "calendar": "Work",
+		"repeat": "FREQ=WEEKLY;BYDAY=MO",
+	}).Data.(map[string]any)
+	for _, args := range []map[string]any{
+		{"positional": added["id"], "occurrence": "2026-10-05", "teams": true},
+		{"positional": added["id"], "occurrence": "2026-10-05", "invite": []string{"anna@example.com"}},
+		{"positional": added["id"], "occurrence": "2026-10-05", "uninvite": []string{"anna@example.com"}},
+	} {
+		if resp := ask(t, d, []string{"event", "edit"}, args); resp.OK ||
+			!strings.Contains(resp.Error, "cannot be combined") {
+			t.Errorf("resp = %+v", resp)
+		}
+	}
+}
+
+// An address that no mail client would accept is refused here, with the
+// offending one named, rather than sent to Exchange.
+func TestTeamsAndInvitesRefuseABadAddress(t *testing.T) {
+	d, _ := seedGraph(t)
+	for _, addr := range []string{"anna", "anna@example", "anna@@example.com"} {
+		if resp := ask(t, d, []string{"event", "add"}, map[string]any{
+			"positional": "Termin", "start": "2026-09-01 10:00", "calendar": "Work",
+			"invite": []string{addr},
+		}); resp.OK || !strings.Contains(resp.Error, addr) {
+			t.Errorf("%q was accepted: %+v", addr, resp)
+		}
+	}
+	// And uninvite is an edit's word: a new event has nobody to take off.
+	if resp := ask(t, d, []string{"event", "add"}, map[string]any{
+		"positional": "Termin", "start": "2026-09-01 10:00", "calendar": "Work",
+		"uninvite": []string{"anna@example.com"},
+	}); resp.OK || !strings.Contains(resp.Error, "uninvite") {
+		t.Errorf("resp = %+v", resp)
+	}
+}
+
+// The row is how a caller knows which calendars take --teams and --invite at
+// all, and whose address the invites come from.
+func TestCalendarListSaysTeamsAndOwner(t *testing.T) {
+	d, _ := seedGraph(t)
+	rows, ok := mustAsk(t, d, []string{"calendar", "list"}, nil).Data.([]calendar)
+	if !ok {
+		t.Fatalf("calendar list returned %T", mustAsk(t, d, []string{"calendar", "list"}, nil).Data)
+	}
+	byName := map[string]calendar{}
+	for _, r := range rows {
+		byName[r.Name] = r
+	}
+	if r := byName["Work"]; !r.Teams || r.Owner != "work@example.com" {
+		t.Errorf("Work = %+v", r)
+	}
+	if r := byName["Kalender"]; r.Teams || r.Owner != "" {
+		t.Errorf("Kalender = %+v", r)
+	}
+}
+
+// A Teams event carries the marker and its invitees in the raw, and the reply
+// says what Graph was asked for — including that no link came back, which on
+// the fake is always the case.
+func TestEventAddWithTeamsAndInvite(t *testing.T) {
+	d, f := seedGraph(t)
+	got := mustAsk(t, d, []string{"event", "add"}, map[string]any{
+		"positional": "Review", "start": "2026-09-01 10:00", "calendar": "Work",
+		"teams": true, "invite": []string{"Anna@example.com"},
+	}).Data.(map[string]any)
+	if got["url"] != "" {
+		t.Errorf("url = %v, want none before the server made a link", got["url"])
+	}
+	if invited, ok := got["invited"].([]string); !ok || !slices.Equal(invited, []string{"anna@example.com"}) {
+		t.Errorf("invited = %#v", got["invited"])
+	}
+	if notice, _ := got["notice"].(string); !strings.Contains(notice, "Teams link") {
+		t.Errorf("notice = %q", notice)
+	}
+	raw := graphEventNamed(t, f, "Review")
+	if !strings.Contains(raw, "X-MAILBOX-TEAMS:TRUE") ||
+		!strings.Contains(raw, "ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:anna@example.com") {
+		t.Errorf("the wish did not reach the object:\n%s", raw)
+	}
+}
+
+// An edit invites and uninvites, the reply names only who is new, and the
+// view reads the roster back with the answers it holds.
+func TestEventEditAndViewCarryTheRoster(t *testing.T) {
+	d, f := seedGraph(t)
+	added := mustAsk(t, d, []string{"event", "add"}, map[string]any{
+		"positional": "Review", "start": "2026-09-01 10:00", "calendar": "Work",
+		"teams": true, "invite": []string{"anna@example.com"},
+	}).Data.(map[string]any)
+
+	view := mustAsk(t, d, []string{"event", "view"},
+		map[string]any{"positional": added["id"]}).Data.(event)
+	if !view.Teams {
+		t.Errorf("view lost the Teams marker: %+v", view)
+	}
+	if len(view.Attendees) != 1 || view.Attendees[0].Address != "anna@example.com" ||
+		view.Attendees[0].Answer != "none" {
+		t.Errorf("attendees = %+v", view.Attendees)
+	}
+
+	// Re-inviting anna reaches nobody new; bert does.
+	got := mustAsk(t, d, []string{"event", "edit"}, map[string]any{
+		"positional": added["id"], "invite": []string{"BERT@example.de", "anna@example.com"},
+	}).Data.(map[string]any)
+	if invited, ok := got["invited"].([]string); !ok || !slices.Equal(invited, []string{"bert@example.de"}) {
+		t.Errorf("invited = %#v", got["invited"])
+	}
+	raw := graphEventNamed(t, f, "Review")
+	if n := strings.Count(raw, "ATTENDEE"); n != 2 {
+		t.Errorf("%d attendees after the edit:\n%s", n, raw)
+	}
+
+	// And an uninvite on its own is a valid edit.
+	mustAsk(t, d, []string{"event", "edit"}, map[string]any{
+		"positional": added["id"], "uninvite": []string{"anna@example.com"},
+	})
+	raw = graphEventNamed(t, f, "Review")
+	if strings.Contains(raw, "anna@example.com") || strings.Count(raw, "ATTENDEE") != 1 {
+		t.Errorf("anna did not leave:\n%s", raw)
+	}
 }

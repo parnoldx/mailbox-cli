@@ -674,3 +674,67 @@ func indexLine(raw, name string) string {
 	}
 	return ""
 }
+
+// A Teams meeting rides the object as a marker property, because that is how
+// the Graph writer knows to ask for an online meeting — and there is no off to
+// write, since Graph ignores changes to it once the meeting exists.
+func TestNewEventAndSetEventWriteTheTeamsMarkerAndTheAttendees(t *testing.T) {
+	raw, err := NewEvent("meet-mailbox", EventEdit{
+		Summary: "Review", Start: time.Date(2026, 9, 1, 10, 0, 0, 0, time.Local),
+		Teams:  true,
+		Invite: []string{"Anna@example.com", "bert@example.de"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if line := indexLine(raw, "X-MAILBOX-TEAMS:"); line != "X-MAILBOX-TEAMS:TRUE" {
+		t.Errorf("the marker is %q:\n%s", line, raw)
+	}
+	if !strings.Contains(raw, "ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:anna@example.com") ||
+		!strings.Contains(raw, "ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:bert@example.de") {
+		t.Errorf("the invitees are not on the object:\n%s", raw)
+	}
+
+	// An edit adds, and a second invite of somebody already there — even under
+	// another case — does not put them on twice.
+	edited, err := SetEvent(raw, EventEdit{Invite: []string{"ANNA@example.com"}, Uninvite: []string{"BERT@example.de"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(edited, "ATTENDEE"); n != 1 {
+		t.Errorf("%d attendees after the edit, want 1:\n%s", n, edited)
+	}
+	if !strings.Contains(edited, "mailto:anna@example.com") {
+		t.Errorf("anna did not survive the edit:\n%s", edited)
+	}
+}
+
+// Parse reads both back, so a caller can show who is on an event and whether
+// it is a Teams meeting without the raw.
+func TestParseReadsTeamsAndAttendees(t *testing.T) {
+	raw := wrap(`BEGIN:VEVENT
+UID:meet@example.org
+DTSTAMP:20260901T000000Z
+DTSTART:20260901T100000Z
+DTEND:20260901T110000Z
+SUMMARY:Review
+X-MAILBOX-TEAMS:TRUE
+ATTENDEE;CN=Anna Beispiel;PARTSTAT=ACCEPTED:mailto:anna@example.com
+ATTENDEE;PARTSTAT=DECLINED:mailto:BERT@example.de
+END:VEVENT
+`)
+	p, err := Parse(raw, time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.Teams {
+		t.Errorf("the marker did not come back: %+v", p)
+	}
+	want := []Attendee{
+		{Address: "anna@example.com", Name: "Anna Beispiel", Partstat: "ACCEPTED"},
+		{Address: "bert@example.de", Partstat: "DECLINED"},
+	}
+	if len(p.Attendees) != 2 || p.Attendees[0] != want[0] || p.Attendees[1] != want[1] {
+		t.Errorf("attendees = %+v, want %+v", p.Attendees, want)
+	}
+}
