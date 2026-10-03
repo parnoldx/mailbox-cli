@@ -3435,7 +3435,7 @@ Panel {
                   id: teamsToggle
                   anchors.left: parent.left
                   anchors.verticalCenter: parent.verticalCenter
-                  text: "Teams"
+                  text: "Teams meeting"
                   bordered: true
                   selected: root.formTeams
                   enabled: !root.formTeamsLocked
