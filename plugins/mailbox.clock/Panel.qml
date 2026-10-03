@@ -839,6 +839,16 @@ Panel {
     return null
   }
   readonly property bool pickedCalendarTeams: !!(root.pickedCalendar && root.pickedCalendar.teams)
+  // The calendar the Teams and Invite pills switch to when the picked one
+  // cannot hold a meeting: a new event starts on the first calendar, which
+  // is seldom the work one, and a pill that only appeared after a calendar
+  // change was a pill nobody found.
+  readonly property var teamsCalendar: {
+    for (var i = 0; i < root.tbCalendars.length; i++)
+      if (root.tbCalendars[i].events && root.tbCalendars[i].teams) return root.tbCalendars[i]
+    return null
+  }
+  property bool inviteOpen: false
   readonly property string pickedCalendarOwner: root.pickedCalendar ? String(root.pickedCalendar.owner || "") : ""
 
   // ---- Phrase colours. Omarchy themes are near-monochrome, so the parts of
@@ -987,6 +997,17 @@ Panel {
         root.inviteeSuggestIndex = root.inviteeSuggestions.length ? 0 : -1
       })
     })
+  }
+
+  function useTeamsCalendar() {
+    if (!root.pickedCalendarTeams && root.teamsCalendar) root.formCalendar = root.teamsCalendar.name
+  }
+
+  function openInvite() {
+    root.useTeamsCalendar()
+    root.inviteOpen = true
+    // The row only exists once the calendar change has drawn it.
+    Qt.callLater(function () { inviteeField.forceActiveFocus() })
   }
 
   function closeInviteeSuggestions() {
@@ -1312,6 +1333,7 @@ Panel {
     root.formLink = ""
     root.formTeams = false
     root.formTeamsLocked = false
+    root.inviteOpen = false
     root.formInvitees = []
     root.formOriginalInvitees = []
     root.closeInviteeSuggestions()
@@ -3211,6 +3233,42 @@ Panel {
                 text: "Repeat"
               }
 
+              // Teams and Invite are pills like the rest, on every event
+              // while a Microsoft 365 calendar exists; either one moves the
+              // entry onto that calendar, since nowhere else can hold them.
+              // A meeting that already is one stays lit and stops answering:
+              // Microsoft 365 has no off, and Outlook behaves the same.
+              Button {
+                id: teamsToggle
+                visible: root.entryKind === "event" && root.teamsCalendar !== null
+                iconText: "󰊻"
+                text: "Teams meeting"
+                bordered: true
+                horizontalPadding: Style.space(7)
+                selected: root.formTeams && root.pickedCalendarTeams
+                enabled: !root.formTeamsLocked
+                opacity: enabled ? 1 : 0.55
+                foreground: root.contentForeground
+                fontFamily: root.contentFontFamily
+                onClicked: {
+                  root.useTeamsCalendar()
+                  root.formTeams = !root.formTeams
+                }
+              }
+
+              Button {
+                id: invitePill
+                visible: root.entryKind === "event" && root.teamsCalendar !== null
+                iconText: "󰀔"
+                text: root.formInvitees.length ? "Invite (" + root.formInvitees.length + ")" : "Invite"
+                bordered: true
+                horizontalPadding: Style.space(7)
+                selected: root.pickedCalendarTeams && (root.inviteOpen || root.formInvitees.length > 0)
+                foreground: root.contentForeground
+                fontFamily: root.contentFontFamily
+                onClicked: root.openInvite()
+              }
+
               Pill {
                 rowName: "priority"
                 iconText: "󰈻"
@@ -3423,49 +3481,27 @@ Panel {
             //      you fill them in would only fail at Create.
             Column {
               visible: root.entryKind === "event" && root.pickedCalendarTeams
+                && (root.formTeamsLocked || root.inviteOpen || root.formInvitees.length > 0)
               width: entryColumn.rowWidth
               anchors.horizontalCenter: parent.horizontalCenter
               spacing: Style.space(6)
 
-              Item {
-                width: parent.width
-                height: Math.max(teamsToggle.height, teamsHint.implicitHeight)
-
-                Button {
-                  id: teamsToggle
-                  anchors.left: parent.left
-                  anchors.verticalCenter: parent.verticalCenter
-                  text: "Teams meeting"
-                  bordered: true
-                  selected: root.formTeams
-                  enabled: !root.formTeamsLocked
-                  opacity: enabled ? 1 : 0.55
-                  horizontalPadding: Style.space(10)
-                  foreground: root.contentForeground
-                  fontFamily: root.contentFontFamily
-                  onClicked: root.formTeams = !root.formTeams
-                  Keys.onPressed: function(event) { root.handleEntryKey(event) }
-                }
-
-                // A Teams meeting stays one — there is no off, a Microsoft
-                // 365 rule Outlook behaves the same about — so the locked
-                // switch says so instead of sitting there looking broken.
-                Text {
-                  id: teamsHint
-                  anchors.left: teamsToggle.right
-                  anchors.leftMargin: Style.space(10)
-                  anchors.verticalCenter: parent.verticalCenter
-                  visible: root.formTeamsLocked
-                  text: "Teams can't be taken off a meeting"
-                  color: Qt.darker(root.contentForeground, 1.6)
-                  font.family: root.contentFontFamily
-                  font.pixelSize: Style.font.bodySmall
-                }
+              // A Teams meeting stays one — there is no off, a Microsoft
+              // 365 rule Outlook behaves the same about — so the locked
+              // pill says why it no longer answers.
+              Text {
+                id: teamsHint
+                visible: root.formTeamsLocked
+                text: "Teams can't be taken off a meeting"
+                color: Qt.darker(root.contentForeground, 1.6)
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.bodySmall
               }
 
               Item {
                 width: parent.width
-                height: inviteeColumn.height
+                visible: root.inviteOpen || root.formInvitees.length > 0
+                height: visible ? inviteeColumn.height : 0
 
                 Column {
                   id: inviteeColumn
