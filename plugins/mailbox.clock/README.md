@@ -57,9 +57,9 @@ is dropped on write:
   before the start, one value or several).
 - **A URL of its own.** `event add` takes `url`, so the Join link is its own
   field rather than folded into the notes.
-- **Teams and invitees.** While the roster has a Microsoft 365 calendar (its
-  `teams` flag), every event shows "Teams meeting" and "Invite" pills; either
-  one moves the entry onto that calendar. Invite opens a row of pills,
+- **Teams and invitees.** On a Microsoft 365 calendar (the roster's `teams`
+  flag) the pills gain "Teams meeting" and "Invite"; on any other calendar
+  they are not there. Invite opens a row of pills,
   with suggestions from `contact search` then `correspondent search` and
   addresses on the calendar owner's domain ranked first. `event add` /
   `event edit` take `teams`, `invite` and `uninvite`; an edit sends only the
