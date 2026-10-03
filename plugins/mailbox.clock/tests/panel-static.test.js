@@ -113,6 +113,20 @@ test("the Teams toggle and the invite row are wired to the daemon and the roster
   }
 })
 
+// The meet pill is a one-click errand gated on a Microsoft 365 calendar, and
+// the copying is the daemon's job (--copy), not the panel's.
+test("the meet pill mints and lets the daemon copy", () => {
+  for (const needle of [
+    "meetPill",
+    'mailbox.call(["meet"], args',   // the one call, no Model plumbing
+    "copy: true",
+    "root.pickedCalendarTeams",       // same gate as the Teams rows
+    '"✓  link copied"'
+  ]) {
+    assert.ok(src.indexOf(needle) !== -1, "missing " + needle)
+  }
+})
+
 if (require.main === module || process.argv[1] && process.argv[1].endsWith("panel-static.test.js")) {
   // node --test prints its own summary; this token is for the gate.
 }

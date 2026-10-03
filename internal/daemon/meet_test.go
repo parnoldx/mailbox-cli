@@ -124,3 +124,28 @@ func TestMeetTakesTheTimesGiven(t *testing.T) {
 		t.Errorf("start %v, end %v", call.start, call.end)
 	}
 }
+
+// --copy hands the link over the way a Pickup is: on the clipboard, with a
+// notification saying so. Without it the desktop is left alone — piping is
+// still the CLI's own way.
+func TestMeetCopyHandsTheLinkOver(t *testing.T) {
+	d, _, _ := meetAccounts(t)
+	d.Others = nil
+	var h handedOver
+	h.install(t)
+
+	resp := mustAsk(t, d, []string{"meet"}, map[string]any{"positional": "Sync", "copy": true})
+	got := resp.Data.(map[string]any)
+	if c := h.arg("wl-copy"); len(c) != 1 || c[0] != got["url"] {
+		t.Errorf("clipboard got %v, want the minted link %v", c, got["url"])
+	}
+	if n := h.arg("notify-send"); len(n) == 0 || !strings.Contains(strings.Join(n, " "), "Sync") {
+		t.Errorf("notification %v does not name the meeting", n)
+	}
+
+	h.calls = nil
+	mustAsk(t, d, []string{"meet"}, map[string]any{"positional": "Sync"})
+	if len(h.calls) != 0 {
+		t.Errorf("without --copy the desktop was touched: %v", h.calls)
+	}
+}

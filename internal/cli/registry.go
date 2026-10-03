@@ -956,6 +956,7 @@ func tree(l Locals) []*Command {
 				{Name: "account", Kind: KindString, Arg: "NAME", Desc: "which Microsoft 365 account"},
 				{Name: "start", Kind: KindString, Arg: "WHEN", Desc: "2026-09-01 14:00 (default now)"},
 				{Name: "end", Kind: KindString, Arg: "WHEN", Desc: "when it finishes (default an hour after the start)"},
+				{Name: "copy", Kind: KindBool, Desc: "also put the link on the clipboard and say so"},
 			},
 			Examples: []string{
 				"mailbox meet Sync | wl-copy",

@@ -1545,6 +1545,26 @@ Panel {
   // The delete button is a two-click confirm rather than a native dialog —
   // Escape or clicking anywhere else in the pane backs out of it the same
   // way it backs out of everything else here.
+  // The delete button is a two-click confirm rather than a native dialog —
+  // Escape or clicking anywhere else in the pane backs out of it the same
+  // way it backs out of everything else here.
+  function mintMeetLink() {
+    // The form's title, when there is one, names the meeting; the daemon
+    // defaults the rest (start now, an hour) and does the copying and the
+    // saying-so — the notification survives the panel closing.
+    root.entryStatus = "Minting…"
+    var args = { copy: true }
+    if (root.formTitle !== "") args.positional = root.formTitle
+    mailbox.call(["meet"], args, function (error, data) {
+      if (error) {
+        root.entryStatus = error
+        return
+      }
+      root.entryStatus = "✓  link copied"
+      entryStatusTimer.restart()
+    })
+  }
+
   function deleteEditingEntry() {
     var id = root.editingTaskId || root.editingEventId
     if (!id) return
@@ -3249,6 +3269,22 @@ Panel {
                 foreground: root.contentForeground
                 fontFamily: root.contentFontFamily
                 onClicked: root.openInvite()
+              }
+
+              // A meet link is no entry at all — nothing to fill in, nothing
+              // written to any calendar — so the pill is a one-click errand:
+              // mint, copy, and the daemon says so. It rides the Teams gate
+              // because only a Microsoft 365 account can mint one.
+              Button {
+                id: meetPill
+                visible: root.pickedCalendarTeams
+                iconText: "󰊻"
+                text: "Meet link"
+                bordered: true
+                horizontalPadding: Style.space(7)
+                foreground: root.contentForeground
+                fontFamily: root.contentFontFamily
+                onClicked: root.mintMeetLink()
               }
 
               Pill {
