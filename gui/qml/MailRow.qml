@@ -131,25 +131,6 @@ Item {
         Behavior on color { ColorAnimation { duration: Theme.anim } }
     }
 
-    // Which Secondary this row is on, beside the time, while the list shows
-    // every account. The Primary's rows get none.
-    Rectangle {
-        visible: win.multiAccount && !!root.row.account && win.accountFilter === ""
-        readonly property color tint: win.accountColor(root.row.account || "")
-        anchors { right: date.left; rightMargin: 8; verticalCenter: date.verticalCenter }
-        width: acctText.implicitWidth + 12; height: 16; radius: 8
-        color: Qt.rgba(tint.r, tint.g, tint.b, 0.18)
-        Text {
-            id: acctText
-            anchors.centerIn: parent
-            text: (win.accountNamed(root.row.account || "") || { label: root.row.account || "" }).label
-            font.family: Theme.fontFamily
-            font.pixelSize: 10
-            font.weight: Font.DemiBold
-            color: parent.tint
-        }
-    }
-
     // Fast-delete affordance, pinned to the far right and vertically centred.
     Rectangle {
         id: delBtn

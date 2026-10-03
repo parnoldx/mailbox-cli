@@ -122,10 +122,14 @@ Item {
                                     readonly property bool on: win.accountFilter === modelData.name
                                     readonly property color tint: modelData.name ? win.accountColor(modelData.name) : Theme.textDim
                                     width: pillText.implicitWidth + 24; height: 28; radius: 14
-                                    color: on ? Qt.rgba(tint.r, tint.g, tint.b, 0.18)
+                                    color: on ? tint
                                          : pillHover.hovered ? Theme.cardHover : "transparent"
                                     border.width: 1
-                                    border.color: on ? tint : Theme.hairline
+                                    // The tint is always on — text and border
+                                    // wear the account's colour unselected too,
+                                    // so a row's coloured line maps to its pill
+                                    // at a glance. Selected is the solid fill.
+                                    border.color: on ? "transparent" : tint
                                     Behavior on color { ColorAnimation { duration: Theme.anim } }
                                     Text {
                                         id: pillText
@@ -134,7 +138,7 @@ Item {
                                         font.family: Theme.fontFamily
                                         font.pixelSize: 12
                                         font.weight: parent.on ? Font.DemiBold : Font.Normal
-                                        color: parent.on ? parent.tint : Theme.textDim
+                                        color: parent.on ? "#ffffff" : parent.tint
                                     }
                                     HoverHandler { id: pillHover; cursorShape: Qt.PointingHandCursor }
                                     TapHandler { onTapped: win.setAccountFilter(modelData.name) }
