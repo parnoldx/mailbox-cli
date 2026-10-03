@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"mailbox/internal/sync/davsync"
+	"mailbox/internal/vcal"
 )
 
 // A bare date is an all-day entry and a date with a clock on it is an
@@ -522,5 +523,22 @@ func TestEventEditAndViewCarryTheRoster(t *testing.T) {
 	raw = graphEventNamed(t, f, "Review")
 	if strings.Contains(raw, "anna@example.com") || strings.Count(raw, "ATTENDEE") != 1 {
 		t.Errorf("anna did not leave:\n%s", raw)
+	}
+}
+
+// event view drops the account's own answer from the roster, and a name that
+// is only the address again — Exchange's spelling of an outsider.
+func TestViewAttendeesDropsTheOwnerAndEchoedNames(t *testing.T) {
+	got := viewAttendees([]vcal.Attendee{
+		{Address: "work@example.com", Partstat: vcal.PartstatAccepted},
+		{Address: "zora@example.de", Name: "Zora@Example.de", Partstat: vcal.PartstatAccepted},
+		{Address: "anna@example.com", Name: "Anna", Partstat: vcal.PartstatTentative},
+	}, "Work@example.com")
+	want := []attendee{
+		{Address: "zora@example.de", Answer: "accepted"},
+		{Address: "anna@example.com", Name: "Anna", Answer: "tentative"},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("viewAttendees = %+v, want %+v", got, want)
 	}
 }

@@ -91,6 +91,26 @@ type attendee struct {
 	Answer  string `json:"answer"`
 }
 
+// viewAttendees is the roster as event view shows it. The account's own
+// ATTENDEE is its answer to an invite, which the reader already knows;
+// everyone else is who the meeting is with.
+func viewAttendees(list []vcal.Attendee, owner string) []attendee {
+	var out []attendee
+	for _, a := range list {
+		if owner != "" && strings.EqualFold(a.Address, owner) {
+			continue
+		}
+		// Exchange fills in the address as the name of anybody outside its
+		// directory, which would print every outsider twice.
+		name := a.Name
+		if strings.EqualFold(name, a.Address) {
+			name = ""
+		}
+		out = append(out, attendee{Address: a.Address, Name: name, Answer: answerOf(a.Partstat)})
+	}
+	return out
+}
+
 // answerOf is a PARTSTAT as the word event view says it in.
 func answerOf(partstat string) string {
 	switch partstat {
@@ -215,15 +235,7 @@ func (d *Daemon) handleEvent(ctx context.Context, req Request, resp Response) Re
 	if p, perr := vcal.Parse(o.Raw, time.Local); perr == nil {
 		out.URL, out.Repeat, out.Alarms = p.URL, p.Repeat, p.Alarms
 		out.Teams = p.Teams
-		owner := calendarOwner(o.Collection, d.CalendarEmail)
-		for _, a := range p.Attendees {
-			// The account's own ATTENDEE is its answer to an invite, which the
-			// reader already knows; everyone else is who the meeting is with.
-			if owner != "" && strings.EqualFold(a.Address, owner) {
-				continue
-			}
-			out.Attendees = append(out.Attendees, attendee{Address: a.Address, Name: a.Name, Answer: answerOf(a.Partstat)})
-		}
+		out.Attendees = viewAttendees(p.Attendees, calendarOwner(o.Collection, d.CalendarEmail))
 	}
 	// An empty roster reads as [] rather than null, which is a listing that
 	// failed to say it found nobody.
