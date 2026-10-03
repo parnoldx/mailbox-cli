@@ -906,6 +906,15 @@ function emptyDraft(kind, dayKey) {
     recurrence: null,
     priority: null,
     link: null,
+    // Teams and invites only mean something on a Microsoft 365 calendar, so
+    // they stay empty until one is picked — buildQuickAddRequest gates them
+    // on the roster row, and requestToArgs sends only what is there.
+    teams: false,
+    // An event that is already a Teams meeting stays one: there is no off
+    // (a Microsoft 365 rule), so the pane locks the switch instead.
+    teamsLocked: false,
+    invitees: [],
+    originalInvitees: [],
     segments: []
   }
 }
@@ -1328,6 +1337,19 @@ function draftFromEventDetail(detail, dayKey) {
     var rule = parseRepeatRuleForForm(detail.repeat)
     if (rule) draft.recurrence = rule
   }
+  // Teams and the invite list never made it onto an agenda row, so they
+  // arrive here — and teams arrives already locked, because an event that
+  // is a Teams meeting cannot be turned back.
+  draft.teams = !!detail.teams
+  draft.teamsLocked = !!detail.teams
+  var attendees = Array.isArray(detail.attendees) ? detail.attendees : []
+  for (var i = 0; i < attendees.length; i++) {
+    var a = attendees[i]
+    var addr = String((a && a.address) || "").trim()
+    if (!addr) continue
+    draft.invitees.push({ address: addr, name: String((a && a.name) || ""), answer: String((a && a.answer) || "none") })
+    draft.originalInvitees.push(addr)
+  }
   return draft
 }
 
@@ -1360,6 +1382,63 @@ function draftFromTaskDetail(detail) {
   draft.description = detail.description || null
   draft.link = safeLinkUrl(detail.url) || null
   return draft
+}
+
+// ---- Invitee suggestions ---------------------------------------------------
+//
+// The same two searches and the same order as the mail composer's
+// recipient field: the address book first, then the addresses mail has
+// actually been exchanged with. Addresses on the calendar owner's domain
+// float up — on the work calendar those are the colleagues — each group
+// keeping the order the searches returned them in. The domain comes from
+// the roster's `owner`, never a constant.
+function inviteeDomain(address) {
+  var text = String(address || "")
+  var at = text.lastIndexOf("@")
+  return at === -1 ? "" : text.slice(at + 1).toLowerCase()
+}
+
+function rankInviteeSuggestions(contacts, correspondents, ownerAddress, alreadyPicked, limit) {
+  var max = limit === undefined ? 8 : limit
+  var picked = {}
+  for (var p = 0; p < (alreadyPicked || []).length; p++)
+    picked[String(alreadyPicked[p] || "").toLowerCase()] = true
+  var seen = {}
+  var flat = []
+  function push(name, addresses) {
+    for (var j = 0; addresses && j < addresses.length; j++) {
+      var addr = String(addresses[j] || "").trim()
+      if (!addr) continue
+      var lc = addr.toLowerCase()
+      if (seen[lc] || picked[lc]) continue
+      seen[lc] = true
+      flat.push({ address: addr, name: String(name || "") })
+    }
+  }
+  for (var i = 0; i < (contacts || []).length; i++) {
+    var c = contacts[i]
+    if (c) push(c.name, c.emails)
+  }
+  for (var k = 0; k < (correspondents || []).length; k++) {
+    var r = correspondents[k]
+    if (r) push(r.name, [r.email])
+  }
+
+  var ownerDomain = inviteeDomain(ownerAddress)
+  if (!ownerDomain) return flat.slice(0, max)
+  var home = []
+  var away = []
+  for (var n = 0; n < flat.length; n++)
+    (inviteeDomain(flat[n].address) === ownerDomain ? home : away).push(flat[n])
+  return home.concat(away).slice(0, max)
+}
+
+// One glyph per answer, for the pill and wherever attendees are listed:
+// ✓ accepted, ? tentative, ✗ declined, and a dot for silence.
+function inviteeAnswerMark(answer) {
+  return answer === "accepted" ? "✓"
+    : answer === "tentative" ? "?"
+    : answer === "declined" ? "✗" : "·"
 }
 
 // The daemon hands back an RRULE; the form's recurrence pill only knows
@@ -1503,7 +1582,7 @@ function firstTaskCalendarName(calendars) {
   return options.length ? options[0].value : ""
 }
 
-function buildQuickAddRequest(draft, nowMs) {
+function buildQuickAddRequest(draft, nowMs, calendar) {
   var now = isFinite(nowMs) ? nowMs : Date.now()
   var kind = draft && draft.kind === "task" ? "task" : "event"
   if (!draft) return { ok: false, error: "nothing entered" }
@@ -1587,6 +1666,16 @@ function buildQuickAddRequest(draft, nowMs) {
   // server, not making a new one -- requestToArgs reads it to send `event
   // edit` instead of `event add`.
   if (draft.editingId) request.id = draft.editingId
+  // Teams and invites ride only on a Microsoft 365 calendar — the daemon
+  // refuses the args on anything else, and a request that carried them
+  // anyway would turn a mis-picked calendar into a failed write. The
+  // caller passes the picked calendar's roster row.
+  if (calendar && calendar.teams) {
+    request.teams = !!draft.teams
+    request.teamsLocked = !!draft.teamsLocked
+    request.invitees = draft.invitees || []
+    request.originalInvitees = draft.originalInvitees || []
+  }
   return { ok: true, request: request }
 }
 
@@ -1622,6 +1711,8 @@ function formatEntrySummary(request) {
   }
   if (request.location) bits.push(request.location)
   if (request.calendarName) bits.push("/" + request.calendarName)
+  if (request.teams) bits.push("Teams")
+  if (request.invitees && request.invitees.length) bits.push(request.invitees.length + " invited")
   if (request.recurrence)
     bits.push("every " + (request.recurrence.interval > 1 ? request.recurrence.interval + " " : "") +
       ({ daily: "day", weekly: "week", monthly: "month", yearly: "year" }[request.recurrence.freq] || request.recurrence.freq) +
@@ -1710,7 +1801,12 @@ function mailboxRoster(rows) {
       name: String(row.name),
       color: normalizeColor(row.color),
       events: kind === "events",
-      tasks: kind === "tasks"
+      tasks: kind === "tasks",
+      // A Microsoft 365 events calendar, and the address it belongs to —
+      // the gate for the Teams row, and the domain invitee suggestions
+      // rank by (colleagues first on the work calendar).
+      teams: !!row.teams,
+      owner: String(row.owner || "")
     })
   }
   return out
@@ -1871,7 +1967,50 @@ function requestToArgs(request) {
   var rule = repeatRule(request.recurrence)
   if (rule) args.repeat = rule
   if (request.allDay) args.all_day = true
+  // Teams and invites ride only when the request carries them, which
+  // buildQuickAddRequest arranges by calendar — on any other calendar the
+  // fields are absent and nothing goes out that the daemon would refuse.
+  // Teams cannot be taken off once set (a Microsoft 365 rule), so an edit
+  // that leaves it on sends nothing; only the switch from off to on is
+  // worth a flag.
+  if (request.teams && !(editing && request.teamsLocked)) args.teams = true
+  var addresses = inviteeAddresses(request.invitees)
+  var original = inviteeAddresses(request.originalInvitees)
+  var invite = editing ? diffAddresses(addresses, original) : addresses
+  if (invite.length) args.invite = invite
+  if (editing) {
+    var uninvite = diffAddresses(original, addresses)
+    if (uninvite.length) args.uninvite = uninvite
+  }
   return { cmd: ["event", editing ? "edit" : "add"], args: args }
+}
+
+// The addresses off invitee pills, whatever shape arrived — the pane keeps
+// {address, name, answer}, and nothing past the address survives the trip.
+function inviteeAddresses(invitees) {
+  var out = []
+  for (var i = 0; invitees && i < invitees.length; i++) {
+    var row = invitees[i]
+    var addr = String((row && row.address) || row || "").trim()
+    if (addr) out.push(addr)
+  }
+  return out
+}
+
+// What is in `wanted` but not `have`, matched case-insensitively the way
+// the daemon matches attendee addresses.
+function diffAddresses(wanted, have) {
+  var known = {}
+  for (var i = 0; i < have.length; i++) known[have[i].toLowerCase()] = true
+  var out = []
+  for (var j = 0; j < wanted.length; j++) {
+    var lc = wanted[j].toLowerCase()
+    if (!known[lc]) {
+      known[lc] = true
+      out.push(wanted[j])
+    }
+  }
+  return out
 }
 
 // The three words the daemon takes, from the number the pane picked.
@@ -2299,6 +2438,9 @@ if (typeof module !== "undefined") {
     draftFromEventDetail: draftFromEventDetail,
     draftFromTask: draftFromTask,
     draftFromTaskDetail: draftFromTaskDetail,
+    inviteeAnswerMark: inviteeAnswerMark,
+    inviteeDomain: inviteeDomain,
+    rankInviteeSuggestions: rankInviteeSuggestions,
     buildQuickAddRequest: buildQuickAddRequest,
     buildQuickTodoRequest: buildQuickTodoRequest,
     firstTaskCalendarName: firstTaskCalendarName,

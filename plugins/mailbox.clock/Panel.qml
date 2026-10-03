@@ -171,9 +171,29 @@ Panel {
   property string locationSuggestQuery: ""
   property int locationSuggestIndex: -1
   readonly property bool locationSuggestOpen: root.locationSuggestions.length > 0
+  // Invitee suggestions: the location row's pattern pointed at the daemon
+  // instead of OSM. contact search first, then correspondent search, and
+  // the query kept beside the results so an answer to a word already
+  // typed over is dropped rather than shown.
+  property var inviteeSuggestions: []
+  property int inviteeSuggestIndex: -1
+  property string inviteeSuggestQuery: ""
+  readonly property bool inviteeSuggestOpen: root.inviteeSuggestions.length > 0
   property string formDescription: ""
   property string formCalendar: ""
   property string formLink: ""
+  // ---- Teams and invitees. The toggle and the pills only exist on a
+  //      Microsoft 365 calendar (the roster's teams flag), because the
+  //      daemon refuses the args anywhere else. teamsLocked is the event
+  //      already being a Teams meeting: there is no off for that — a
+  //      Microsoft 365 rule Outlook shares — so the switch shows on and
+  //      stops answering instead of offering a change that cannot happen.
+  property bool formTeams: false
+  property bool formTeamsLocked: false
+  property var formInvitees: []
+  // The addresses `event view` came back with, so an edit can send only
+  // the difference: new pills as `invite`, gone ones as `uninvite`.
+  property var formOriginalInvitees: []
   // Which summary value is currently an inline editor ("" = display mode).
   property string editingSegment: ""
   // Roles the parser found in the phrase, as offsets into it.
@@ -809,6 +829,17 @@ Panel {
   property string formPriority: ""
   readonly property var calendarChoices: Model.calendarOptions(tbCalendars, entryKind)
   readonly property var calendarColorMap: Model.calendarColors(visibleEventList)
+  // The roster row behind the calendar the pane has picked. The Teams gate
+  // reads off it — a Microsoft 365 events calendar is the only place the
+  // daemon takes the teams and invite args — and so does the owner domain
+  // the invitee suggestions rank by.
+  readonly property var pickedCalendar: {
+    for (var i = 0; i < root.tbCalendars.length; i++)
+      if (root.tbCalendars[i].name === root.formCalendar) return root.tbCalendars[i]
+    return null
+  }
+  readonly property bool pickedCalendarTeams: !!(root.pickedCalendar && root.pickedCalendar.teams)
+  readonly property string pickedCalendarOwner: root.pickedCalendar ? String(root.pickedCalendar.owner || "") : ""
 
   // ---- Phrase colours. Omarchy themes are near-monochrome, so the parts of
   //      a phrase get hues of their own rather than shades of the accent —
@@ -935,6 +966,96 @@ Panel {
     root.locationSuggestions = []
     root.locationSuggestIndex = -1
     root.locationSuggestQuery = ""
+  }
+
+  // ---- Invitee suggestions. Both searches go out at once per keystroke,
+  //      the way the mail composer's recipient field does — both are
+  //      Mirror reads, microseconds — and the second's answer is the one
+  //      shown, since it already contains the first's.
+  function requestInviteeSuggestions(text) {
+    var query = String(text || "").trim()
+    if (query.length < 2) { root.closeInviteeSuggestions(); return }
+    root.inviteeSuggestQuery = query
+    mailbox.call(["contact", "search"], { positional: query, limit: 6 }, function (error, data) {
+      if (!root.entryOpen || root.inviteeSuggestQuery !== query) return
+      var contacts = error ? [] : (data || [])
+      mailbox.call(["correspondent", "search"], { positional: query, limit: 6 }, function (error2, data2) {
+        if (!root.entryOpen || root.inviteeSuggestQuery !== query) return
+        root.inviteeSuggestions = Model.rankInviteeSuggestions(
+          contacts, error2 ? [] : (data2 || []), root.pickedCalendarOwner,
+          root.pickedInviteeAddresses(), 8)
+        root.inviteeSuggestIndex = root.inviteeSuggestions.length ? 0 : -1
+      })
+    })
+  }
+
+  function closeInviteeSuggestions() {
+    root.inviteeSuggestions = []
+    root.inviteeSuggestIndex = -1
+    root.inviteeSuggestQuery = ""
+  }
+
+  function moveInviteeSuggestion(delta) {
+    if (!root.inviteeSuggestOpen) return
+    var count = root.inviteeSuggestions.length
+    root.inviteeSuggestIndex = (root.inviteeSuggestIndex + delta + count) % count
+  }
+
+  function pickedInviteeAddresses() {
+    var out = []
+    for (var i = 0; i < root.formInvitees.length; i++)
+      out.push(String(root.formInvitees[i].address || ""))
+    return out
+  }
+
+  function addInvitee(name, address) {
+    var addr = String(address || "").trim()
+    if (!addr) return
+    var lc = addr.toLowerCase()
+    for (var i = 0; i < root.formInvitees.length; i++)
+      if (String(root.formInvitees[i].address || "").toLowerCase() === lc) return
+    root.formInvitees = root.formInvitees.concat([
+      { address: addr, name: String(name || "").trim(), answer: "none" }
+    ])
+  }
+
+  function removeInvitee(index) {
+    if (index < 0 || index >= root.formInvitees.length) return
+    var next = root.formInvitees.slice()
+    next.splice(index, 1)
+    root.formInvitees = next
+  }
+
+  function takeInviteeSuggestion(index) {
+    var row = root.inviteeSuggestions[index === undefined ? root.inviteeSuggestIndex : index]
+    if (!row) return false
+    root.addInvitee(row.name, row.address)
+    inviteeField.text = ""
+    root.closeInviteeSuggestions()
+    return true
+  }
+
+  // Keys in the invitee field. The list owns Up/Down, Enter and Esc while
+  // it is up, Enter adds a typed full address as-is, and anything else —
+  // including Enter on an empty field — falls through to the pane, where
+  // Enter still means Create.
+  function handleInviteeKey(event) {
+    if (root.inviteeSuggestOpen) {
+      if (event.key === Qt.Key_Down) { root.moveInviteeSuggestion(1); event.accepted = true; return }
+      if (event.key === Qt.Key_Up) { root.moveInviteeSuggestion(-1); event.accepted = true; return }
+      if (event.key === Qt.Key_Escape) { root.closeInviteeSuggestions(); event.accepted = true; return }
+      if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+        if (root.takeInviteeSuggestion()) { event.accepted = true; return }
+      }
+    }
+    if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
+        && inviteeField && inviteeField.text.indexOf("@") !== -1) {
+      root.addInvitee("", inviteeField.text)
+      inviteeField.text = ""
+      event.accepted = true
+      return
+    }
+    root.handleEntryKey(event)
   }
 
   function moveAddressSuggestion(delta) {
@@ -1189,6 +1310,11 @@ Panel {
     root.closeAddressSuggestions()
     root.formDescription = ""
     root.formLink = ""
+    root.formTeams = false
+    root.formTeamsLocked = false
+    root.formInvitees = []
+    root.formOriginalInvitees = []
+    root.closeInviteeSuggestions()
     root.formAlertMinutes = 0
     root.formRecurrence = null
     root.formPriority = ""
@@ -1232,6 +1358,15 @@ Panel {
       if (detail.link) root.formLink = detail.link
       if (detail.alertMinutes) root.formAlertMinutes = detail.alertMinutes
       if (detail.recurrence) root.setRecurrenceFrom(detail.recurrence.freq + ":" + detail.recurrence.interval)
+      // Teams and the invite list are detail-only too. They are written
+      // straight on rather than through applyDraft, whose merge would read
+      // an absent teams flag from an agenda-only draft as the phrase
+      // clearing them — the same reason notes and the link are patched in
+      // above instead of merged.
+      root.formTeams = !!detail.teams
+      root.formTeamsLocked = !!detail.teamsLocked
+      root.formInvitees = detail.invitees || []
+      root.formOriginalInvitees = detail.originalInvitees || []
     })
   }
 
@@ -1261,6 +1396,7 @@ Panel {
 
   function closeEntry() {
     root.closeAddressSuggestions()
+    root.closeInviteeSuggestions()
     root.entryOpen = false
     root.entryStatus = ""
     root.editingEventId = null
@@ -1348,6 +1484,10 @@ Panel {
       alertMinutes: root.formAlertMinutes || null,
       recurrence: root.formRecurrence,
       priority: root.formPriority || null,
+      teams: root.formTeams,
+      teamsLocked: root.formTeamsLocked,
+      invitees: root.formInvitees,
+      originalInvitees: root.formOriginalInvitees,
       editingId: root.entryKind === "task" ? root.editingTaskId
         : (root.entryKind === "event" ? root.editingEventId : null)
     }
@@ -1355,10 +1495,16 @@ Panel {
 
   // What Create would write, or why it cannot — one build for the error line
   // and the button, since two calls are two Date.now()s and twice the work.
-  readonly property var entryCheck: Model.buildQuickAddRequest(root.assembleDraft(), Date.now())
+  readonly property var entryCheck: Model.buildQuickAddRequest(root.assembleDraft(), Date.now(), root.pickedCalendar)
 
   function commitEntry() {
-    var built = Model.buildQuickAddRequest(root.assembleDraft(), Date.now())
+    // An address typed into the invite field but never confirmed with Enter
+    // is still somebody the meeting is meant for.
+    if (root.pickedCalendarTeams && inviteeField.text.indexOf("@") !== -1) {
+      root.addInvitee("", inviteeField.text)
+      inviteeField.text = ""
+    }
+    var built = Model.buildQuickAddRequest(root.assembleDraft(), Date.now(), root.pickedCalendar)
     if (!built.ok) {
       root.entryStatus = built.error || "could not create"
       return
@@ -1369,16 +1515,22 @@ Panel {
       root.entryStatus = "could not create"
       return
     }
-    mailbox.call(sent.cmd, sent.args, function (error) {
+    mailbox.call(sent.cmd, sent.args, function (error, data) {
       if (error) {
         root.entryStatus = error
         return
       }
+      root.askCalendar()
+      // The daemon's notice — a Teams link that never came back, say — is
+      // the thing worth reading here, so it takes the status row and keeps
+      // the pane open: the ✓ summary closes it on its timer, and a missing
+      // join link should not be waved away with the pane.
+      if (data && data.notice) {
+        root.entryStatus = data.notice
+        return
+      }
       root.entryStatus = "✓  " + Model.formatEntrySummary(built.request)
       entryStatusTimer.restart()
-      // The daemon pushes event.changed as the write lands; the re-ask
-      // below is the read that shows it.
-      root.askCalendar()
     })
   }
 
@@ -3261,6 +3413,220 @@ Panel {
                   foreground: root.contentForeground
                   fontFamily: root.contentFontFamily
                   onChanged: function(v) { root.formPriority = v }
+                }
+              }
+            }
+
+            // ---- Teams and invitees, on a Microsoft 365 calendar only.
+            //      The roster's teams flag is the whole gate: the daemon
+            //      refuses the args anywhere else, and a form that lets
+            //      you fill them in would only fail at Create.
+            Column {
+              visible: root.entryKind === "event" && root.pickedCalendarTeams
+              width: entryColumn.rowWidth
+              anchors.horizontalCenter: parent.horizontalCenter
+              spacing: Style.space(6)
+
+              Item {
+                width: parent.width
+                height: Math.max(teamsToggle.height, teamsHint.implicitHeight)
+
+                Button {
+                  id: teamsToggle
+                  anchors.left: parent.left
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: "Teams"
+                  bordered: true
+                  selected: root.formTeams
+                  enabled: !root.formTeamsLocked
+                  opacity: enabled ? 1 : 0.55
+                  horizontalPadding: Style.space(10)
+                  foreground: root.contentForeground
+                  fontFamily: root.contentFontFamily
+                  onClicked: root.formTeams = !root.formTeams
+                  Keys.onPressed: function(event) { root.handleEntryKey(event) }
+                }
+
+                // A Teams meeting stays one — there is no off, a Microsoft
+                // 365 rule Outlook behaves the same about — so the locked
+                // switch says so instead of sitting there looking broken.
+                Text {
+                  id: teamsHint
+                  anchors.left: teamsToggle.right
+                  anchors.leftMargin: Style.space(10)
+                  anchors.verticalCenter: parent.verticalCenter
+                  visible: root.formTeamsLocked
+                  text: "Teams can't be taken off a meeting"
+                  color: Qt.darker(root.contentForeground, 1.6)
+                  font.family: root.contentFontFamily
+                  font.pixelSize: Style.font.bodySmall
+                }
+              }
+
+              Item {
+                width: parent.width
+                height: inviteeColumn.height
+
+                Column {
+                  id: inviteeColumn
+                  anchors.left: parent.left
+                  anchors.right: parent.right
+                  spacing: Style.space(4)
+
+                  Flow {
+                    width: parent.width
+                    spacing: Style.space(6)
+                    visible: root.formInvitees.length > 0
+
+                    Repeater {
+                      model: root.formInvitees
+
+                      // One pill per invitee: the answer mark — ✓ accepted,
+                      // ? tentative, ✗ declined, · no answer — then the
+                      // name or the address, and a ✕ that takes them off.
+                      // The answer came with `event view`; it is a reading,
+                      // not an editing, so the pill only removes.
+                      Rectangle {
+                        id: inviteePill
+                        required property int index
+                        required property var modelData
+                        height: inviteePillRow.implicitHeight + 2 * Style.space(4)
+                        width: inviteePillRow.implicitWidth + Style.space(18)
+                        radius: height / 2
+                        border.width: Style.spacing.hairline
+                        border.color: Qt.darker(root.contentForeground, 2.0)
+                        color: inviteeRemoveMouse.containsMouse
+                          ? Style.hoverFillFor(root.contentForeground, Color.accent)
+                          : "transparent"
+
+                        Row {
+                          id: inviteePillRow
+                          anchors.centerIn: parent
+                          spacing: Style.space(6)
+
+                          Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: Model.inviteeAnswerMark(inviteePill.modelData.answer)
+                            color: Qt.darker(root.contentForeground, 1.5)
+                            font.family: root.contentFontFamily
+                            font.pixelSize: Style.font.bodySmall
+                          }
+
+                          Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: inviteePill.modelData.name !== ""
+                              ? inviteePill.modelData.name : inviteePill.modelData.address
+                            color: root.contentForeground
+                            font.family: root.contentFontFamily
+                            font.pixelSize: Style.font.bodySmall
+                          }
+
+                          Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "✕"
+                            color: inviteeRemoveMouse.containsMouse
+                              ? Color.accent : Qt.darker(root.contentForeground, 1.8)
+                            font.family: root.contentFontFamily
+                            font.pixelSize: Style.font.bodySmall
+
+                            MouseArea {
+                              id: inviteeRemoveMouse
+                              anchors.fill: parent
+                              anchors.margins: -Style.space(3)
+                              hoverEnabled: true
+                              cursorShape: Qt.PointingHandCursor
+                              onClicked: root.removeInvitee(inviteePill.index)
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+
+                  TextField {
+                    id: inviteeField
+                    width: parent.width
+                    placeholderText: "Invite by name or address"
+                    foreground: root.contentForeground
+                    font.family: root.contentFontFamily
+                    onTextEdited: root.requestInviteeSuggestions(text)
+                    onActiveFocusChanged: if (!activeFocus) root.closeInviteeSuggestions()
+                    Keys.onPressed: function(event) { root.handleInviteeKey(event) }
+                  }
+
+                  // The matches, drawn like the location row's: the name on
+                  // top, the address under it where the two differ.
+                  BorderSurface {
+                    id: inviteeSuggestList
+                    visible: root.inviteeSuggestOpen
+                    width: parent.width
+                    height: visible ? inviteeSuggestColumn.height + 2 * Style.space(4) : 0
+                    color: Color.popups.background
+                    borderSpec: Border.localOrSurfaceSpec("popups", "border", Color.popups.border, Color.popups.border, Style.normalBorderWidth)
+                    radius: Style.cornerRadius
+
+                    Column {
+                      id: inviteeSuggestColumn
+                      x: Style.space(4)
+                      y: Style.space(4)
+                      width: parent.width - 2 * Style.space(4)
+
+                      Repeater {
+                        model: root.inviteeSuggestions
+
+                        Rectangle {
+                          required property int index
+                          required property var modelData
+                          width: inviteeSuggestColumn.width
+                          height: inviteeSuggestText.height + 2 * Style.space(5)
+                          radius: Style.cornerRadius
+                          color: index === root.inviteeSuggestIndex
+                            ? Style.controlFill(true, false, root.contentForeground, Color.accent)
+                            : "transparent"
+
+                          Column {
+                            id: inviteeSuggestText
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.leftMargin: Style.space(8)
+                            anchors.rightMargin: Style.space(8)
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 0
+
+                            Text {
+                              width: parent.width
+                              text: modelData.name !== "" ? modelData.name : modelData.address
+                              color: root.contentForeground
+                              font.family: root.contentFontFamily
+                              font.pixelSize: Style.font.body
+                              elide: Text.ElideRight
+                            }
+
+                            Text {
+                              width: parent.width
+                              visible: modelData.name !== ""
+                              text: modelData.address
+                              color: Qt.darker(root.contentForeground, 1.5)
+                              font.family: root.contentFontFamily
+                              font.pixelSize: Style.font.caption
+                              elide: Text.ElideRight
+                            }
+                          }
+
+                          MouseArea {
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onEntered: root.inviteeSuggestIndex = index
+                            onClicked: {
+                              root.takeInviteeSuggestion(index)
+                              inviteeField.forceActiveFocus()
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }

@@ -57,6 +57,13 @@ is dropped on write:
   before the start, one value or several).
 - **A URL of its own.** `event add` takes `url`, so the Join link is its own
   field rather than folded into the notes.
+- **Teams and invitees.** On a Microsoft 365 calendar (the roster's `teams`
+  flag) the entry pane gains a Teams toggle and an invite row of pills,
+  with suggestions from `contact search` then `correspondent search` and
+  addresses on the calendar owner's domain ranked first. `event add` /
+  `event edit` take `teams`, `invite` and `uninvite`; an edit sends only the
+  difference. Teams has no off — an event that is one stays one, so the
+  switch locks and says so.
 
 The request-to-arg mapping lives in one place (`Model.requestToArgs`); when a
 verb grows a field, that is the only file that changes.

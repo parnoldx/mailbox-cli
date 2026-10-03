@@ -1193,3 +1193,189 @@ test("countOpenTodos ignores finished ones and other lists", () => {
   assert.equal(Model.countOpenTodos(tasks, "Wäsche", ""), 2)
   assert.equal(Model.countOpenTodos(tasks, "nothing", "Aufgaben"), 0)
 })
+
+// ---- Teams meetings and invitees -------------------------------------------
+
+test("the roster carries the teams flag and the calendar owner", () => {
+  const roster = Model.mailboxRoster([
+    { name: "Work", kind: "events", teams: true, owner: "pa@example.com" },
+    { name: "Kalender", kind: "events" },
+    { name: "Aufgaben", kind: "tasks", teams: true }
+  ])
+  const work = roster.find(c => c.name === "Work")
+  assert.equal(work.teams, true)
+  assert.equal(work.owner, "pa@example.com")
+  const plain = roster.find(c => c.name === "Kalender")
+  assert.equal(plain.teams, false)
+  assert.equal(plain.owner, "")
+  // A task list that said teams is not thereby a Teams calendar for events;
+  // the flag rides through untouched, the pane's own kind check gates it.
+  const aufgaben = roster.find(c => c.name === "Aufgaben")
+  assert.equal(aufgaben.teams, true)
+  assert.equal(aufgaben.owner, "")
+})
+
+test("draftFromEventDetail maps the attendees and locks Teams on", () => {
+  const detail = {
+    id: 1488, summary: "Standup", teams: true,
+    attendees: [
+      { address: "ana@example.com", name: "Ana", answer: "accepted" },
+      { address: "bob@example.com", name: "", answer: "tentative" },
+      { address: "", name: "no address" }
+    ]
+  }
+  const d = Model.draftFromEventDetail(detail, "2026-08-31")
+  assert.equal(d.teams, true)
+  assert.equal(d.teamsLocked, true)
+  assert.deepEqual(d.invitees, [
+    { address: "ana@example.com", name: "Ana", answer: "accepted" },
+    { address: "bob@example.com", name: "", answer: "tentative" }
+  ])
+  assert.deepEqual(d.originalInvitees, ["ana@example.com", "bob@example.com"])
+
+  // A plain event comes back unlocked and with nobody on it.
+  const bare = Model.draftFromEventDetail({ id: 1488, summary: "Standup" }, "2026-08-31")
+  assert.equal(bare.teams, false)
+  assert.equal(bare.teamsLocked, false)
+  assert.deepEqual(bare.invitees, [])
+  assert.deepEqual(bare.originalInvitees, [])
+})
+
+test("the teams request carries teams and invitees only on a teams calendar", () => {
+  const teamsDraft = Object.assign(baseDraft(), {
+    teams: true,
+    invitees: [{ address: "ana@example.com", name: "Ana", answer: "none" }],
+    originalInvitees: []
+  })
+  const built = Model.buildQuickAddRequest(teamsDraft, nlNow, { name: "Work", teams: true })
+  assert.equal(built.request.teams, true)
+  assert.deepEqual(built.request.invitees, [{ address: "ana@example.com", name: "Ana", answer: "none" }])
+  assert.deepEqual(built.request.originalInvitees, [])
+
+  // The same draft pointed at a CalDAV calendar: nothing goes out that the
+  // daemon would refuse.
+  const plain = Model.buildQuickAddRequest(teamsDraft, nlNow, { name: "Kalender" })
+  assert.equal(plain.request.teams, undefined)
+  assert.equal(plain.request.invitees, undefined)
+  assert.equal(plain.request.originalInvitees, undefined)
+
+  // No roster row at all (the pane opened before calendar list answered):
+  // the same silence, rather than a guess.
+  const unknown = Model.buildQuickAddRequest(teamsDraft, nlNow, null)
+  assert.equal(unknown.request.teams, undefined)
+
+  const args = Model.requestToArgs(built.request)
+  assert.equal(args.cmd[1], "add")
+  assert.equal(args.args.teams, true)
+  assert.deepEqual(args.args.invite, ["ana@example.com"])
+})
+
+test("requestToArgs on an edit sends only the difference, case-insensitively", () => {
+  const base = {
+    kind: "event", id: 1488, title: "Standup",
+    startMs: Date.parse("2026-08-31T08:10:00+02:00"),
+    endMs: Date.parse("2026-08-31T09:00:00+02:00"),
+    teams: true, teamsLocked: true,
+    originalInvitees: [
+      { address: "ana@example.com", name: "Ana", answer: "accepted" },
+      { address: "bob@example.com", name: "Bob", answer: "none" }
+    ]
+  }
+  // Ana stays (spelt differently), Cara arrives, Bob leaves — and the
+  // locked Teams flag goes out as nothing, because there is no off to send.
+  const edit = Model.requestToArgs(Object.assign({}, base, {
+    invitees: [
+      { address: "ANA@EXAMPLE.COM", name: "Ana", answer: "accepted" },
+      { address: "cara@example.com", name: "Cara", answer: "none" }
+    ]
+  }))
+  assert.equal(edit.cmd[1], "edit")
+  assert.equal(edit.args.teams, undefined)
+  assert.deepEqual(edit.args.invite, ["cara@example.com"])
+  assert.deepEqual(edit.args.uninvite, ["bob@example.com"])
+
+  // Teams newly ticked on an edit that was not one before: that is the one
+  // change worth a flag.
+  const turnedOn = Model.requestToArgs(Object.assign({}, base, { teamsLocked: false }))
+  assert.equal(turnedOn.args.teams, true)
+  assert.equal(turnedOn.args.invite, undefined)
+  assert.deepEqual(turnedOn.args.uninvite, ["ana@example.com", "bob@example.com"])
+
+  // Nothing changed: no lists at all.
+  const quiet = Model.requestToArgs(Object.assign({}, base, {
+    invitees: base.originalInvitees
+  }))
+  assert.equal(quiet.args.invite, undefined)
+  assert.equal(quiet.args.uninvite, undefined)
+})
+
+test("formatEntrySummary names Teams and the invited count", () => {
+  const request = Model.buildQuickAddRequest(Object.assign(baseDraft(), {
+    teams: true,
+    invitees: [
+      { address: "ana@example.com", name: "Ana", answer: "none" },
+      { address: "bob@example.com", name: "Bob", answer: "none" }
+    ]
+  }), nlNow, { name: "Work", teams: true }).request
+  const summary = Model.formatEntrySummary(request)
+  assert.match(summary, /Teams/)
+  assert.match(summary, /2 invited/)
+  // Nothing to say when there is nothing set.
+  const plain = Model.formatEntrySummary(Model.buildQuickAddRequest(baseDraft(), nlNow).request)
+  assert.doesNotMatch(plain, /Teams|invited/)
+})
+
+test("invitee suggestions put the owner's domain first and keep the search order", () => {
+  const contacts = [{ name: "Ana Weber", emails: ["ana@example.com", "ana@private.example.de"] }]
+  const correspondents = [
+    { name: "Bob", email: "bob@example.de" },
+    { name: "Cara", email: "cara@example.com" }
+  ]
+  // ana@example.com and cara@example.com sit on the owner's domain and come
+  // up first; the rest follow in the order the searches returned them.
+  assert.deepEqual(
+    Model.rankInviteeSuggestions(contacts, correspondents, "pa@example.com", []).map(s => s.address),
+    ["ana@example.com", "cara@example.com", "ana@private.example.de", "bob@example.de"])
+
+  // No owner, no ranking: the search order stands.
+  assert.deepEqual(
+    Model.rankInviteeSuggestions(contacts, correspondents, "", []).map(s => s.address),
+    ["ana@example.com", "ana@private.example.de", "bob@example.de", "cara@example.com"])
+
+  // Already picked is out, duplicates collapse onto the first sighting,
+  // and the limit cuts the merged list, not each search.
+  const picked = Model.rankInviteeSuggestions(
+    contacts, correspondents, "pa@example.com", ["CARA@example.com"], 2)
+  assert.deepEqual(picked.map(s => s.address), ["ana@example.com", "ana@private.example.de"])
+
+  const dup = Model.rankInviteeSuggestions(
+    [{ name: "Ana", emails: ["ana@example.com"] }],
+    [{ name: "Ana", email: "ana@example.com" }], "pa@example.com", [])
+  assert.equal(dup.length, 1)
+
+  // The domain match is case-insensitive, and an address on no known
+  // domain stays in the away group rather than being dropped.
+  assert.deepEqual(
+    Model.rankInviteeSuggestions([{ name: "Dana", emails: ["dana@EXAMPLE.COM"] }],
+      [{ name: "Eve", email: "eve@example.de" }], "pa@Example.com", []).map(s => s.address),
+    ["dana@EXAMPLE.COM", "eve@example.de"])
+})
+
+test("one glyph per answer", () => {
+  assert.equal(Model.inviteeAnswerMark("accepted"), "✓")
+  assert.equal(Model.inviteeAnswerMark("tentative"), "?")
+  assert.equal(Model.inviteeAnswerMark("declined"), "✗")
+  assert.equal(Model.inviteeAnswerMark("none"), "·")
+  assert.equal(Model.inviteeAnswerMark(""), "·")
+})
+
+// The lock has to survive the trip from draft to request: an edit of an event
+// that already is a Teams meeting must not send --teams again.
+test("a locked Teams draft edits without resending teams", () => {
+  const draft = Object.assign(baseDraft(), { editingId: "41", teams: true, teamsLocked: true })
+  const built = Model.buildQuickAddRequest(draft, nlNow, { name: "work", teams: true, owner: "me@example.de" })
+  assert.equal(built.ok, true)
+  const args = Model.requestToArgs(built.request)
+  assert.equal(args.cmd[1], "edit")
+  assert.equal(args.args.teams, undefined)
+})

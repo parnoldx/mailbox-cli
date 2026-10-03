@@ -93,6 +93,26 @@ test("right-click opens the entry pane, not Thunderbird", () => {
   assert.ok(!/RightButton.*newEventOn/.test(src), "right-click still calls newEventOn")
 })
 
+test("the Teams toggle and the invite row are wired to the daemon and the roster", () => {
+  for (const needle of [
+    "pickedCalendarTeams",           // the roster's teams flag gates the rows
+    "pickedCalendarOwner",           // suggestions rank by the owner's domain
+    "teamsToggle",                   // the toggle itself
+    "Teams can't be taken off a meeting",
+    "rankInviteeSuggestions",
+    '["contact", "search"]',         // the two searches, the composer's order
+    '["correspondent", "search"]',
+    "requestInviteeSuggestions",
+    "handleInviteeKey",              // the list owns Enter/Esc while it is up
+    "takeInviteeSuggestion",
+    "removeInvitee",
+    "inviteeAnswerMark",             // ✓ ? ✗ · on the pills
+    "formOriginalInvitees"           // the edit diff needs what event view said
+  ]) {
+    assert.ok(src.indexOf(needle) !== -1, "missing " + needle)
+  }
+})
+
 if (require.main === module || process.argv[1] && process.argv[1].endsWith("panel-static.test.js")) {
   // node --test prints its own summary; this token is for the gate.
 }
