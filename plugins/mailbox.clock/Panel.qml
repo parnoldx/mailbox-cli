@@ -1547,16 +1547,18 @@ Panel {
   }
 
   // The meet-link errand: mint a Teams link with no calendar entry and let
-  // the daemon put it on the clipboard and say so — the notification survives
-  // the panel closing. No args: the daemon defaults the title and the hour.
-  // The panel's only job is the status line, because a daemon error has to be
-  // visible somewhere, and outside the entry pane there is no other surface.
+  // the daemon put it on the clipboard and say so — the notification is the
+  // whole feedback, and it survives the panel closing. The status line below
+  // the header exists for one case only: the daemon refused or was not
+  // reachable, which must be visible somewhere, and outside the entry pane
+  // there is no other surface.
   property string meetStatus: ""
   function mintMeetLink() {
-    root.meetStatus = "Minting…"
-    mailbox.call(["meet"], { copy: true }, function (error, data) {
-      root.meetStatus = error ? error : "✓  link copied"
-      meetStatusTimer.restart()
+    mailbox.call(["meet"], { copy: true }, function (error) {
+      if (error) {
+        root.meetStatus = error
+        meetStatusTimer.restart()
+      }
     })
   }
 
@@ -2749,9 +2751,10 @@ Panel {
                 }
 
                 // The one surface a meet-link failure has outside the entry
-                // pane. Success usually rides past unread — the daemon's
-                // notification is the real say-so — but an error that
-                // vanishes with the clipboard still empty is worse than none.
+                // pane. Success says so through the daemon's notification and
+                // stays silent here; only an error is shown, and an error
+                // that vanishes with the clipboard still empty is worse than
+                // none.
                 Text {
                   visible: root.meetStatus !== ""
                   width: parent.width

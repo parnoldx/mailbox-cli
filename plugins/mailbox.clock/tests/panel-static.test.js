@@ -115,7 +115,9 @@ test("the Teams toggle and the invite row are wired to the daemon and the roster
 
 // The meet button is a standing errand on the bucket header: gated on any
 // Microsoft 365 calendar in the roster, minted by one bare daemon call, with
-// the copying and the notification left to the daemon (--copy).
+// the copying and the notification left to the daemon (--copy). Success stays
+// silent in the panel — the notification is the feedback — so meetStatus is
+// error-only.
 test("the meet button mints and lets the daemon copy", () => {
   for (const needle of [
     "meetButton",
@@ -123,11 +125,13 @@ test("the meet button mints and lets the daemon copy", () => {
     "SOMETIME THIS WEEK",             // it sits left of the bucket label
     'mailbox.call(["meet"]',          // the one call, no Model plumbing
     "copy: true",
-    "meetStatus",                     // the one failure surface outside the pane
+    "meetStatus",                     // error-only surface outside the pane
     'meetStatusTimer'
   ]) {
     assert.ok(src.indexOf(needle) !== -1, "missing " + needle)
   }
+  assert.ok(!src.includes('meetStatus = "Minting'), "the minting label is back")
+  assert.ok(!src.includes('"✓  link copied"'), "the copied label is back")
 })
 
 if (require.main === module || process.argv[1] && process.argv[1].endsWith("panel-static.test.js")) {
