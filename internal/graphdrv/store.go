@@ -95,6 +95,17 @@ func (s *Store) folder(name string) (folderRow, bool, error) {
 	return f, err == nil, err
 }
 
+// folderName is the Box name a Graph folder id is known by here — the reverse
+// of folder, for reading the Routing's rules back off the server.
+func (s *Store) folderName(id string) (string, bool, error) {
+	var name string
+	err := s.db.QueryRow(`SELECT name FROM folders WHERE graph_id = ?`, id).Scan(&name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	return name, err == nil, err
+}
+
 // setFolder records which Graph folder a name means. A name that now means a
 // different folder — deleted and made again, or renamed onto — starts over.
 func (s *Store) setFolder(name, graphID string) error {

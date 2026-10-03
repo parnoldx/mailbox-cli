@@ -35,6 +35,8 @@ type fakeGraph struct {
 	log []fakeChange
 	// gone makes the next delta of a collection a 410.
 	gone map[string]bool
+	// rules are the account's inbox rules, in sequence order.
+	rules []fakeRule
 	// softDeleted marks an event deleted in another client that Graph still
 	// knows about: a GET says 404 but a DELETE says 400, the item sitting
 	// unbound in the deletions folder.
@@ -42,6 +44,10 @@ type fakeGraph struct {
 	// pageSize makes every first delta page, to exercise nextLink.
 	pageSize int
 	next     int
+	// failPost fails the Nth remaining POST and failDelete the Nth remaining
+	// DELETE with refusals, which is how a write that dies halfway is provoked.
+	failPost   int
+	failDelete int
 	// calls is every write, as "METHOD /path body".
 	calls []string
 }
@@ -59,6 +65,12 @@ type fakeMessage struct {
 type fakeChange struct {
 	collection, id string
 	removed        bool
+}
+
+// fakeRule is one inbox rule as the fake holds it: the JSON the client sent.
+type fakeRule struct {
+	id   string
+	body map[string]any
 }
 
 func newFakeGraph(t *testing.T) (*fakeGraph, *Client) {
@@ -130,6 +142,8 @@ func (f *fakeGraph) serve(w http.ResponseWriter, r *http.Request) {
 		f.writeJSON(w, map[string]string{"mail": "me@example.com"})
 	case path == "/delta":
 		f.delta(w, r.URL.Query())
+	case strings.HasPrefix(path, "/me/mailFolders/inbox/messageRules"):
+		f.messageRules(w, r, path, body)
 	case strings.HasPrefix(path, "/me/mailFolders"):
 		f.mailFolders(w, r, parts, body)
 	case path == "/me/messages" && r.Method == http.MethodPost:
@@ -207,6 +221,47 @@ func (f *fakeGraph) newFolder(w http.ResponseWriter, parent string, body []byte)
 	fo := fakeFolder{id: f.newID("f"), name: in.DisplayName, parent: parent}
 	f.folders = append(f.folders, fo)
 	f.writeJSON(w, map[string]string{"id": fo.id, "displayName": fo.name})
+}
+
+// messageRules is the inbox rules collection the Routing on a Graph account
+// is (ADR-0032). List, create, delete, patch — what SetRules and Rules use.
+func (f *fakeGraph) messageRules(w http.ResponseWriter, r *http.Request, path string, body []byte) {
+	rest := strings.TrimPrefix(path, "/me/mailFolders/inbox/messageRules")
+	switch {
+	case rest == "" && r.Method == http.MethodGet:
+		out := make([]map[string]any, 0, len(f.rules))
+		for _, g := range f.rules {
+			out = append(out, g.body)
+		}
+		f.writeJSON(w, map[string]any{"value": out})
+	case rest == "" && r.Method == http.MethodPost:
+		if f.failPost > 0 {
+			f.failPost--
+			f.fail(w, http.StatusForbidden, "ErrorAccessDenied")
+			return
+		}
+		var m map[string]any
+		_ = json.Unmarshal(body, &m)
+		f.rules = append(f.rules, fakeRule{id: f.newID("r"), body: m})
+		m["id"] = f.rules[len(f.rules)-1].id
+		f.writeJSON(w, m)
+	case rest != "" && r.Method == http.MethodDelete:
+		if f.failDelete > 0 {
+			f.failDelete--
+			f.fail(w, http.StatusForbidden, "ErrorAccessDenied")
+			return
+		}
+		for i, g := range f.rules {
+			if g.id == strings.Trim(rest, "/") {
+				f.rules = append(f.rules[:i], f.rules[i+1:]...)
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+		}
+		f.fail(w, http.StatusNotFound, "ErrorItemNotFound")
+	default:
+		f.fail(w, http.StatusNotFound, "ErrorItemNotFound")
+	}
 }
 
 func (f *fakeGraph) folderList(w http.ResponseWriter, parent string) {

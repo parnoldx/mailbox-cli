@@ -13,7 +13,8 @@ import (
 // owed there is a decision per sender rather than a read per mail.
 func runScreener(in *input, stdout, stderr io.Writer) int {
 	return request(daemon.Request{
-		Cmd: []string{"screener"}, Args: map[string]any{"limit": in.Int("limit")},
+		Cmd:  []string{"screener"},
+		Args: map[string]any{"limit": in.Int("limit"), "account": in.Str("account")},
 	}, in.JSON(), printScreener, stdout, stderr)
 }
 
@@ -47,7 +48,8 @@ func printScreener(stdout, stderr io.Writer, resp daemon.Response) {
 // server is the record; what is listed here is a projection of it (ADR-0019).
 func runRouteList(in *input, stdout, stderr io.Writer) int {
 	return request(daemon.Request{
-		Cmd: []string{"route"}, Args: map[string]any{"script": in.Bool("script")},
+		Cmd:  []string{"route"},
+		Args: map[string]any{"script": in.Bool("script"), "account": in.Str("account")},
 	}, in.JSON(), printRouting, stdout, stderr)
 }
 
@@ -62,7 +64,7 @@ func runRouteSet(in *input, stdout, stderr io.Writer) int {
 	}
 	return request(daemon.Request{
 		Cmd:  []string{"route"},
-		Args: map[string]any{"positional": in.Words, "to": to},
+		Args: map[string]any{"positional": in.Words, "to": to, "account": in.Str("account")},
 	}, in.JSON(), printDecisions, stdout, stderr)
 }
 

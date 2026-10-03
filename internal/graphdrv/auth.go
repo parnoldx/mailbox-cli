@@ -21,7 +21,10 @@ import (
 )
 
 // Scopes is everything the account is used for, asked for once at sign-in.
-const Scopes = "offline_access User.Read Mail.ReadWrite Mail.Send Calendars.ReadWrite Contacts.ReadWrite"
+// MailboxSettings.ReadWrite is in it for the Routing: inbox rules are mailbox
+// settings on a work account, and Mail.ReadWrite alone is refused (measured:
+// 403 ErrorAccessDenied on messageRules with every Mail scope but that one).
+const Scopes = "offline_access User.Read Mail.ReadWrite Mail.Send MailboxSettings.ReadWrite Calendars.ReadWrite Contacts.ReadWrite"
 
 // Login is where the device-code flow is spoken; a test points it at a fake.
 var Login = "https://login.microsoftonline.com"

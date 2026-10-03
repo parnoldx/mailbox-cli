@@ -583,6 +583,36 @@ Outlook category of the same name, so ADR-0023's bubble works unchanged and two
 Daemons still coordinate through the server. Categories that could not be a keyword
 ("Red category") stay on the message and out of the Mirror, and a write keeps them.
 
+**ADR-0032 — A Graph account's Routing is inbox rules.** Exchange has no Sieve, but
+`/me/mailFolders/inbox/messageRules` is the same animal: server-side, evaluated on
+arrival, conditions then actions. The Routing's `Lists` are rendered to rules
+instead of to a script — `fromAddresses` where the script writes an address list,
+`senderContains` with `@domain` where it writes a domain one (Graph v1.0's
+predicates have no senderDomains test; the substring match would also catch
+`x@example.com.evil.net`, which `address :domain :is` never would — accepted,
+because the worst case is mail skimmed in the wrong pile), `moveToFolder` +
+`markAsRead` where it writes `fileinto` + `addflag "\\Seen"`, `delete` +
+`markAsRead` where it writes `discard` — Deleted Items is the bin the mail that
+was already here goes to — and one catch-all rule with no conditions that files
+everything else into the Screener, where the script writes the final
+`fileinto "INBOX/Screener"`. Rules the program own carry a `mailbox:`
+`displayName` prefix and are replaced whole on every decision: the new rules are
+created first and the old deleted after, so a refusal halfway through leaves the
+record whole — the same all-or-nothing write PUTSCRIPT gives the script. Rules
+without the prefix are never read and never written. The rules on the server are
+the record (ADR-0010); the Mirror holds the projection, keyed by account as it
+always was. The rules this program writes own sequence numbers 1…n; a rule a
+human wrote in Outlook keeps its own number and only runs when it sorts ahead of
+ours — supported on the understanding that this account keeps no other rules.
+Accepted limits: rules fire only on mail arriving in the Inbox, and a move target
+is looked up and never created — a missing Box is refused with its name, as on
+the Sieve path (ADR-0019). A write always carries the catch-all, so a decision
+made after the catch-all was deleted outside this program re-arms the Screener
+rather than refusing. Screener-drag inference stays Primary-only: an inferred
+decision reads the Primary's Sieve and would write the wrong account's lists. A secondary Graph account now carries the full
+Routing — Screener, Feed, Paper Trail, Block — where ADR-0029's plan said
+"not now"; the piles and the screener loop are unchanged and stay account-generic.
+
 ## What the real servers do
 
 Every one of these was measured against mailbox.org, SOGo or Open-Xchange, and each

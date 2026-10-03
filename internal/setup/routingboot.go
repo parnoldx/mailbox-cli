@@ -147,3 +147,39 @@ func EnsureRouting(ctx context.Context, mk BoxMaker, sv SieveOps, have []string)
 	b.Unreachable = !routing.Includes(src, routing.ScriptName)
 	return b, nil
 }
+
+// RuleOps is what a Graph account's Routing needs: its inbox rules, read whole
+// and replaced whole (ADR-0032).
+type RuleOps interface {
+	Rules(ctx context.Context) ([]routing.Rule, error)
+	SetRules(ctx context.Context, rules []routing.Rule) error
+}
+
+// EnsureGraphRouting creates the Routing Boxes a Graph account has not got and,
+// when the account carries none of our rules, puts the catch-all up — the rule
+// that files everything undecided into the Screener, so the first mail from a
+// sender nothing has been decided about waits for one (ADR-0032). Rules a human
+// wrote are never touched, so an account that has any of ours is left alone.
+func EnsureGraphRouting(ctx context.Context, mk BoxMaker, ro RuleOps, have []string) (Bootstrap, error) {
+	var b Bootstrap
+	for _, name := range MissingBoxes(have) {
+		if err := mk.CreateFolder(ctx, name); err != nil {
+			return b, err
+		}
+		b.Created = append(b.Created, name)
+	}
+	rules, err := ro.Rules(ctx)
+	if err != nil {
+		return b, fmt.Errorf("graph rules: %w", err)
+	}
+	for _, r := range rules {
+		if strings.HasPrefix(r.Name, routing.RuleName) {
+			return b, nil
+		}
+	}
+	if err := ro.SetRules(ctx, routing.New().Rules()); err != nil {
+		return b, fmt.Errorf("graph rules: %w", err)
+	}
+	b.Wrote = true
+	return b, nil
+}

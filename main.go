@@ -561,6 +561,17 @@ func buildGraph(ctx context.Context, name string, sec config.Account,
 	acct.From = compose.Address{Name: sec.DisplayName, Addr: sec.Email}
 	acct.Color = sec.Color
 	acct.Graph = true
+	// The Routing is set up with the account — the Screener Box is what its
+	// catch-all files into, and the one a Graph account without the routing
+	// does not have. Wiring the driver on unconditionally would let one route
+	// command switch screening on for an account whose Boxes the daemon does
+	// not hold, and mail would pile up where nothing looks.
+	for _, b := range mirrored {
+		if strings.EqualFold(b, routing.BoxScreener) {
+			acct.Routing = drv
+			break
+		}
+	}
 	acct.Respond = graphdrv.NewDAV(g.client, g.store, name).Respond
 	acct.Courier = &outbox.Courier{Box: box, Account: name, Transport: drv, Log: logger}
 	logger.Printf("account %s: Microsoft 365, %d boxes", name, len(mirrored))

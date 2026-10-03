@@ -51,9 +51,11 @@ _Avoid_: main account, default account
 
 **Secondary Account**:
 An Account with an Inbox, Drafts and Sent, the ability to Send, and the piles —
-Aside, Reply Later and Bubble Up. No Screener, no Feed, no Paper Trail, no Routing.
-Its own connections and its own cycle, sharing the one Mirror: every row in it
-carries an Account. A listing spans every Account; an id names one.
+Aside, Reply Later and Bubble Up. A Graph Secondary can also carry the full
+Routing (Screener, Feed, Paper Trail, Block) as inbox rules; an IMAP Secondary
+carries only the piles. Its own connections and its own cycle, sharing the one
+Mirror: every row in it carries an Account. A listing spans every Account; an id
+names one.
 _Avoid_: extra account, sub-account
 
 **Account Colour**:
@@ -70,12 +72,15 @@ An IMAP folder on an Account, named by an alias (`inbox`) or by its folder name
 _Avoid_: folder, mailbox, label
 
 **Routing**:
-The Sieve script on the Primary Account's server that files new mail before this
-program sees it: blocked senders discarded, then the Inbox, the Paper Trail and
-the Feed, everything left over into the Screener. The script is the record and the
-Mirror's copy of it is a projection. It is in force when it is the server's active
-script or when the active one includes it. A decision is about an address or a
-whole domain (`@example.com`); an address always wins.
+The server-side rules that file new mail before this program sees it: blocked
+senders discarded, then the Inbox, the Paper Trail and the Feed, everything left
+over into the Screener. On the Primary Account it is the Sieve script on the
+server; on a Graph Secondary it is the account's `mailbox:` inbox rules
+(ADR-0032). The script or rules are the record and the Mirror's copy is a
+projection. Sieve routing is in force when it is the server's active script or
+when the active one includes it; Graph routing is in force when its catch-all
+rule is present. A decision is about an address or a whole domain
+(`@example.com`); an address always wins.
 _Avoid_: filter, rule, sieve (that is the language it is written in)
 
 **Destination**:

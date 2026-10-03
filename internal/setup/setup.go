@@ -77,8 +77,10 @@ type GraphLogin struct {
 	// TokenPath is where the sign-in is kept, the file the Daemon reads.
 	TokenPath string
 	// SignIn runs the device-code flow before anything else; MakePiles creates
-	// Set Aside and Reply Later where they are missing.
-	SignIn, MakePiles bool
+	// Set Aside and Reply Later where they are missing; MakeRouting creates
+	// the Routing Boxes and the catch-all rule that holds undecided senders
+	// in the Screener (ADR-0032).
+	SignIn, MakePiles, MakeRouting bool
 }
 
 // GraphState is what the probe found.

@@ -133,7 +133,7 @@ func (w *Wizard) repairGraph(ctx context.Context, name string, a config.Account)
 	if err != nil {
 		return err
 	}
-	login.MakePiles = true
+	login.MakePiles, login.MakeRouting = true, true
 	st, err := w.Prober.Graph(ctx, login, w.Out)
 	if errors.Is(err, graphdrv.ErrSignIn) {
 		w.sayf("  %s needs signing in again", name)
@@ -482,7 +482,7 @@ func (w *Wizard) addGraphAccount(ctx context.Context, s *snapshot, name string) 
 	if err != nil {
 		return err
 	}
-	login.SignIn, login.MakePiles = true, true
+	login.SignIn, login.MakePiles, login.MakeRouting = true, true, true
 	w.say("Signing in to Microsoft 365…")
 	st, err := w.Prober.Graph(ctx, login, w.Out)
 	if err != nil {

@@ -42,9 +42,10 @@ for M365, spoken to directly over HTTP, not a hosted third party holding the mai
 
 Decided:
 
-- Work gets the **piles** (Aside, Reply Later, Bubble) but **no Screener,
-  Feed, Paper Trail or Routing**. Graph has inbox rules (`messageRules`) that
-  could carry a Routing later; not now.
+- Work gets the **piles** (Aside, Reply Later, Bubble) and — since 2026-09-29,
+  ADR-0032 — the full **Routing** (Screener, Feed, Paper Trail, Block) as
+  Graph inbox rules. The plan first said "not now"; the decision to build it
+  came later, and `mailbox route` decides per account.
 - **Reading merges, writing does not.** `mailbox box view inbox` shows both
   accounts newest-first; `box view work` or `box view primary` narrows.
 - **Every account has a colour**, and it is the account's identity everywhere:
@@ -59,8 +60,13 @@ Decided:
 
 1. An **Entra app registration**: public client, browser sign-in with PKCE
    (`http://localhost` redirect, "allow public client flows"), delegated
-   scopes `Mail.ReadWrite Mail.Send Calendars.ReadWrite
-   Contacts.ReadWrite offline_access User.Read`.
+   scopes `Mail.ReadWrite Mail.Send MailboxSettings.ReadWrite
+   Calendars.ReadWrite Contacts.ReadWrite offline_access User.Read`.
+   MailboxSettings.ReadWrite was added with ADR-0032 — inbox rules are
+   mailbox settings on a work account, and the Routing is refused without it
+   (measured: 403 ErrorAccessDenied on messageRules with the scope missing).
+   The scope change needs a fresh sign-in; the token on disk carries the
+   scopes it was granted and does not grow with the app registration.
 2. **Consent**: many tenants block user consent. If so, an admin grants it once.
 3. Conditional access or security defaults that would refuse the sign-in from
    the VPS (ADR-0025's second Daemon) — there the browser is reached through
@@ -104,6 +110,8 @@ registration. Where the build differs from the text below:
 To go live: IT's app registration → `mailbox setup` → a → Microsoft 365 → then
 `MAILBOX_GRAPH_ACCOUNT=work make live LIVE=./internal/graphdrv/`, and
 `make update-daemon` for both Daemons (the VPS one signs in on its own).
+The Routing (ADR-0032) has its own go-live checklist:
+[routing-go-live.md](routing-go-live.md).
 
 ## Order: one Graph account, all three domains (2026-09-26)
 
@@ -425,7 +433,9 @@ token.
 
 ## Deliberately not built
 
-- No Screener, Feed, Paper Trail or Routing on the work account.
+- No GUI for the Routing's rules on either backend: `mailbox route` and
+  `sieve` are the paved road, and a rules editor is a second program to keep
+  honest about what the server runs.
 - No cross-account Threads (ADR-0008 stands), and no cross-account batch writes.
 - No Graph change notifications / webhook; polling only.
 - No Graph To Do tasks.

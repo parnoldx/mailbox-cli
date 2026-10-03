@@ -135,6 +135,11 @@ func (d *Daemon) senderFor(a *Account, messageID int64) string {
 // entry and nothing happens. No echo loop, because editing the script moves no
 // mail.
 func (d *Daemon) applyInferred(ctx context.Context, a *Account, screener string, want map[string]routing.Destination) {
+	// The same read-modify-write `route` does, so the same one-at-a-time rule
+	// holds: a drag inferred while a decision writes would put the older copy
+	// over the newer one.
+	d.routingMu.Lock()
+	defer d.routingMu.Unlock()
 	st, err := d.readRouting(ctx)
 	if err != nil {
 		d.logf("screener inference: cannot read routing: %v", err)

@@ -77,7 +77,13 @@ type Daemon struct {
 	// RoutingEvery is how often the script is re-read, for the rule somebody
 	// added in webmail.
 	RoutingEvery time.Duration
-	Log          *log.Logger
+	// routingMu serialises the Routing's read-modify-write per process: a
+	// decision and a refresh must not interleave over the same account's
+	// script or rules, and a Graph write spans several round trips.
+	// ponytail: one lock for every account — decisions are rare and slow
+	// anyway; per-account locks if that ever stops being true.
+	routingMu sync.Mutex
+	Log       *log.Logger
 
 	// ConfigPath is the record this Daemon reconciles itself against, and Apply
 	// is what does the reconciling (ADR-0021). Both are set by WatchConfig; a

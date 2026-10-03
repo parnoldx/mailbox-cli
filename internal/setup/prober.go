@@ -97,8 +97,23 @@ func (Servers) Graph(ctx context.Context, g GraphLogin, out io.Writer) (GraphSta
 	st.Boxes = len(boxes)
 	if !g.MakePiles {
 		st.Missing = MissingPiles(boxes)
-		return st, nil
+	} else {
+		st.Created, err = EnsurePiles(ctx, mail, boxes)
+		if err != nil {
+			return st, err
+		}
 	}
-	st.Created, err = EnsurePiles(ctx, mail, boxes)
-	return st, err
+	if g.MakeRouting {
+		// The piles may just have been made; the Routing Boxes are judged
+		// against what is there now, and a rule needs the folders to name.
+		if boxes, err = mail.Folders(ctx); err != nil {
+			return st, err
+		}
+		boot, err := EnsureGraphRouting(ctx, mail, mail, boxes)
+		if err != nil {
+			return st, err
+		}
+		st.Created = append(st.Created, boot.Created...)
+	}
+	return st, nil
 }

@@ -600,20 +600,23 @@ func tree(l Locals) []*Command {
 				"and `mailbox route set` is how one is made.",
 			Flags: []Flag{
 				{Name: "limit", Kind: KindInt, Arg: "N", Int: 25, Desc: "how many senders to show"},
+				{Name: "account", Kind: KindString, Arg: "NAME", Desc: "whose screener; the primary when omitted"},
 			},
 			Examples: []string{"mailbox screener"},
 			Run:      runScreener,
 		},
 		{
 			Name: "route", Section: SectionOrganize, Short: "Where a sender's mail goes",
-			Long: "Deciding rewrites the sieve script on the server and moves what is " +
-				"already waiting, so one command finishes one decision.",
+			Long: "Deciding rewrites the Sieve script on the Primary Account, or the inbox " +
+				"rules on a Microsoft 365 one, and moves what is already waiting, so one " +
+				"command finishes one decision.",
 			Sub: []*Command{
 				{
 					Name: "list", Short: "The decisions already made",
 					Usage: []string{"mailbox route list [--script]"},
 					Flags: []Flag{
-						{Name: "script", Kind: KindBool, Desc: "print the sieve script the routing comes from"},
+						{Name: "script", Kind: KindBool, Desc: "print the sieve script — or, on a Microsoft 365 account, the rules — the routing comes from"},
+						{Name: "account", Kind: KindString, Arg: "NAME", Desc: "whose routing; the primary when omitted"},
 					},
 					Examples: []string{"mailbox route list"},
 					Run:      runRouteList,
@@ -633,6 +636,7 @@ func tree(l Locals) []*Command {
 					},
 					Flags: []Flag{
 						{Name: "to", Kind: KindString, Arg: "BOX", Desc: "inbox, feed, paper, block, or screener"},
+						{Name: "account", Kind: KindString, Arg: "NAME", Desc: "the account to decide on; the primary when omitted, or taken from a target id"},
 					},
 					Examples: []string{
 						"mailbox route set Screener:342 --to feed",

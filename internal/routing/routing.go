@@ -97,6 +97,30 @@ func specOf(d Destination) (spec, bool) {
 	return spec{}, false
 }
 
+// Spec is one Destination as the script and the rules carry it: what new mail
+// is filed into, and whether it is read on arrival. Exported for the driver
+// that renders the Routing onto a server that is not a Sieve one.
+type Spec struct {
+	Dest  Destination
+	Files string
+	Seen  bool
+}
+
+// Specs is every routable Destination in the order the rules match them.
+func Specs() []Spec {
+	out := make([]Spec, len(order))
+	for i, s := range order {
+		out[i] = Spec{Dest: s.dest, Files: s.files, Seen: s.seen}
+	}
+	return out
+}
+
+// Seen says whether the script marks this destination's mail read on arrival.
+func (d Destination) Seen() bool {
+	s, ok := specOf(d)
+	return ok && s.seen
+}
+
 // Box is the Box the script files a sender's new mail into. It is empty for
 // Block, whose mail is discarded, and for None, which files nothing because it
 // is not a rule.

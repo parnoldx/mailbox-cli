@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -14,6 +15,14 @@ import (
 	"mailbox/internal/routing"
 	"mailbox/internal/sync/mailsync"
 )
+
+// RuleKeeper is a Graph account's inbox rules, the Routing that account runs
+// server-side (ADR-0032). It is read whole and replaced whole, like the Sieve
+// script: the rules on the server are the record, one write rewrites ours.
+type RuleKeeper interface {
+	Rules(ctx context.Context) ([]routing.Rule, error)
+	SetRules(ctx context.Context, rules []routing.Rule) error
+}
 
 // Sieve is the ManageSieve surface the Routing needs. It is small because the
 // Routing is one script: read it whole, write it whole.
@@ -33,21 +42,26 @@ type Sieve interface {
 // it is telling you something that a longer scan would not.
 const screenerScan = 1000
 
-// routingLoop keeps the Mirror's copy of the Routing true. The script is
-// rewritten by this program and by nobody else in the ordinary case, but a rule
-// added in webmail is exactly the sort of thing a caller should not have to
-// restart the daemon to see.
+// routingLoop keeps the Mirror's copy of every Routing true: the Primary's
+// Sieve script, and each Graph account's inbox rules. The script and the rules
+// are rewritten by this program and by nobody else in the ordinary case, but a
+// rule added in webmail or Outlook is exactly the sort of thing a caller should
+// not have to restart the daemon to see.
 func (d *Daemon) routingLoop(ctx context.Context) {
-	if d.Sieve == nil {
-		return
-	}
 	every := d.RoutingEvery
 	if every <= 0 {
 		every = 10 * time.Minute
 	}
 	for {
-		if err := d.refreshRouting(ctx); err != nil {
-			d.logf("routing: %v", err)
+		// An account can gain a Routing mid-run — a config reload builds one
+		// (ADR-0021) — so who has one is asked every tick, not once at start.
+		for _, a := range d.accounts() {
+			if !(a.Primary && d.Sieve != nil) && a.Routing == nil {
+				continue
+			}
+			if err := d.refreshRoutingOn(ctx, a); err != nil {
+				d.logf("routing %s: %v", a.label(), err)
+			}
 		}
 		select {
 		case <-ctx.Done():
@@ -58,8 +72,8 @@ func (d *Daemon) routingLoop(ctx context.Context) {
 }
 
 // routingState is the Routing as the server currently has it: the lists, and
-// the facts about the script that a write has to know before it touches
-// anything.
+// the facts about the script or rules that a write has to know before it
+// touches anything.
 type routingState struct {
 	lists  *routing.Lists
 	raw    string
@@ -67,21 +81,62 @@ type routingState struct {
 	// active is the name of the script the server is running, which is
 	// usually not ours.
 	active string
-	// inForce is whether our script actually runs: it is the active one, or the
-	// active one includes it. A script that is stored and unreachable routes
-	// nothing, and writing to it would be writing into a drawer.
+	// inForce is whether our routing actually runs: for a Sieve script, that it
+	// is the active one or included by the active one; for Graph rules, that
+	// the Screener's catch-all is among them. A Routing that is stored but not
+	// in force decides nothing, and writing to it would be writing into a
+	// drawer.
 	inForce bool
 	// activate is whether making ours the active script would switch nothing
 	// else off. True only when the server is running no script at all.
 	activate bool
+	// rules is the Routing as a Graph account currently carries it, nil on a
+	// Sieve account.
+	rules  []routing.Rule
+	keeper RuleKeeper
 }
 
-// readRouting fetches the script and parses it. A server with no `logic` script
-// is not an error: it is an account with no Routing yet, which is what a fresh
-// one looks like.
+// readRouting fetches the Primary's script and parses it. A server with no
+// `logic` script is not an error: it is an account with no Routing yet, which
+// is what a fresh one looks like.
 func (d *Daemon) readRouting(ctx context.Context) (routingState, error) {
-	if d.Sieve == nil {
-		return routingState{}, errors.New("this daemon has no sieve connection: routing is not configured")
+	return d.readRoutingOn(ctx, d.Primary)
+}
+
+// readRoutingOn is readRouting for one account: a Graph account's Routing is
+// its inbox rules, the Primary's is the Sieve script (ADR-0032). An IMAP
+// Secondary has neither — its accounts do not route — and falling through to
+// the Primary's Sieve here would let a decision made on a Secondary rewrite
+// the Primary's script.
+func (d *Daemon) readRoutingOn(ctx context.Context, a *Account) (routingState, error) {
+	if a.Routing != nil {
+		rules, err := a.Routing.Rules(ctx)
+		if err != nil {
+			return routingState{}, err
+		}
+		st := routingState{
+			lists: routing.ListsFromRules(rules), rules: rules,
+			keeper: a.Routing, active: routing.RuleName,
+		}
+		if len(rules) > 0 {
+			st.exists = true
+			// Raw is what the server answered, JSON-encoded: the record the
+			// Mirror holds beside the projection, as the script is on the Primary.
+			b, err := json.Marshal(rules)
+			if err != nil {
+				return routingState{}, err
+			}
+			st.raw = string(b)
+		}
+		// The rules run on arrival by definition; what decides whether the
+		// Routing is in force is whether undecided senders land somewhere this
+		// program watches for them.
+		st.inForce = routing.HasCatchAll(rules)
+		return st, nil
+	}
+	if d.Sieve == nil || !a.Primary {
+		return routingState{}, errors.New(
+			"the routing belongs to the primary account, or to a Microsoft 365 one as inbox rules")
 	}
 	names, active, err := d.Sieve.Scripts(ctx)
 	if err != nil {
@@ -121,37 +176,76 @@ func (d *Daemon) readRouting(ctx context.Context) (routingState, error) {
 	return st, nil
 }
 
-// refreshRouting reads the script and projects it into the Mirror, so that
-// every read of the Routing after this one is answered offline (ADR-0001).
+// refreshRouting reads the Primary's script and projects it into the Mirror,
+// so that every read of the Routing after this one is answered offline
+// (ADR-0001).
 func (d *Daemon) refreshRouting(ctx context.Context) error {
-	st, err := d.readRouting(ctx)
+	return d.refreshRoutingOn(ctx, d.Primary)
+}
+
+// refreshRoutingOn is refreshRouting for one account.
+func (d *Daemon) refreshRoutingOn(ctx context.Context, a *Account) error {
+	// One decision and one refresh at a time: the write is a read-modify-write
+	// over several server round trips, and a refresh that read halfway through
+	// it would project half a Routing into the Mirror.
+	d.routingMu.Lock()
+	defer d.routingMu.Unlock()
+	st, err := d.readRoutingOn(ctx, a)
 	if err != nil {
 		return err
 	}
 	if !st.exists {
+		// A Graph account whose rules have all gone — deleted in Outlook, say —
+		// had a Routing the Mirror still shows. The server is the record, so
+		// the projection follows it to empty; but only when there was one, and
+		// only on a clean read, so a database error does not overwrite it with
+		// nothing.
+		if a.Routing != nil {
+			if s, err := d.Mirror.RoutingScript(a.Name); err == nil && s.Raw != "" {
+				return d.storeRoutingOn(a, "", false, routing.New())
+			}
+		}
 		return nil
 	}
-	if !st.inForce {
-		d.logf("routing: %q is stored but nothing reaches it — %q is the active script and does not include it",
-			routing.ScriptName, st.active)
+	if routing.Unreadable(st.rules) {
+		d.logf("routing %s: %d of its rules cannot be read back — decisions there are refused until it is repaired",
+			a.label(), len(st.rules))
 	}
-	return d.storeRouting(st.raw, st.inForce, st.lists)
+	if !st.inForce {
+		d.logf("routing %s: not in force — undecided senders are not being held for a decision", a.label())
+	}
+	return d.storeRoutingOn(a, st.raw, st.inForce, st.lists)
 }
 
-// storeRouting writes the script and its projection into the Mirror.
+// storeRouting writes the Primary's script and its projection into the Mirror.
 func (d *Daemon) storeRouting(raw string, active bool, lists *routing.Lists) error {
+	return d.storeRoutingOn(d.Primary, raw, active, lists)
+}
+
+// storeRoutingOn is storeRouting for one account: the Mirror keys every
+// Routing by the account it belongs to.
+func (d *Daemon) storeRoutingOn(a *Account, raw string, active bool, lists *routing.Lists) error {
 	routes := make([]mirror.Route, 0, lists.Count())
 	for _, r := range lists.All() {
 		routes = append(routes, mirror.Route{Address: r.Address, To: string(r.To), Box: r.Box})
 	}
-	return d.Mirror.PutRouting(d.Primary.Name, routing.ScriptName, raw, active, routes)
+	name := routing.ScriptName
+	if a.Routing != nil {
+		name = "inbox rules"
+	}
+	return d.Mirror.PutRouting(a.Name, name, raw, active, routes)
 }
 
 // handleScreener answers who is waiting for a decision. It is a Mirror read
 // grouped by sender, because the decision is about a sender and not about a
-// mail: five mails from one address are one thing to decide, not five.
+// mail: five mails from one address are one thing to decide, not five. Every
+// account with a Routing has a Screener, so the account named — the Primary
+// when none is — decides whose is listed.
 func (d *Daemon) handleScreener(req Request, resp Response) Response {
-	a := d.Primary
+	a, err := d.routeAccount(req, nil)
+	if err != nil {
+		return resp.usage(err.Error())
+	}
 	box, ok := a.boxNamed(routing.BoxScreener)
 	if !ok {
 		return resp.usage(fmt.Sprintf("this account has no %s box", routing.BoxScreener))
@@ -249,7 +343,11 @@ type route struct {
 // here: the script is on the server, and what it says is held locally so that
 // "where does this sender's mail go" is answerable with the network down.
 func (d *Daemon) handleRouting(req Request, resp Response) Response {
-	routes, err := d.Mirror.Routing(d.Primary.Name)
+	a, err := d.routeAccount(req, nil)
+	if err != nil {
+		return resp.usage(err.Error())
+	}
+	routes, err := d.Mirror.Routing(a.Name)
 	if err != nil {
 		return resp.api(err.Error())
 	}
@@ -257,7 +355,7 @@ func (d *Daemon) handleRouting(req Request, resp Response) Response {
 	for _, r := range routes {
 		view.Routes = append(view.Routes, route{Address: r.Address, To: r.To, Box: r.Box})
 	}
-	script, err := d.Mirror.RoutingScript(d.Primary.Name)
+	script, err := d.Mirror.RoutingScript(a.Name)
 	switch {
 	case errors.Is(err, mirror.ErrNotFound):
 		// Never read one. That is not an empty Routing, it is no answer, and
@@ -307,29 +405,44 @@ func (d *Daemon) handleRoute(ctx context.Context, req Request, resp Response) Re
 	if len(targets) == 0 {
 		return d.handleRouting(req, resp)
 	}
-	a := d.Primary
+	a, err := d.routeAccount(req, targets)
+	if err != nil {
+		return resp.usage(err.Error())
+	}
 	if a.Writer == nil {
 		return resp.api("this daemon cannot write: no server connection")
 	}
+	// One decision at a time (see refreshRoutingOn): the write below is a
+	// read-modify-write of the account's script or rules, and two at once
+	// would be two Routing half-written.
+	d.routingMu.Lock()
+	defer d.routingMu.Unlock()
 	to, err := routing.ParseDestination(req.Str("to"))
 	if err != nil {
 		return resp.usage(err.Error())
 	}
 
-	addresses, err := d.senders(targets)
+	addresses, err := d.sendersOn(a, targets)
 	if err != nil {
 		return resp.usage(err.Error())
 	}
 
-	st, err := d.readRouting(ctx)
+	st, err := d.readRoutingOn(ctx, a)
 	if err != nil {
 		return resp.api(err.Error())
+	}
+	// A Graph rule that could not be read back — its Box is gone — is the one
+	// thing a decision refuses on a Graph account: the write would carry over
+	// only the decisions it could read and quietly forget the rest.
+	if a.Routing != nil && routing.Unreadable(st.rules) {
+		return resp.api("some of this account's routing rules cannot be read back — a Box they name is gone. " +
+			"Recreate the Box, or delete the rule where it was written, and decide again")
 	}
 	// Never disable somebody else's filtering to enable ours: activating a
 	// script deactivates the one that was running, and that is somebody's
 	// webmail rules. So the decision is refused unless the Routing already
 	// runs — because it is active, or because the active script includes it.
-	if !st.inForce && !st.activate {
+	if a.Routing == nil && !st.inForce && !st.activate {
 		return resp.api(fmt.Sprintf(
 			"%q is the active sieve script and it does not include %q, so the routing "+
 				"would be stored and never run — add `include %q;` to the end of %q, "+
@@ -379,15 +492,33 @@ func (d *Daemon) handleRoute(ctx context.Context, req Request, resp Response) Re
 	}
 
 	if changed || !st.exists {
-		script := st.lists.Script()
-		if err := d.Sieve.PutScript(ctx, routing.ScriptName, script, st.activate); err != nil {
-			return resp.api(err.Error())
-		}
-		// What the server accepted is what it compiled: PUTSCRIPT either takes
-		// the script or refuses it, so the bytes we sent are the bytes it now
-		// runs, and storing them is storing the ack (ADR-0004).
-		if err := d.storeRouting(script, true, st.lists); err != nil {
-			return resp.api(err.Error())
+		if a.Routing != nil {
+			// The rules the server should run, whole; ours are replaced and
+			// nobody else's touched (ADR-0032).
+			rules := st.lists.Rules()
+			if err := a.Routing.SetRules(ctx, rules); err != nil {
+				return resp.api(err.Error())
+			}
+			b, err := json.Marshal(rules)
+			if err != nil {
+				return resp.api(err.Error())
+			}
+			// The server took the list or refused it, so what we sent is what
+			// it now runs, and storing it is storing the ack (ADR-0004).
+			if err := d.storeRoutingOn(a, string(b), true, st.lists); err != nil {
+				return resp.api(err.Error())
+			}
+		} else {
+			script := st.lists.Script()
+			if err := d.Sieve.PutScript(ctx, routing.ScriptName, script, st.activate); err != nil {
+				return resp.api(err.Error())
+			}
+			// What the server accepted is what it compiled: PUTSCRIPT either takes
+			// the script or refuses it, so the bytes we sent are the bytes it now
+			// runs, and storing them is storing the ack (ADR-0004).
+			if err := d.storeRoutingOn(a, script, true, st.lists); err != nil {
+				return resp.api(err.Error())
+			}
 		}
 	}
 
@@ -533,7 +664,28 @@ func pileFor(to routing.Destination, waiting int) string {
 // is an address; anything else is a message id, and the address is whoever sent
 // that Message — which is how the decision is usually made, by an agent that
 // has just read the mail and has its id in hand.
-func (d *Daemon) senders(targets []string) ([]string, error) {
+// routeAccount is the account a screener or route call is about: the account
+// the caller named, else the account a target id carries — `work/Screener:12`
+// is a decision on work — else the Primary. Every target must sit on the one
+// account, because a decision is made on one server's lists.
+func (d *Daemon) routeAccount(req Request, targets []string) (*Account, error) {
+	name := req.Str("account")
+	if name == "" {
+		for _, t := range targets {
+			if prefix, _ := splitAccount(t, d.accountNames()); prefix != "" {
+				name = prefix
+				break
+			}
+		}
+	}
+	a, err := d.accountNamed(name)
+	if err != nil {
+		return nil, fmt.Errorf("no account called %q", name)
+	}
+	return a, nil
+}
+
+func (d *Daemon) sendersOn(a *Account, targets []string) ([]string, error) {
 	out := []string{}
 	seen := map[string]bool{}
 	for _, t := range targets {
@@ -553,8 +705,8 @@ func (d *Daemon) senders(targets []string) ([]string, error) {
 			if err != nil {
 				return nil, err
 			}
-			if !acct.Primary {
-				return nil, fmt.Errorf("%s is on the %s account: the routing belongs to the primary one", t, acct.Name)
+			if acct.Name != a.Name {
+				return nil, fmt.Errorf("%s is on the %s account: one decision is made on one account", t, acct.label())
 			}
 			r, err := d.Mirror.Row(acct.Name, folder, uid)
 			if errors.Is(err, mirror.ErrNotFound) {

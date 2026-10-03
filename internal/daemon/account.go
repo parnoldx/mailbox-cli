@@ -45,6 +45,11 @@ type Account struct {
 	// the shared Outbox of its mail.
 	From    compose.Address
 	Courier *outbox.Courier
+	// Routing is a Graph account's inbox rules, the Routing that account runs
+	// server-side (ADR-0032). Nil when the account has no Routing: a Sieve
+	// Primary's Routing is the Daemon's Sieve connection, and a Graph account
+	// without a Screener Box was never set up with one.
+	Routing RuleKeeper
 	// Color is the account's colour from the config, handed to clients by
 	// `account list` so a row and a Send button can be painted with it.
 	Color string
