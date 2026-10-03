@@ -2720,13 +2720,15 @@ Panel {
                 width: parent.width
                 height: Math.max(bucketLabel.implicitHeight, quickTodoHolder.height)
 
-                // The meet-link errand button (see root.mintMeetLink):
+                // The meet-link errand button (see root.mintMeetLink). A
+                // plain video camera, not the Teams logo: the logo's detail
+                // turns to a smear at PanelActionButton's 22px.
                 PanelActionButton {
                   id: meetButton
                   anchors.left: parent.left
                   anchors.verticalCenter: parent.verticalCenter
                   visible: root.hasTeamsCalendar
-                  iconText: "󰊻"
+                  iconText: "󰕧"
                   tooltipText: "New Teams meeting link"
                   foreground: root.contentForeground
                   fontFamily: root.contentFontFamily
