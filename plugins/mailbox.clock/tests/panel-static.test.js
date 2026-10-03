@@ -113,15 +113,18 @@ test("the Teams toggle and the invite row are wired to the daemon and the roster
   }
 })
 
-// The meet pill is a one-click errand gated on a Microsoft 365 calendar, and
-// the copying is the daemon's job (--copy), not the panel's.
-test("the meet pill mints and lets the daemon copy", () => {
+// The meet button is a standing errand on the bucket header: gated on any
+// Microsoft 365 calendar in the roster, minted by one bare daemon call, with
+// the copying and the notification left to the daemon (--copy).
+test("the meet button mints and lets the daemon copy", () => {
   for (const needle of [
-    "meetPill",
-    'mailbox.call(["meet"], args',   // the one call, no Model plumbing
+    "meetButton",
+    "hasTeamsCalendar",               // absent rather than an error to click
+    "SOMETIME THIS WEEK",             // it sits left of the bucket label
+    'mailbox.call(["meet"]',          // the one call, no Model plumbing
     "copy: true",
-    "root.pickedCalendarTeams",       // same gate as the Teams rows
-    '"✓  link copied"'
+    "meetStatus",                     // the one failure surface outside the pane
+    'meetStatusTimer'
   ]) {
     assert.ok(src.indexOf(needle) !== -1, "missing " + needle)
   }

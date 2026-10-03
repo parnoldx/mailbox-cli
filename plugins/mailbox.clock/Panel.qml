@@ -839,6 +839,10 @@ Panel {
     return null
   }
   readonly property bool pickedCalendarTeams: !!(root.pickedCalendar && root.pickedCalendar.teams)
+  // Whether any calendar at all comes off Microsoft 365 — the gate for the
+  // standing meet-link button, so the icon is absent rather than an error
+  // waiting to be clicked.
+  readonly property bool hasTeamsCalendar: root.tbCalendars.some(function (c) { return !!c.teams })
   property bool inviteOpen: false
   readonly property string pickedCalendarOwner: root.pickedCalendar ? String(root.pickedCalendar.owner || "") : ""
 
@@ -1542,29 +1546,29 @@ Panel {
     })
   }
 
-  // The delete button is a two-click confirm rather than a native dialog —
-  // Escape or clicking anywhere else in the pane backs out of it the same
-  // way it backs out of everything else here.
-  // The delete button is a two-click confirm rather than a native dialog —
-  // Escape or clicking anywhere else in the pane backs out of it the same
-  // way it backs out of everything else here.
+  // The meet-link errand: mint a Teams link with no calendar entry and let
+  // the daemon put it on the clipboard and say so — the notification survives
+  // the panel closing. No args: the daemon defaults the title and the hour.
+  // The panel's only job is the status line, because a daemon error has to be
+  // visible somewhere, and outside the entry pane there is no other surface.
+  property string meetStatus: ""
   function mintMeetLink() {
-    // The form's title, when there is one, names the meeting; the daemon
-    // defaults the rest (start now, an hour) and does the copying and the
-    // saying-so — the notification survives the panel closing.
-    root.entryStatus = "Minting…"
-    var args = { copy: true }
-    if (root.formTitle !== "") args.positional = root.formTitle
-    mailbox.call(["meet"], args, function (error, data) {
-      if (error) {
-        root.entryStatus = error
-        return
-      }
-      root.entryStatus = "✓  link copied"
-      entryStatusTimer.restart()
+    root.meetStatus = "Minting…"
+    mailbox.call(["meet"], { copy: true }, function (error, data) {
+      root.meetStatus = error ? error : "✓  link copied"
+      meetStatusTimer.restart()
     })
   }
 
+  Timer {
+    id: meetStatusTimer
+    interval: 4000
+    onTriggered: root.meetStatus = ""
+  }
+
+  // The delete button is a two-click confirm rather than a native dialog —
+  // Escape or clicking anywhere else in the pane backs out of it the same
+  // way it backs out of everything else here.
   function deleteEditingEntry() {
     var id = root.editingTaskId || root.editingEventId
     if (!id) return
@@ -2716,9 +2720,23 @@ Panel {
                 width: parent.width
                 height: Math.max(bucketLabel.implicitHeight, quickTodoHolder.height)
 
+                // The meet-link errand button (see root.mintMeetLink):
+                PanelActionButton {
+                  id: meetButton
+                  anchors.left: parent.left
+                  anchors.verticalCenter: parent.verticalCenter
+                  visible: root.hasTeamsCalendar
+                  iconText: "󰊻"
+                  tooltipText: "New Teams meeting link"
+                  foreground: root.contentForeground
+                  fontFamily: root.contentFontFamily
+                  onClicked: root.mintMeetLink()
+                }
+
                 Text {
                   id: bucketLabel
-                  anchors.left: parent.left
+                  anchors.left: meetButton.right
+                  anchors.leftMargin: Style.space(8)
                   anchors.verticalCenter: parent.verticalCenter
                   text: "SOMETIME THIS WEEK"
                   color: Qt.darker(root.contentForeground, 1.7)
@@ -2726,6 +2744,22 @@ Panel {
                   font.pixelSize: Style.font.caption
                   font.letterSpacing: 1
                   font.bold: true
+                }
+
+                // The one surface a meet-link failure has outside the entry
+                // pane. Success usually rides past unread — the daemon's
+                // notification is the real say-so — but an error that
+                // vanishes with the clipboard still empty is worse than none.
+                Text {
+                  visible: root.meetStatus !== ""
+                  width: parent.width
+                  text: root.meetStatus
+                  elide: Text.ElideRight
+                  font.family: root.contentFontFamily
+                  font.pixelSize: Style.font.caption
+                  color: root.meetStatus.indexOf("✓") === 0
+                    ? Qt.darker(root.contentForeground, 1.7)
+                    : Color.accent
                 }
 
                 // The count is the point of the header: four things you have
@@ -2799,6 +2833,22 @@ Panel {
                     }
                   }
                 }
+              }
+
+              // The one surface a meet-link failure has outside the entry
+              // pane. Success usually rides past unread — the daemon's
+              // notification is the real say-so — but an error that vanishes
+              // with the clipboard still empty is worse than none.
+              Text {
+                visible: root.meetStatus !== ""
+                width: parent.width
+                text: root.meetStatus
+                elide: Text.ElideRight
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.caption
+                color: root.meetStatus.indexOf("✓") === 0
+                  ? Qt.darker(root.contentForeground, 1.7)
+                  : Color.accent
               }
 
               Flow {
@@ -3269,22 +3319,6 @@ Panel {
                 foreground: root.contentForeground
                 fontFamily: root.contentFontFamily
                 onClicked: root.openInvite()
-              }
-
-              // A meet link is no entry at all — nothing to fill in, nothing
-              // written to any calendar — so the pill is a one-click errand:
-              // mint, copy, and the daemon says so. It rides the Teams gate
-              // because only a Microsoft 365 account can mint one.
-              Button {
-                id: meetPill
-                visible: root.pickedCalendarTeams
-                iconText: "󰊻"
-                text: "Meet link"
-                bordered: true
-                horizontalPadding: Style.space(7)
-                foreground: root.contentForeground
-                fontFamily: root.contentFontFamily
-                onClicked: root.mintMeetLink()
               }
 
               Pill {
