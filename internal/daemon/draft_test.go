@@ -171,7 +171,7 @@ func twoDraftAccounts(t *testing.T) (*Daemon, *stubTransport) {
 	acct := NewAccount("work", r,
 		&mailsync.Writer{Account: "work", Mirror: d.Mirror, Driver: second, Mirrored: mirrored},
 		mirrored, []string{"INBOX"})
-	acct.From = compose.Address{Name: "Peter", Addr: "peter@iils.de"}
+	acct.From = compose.Address{Name: "Peter", Addr: "peter@example.de"}
 	transport := &stubTransport{}
 	acct.Courier = &outbox.Courier{
 		Box: d.Outbox, Account: "work", Transport: transport, Filer: second, SentBox: "Sent",
@@ -206,7 +206,7 @@ func TestDraftEditMovesItToAnotherAccount(t *testing.T) {
 		t.Fatalf("the moved draft is not in the Secondary's drafts box: %v %v", rows, err)
 	}
 	// And it goes out under the account it moved to.
-	if !strings.Contains(rows[0].Message.From, "peter@iils.de") {
+	if !strings.Contains(rows[0].Message.From, "peter@example.de") {
 		t.Errorf("moved draft From = %q", rows[0].Message.From)
 	}
 }
@@ -222,7 +222,7 @@ func TestDraftSendFromAnotherAccount(t *testing.T) {
 	if out := resp.Data.(sent); out.State != "filed" && out.State != "sent" {
 		t.Fatalf("draft send gave %+v", out)
 	}
-	if len(tr.sent) != 1 || !strings.Contains(string(tr.sent[0]), "peter@iils.de") {
+	if len(tr.sent) != 1 || !strings.Contains(string(tr.sent[0]), "peter@example.de") {
 		t.Fatalf("the mail did not go out from the Secondary: %q", tr.sent)
 	}
 	left, err := d.Mirror.Rows("primary", "Drafts", 25)

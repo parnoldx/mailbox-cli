@@ -10,7 +10,7 @@ that builds them.
 ## Context
 
 There is one mail account today (mailbox.org, the Primary) and one hand-added
-work calendar (`[caldav.work]`, SOGo at `sogo.ext.iils.de`). The work account —
+work calendar (`[caldav.work]`, SOGo at `sogo.example.org`). The work account —
 on M365 (mail since before 2026-09-26, calendar moving) — should join it with its **mail, calendar and
 contacts**.
 

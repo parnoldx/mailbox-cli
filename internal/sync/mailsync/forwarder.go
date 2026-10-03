@@ -2,8 +2,8 @@ package mailsync
 
 import "regexp"
 
-// The pa.unbox.at alias forwarder prepends this boilerplate to every mail it
-// forwards: "This email was sent to X@pa.unbox.at (Created automatically by
+// The example.org alias forwarder prepends this boilerplate to every mail it
+// forwards: "This email was sent to X@example.org (Created automatically by
 // catch-all) from Y … Click here to deactivate this alias", with a deactivate
 // link at app.unbox.at/deactivate/…. It is transport metadata from the
 // forwarder, not something the sender wrote, so it is stripped before the text
