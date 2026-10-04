@@ -49,6 +49,10 @@ private:
         bool seen = false;
         // A Bubble Up return brought this Thread back and it is still unread.
         bool bubbled = false;
+        // When a scheduled Bubble Up returns this Thread to the Inbox,
+        // "YYYY-MM-DD HH:MM" — set only on a thread that carries a $bubble
+        // keyword, so the Aside listing can badge it.
+        QString due;
         // How many Messages are in this row's Thread in all, wherever they
         // sit — 0 for a Message on its own (the daemon already collapsed the
         // listing to one row per Thread; this is just its badge).

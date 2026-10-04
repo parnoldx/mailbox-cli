@@ -73,6 +73,7 @@ void MailModel::setRows(const QVariantList &rows) {
         r.date = shortDate(r.dateRaw);
         r.seen = m.value("seen").toBool();
         r.bubbled = m.value("bubbled").toBool();
+        r.due = m.value("due").toString();
         r.count = m.value("count").toInt();
         r.labels = m.value("labels").toStringList();
         r.account = m.value("account").toString();
@@ -86,7 +87,7 @@ void MailModel::setRows(const QVariantList &rows) {
 QVariantMap MailModel::rowMap(const Row &r) {
     return {{"id", r.id}, {"fromName", r.fromName}, {"fromAddr", r.fromAddr},
             {"subject", r.subject}, {"date", r.date}, {"dateRaw", r.dateRaw},
-            {"seen", r.seen}, {"bubbled", r.bubbled}, {"count", r.count},
+            {"seen", r.seen}, {"bubbled", r.bubbled}, {"due", r.due}, {"count", r.count},
             {"labels", r.labels}, {"account", r.account}};
 }
 

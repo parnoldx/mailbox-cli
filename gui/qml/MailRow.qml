@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls.Basic
 import "MailFormat.js" as Fmt
 
 Item {
@@ -114,11 +115,38 @@ Item {
             rightMargin: countBadge.visible ? 6 : 16
             verticalCenter: countBadge.verticalCenter
         }
-        text: ""
+        text: "\uf017" // clock, the reader's Bubble up glyph
         font.family: Theme.fontFamily
         font.pixelSize: 14
         color: Theme.accent
         Behavior on color { ColorAnimation { duration: Theme.anim } }
+    }
+
+    // A Thread set to bubble up later — the same glyph as the returned marker,
+    // with the return instant as a tooltip. A click bubbles it now and the
+    // scheduled return is cancelled with it (`bubble --now` strips the
+    // $bubble keyword and moves the thread back). Aside rows only: an Inbox
+    // row that still floats carries `bubbled`, not `due`.
+    Rectangle {
+        id: dueBtn
+        visible: !!root.row.due
+        anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
+        width: 24; height: 24; radius: 12
+        color: dueHover.hovered ? Theme.accent : Theme.selection
+        Behavior on color { ColorAnimation { duration: Theme.anim } }
+        Text {
+            anchors.centerIn: parent
+            text: "\uf017" // clock, the reader's Bubble up glyph
+            font.family: Theme.fontFamily
+            font.pixelSize: 12
+            color: dueHover.hovered ? "#ffffff" : Theme.accent
+            Behavior on color { ColorAnimation { duration: Theme.anim } }
+        }
+        HoverHandler { id: dueHover; cursorShape: Qt.PointingHandCursor }
+        TapHandler { onTapped: win.bubbleId(root.row.id, { now: true }, "Bubbled up now") }
+        ToolTip.visible: dueHover.hovered
+        ToolTip.text: "Bubbles up " + root.row.due
+        ToolTip.delay: 300
     }
 
     Text {
@@ -164,7 +192,11 @@ Item {
         // delBtn sits inside root's own bounds, so a tap on it also lands on
         // this handler — without the guard, deleting a draft opened it first.
         onTapped: {
+            // The dueBtn (and delBtn) sit inside root's own bounds, so a tap on
+            // them also lands on this handler — without the guard, bubbling or
+            // deleting a draft opened it first.
             if (root.showDelete && point.position.x >= delBtn.x) return
+            if (dueBtn.visible && point.position.x >= dueBtn.x) return
             root.openAction(root.row.id)
         }
     }
