@@ -236,6 +236,9 @@ func (d *Daemon) handleEvent(ctx context.Context, req Request, resp Response) Re
 		out.URL, out.Repeat, out.Alarms = p.URL, p.Repeat, p.Alarms
 		out.Teams = p.Teams
 		out.Attendees = viewAttendees(p.Attendees, calendarOwner(o.Collection, d.CalendarEmail))
+		if p.Description != "" {
+			out.Description = p.Description
+		}
 	}
 	// An empty roster reads as [] rather than null, which is a listing that
 	// failed to say it found nobody.

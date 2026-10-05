@@ -31,6 +31,29 @@ LOCATION:Hauptstraße 1
 END:VEVENT
 `
 
+func TestParseUnescapesMarkdownInNotes(t *testing.T) {
+	// Microsoft writes meeting bodies as markdown and escapes the underscores
+	// of its separator rule and the pipes around links.
+	raw := wrap(`BEGIN:VEVENT
+UID:teams@example.org
+DTSTART:20261009T080000Z
+DTEND:20261009T120000Z
+SUMMARY:Teams meeting
+DESCRIPTION:\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\nJoin: https://teams\n[Need help?](x) \\| [System](y)
+END:VEVENT
+`)
+	p, err := Parse(raw, berlin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(p.Description, "\\_") || strings.Contains(p.Description, "\\|") {
+		t.Fatalf("escapes left in the notes: %q", p.Description)
+	}
+	if !strings.Contains(p.Description, "__________") || !strings.Contains(p.Description, "(x) | [System]") {
+		t.Fatalf("description = %q", p.Description)
+	}
+}
+
 func TestParseATimedEvent(t *testing.T) {
 	p, err := Parse(wrap(timed), berlin)
 	if err != nil {

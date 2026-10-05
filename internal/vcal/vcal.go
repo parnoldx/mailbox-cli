@@ -6,6 +6,7 @@ package vcal
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -74,6 +75,16 @@ type Attendee struct {
 	Partstat string
 }
 
+// unescapeMarkdown drops the backslashes a markdown writer put before ASCII
+// punctuation. Microsoft writes meeting bodies as markdown and escapes the
+// underscores of its separator rules (\_\_\_) and pipes (\|), which otherwise
+// sit in the notes as noise.
+var mdEscapeRe = regexp.MustCompile(`\\([!-/:-@\[-` + "`" + `{-~])`)
+
+func unescapeMarkdown(s string) string {
+	return mdEscapeRe.ReplaceAllString(s, "$1")
+}
+
 // Parse projects one raw object. A component we do not understand is still
 // stored — the raw is the record — so this reports what it can rather than
 // failing.
@@ -95,6 +106,7 @@ func Parse(raw string, loc *time.Location) (Projection, error) {
 	p.Summary, _ = master.Props.Text(ical.PropSummary)
 	p.Location, _ = master.Props.Text(ical.PropLocation)
 	p.Description, _ = master.Props.Text(ical.PropDescription)
+	p.Description = unescapeMarkdown(p.Description)
 	if status, err := master.Props.Text(ical.PropStatus); err == nil {
 		p.Status = strings.ToUpper(status)
 	}
