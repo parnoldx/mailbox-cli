@@ -4,12 +4,14 @@ import "MailFormat.js" as Fmt
 
 // An attachment card. The body opens an in-app Quick Look preview; the tray icon
 // pops a "Save as…" dialog and lets the daemon write the file where you choose.
+// The F mails the file to fileee's drop box — any attachment, not just PDFs:
+// fileee files photos and screenshots too.
 Rectangle {
     id: root
     property var att: ({})
     property string status: ""
 
-    implicitWidth: Math.min(360, row.implicitWidth + (isPdf ? 106 : 68))
+    implicitWidth: Math.min(360, row.implicitWidth + 106)
     implicitHeight: 52
     radius: Theme.radiusSmall
     color: bodyArea.containsMouse ? Theme.cardHover : Theme.cardBg
@@ -36,7 +38,6 @@ Rectangle {
     }
     function localPath(url) { return Fmt.localPath(url) }
     function fileUrl(p) { return Fmt.fileUrl(p) }
-    readonly property bool isPdf: (root.att.mime_type || "").indexOf("pdf") >= 0
 
     Timer { id: doneTimer; interval: 2600; onTriggered: root.status = "" }
 
@@ -44,7 +45,7 @@ Rectangle {
         id: bodyArea
         anchors {
             left: parent.left; top: parent.top; bottom: parent.bottom
-            right: root.isPdf ? fileeeBtn.left : saveBtn.left
+            right: fileeeBtn.left
         }
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
@@ -90,8 +91,7 @@ Rectangle {
 
     Rectangle {
         id: fileeeBtn
-        visible: root.isPdf
-        width: visible ? 30 : 0; height: 30; radius: 7
+        width: 30; height: 30; radius: 7
         anchors { right: saveBtn.left; rightMargin: 4; verticalCenter: parent.verticalCenter }
         color: fileeeArea.containsMouse ? Theme.selection : "transparent"
         Behavior on color { ColorAnimation { duration: Theme.anim } }
