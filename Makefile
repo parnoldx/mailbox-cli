@@ -56,10 +56,10 @@ live:
 vet:
 	$(GO) vet ./...
 	$(GO) vet -tags live ./...
-	@test -z "$$(gofmt -l cmd internal)" || { gofmt -l cmd internal; exit 1; }
+	@test -z "$$(gofmt -l .)" || { gofmt -l .; exit 1; }
 
 fmt:
-	gofmt -w cmd internal
+	gofmt -w .
 
 # Installs the CLI to ~/.local/bin, which is on PATH. Note that this repo's own
 # bin/ is earlier on PATH than that, so `make build` is what changes which
