@@ -1,6 +1,6 @@
 # Design
 
-How the pieces fit. Vocabulary is in [CONTEXT.md](../CONTEXT.md). The `## Decisions`
+How the pieces fit. Vocabulary is in [GLOSSARY.md](../GLOSSARY.md). The `## Decisions`
 below are the "why" behind all of this, numbered `ADR-00xx` because the code cites
 them by number; nothing here re-argues them.
 

@@ -337,7 +337,7 @@ make live LIVE=./internal/davdrv/
 make live LIVE=./internal/imapdrv/
 ```
 
-Design notes and the numbered decisions (ADR-00xx, cited from the code) are in [`docs/DESIGN.md`](docs/DESIGN.md); the vocabulary is in [`CONTEXT.md`](CONTEXT.md).
+Design notes and the numbered decisions (ADR-00xx, cited from the code) are in [`docs/DESIGN.md`](docs/DESIGN.md); the vocabulary is in [`GLOSSARY.md`](GLOSSARY.md).
 
 ## License
 
