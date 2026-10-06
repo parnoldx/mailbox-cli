@@ -12,3 +12,10 @@ stays shut (or open) exactly as before.
 
 Real-mail sightings may be named in comments without their URLs — the history
 matters, the identifiers do not.
+
+## GUI logs
+
+GUI (Qt) output goes to journald, not to a file: when stderr is not a TTY,
+Qt routes console output to the journal. Read it with
+`journalctl --user _COMM=mailbox-gui` (or grep the journal for the app name) —
+never go looking for `/tmp/mboxgui.log` or a similar file; it stays empty.
