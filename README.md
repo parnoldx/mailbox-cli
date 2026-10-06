@@ -4,7 +4,7 @@
 
 `mailbox` is a fast, agent-oriented CLI and background daemon for email, calendars, tasks, daily habits, and contacts.
 
-Instead of hitting IMAP, SMTP, CalDAV, CardDAV, and ManageSieve servers — or Microsoft Graph, for a Microsoft 365 account — on every command, a single background daemon maintains a local SQLite **Mirror** of server state. Read commands are answered directly from the local mirror in milliseconds with zero network latency, while write operations synchronize with remote servers to guarantee consistency.
+Instead of hitting IMAP, SMTP, CalDAV, CardDAV, and ManageSieve servers, or Microsoft Graph for a Microsoft 365 account, on every command, a single background daemon maintains a local SQLite **Mirror** of server state. Read commands are answered directly from the local mirror in milliseconds with zero network latency, while write operations synchronize with remote servers to guarantee consistency.
 
 ![The mailbox CLI: box view, agenda, todo list, and compose](cli.png)
 
