@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Dialogs
 import "MailFormat.js" as Fmt
 
@@ -10,6 +11,7 @@ Rectangle {
     id: root
     property var att: ({})
     property string status: ""
+    property string busyText: "saving…"
 
     implicitWidth: Math.min(360, row.implicitWidth + 106)
     implicitHeight: 52
@@ -80,7 +82,7 @@ Rectangle {
                 Behavior on color { ColorAnimation { duration: Theme.anim } }
             }
             Text {
-                text: root.status === "busy" ? "saving…" : root.humanSize(root.att.size)
+                text: root.status === "busy" ? root.busyText : root.humanSize(root.att.size)
                 font.family: Theme.fontFamily
                 font.pixelSize: 10
                 color: Theme.textDim
@@ -104,6 +106,9 @@ Rectangle {
             font.pixelSize: 14
             color: fileeeArea.containsMouse ? Theme.accent : Theme.textDim
             Behavior on color { ColorAnimation { duration: Theme.anim } }
+            ToolTip.visible: fileeeArea.containsMouse
+            ToolTip.text: "Archive to fileee"
+            ToolTip.delay: 500
         }
         MouseArea {
             id: fileeeArea
@@ -112,9 +117,10 @@ Rectangle {
             cursorShape: Qt.PointingHandCursor
             onClicked: {
                 root.status = "busy"
+                root.busyText = "filing…"
                 Mailbox.call(["attachment", "fileee"], { positional: root.att.id },
                              function (r) {
-                    root.status = r.ok ? "Sent to fileee" : Fmt.errText(r, "Send failed")
+                    root.status = r.ok ? "Filed to fileee" : Fmt.errText(r, "Send failed")
                     doneTimer.restart()
                 })
             }
