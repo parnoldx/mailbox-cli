@@ -281,24 +281,33 @@ func TestEventEditTakesTheRuleAndTheRemindersOff(t *testing.T) {
 // other Monday, and the moved day is an override beside the master.
 func TestEventEditOccurrenceMovesOneInstanceOnly(t *testing.T) {
 	d, f, _ := seedTasks(t)
+	// The rule's first Monday, derived from mondayAt so the test does not
+	// silently rot when the real calendar rolls past a hardcoded date.
+	first, err := time.ParseInLocation("2006-01-02", mondayAt(9, 0)[:10], time.Local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	day, nextDay, nextWeek := first.Format("2006-01-02"),
+		first.AddDate(0, 0, 1).Format("2006-01-02"),
+		first.AddDate(0, 0, 7).Format("2006-01-02")
 	added := mustAsk(t, d, []string{"event", "add"}, map[string]any{
 		"positional": "Standup", "start": mondayAt(9, 0), "repeat": "FREQ=WEEKLY;BYDAY=MO",
 	}).Data.(map[string]any)
 
 	if resp := ask(t, d, []string{"event", "edit"}, map[string]any{
-		"positional": added["id"], "occurrence": "2026-10-05", "repeat": "none",
+		"positional": added["id"], "occurrence": day, "repeat": "none",
 	}); resp.OK || !strings.Contains(resp.Error, "cannot be combined") {
 		t.Errorf("an occurrence took a rule of its own: %+v", resp)
 	}
 	if resp := ask(t, d, []string{"event", "edit"}, map[string]any{
-		"positional": added["id"], "occurrence": "2026-10-06", "title": "x",
+		"positional": added["id"], "occurrence": nextDay, "title": "x",
 	}); resp.OK || !strings.Contains(resp.Error, "no instance") {
 		t.Errorf("an empty day was edited: %+v", resp)
 	}
 
-	moved := "2026-10-06 14:00"
+	moved := nextDay + " 14:00"
 	mustAsk(t, d, []string{"event", "edit"}, map[string]any{
-		"positional": added["id"], "occurrence": "2026-10-05",
+		"positional": added["id"], "occurrence": day,
 		"title": "Standup verschoben", "start": moved,
 	})
 	raw := onlyEvent(t, f)
@@ -312,7 +321,7 @@ func TestEventEditOccurrenceMovesOneInstanceOnly(t *testing.T) {
 	// And the agenda says so: the Monday slot is empty, the Tuesday 14:00 is
 	// filled, and the next Monday still at 09:00.
 	agenda := mustAsk(t, d, []string{"agenda"}, map[string]any{
-		"from": "2026-10-05", "days": 10.0,
+		"from": day, "days": 10.0,
 	}).Data.([]occurrence)
 	if len(agenda) != 2 {
 		t.Fatalf("agenda holds %d entries, want 2: %v", len(agenda), agenda)
@@ -322,7 +331,7 @@ func TestEventEditOccurrenceMovesOneInstanceOnly(t *testing.T) {
 		days = append(days, row.Start[:16])
 	}
 	sort.Strings(days)
-	want := []string{"2026-10-06T14:00", "2026-10-12T09:00"}
+	want := []string{nextDay + "T14:00", nextWeek + "T09:00"}
 	if !slices.Equal(days, want) {
 		t.Errorf("agenda holds %v, want %v", days, want)
 	}
@@ -330,12 +339,17 @@ func TestEventEditOccurrenceMovesOneInstanceOnly(t *testing.T) {
 
 func TestEventDeleteOccurrenceTakesOneInstanceOff(t *testing.T) {
 	d, f, _ := seedTasks(t)
+	first, err := time.ParseInLocation("2006-01-02", mondayAt(9, 0)[:10], time.Local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	day, nextWeek := first.Format("2006-01-02"), first.AddDate(0, 0, 7).Format("2006-01-02")
 	added := mustAsk(t, d, []string{"event", "add"}, map[string]any{
 		"positional": "Standup", "start": mondayAt(9, 0), "repeat": "FREQ=WEEKLY;BYDAY=MO",
 	}).Data.(map[string]any)
 
 	mustAsk(t, d, []string{"event", "delete"}, map[string]any{
-		"positional": added["id"], "occurrence": "2026-10-05",
+		"positional": added["id"], "occurrence": day,
 	})
 	raw := onlyEvent(t, f)
 	if !strings.Contains(raw, "STATUS:CANCELLED") {
@@ -345,9 +359,9 @@ func TestEventDeleteOccurrenceTakesOneInstanceOff(t *testing.T) {
 		t.Errorf("the whole rule went with the one instance:\n%s", raw)
 	}
 	agenda := mustAsk(t, d, []string{"agenda"}, map[string]any{
-		"from": "2026-10-05", "days": 10.0,
+		"from": day, "days": 10.0,
 	}).Data.([]occurrence)
-	if len(agenda) != 1 || agenda[0].Start[:16] != "2026-10-12T09:00" {
+	if len(agenda) != 1 || agenda[0].Start[:16] != nextWeek+"T09:00" {
 		t.Fatalf("agenda holds %v, want the surviving Monday only", agenda)
 	}
 }

@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -10,6 +11,16 @@ import (
 	"mailbox/internal/mirror"
 	"mailbox/internal/sync/davsync"
 )
+
+// The package renders in time.Local, but the fixtures are written in Berlin
+// wall clock (TZID below). Pin the zone so CI on a UTC runner sees what a
+// Berlin desktop sees instead of a two-hour shift.
+func TestMain(m *testing.M) {
+	if berlin, err := time.LoadLocation("Europe/Berlin"); err == nil {
+		time.Local = berlin
+	}
+	os.Exit(m.Run())
+}
 
 // seedCalendar builds a Daemon whose Mirror holds one calendar: a dentist
 // appointment tomorrow, a weekly standup with no end, and a holiday that lasts
