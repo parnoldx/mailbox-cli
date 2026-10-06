@@ -300,10 +300,10 @@ Every command supports `--json`, returning a structured envelope:
 - `9`: No daemon listening on the Unix socket.
 
 ### Skills & Plugins
-- **Agent Skill**: [`skill/SKILL.md`](file:///home/pa/Work/tries/2026-08-29-mailbox-cli/skill/SKILL.md) provides instruction mappings for AI coding assistants.
-- **Calendar Bar Widget**: [`plugins/mailbox.clock/`](file:///home/pa/Work/tries/2026-08-29-mailbox-cli/plugins/mailbox.clock) — Omarchy / Quickshell calendar and reminder widget backed directly by the daemon socket.
-- **Mail Notification Widget**: [`plugins/mailbox.email/`](file:///home/pa/Work/tries/2026-08-29-mailbox-cli/plugins/mailbox.email) — Omarchy bar widget and dropdown panel for new inbox mail alerts, also on the daemon socket.
-- **Desktop Client**: [`gui/`](file:///home/pa/Work/tries/2026-08-29-mailbox-cli/gui) — a HEY-style Qt desktop mail client that follows the live Omarchy theme.
+- **Agent Skill**: [`skill/SKILL.md`](skill/SKILL.md) provides instruction mappings for AI coding assistants.
+- **Calendar Bar Widget**: [`plugins/mailbox.clock/`](plugins/mailbox.clock) — Omarchy / Quickshell calendar and reminder widget backed directly by the daemon socket.
+- **Mail Notification Widget**: [`plugins/mailbox.email/`](plugins/mailbox.email) — Omarchy bar widget and dropdown panel for new inbox mail alerts, also on the daemon socket.
+- **Desktop Client**: [`gui/`](gui) — a HEY-style Qt desktop mail client that follows the live Omarchy theme.
 
 ---
 
