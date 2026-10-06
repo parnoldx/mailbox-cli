@@ -21,7 +21,7 @@ them by number; nothing here re-argues them.
                  `------ mirror -------'
                       (SQLite, WAL)         + outbox (own file)
                             |
-            IMAP / SMTP / CalDAV / CardDAV / ManageSieve
+            IMAP / SMTP / CalDAV / CardDAV / ManageSieve / Graph
 ```
 
 The Daemon is the only process that opens a network connection or writes the

@@ -4,7 +4,7 @@
 
 `mailbox` is a fast, agent-oriented CLI and background daemon for email, calendars, tasks, daily habits, and contacts.
 
-Instead of hitting IMAP, SMTP, CalDAV, CardDAV, and ManageSieve servers on every command, a single background daemon maintains a local SQLite **Mirror** of server state. Read commands are answered directly from the local mirror in milliseconds with zero network latency, while write operations synchronize with remote servers to guarantee consistency.
+Instead of hitting IMAP, SMTP, CalDAV, CardDAV, and ManageSieve servers — or Microsoft Graph, for a Microsoft 365 account — on every command, a single background daemon maintains a local SQLite **Mirror** of server state. Read commands are answered directly from the local mirror in milliseconds with zero network latency, while write operations synchronize with remote servers to guarantee consistency.
 
 ![The mailbox CLI: box view, agenda, todo list, and compose](cli.png)
 
@@ -22,9 +22,9 @@ Instead of hitting IMAP, SMTP, CalDAV, CardDAV, and ManageSieve servers on every
 │   │    SQLite Mirror    │       │  Durable Outbox  │   │
 │   └──────────▲──────────┘       └─────────┬────────┘   │
 └──────────────┼────────────────────────────┼────────────┘
-               │ IMAP / CalDAV / CardDAV    │ SMTP
+               │ IMAP / CalDAV / CardDAV    │ SMTP / Graph
 ┌──────────────▼────────────────────────────▼────────────┐
-│                     Mail & DAV Servers                 │
+│           Mail, DAV & Microsoft 365 Servers            │
 └────────────────────────────────────────────────────────┘
 ```
 
@@ -35,7 +35,7 @@ Instead of hitting IMAP, SMTP, CalDAV, CardDAV, and ManageSieve servers on every
 - **Instant Local Reads**: Commands like `mailbox status`, `mailbox box view`, `mailbox agenda`, or `mailbox search` read from the local SQLite mirror (~1ms response time) and work offline.
 - **Write-Through Consistency**: Modifying commands (`move`, `seen`, `event add`, `todo done`, `route set`) wait for the server acknowledgment before updating the mirror, ensuring an exit code of `0` means the change is live.
 - **Durable Outbox**: Sent mail is staged in a durable local queue before SMTP submission and retained for auditing and automatic retry.
-- **Server-Side Sieve Routing**: Owns and compiles Sieve filtering scripts on the server to automatically route mail into `Inbox`, `Feed`, `Paper Trail`, `Screener`, or `Block`.
+- **Server-Side Sieve Routing**: Owns and compiles Sieve filtering scripts on the server to automatically route mail into `Inbox`, `Feed`, `Paper Trail`, `Screener`, or `Block`. On a Microsoft 365 account the same routing is held as server-side inbox rules instead.
 - **First-Class Agent Support**: Built-in `--json` envelopes with mirror freshness metadata, self-describing command discovery (`mailbox commands`), predictable exit codes, and an agent skill (`skill/SKILL.md`).
 - **Unified Personal Data Surface**: Covers email threads and attachments alongside RFC 5545 iCalendar (events, todos, habits) and RFC 6350 vCard (contacts).
 - **Login Codes Collected, Not Delivered**: A one-time code, magic link or registration link is recognised on arrival, copied to the clipboard with a desktop notification, marked read so it never raises a new-mail alert or a screener decision, and binned a quarter of an hour later.
@@ -53,7 +53,7 @@ The daemon keeps an offline-capable SQLite database representing the read model 
 The outbox stores outgoing messages on disk. If a network disruption occurs during submission or if the daemon restarts, the message enters a `Held` state rather than being silently dropped or endlessly duplicated.
 
 ### 3. Server-Side Routing & The Screener
-Mail routing uses a structured Sieve script managed directly on the server:
+Mail routing uses a structured Sieve script managed directly on the server (on Microsoft 365, server-side inbox rules serve the same script):
 - **Inbox**: Important mail requiring attention.
 - **Feed**: Newsletters, automated updates, and reading material (marked read on arrival).
 - **Paper Trail**: Receipts, bills, delivery notices, and transactions (marked read on arrival).
