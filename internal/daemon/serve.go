@@ -925,16 +925,16 @@ type row struct {
 // sits in. Text is what the Mirror holds — HTML is rendered as Markdown, so a
 // caller reading this never has to parse HTML (ADR-0003 keeps attachments out).
 type message struct {
-	ID         string   `json:"id"`
-	UID        uint32   `json:"uid"`
-	Box        string   `json:"box"`
-	Date       string   `json:"date"`
-	From       string   `json:"from"`
-	To         string   `json:"to"`
+	ID   string `json:"id"`
+	UID  uint32 `json:"uid"`
+	Box  string `json:"box"`
+	Date string `json:"date"`
+	From string `json:"from"`
+	To   string `json:"to"`
 	// Cc is the mirror's cc line, the other recipients on the message —
 	// Bcc never appears on received mail: the sending server strips it.
-	Cc     string `json:"cc,omitempty"`
-	Subject string `json:"subject"`
+	Cc         string   `json:"cc,omitempty"`
+	Subject    string   `json:"subject"`
 	Seen       bool     `json:"seen"`
 	Flags      []string `json:"flags"`
 	Size       int64    `json:"size"`
