@@ -1,5 +1,10 @@
 # Agents
 
+## Before push
+
+Run `make vet` before every push — CI runs the same target, and its gofmt
+check is what bit the cc/bcc commit (2026-10-07).
+
 ## Test data
 
 Anonymize URLs, domains and tokens in test fixtures: swap real sender domains
