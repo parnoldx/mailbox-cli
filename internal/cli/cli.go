@@ -503,7 +503,7 @@ func printMessage(stdout, stderr io.Writer, resp daemon.Response) {
 		return
 	}
 	for _, f := range []struct{ label, key string }{
-		{"Date", "date"}, {"From", "from"}, {"To", "to"}, {"Subject", "subject"},
+		{"Date", "date"}, {"From", "from"}, {"To", "to"}, {"Cc", "cc"}, {"Subject", "subject"},
 	} {
 		if v := str(m[f.key]); v != "" {
 			fmt.Fprintf(stdout, "%-8s %s\n", f.label+":", v)

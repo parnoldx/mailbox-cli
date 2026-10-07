@@ -131,6 +131,28 @@ Item {
 
     function fromName(s) { return Fmt.displayName(s) }
     function fromAddr(s) { return Fmt.address(s) }
+
+    // One header line of recipients: "To: <a>Anna</a>, <a>Bob</a>" — display
+    // names as links whose href is the address, so a click copies it.
+    function esc(s) {
+        return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+    }
+    function rcptHtml(label, raw) {
+        var parts = String(raw || "").split(/,\s*/).filter(function (p) { return p !== "" })
+        if (parts.length === 0) return ""
+        var links = []
+        for (var i = 0; i < parts.length; i++) {
+            var a = Fmt.parseAddress(parts[i])
+            links.push(root.addrLink(a.addr, Fmt.displayName(parts[i]) || a.addr))
+        }
+        return label + ": " + links.join(", ")
+    }
+    // A click-to-copy address: white text, underlined, href = the address.
+    function addrLink(addr, name) {
+        return '<a href="' + root.esc(addr) + '" style="color:' + Theme.textPrimary.toString() +
+               '; text-decoration: underline;">' + root.esc(name) + '</a>'
+    }
     // The header's stamp, in two halves: the day, and the clock under it. Both
     // on one line ("11 Sep 2026 · 19:38") is wider than the column the header
     // keeps for it, which silently clipped the time off and left the day
@@ -482,21 +504,28 @@ Item {
             spacing: 14
             visible: root.expanded
 
-            Row {
+            Item {
                 id: senderRow
                 width: parent.width
-                spacing: 13
+                height: Math.max(36, senderCol.height, rcpts.height, stamp.height)
                 Avatar {
+                    id: avatar
                     width: 36; height: 36; radius: 18
                     anchors.verticalCenter: parent.verticalCenter
                     name: root.fromName(root.msg.from)
                     seed: root.fromAddr(root.msg.from)
                 }
                 Column {
-                    width: parent.width - 36 - 13 - stamp.width - senderRow.spacing
+                    id: senderCol
+                    // Content-sized, so the recipients sit right beside the
+                    // sender instead of at the window's edge.
+                    anchors.left: avatar.right
+                    anchors.leftMargin: 13
                     anchors.verticalCenter: parent.verticalCenter
+                    width: Math.min(320, Math.max(nLine.implicitWidth, aLine.implicitWidth))
                     spacing: 3
                     Text {
+                        id: nLine
                         text: root.fromName(root.msg.from)
                         font.family: Theme.fontFamily
                         font.pixelSize: 13
@@ -505,15 +534,71 @@ Item {
                         Behavior on color { ColorAnimation { duration: Theme.anim } }
                     }
                     Text {
-                        text: root.fromAddr(root.msg.from)
+                        id: aLine
+                        text: root.addrLink(root.fromAddr(root.msg.from), root.fromAddr(root.msg.from))
+                        textFormat: Text.RichText
+                        onLinkActivated: (link) => {
+                            Mailbox.copyText(link)
+                            win.flash("Copied " + link)
+                        }
                         font.family: Theme.fontFamily
                         font.pixelSize: 11
                         color: Theme.textDim
                         Behavior on color { ColorAnimation { duration: Theme.anim } }
                     }
                 }
+                // Recipients, right of the sender and left of the date stamp:
+                // display names only, wrapping. Each name is a link that copies
+                // the address. Bcc never reaches a received message — the
+                // sender's server strips it.
+                Column {
+                    id: rcpts
+                    anchors.left: senderCol.right
+                    anchors.leftMargin: 13
+                    anchors.verticalCenter: parent.verticalCenter
+                    // As wide as the text wants, up to the space left over
+                    // before the pills, so a short Cc stays on one line.
+                    width: Math.min(
+                        Math.max(toLine.implicitWidth, ccLine.implicitWidth),
+                        Math.max(0, parent.width - 36 - 3 * 13 - senderCol.width - stamp.width))
+                    spacing: 2
+                    visible: toLine.text !== "" || ccLine.text !== ""
+                    Text {
+                        id: toLine
+                        width: parent.width
+                        visible: text !== ""
+                        text: root.rcptHtml("To", root.msg.to)
+                        textFormat: Text.RichText
+                        onLinkActivated: (link) => {
+                            Mailbox.copyText(link)
+                            win.flash("Copied " + link)
+                        }
+                        wrapMode: Text.Wrap
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 10
+                        color: Theme.textDim
+                        Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    }
+                    Text {
+                        id: ccLine
+                        width: parent.width
+                        visible: text !== ""
+                        text: root.rcptHtml("Cc", root.msg.cc)
+                        textFormat: Text.RichText
+                        onLinkActivated: (link) => {
+                            Mailbox.copyText(link)
+                            win.flash("Copied " + link)
+                        }
+                        wrapMode: Text.Wrap
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 10
+                        color: Theme.textDim
+                        Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    }
+                }
                 Row {
                     id: stamp
+                    anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 8
                     // Pills beside the date rather than under it, so a Message with

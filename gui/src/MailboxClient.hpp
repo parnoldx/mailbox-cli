@@ -44,6 +44,9 @@ public:
     Q_INVOKABLE QString stateGet(const QString &key, const QString &fallback = {});
     Q_INVOKABLE void stateSet(const QString &key, const QString &value);
 
+    // Put text on the clipboard — used by click-to-copy recipient addresses.
+    Q_INVOKABLE void copyText(const QString &text);
+
     // Draft a reply with the default agent: runs `pi -p` non-interactively and
     // hands its stdout back as reply.data.text. One conversation per sessionId,
     // so a second call with the same id continues the same draft.

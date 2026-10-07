@@ -1,5 +1,7 @@
 #include "MailboxClient.hpp"
 
+#include <QClipboard>
+#include <QGuiApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -38,6 +40,10 @@ MailboxClient::MailboxClient(QObject *parent) : QObject(parent) {
     connect(m_retry, &QTimer::timeout, this, &MailboxClient::connectSocket);
 
     connectSocket();
+}
+
+void MailboxClient::copyText(const QString &text) {
+    QGuiApplication::clipboard()->setText(text);
 }
 
 void MailboxClient::connectSocket() {

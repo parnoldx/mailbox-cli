@@ -931,7 +931,10 @@ type message struct {
 	Date       string   `json:"date"`
 	From       string   `json:"from"`
 	To         string   `json:"to"`
-	Subject    string   `json:"subject"`
+	// Cc is the mirror's cc line, the other recipients on the message —
+	// Bcc never appears on received mail: the sending server strips it.
+	Cc     string `json:"cc,omitempty"`
+	Subject string `json:"subject"`
 	Seen       bool     `json:"seen"`
 	Flags      []string `json:"flags"`
 	Size       int64    `json:"size"`
@@ -985,7 +988,7 @@ func viewMessage(a *Account, folder string, r mirror.Row, places []mirror.Placem
 	body, format := renderBody(r.Message)
 	m := message{
 		ID: a.messageID(folder, r.Placement.UID), UID: r.Placement.UID, Box: folder,
-		From: r.From, To: r.To, Subject: r.Subject, Seen: r.Seen(),
+		From: r.From, To: r.To, Cc: r.Message.Cc, Subject: r.Subject, Seen: r.Seen(),
 		Flags: r.Placement.Flags, Size: r.Placement.Size, MessageKey: r.Message.Key,
 		Body: body, BodyFormat: format, BodyState: r.BodyState,
 		BodyHTML: r.Message.TextHTML,
