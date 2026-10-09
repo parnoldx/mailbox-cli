@@ -7,7 +7,7 @@ Item {
     readonly property bool isInbox: win.currentKey() === "INBOX"
 
     // Senders sitting in the Screener, waiting on a decision. Drives the one
-    // entry point to the Screener — the button top-left of the Inbox.
+    // entry point to the Screener: the button top-left of the Inbox.
     readonly property int screenerWaiting:
         (win.counts["Screener"] && win.counts["Screener"].count) || 0
 
@@ -21,6 +21,7 @@ Item {
     function move(d) {
         if (flatRows.length === 0) return
         hi = Math.max(0, Math.min(flatRows.length - 1, (hi < 0 ? 0 : hi) + d))
+        list.positionViewAtIndex(hi, ListView.Contain)
     }
     function openHighlighted() {
         if (hi >= 0 && hi < flatRows.length) win.openMessage(flatRows[hi].id)
@@ -46,21 +47,34 @@ Item {
         function onChanged() { root.hi = listModel.count > 0 ? 0 : -1 }
     }
 
-    Flickable {
-        anchors.fill: parent
+    // The rows, lazily. A ListView instantiates only the MailRows on screen
+    // and, on a model reset, rebuilds just those; the Column + Repeater it
+    // replaces built every row of the bucket (up to 200) the moment setRows
+    // landed: a ~200 ms main-thread stall right after the first frame, and
+    // again after every background refresh. One list over the flat rows (the
+    // order move()/openHighlighted() index into), with the unseen/seen split
+    // drawn as ListView sections.
+    ListView {
+        id: list
+        x: Math.max(40, (parent.width - 880) / 2)
+        width: Math.min(880, parent.width - 80)
+        anchors { top: parent.top; bottom: parent.bottom }
         contentWidth: width
-        contentHeight: col.implicitHeight + 120 + (bottomStacks.visible ? bottomStacks.height + 16 : 0)
         clip: true
         boundsBehavior: Flickable.StopAtBounds
+        spacing: 4
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-        Column {
-            id: col
-            x: Math.max(40, (parent.width - 880) / 2)
-            width: Math.min(880, parent.width - 80)
+        model: root.flatRows
+        section { property: "seen"; criteria: ViewSection.FullString; delegate: sectionHeading }
+
+        // The bucket title, search and account pills scroll away with the
+        // list, as they always did; the empty state sits under them when the
+        // bucket has no rows at all.
+        header: Column {
+            width: list.width
             topPadding: 56
             spacing: 4
-
             Row {
                 width: parent.width
                 spacing: 14
@@ -99,7 +113,7 @@ Item {
                             Behavior on color { ColorAnimation { duration: Theme.anim } }
                             Text {
                                 anchors.centerIn: parent
-                                text: ""
+                                text: "\uf002"
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 13
                                 color: searchHover.hovered ? Theme.accent : Theme.textDim
@@ -109,7 +123,7 @@ Item {
                             TapHandler { onTapped: win.openSearch() }
                         }
 
-                        // Which account the list shows — All, then one pill per
+                        // Which account the list shows: All, then one pill per
                         // account outlined in its colour. Only with more than
                         // one account, and only on buckets a Secondary has too.
                         Row {
@@ -125,7 +139,7 @@ Item {
                                     color: on ? tint
                                          : pillHover.hovered ? Theme.cardHover : "transparent"
                                     border.width: 1
-                                    // The tint is always on — text and border
+                                    // The tint is always on: text and border
                                     // wear the account's colour unselected too,
                                     // so a row's coloured line maps to its pill
                                     // at a glance. Selected is the solid fill.
@@ -149,59 +163,10 @@ Item {
                 }
             }
 
-            Item { width: 1; height: 28 }
+            Item { width: 1; height: 24 }
 
-            SectionLabel {
-                width: parent.width
-                text: root.isInbox ? "New for you" : "Unread"
-                count: root.newRows.length
-                visible: root.newRows.length > 0
-            }
-            Column {
-                width: parent.width
-                visible: root.newRows.length > 0
-                Repeater {
-                    model: root.newRows
-                    MailRow {
-                        width: parent.width
-                        row: modelData
-                        fresh: true
-                        highlighted: root.hi === index
-                        // Drafts: a row opens the composer (via win.openMessage,
-                        // which routes drafts on), the right-click menu is off,
-                        // and each row carries its own fast-delete.
-                        showDelete: win.isDraftsBucket()
-                        menuEnabled: !win.isDraftsBucket()
-                        onDeleteClicked: win.deleteDraft(modelData.id)
-                    }
-                }
-            }
-
-            Item { width: 1; height: root.newRows.length > 0 && root.seenRows.length > 0 ? 34 : 0 }
-
-            SectionLabel {
-                width: parent.width
-                text: root.isInbox ? "Previously seen" : "Everything else"
-                count: root.seenRows.length
-                visible: root.seenRows.length > 0
-            }
-            Column {
-                width: parent.width
-                visible: root.seenRows.length > 0
-                Repeater {
-                    model: root.seenRows
-                    MailRow {
-                        width: parent.width
-                        row: modelData
-                        fresh: false
-                        highlighted: root.hi === root.newRows.length + index
-                        showDelete: win.isDraftsBucket()
-                        menuEnabled: !win.isDraftsBucket()
-                        onDeleteClicked: win.deleteDraft(modelData.id)
-                    }
-                }
-            }
-
+            // The empty bucket: the end-of-list state, shown when the model
+            // has no rows at all.
             Column {
                 width: parent.width
                 spacing: 10
@@ -225,6 +190,40 @@ Item {
                 }
             }
         }
+
+        // Room for the pile stacks (and a little air) below the last row, the
+        // way the old Flickable reserved it in contentHeight.
+        footer: Item { width: 1; height: 120 + (bottomStacks.visible ? bottomStacks.height + 16 : 0) }
+
+        delegate: MailRow {
+            width: list.width
+            row: modelData
+            fresh: modelData.seen === false
+            highlighted: root.hi === index
+            // Drafts: a row opens the composer (via win.openMessage, which
+            // routes drafts on), the right-click menu is off, and each row
+            // carries its own fast-delete.
+            showDelete: win.isDraftsBucket()
+            menuEnabled: !win.isDraftsBucket()
+            onDeleteClicked: win.deleteDraft(modelData.id)
+        }
+    }
+
+    // The unseen/seen section headers: the same two labels the old Column
+    // showed, now appearing only when their section has rows. The topPadding
+    // stands in for the spacer Items the Column carried between the blocks.
+    Component {
+        id: sectionHeading
+        Column {
+            topPadding: 26
+            width: list.width
+            SectionLabel {
+                width: parent.width
+                text: section === "false" ? (root.isInbox ? "New for you" : "Unread")
+                                          : (root.isInbox ? "Previously seen" : "Everything else")
+                count: section === "false" ? root.newRows.length : root.seenRows.length
+            }
+        }
     }
 
     // Right-click any row for the same triage the reading view and the Command
@@ -235,7 +234,7 @@ Item {
     }
 
     // Into the compose view. Mirrors the `c` shortcut, for the pointer. Only in
-    // the Inbox \u2014 writing a new mail is an Inbox action, not something you do
+    // the Inbox: writing a new mail is an Inbox action, not something you do
     // from Paper Trail or Set Aside.
     AppButton {
         id: composeBtn
@@ -248,14 +247,14 @@ Item {
     }
 
     // A label is managed from the view of it: renamed through the launcher's
-    // own field, deleted behind one confirming second press — deleting takes
+    // own field, deleted behind one confirming second press: deleting takes
     // the keyword off every message carrying it, and there is no undo.
     AppButton {
         id: renameBtn
         anchors { right: parent.right; top: parent.top; margins: 24 }
         visible: win.labelView !== ""
         kind: "soft"
-        glyph: ""
+        glyph: "\uf044"
         text: "Rename"
         onClicked: win.openLabelRename()
     }
@@ -265,7 +264,7 @@ Item {
         anchors { right: renameBtn.left; rightMargin: 10; verticalCenter: renameBtn.verticalCenter }
         visible: win.labelView !== ""
         kind: "danger"
-        glyph: ""
+        glyph: "\uf1f8"
         text: armed ? "Really delete?" : "Delete label"
         onClicked: {
             if (!armed) { armed = true; disarm.restart(); return }
@@ -281,14 +280,14 @@ Item {
     }
 
     // The Screener lives here: a button just left of Compose, shown only when
-    // senders are actually waiting. It is the one way in \u2014 there is no bucket
-    // key or launcher entry for it \u2014 and `screener` decisions send you back.
+    // senders are actually waiting. It is the one way in: there is no bucket
+    // key or launcher entry for it: and `screener` decisions send you back.
     AppButton {
         anchors { right: composeBtn.left; rightMargin: 10; verticalCenter: composeBtn.verticalCenter }
         visible: root.isInbox && root.screenerWaiting > 0
         kind: "soft"
         glyph: "\uf0c0"
-        text: "Screener \u00b7 " + root.screenerWaiting
+        text: "Screener · " + root.screenerWaiting
         onClicked: win.switchToKey("Screener")
     }
 

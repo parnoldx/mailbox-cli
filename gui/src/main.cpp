@@ -1,5 +1,6 @@
 #include <QGuiApplication>
 #include <QtWebEngineQuick/QtWebEngineQuick>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFont>
 #include <QFontDatabase>
@@ -16,6 +17,15 @@
 #include "SurfaceWatcher.hpp"
 
 int main(int argc, char *argv[]) {
+    // Startup timing, off unless MAILBOX_GUI_PROFILE=1: qInfo() lines naming
+    // how long each start-up phase took, to chase "sluggish at launch".
+    const bool prof = qEnvironmentVariable("MAILBOX_GUI_PROFILE") == "1";
+    QElapsedTimer profTimer;
+    profTimer.start();
+    auto profMark = [&](const char *what) {
+        if (prof) qInfo() << "startup:" << profTimer.restart() << "ms:" << what;
+    };
+    profTimer.start();
     // QtWebEngine's Chromium already registers our app ID with the desktop
     // portal, so Qt's QPA portal service then fails its own duplicate
     // registration with a harmless "Connection already associated with an
@@ -23,7 +33,9 @@ int main(int argc, char *argv[]) {
     QLoggingCategory::setFilterRules(QStringLiteral("qt.qpa.services.warning=false"));
 
     QtWebEngineQuick::initialize();
+    profMark("WebEngineQuick::initialize");
     QGuiApplication app(argc, argv);
+    profMark("QGuiApplication");
     app.setApplicationName("Mailbox");
     app.setApplicationDisplayName("Mailbox");
     // Matches share/applications/mailbox-gui.desktop so Wayland app_id
@@ -32,12 +44,14 @@ int main(int argc, char *argv[]) {
     app.setDesktopFileName(QStringLiteral("mailbox-gui"));
     app.setWindowIcon(QIcon(QStringLiteral(":/icons/mailbox-gui.svg")));
     QQuickStyle::setStyle("Basic");
+    profMark("setStyle");
 
     // Omarchy's own font. Fall back quietly if it is not installed.
     QFont base("JetBrainsMono Nerd Font");
     base.setStyleHint(QFont::Monospace);
     base.setPixelSize(13);
     app.setFont(base);
+    profMark("font");
 
     OmarchyTheme theme;
     MailboxClient client;
@@ -89,8 +103,14 @@ int main(int argc, char *argv[]) {
         &engine, &QQmlApplicationEngine::objectCreationFailed, &app,
         [] { QCoreApplication::exit(-1); }, Qt::QueuedConnection);
     engine.load(QUrl("qrc:/qml/Main.qml"));
+    profMark("engine.load");
     if (engine.rootObjects().isEmpty())
         return -1;
 
+    // First exposed frame: the number the user actually perceives.
+    QObject::connect(&app, &QGuiApplication::applicationStateChanged, &app,
+                     [&profMark](Qt::ApplicationState st) {
+                         if (st == Qt::ApplicationActive) profMark("first frame (applicationActive)");
+                     }, Qt::QueuedConnection);
     return app.exec();
 }
