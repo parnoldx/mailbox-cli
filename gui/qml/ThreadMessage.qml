@@ -239,8 +239,18 @@ Item {
         var js =
           "(function(){var c=" + JSON.stringify("cid:" + cid) + ",u=" + JSON.stringify(uri) + ";" +
           "var n=document.getElementsByTagName('img');" +
-          "for(var i=0;i<n.length;i++){if(n[i].getAttribute('src')===c)n[i].src=u;}})();"
+          "for(var i=0;i<n.length;i++){if(n[i].getAttribute('src')===c){" +
+          "n[i].src=u;n[i].setAttribute('data-cid'," + JSON.stringify(cid) + ");}}})();"
         webLoader.item.runJavaScript(js)
+    }
+    // An inline image was clicked in the page: open it in the lightbox. The
+    // page hands us the cid we stamped onto the img (native data: URIs come
+    // through as the URI itself). The zoom overlay lives on the window —
+    // win.zoomImage() — so it sits above the reader wherever this Message
+    // sits in the accordion.
+    function zoomInline(tok) {
+        var uri = root.cidMap[tok] || (tok.indexOf("data:") === 0 ? tok : "")
+        if (uri !== "") win.zoomImage(uri)
     }
     function flushCids() {
         for (var cid in root.cidMap) root.patchCid(cid, root.cidMap[cid])
@@ -265,6 +275,7 @@ Item {
           "td,th{overflow-wrap:break-word;word-break:break-word;}" +
           "pre{white-space:pre-wrap !important;word-break:break-word;}" +
           "img{max-width:100% !important;height:auto !important;}" +
+          "img[src^='data:']{cursor:zoom-in;}" +
           "a{word-break:break-word;}" +
           "::-webkit-scrollbar{width:9px;}" +
           "::-webkit-scrollbar:horizontal{height:0 !important;display:none !important;}" +
@@ -569,6 +580,12 @@ Item {
                         visible: text !== ""
                         text: root.rcptHtml("To", root.msg.to)
                         textFormat: Text.RichText
+                        // Hovering a name raises a small pill with the address
+                        // behind it, so a shared name still shows who is meant
+                        // without copying first. Text hovers links by itself.
+                        onLinkHovered: (link) => { ToolTip.text = link; ToolTip.visible = link !== "" }
+                        ToolTip.delay: 350
+                        ToolTip.timeout: 4000
                         onLinkActivated: (link) => {
                             Mailbox.copyText(link)
                             win.flash("Copied " + link)
@@ -585,6 +602,9 @@ Item {
                         visible: text !== ""
                         text: root.rcptHtml("Cc", root.msg.cc)
                         textFormat: Text.RichText
+                        onLinkHovered: (link) => { ToolTip.text = link; ToolTip.visible = link !== "" }
+                        ToolTip.delay: 350
+                        ToolTip.timeout: 4000
                         onLinkActivated: (link) => {
                             Mailbox.copyText(link)
                             win.flash("Copied " + link)
@@ -941,11 +961,28 @@ Item {
                             }
                         }
                         onNewWindowRequested: function (req) { Qt.openUrlExternally(req.requestedUrl) }
+                        onJavaScriptConsoleMessage: function (lvl, msg) {
+                            if (msg.indexOf("__mbzoom ") === 0) root.zoomInline(msg.slice(9))
+                        }
                         onLoadingChanged: function (req) {
                             if (req.status === WebEngineView.LoadSucceededStatus) {
                                 root.webLoaded = true
                                 root.flushCids()
                                 root.measureHtml()
+                                // Click-to-zoom for inline images: a capture-phase
+                                // listener (so it wins over the mail's own <a> wraps)
+                                // intercepts clicks on data: images and reports the
+                                // cid back over the console. CSP only gates script
+                                // the mail carried — runJavaScript is trusted.
+                                webLoader.item.runJavaScript(
+                                  "(function(){if(document.__mbZoom)return;document.__mbZoom=1;" +
+                                  "document.addEventListener('click',function(e){" +
+                                  "var n=e.target;if(!n||n.tagName!=='IMG')return;" +
+                                  "var s=n.getAttribute('src')||'';" +
+                                  "if(s.indexOf('data:')!==0)return;" +
+                                  "e.preventDefault();e.stopImmediatePropagation();" +
+                                  "console.log('__mbzoom '+(n.getAttribute('data-cid')||s));" +
+                                  "},true);})();")
                                 // Also lifts the dark-mail anti-flash cover set
                                 // in renderHtml() (savedScroll 0 → just uncovers).
                                 if (root.webCovered) root.restoreScroll()

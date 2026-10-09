@@ -31,11 +31,17 @@ run: build
 
 # No unit suite: the C++ compile is the real check, and this adds a parse gate
 # over every QML file so a broken binding fails here instead of at launch.
+# The perl pass guards a QML trap that bit twice (2026-10-08, inline-image
+# zoom): adjacent string literals on consecutive lines. Standard JS would
+# concatenate them; QML's engine drops the extra ones instead — a script built
+# that way is silently truncated mid-token, and the parse gate stays green.
 test: build
 	@for f in qml/*.qml; do \
 		$(QMLFORMAT) -n "$$f" >/dev/null || { echo "qml parse failed: $$f"; exit 1; }; \
 	done
-	@echo "ok: binary built, $$(ls qml/*.qml | wc -l) QML files parse"
+	@perl -ne 'if (/^\s*"[^"]*"\s*$$/) { if ($$prev) { print "$$ARGV:$$.: adjacent string literal (add explicit +)\n"; $$bad = 1 } $$prev = 1 } else { $$prev = 0 } close ARGV if eof; END { exit 1 if $$bad }' qml/*.qml \
+		|| { echo "qml string-concat check failed"; exit 1; }
+	@echo "ok: binary built, $$(ls qml/*.qml | wc -l) QML files parse, no adjacent string literals"
 
 # Drops the binary at $(PREFIX)/bin/mailbox-gui, the .desktop entry, and
 # the hicolor icon. ~/.local/bin is on PATH for a login shell, which is how

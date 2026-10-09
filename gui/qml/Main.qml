@@ -480,13 +480,13 @@ ApplicationWindow {
             })
             out.sort(function (x, y) { return (y.primary ? 1 : 0) - (x.primary ? 1 : 0) })
             win.accounts = out
-            // Once on startup: outside work hours (Mon–Fri 9–18) open on the
+            // Once on startup: outside work hours (Mon–Fri 8–18) open on the
             // Personal account instead of all of them. Never re-applied, so a
             // reconnect or a manual filter pick is not second-guessed.
             if (!win._filterChosen) {
                 win._filterChosen = true
                 var d = new Date(), work = d.getDay() >= 1 && d.getDay() <= 5
-                                              && d.getHours() >= 9 && d.getHours() < 18
+                                              && d.getHours() >= 8 && d.getHours() < 18
                 if (win.multiAccount && !work)
                     for (var i = 0; i < out.length; i++)
                         if (out[i].primary) { win.setAccountFilter(out[i].name); break }
@@ -1135,6 +1135,29 @@ ApplicationWindow {
     QuickLook {
         id: quickLook
         anchors.fill: parent
+    }
+
+    // Lightbox for an inline image clicked in a mail (ThreadMessage's
+    // zoomInline): the image fills the window, any click or Esc is back to
+    // the mail as it was.
+    property string zoomImageUri: ""
+    function zoomImage(uri) { win.zoomImageUri = uri }
+    Rectangle {
+        anchors.fill: parent
+        visible: opacity > 0.01
+        opacity: win.zoomImageUri !== "" ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: Theme.anim } }
+        color: Qt.rgba(0, 0, 0, 0.85)
+        Image {
+            anchors.fill: parent
+            anchors.margins: 40
+            source: win.zoomImageUri
+            fillMode: Image.PreserveAspectFit
+            asynchronous: true
+        }
+        TapHandler { onTapped: win.zoomImageUri = "" }
+        Keys.onEscapePressed: win.zoomImageUri = ""
+        focus: win.zoomImageUri !== ""
     }
 
     // Popped by the reader's Z shortcut; the "Bubble up" chip has its own,

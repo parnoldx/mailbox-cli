@@ -538,6 +538,24 @@ Item {
             height: 1; color: Theme.hairline
             Behavior on color { ColorAnimation { duration: Theme.anim } }
         }
+        // Drop files onto the bar to attach them (same as the editor body).
+        DropArea {
+            anchors.fill: parent
+            onEntered: function (drag) { if (drag.hasUrls) drag.accept() }
+            onDropped: function (drop) {
+                if (!drop.hasUrls) return
+                for (var i = 0; i < drop.urls.length; i++)
+                    root.addAttachment(root._localPath(drop.urls[i]))
+                drop.accept()
+            }
+            Rectangle {
+                anchors.fill: parent
+                visible: parent.containsDrag
+                color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.12)
+                border.width: 1
+                border.color: Theme.accent
+            }
+        }
         Row {
             anchors.verticalCenter: parent.verticalCenter
             anchors.left: parent.left
