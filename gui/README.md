@@ -97,6 +97,17 @@ instant you switch Omarchy themes.
   conversation: a fresh attempt with memory, not a blank one. Nothing is ever
   sent by the agent; the prompt forbids it and the text lands in the composer
   for review like any other draft.
+- **Summarize a thread.** `Summarize` in the reader's More menu (`S` key) sends
+  the whole conversation (plain bodies, capped per message) through the same
+  agent pipe as the reply drafter and pins the result as a card above the
+  accordion: what was asked, what was answered, what still awaits action, at
+  most 80 words in the thread's own language. The card carries a dismiss
+  cross; the summary persists in the state store (`mail.summaries`, keyed by
+  the thread's MessageKey together with the newest message key it covered),
+  so reopening the thread shows it again and the card says `new mail since`
+  when its coverage ran out: pressing `S` (or the stale note) runs it again.
+  The agent runs one at a time alongside the composer's drafter (the pipe is
+  shared) and nothing goes out; summarizing is read-only by prompt.
 - **Real data.** NDJSON to the daemon on `$XDG_RUNTIME_DIR/mailbox.sock`
   (`box list`, `box view`, `message view`, `thread view`, `search`,
   `attachment list`, `attachment save`, `attachment bytes`, `contact search`,
@@ -167,6 +178,7 @@ Requires Qt 6 (Core, Gui, Qml, Quick, QuickControls2, Network, WebEngineQuick, P
 | `Return`       | open the message (in The Feed, or a thread's accordion: expand / collapse) |
 | `o` / `l`      | open the highlighted message (works from The Feed too) |
 | right-click    | triage menu on a list row (sender decision in the Screener) |
+| `s`            | summarize the open thread with the agent (card above the accordion) |
 | `t` / `Del`    | move to Trash (highlighted row or open thread) |
 | `a`            | set aside                       |
 | `r`            | reply (Screener: `i` let in, `b` block) |
@@ -209,6 +221,7 @@ qml/SendUndoToast.qml    five-second delayed-send banner with Undo + forgotten-a
 qml/FlashToast.qml       transient top-edge confirmation / daemon-error toast; show(text)
 qml/AttachmentChip.qml   one attachment: click = Quick Look, floppy = Save as
 qml/QuickLook.qml        in-app preview overlay (PDF pages, image, text)
+qml/ReaderMoreMenu.qml   the reader's "More" menu: Forward, Label, Move, Summarize, Trash
 qml/MailFormat.js        shared pure string helpers (initials, subject stripping, address + file-url parsing)
 qml/vendor/feed.html       the Feed's one HTML document (a single scroll surface)
 qml/vendor/lexxy.{js,css}  Lexxy build (rollup, self-contained: Lexical + deps), MIT — see LICENSE.lexxy

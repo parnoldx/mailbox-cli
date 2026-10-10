@@ -55,6 +55,75 @@ ApplicationWindow {
     function isExpanded(id) { return !!win.expandedIds[id] }
     function attachmentsFor(id) { return win.attachmentsById[id] || [] }
 
+    // ---- Summarize (More menu / S in the reader) ---------------------------
+    // The agent (the same one-pipe that drafts replies) condenses the open
+    // Thread. Cached in the state store keyed by the Thread's oldest
+    // MessageKey, each entry carrying the newest key it covered, so an entry
+    // that predates new mail shows up stale instead of wrong.
+    property bool sumBusy: false
+    property var sumEntry: null   // {k: newest covered message_key, text} for the open thread
+    // A Thread's Key: the oldest Message's stable server-independent key. An
+    // id (folder+uid) would move the moment mail is reshuffled; the key will
+    // not.
+    function threadKey() {
+        return win.openThread.length && win.openThread[0].message_key ? win.openThread[0].message_key : ""
+    }
+    function _summariesRead() {
+        try { var m = JSON.parse(Mailbox.stateGet("mail.summaries", "{}"))
+              return (m && typeof m === "object" && !(m instanceof Array)) ? m : {} }
+        catch (e) { return {} }
+    }
+    function _summariesSave(m) { Mailbox.stateSet("mail.summaries", JSON.stringify(m)) }
+    // Pick the open Thread's cached entry up when the reader opens; called
+    // straight from openMessage's thread-view callback.
+    function loadSummaryFromCache() {
+        var k = win.threadKey(), e = k ? win._summariesRead()[k] : null
+        win.sumEntry = (e && e.text) ? e : null
+    }
+    function dismissSummary() {
+        var k = win.threadKey()
+        if (!k) return
+        var m = win._summariesRead()
+        delete m[k]
+        win._summariesSave(m)
+        win.sumEntry = null
+    }
+    function summarizeThread() {
+        if (win.sumBusy || win.openThread.length === 0) return
+        var k = win.threadKey()
+        if (!k) return
+        var convo = ""
+        for (var i = 0; i < win.openThread.length; i++) {
+            var body = String(win.openThread[i].body || "").trim()
+            if (!body) continue
+            if (body.length > 4000) body = body.slice(0, 4000) + "…"
+            convo += "From " + (win.openThread[i].from || "unknown") +
+                     (win.openThread[i].date ? " on " + win.openThread[i].date : "") + ":\n" +
+                     body + "\n\n"
+        }
+        if (!convo.trim()) { win.flash("Nothing to summarize"); return }
+        win.sumBusy = true
+        var prompt = "Summarize this email thread for me.\n" +
+            "At most 80 words, written in the language the thread itself uses.\n" +
+            "Cover what was asked or offered, what was answered, and what still awaits action.\n" +
+            "Plain text only: no greeting, no headers, no bullet markers, nothing else.\n\n" + convo
+        // The prompt rides as one process argument: Linux caps a single
+        // argument at 128k bytes (MAX_ARG_STRLEN), so a huge thread is trimmed
+        // to the prompt head (the oldest mail) rather than failing QProcess.
+        if (prompt.length > 120000) prompt = prompt.slice(0, 120000)
+        Mailbox.agentDraft("mail-summary-" + k.replace(/[^a-zA-Z0-9-]/g, "").slice(0, 40),
+                           prompt, function (r) {
+            win.sumBusy = false
+            var text = r.ok ? String((r.data && r.data.text) || "").trim() : ""
+            if (!text) { win.flash(MailFormat.errText(r, "Summary failed")); return }
+            var m = win._summariesRead()
+            m[k] = { k: win.openThread[win.openThread.length - 1].message_key,
+                     text: text }
+            win._summariesSave(m)
+            win.sumEntry = m[k]
+        })
+    }
+
     // A `mailto:` URI in argv, or "" — the desktop's mailto handler (see
     // mailbox-gui.desktop) launches us with one of these.
     readonly property string _mailtoArg: {
@@ -695,6 +764,7 @@ ApplicationWindow {
             }
             win.openThread = thread
             win.openMsg = thread.length ? thread[thread.length - 1] : null
+            win.loadSummaryFromCache()
             win._loadInvites()
             // "Reply now" opened this only to hand it straight to the composer.
             if (win._replyOnOpen) { win._replyOnOpen = false; win.startReply(false) }
@@ -1015,6 +1085,12 @@ ApplicationWindow {
     Shortcut {
         sequence: "v"; enabled: win.readerKeys && !win.inScreener
         onActivated: win.openMovePicker()
+    }
+    // Summarize the open Thread with the agent — the same machine that drafts
+    // replies, asked to condense instead. Lives in the More menu too.
+    Shortcut {
+        sequence: "s"; enabled: win.readerKeys && !win.inScreener
+        onActivated: win.summarizeThread()
     }
     // Screener decisions on the message you are reading: I = let the sender
     // into the Inbox, B = block them. Both act on the sender and drop you back.

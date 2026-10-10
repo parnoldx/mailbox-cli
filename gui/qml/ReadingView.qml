@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Layouts
 import "MailFormat.js" as Fmt
 import "Triage.js" as Triage
 
@@ -235,6 +236,95 @@ Item {
             id: col
             width: parent.width
             spacing: 4
+
+            // The agent's one-paragraph condensation of the open Thread, pinned
+            // above the accordion like any other block of the conversation.
+            // Summarize lives in the More menu and the S key; this card is its
+            // busy state, result and stale marker all in one, with its own
+            // dismiss. Cached in the state store by Mailbox.summarizeThread().
+            Rectangle {
+                id: sumCard
+                readonly property bool stale: win.sumEntry !== null && win.openThread.length > 0
+                                              && win.openThread[win.openThread.length - 1].message_key !== win.sumEntry.k
+                width: parent.width
+                visible: win.sumBusy || win.sumEntry !== null
+                height: visible ? sumCol.implicitHeight + 20 : 0
+                color: Theme.railBg
+                border.width: 1
+                border.color: Theme.hairline
+                radius: Theme.radiusSmall
+                Behavior on color { ColorAnimation { duration: Theme.anim } }
+                Column {
+                    id: sumCol
+                    anchors { top: parent.top; left: parent.left; right: parent.right; margins: 10 }
+                    spacing: 6
+                    Row {
+                        width: parent.width
+                        spacing: 6
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "\ued11"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 12
+                            color: Theme.accent
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Summary"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                            font.weight: Font.DemiBold
+                            color: Theme.textDim
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: sumCard.stale && !win.sumBusy
+                            text: "new mail since; run it again"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 10
+                            color: Theme.accent
+                            HoverHandler { cursorShape: Qt.PointingHandCursor }
+                            TapHandler { onTapped: win.summarizeThread() }
+                        }
+                        Item { height: 1; Layout.fillWidth: true }
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 18; height: 18; radius: 9
+                            color: dismissHover.hovered ? Theme.cardHover : "transparent"
+                            Behavior on color { ColorAnimation { duration: Theme.anim } }
+                            Text {
+                                anchors.centerIn: parent
+                                text: "\uf00d"
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 9
+                                color: Theme.textDim
+                            }
+                            HoverHandler { id: dismissHover; cursorShape: Qt.PointingHandCursor }
+                            TapHandler { onTapped: win.dismissSummary() }
+                        }
+                    }
+                    Text {
+                        width: parent.width
+                        visible: win.sumBusy
+                        text: "Summarizing…"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 12
+                        color: Theme.textDim
+                    }
+                    Text {
+                        width: parent.width
+                        visible: !win.sumBusy && win.sumEntry !== null
+                        text: win.sumEntry ? win.sumEntry.text : ""
+                        wrapMode: Text.Wrap
+                        textFormat: TextEdit.PlainText
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 12
+                        lineHeight: 1.35
+                        color: Theme.textPrimary
+                    }
+                }
+            }
+
             Repeater {
                 model: win.openThread
                 ThreadMessage {

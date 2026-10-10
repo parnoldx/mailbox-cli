@@ -81,6 +81,11 @@ Menu {
         text: "Move"; glyph: "\uf0b2"; kbd: "V"
         onTriggered: win.openMovePicker()
     }
+    Act {
+        text: "Summarize"; glyph: "\ued11"; kbd: "S"
+        enabled: !win.sumBusy
+        onTriggered: win.summarizeThread()
+    }
 
     MenuSeparator {
         contentItem: Rectangle { implicitHeight: 1; color: Theme.hairline }
