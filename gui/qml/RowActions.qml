@@ -1,6 +1,8 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQml.Models
 import "Triage.js" as Triage
+import "Fuzzy.js" as Fuzzy
 
 // The triage menu every row in a list bucket gets on right-click. In an
 // ordinary bucket it is the same four moves the reading-view toolbar and the
@@ -184,6 +186,67 @@ Menu {
         glyph: ""
         visible: !menu.inScreener
         onTriggered: win.openLabelPicker(menu.row.id)
+    }
+
+    // Move to an archive Box — the same move the Command Launcher's "Move to"
+    // pane does (win.moveId on the whole Thread), as a sideways submenu of the
+    // row's own account's boxes. Fuzzy.moveBoxes drops the routing
+    // Destinations (they have rows of their own above, and Screener/Aside
+    // decisions are sender/pile moves, not a Box). Boxes load at popup time;
+    // the submenu opens by hover, well after the load has landed (and
+    // re-reads rowBoxes when it does).
+    property var _boxes: []
+    readonly property var rowBoxes: Fuzzy.moveBoxes(_boxes, win.accountOfId(menu.row.id || ""))
+    onAboutToShow: {
+        _boxes = []
+        if (!menu.inScreener)
+            win.loadArchiveBoxes(function (list) { menu._boxes = list || [] })
+    }
+
+    Menu {
+        id: moveMenu
+        title: "Move to…"
+        implicitWidth: 208
+        topPadding: 6
+        bottomPadding: 6
+        background: Rectangle {
+            implicitWidth: 208
+            color: Theme.railBg
+            border.width: 1
+            border.color: Theme.hairline
+            radius: Theme.radiusSmall
+            Behavior on color { ColorAnimation { duration: Theme.anim } }
+        }
+        delegate: MenuItem {
+            id: mb
+            height: 34
+            contentItem: Text {
+                anchors.verticalCenter: parent.verticalCenter
+                leftPadding: 14
+                text: mb.text
+                elide: Text.ElideRight
+                font.family: Theme.fontFamily
+                font.pixelSize: 12
+                color: Theme.textPrimary
+            }
+            background: Rectangle {
+                color: mb.highlighted ? Theme.selection : "transparent"
+                Behavior on color { ColorAnimation { duration: Theme.anim } }
+            }
+        }
+        Instantiator {
+            model: menu.rowBoxes
+            delegate: MenuItem {
+                required property var modelData
+                text: modelData.box
+                onTriggered: {
+                    menu.dismiss()
+                    win.moveId(menu.row.id, modelData.box, "Moved to " + modelData.box)
+                }
+            }
+            onObjectAdded: (index, object) => moveMenu.insertItem(index, object)
+            onObjectRemoved: (idx, item) => moveMenu.removeItem(item)
+        }
     }
     // Bubble Up is the one move that asks a second question — when. It opens
     // sideways as a submenu (the delegate above styles the row that opens it)

@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls.Basic
 import "Triage.js" as Triage
+import "Fuzzy.js" as Fuzzy
 
 // The HEY quick switcher: search focused immediately, numbered destinations,
 // arrow keys or digits to pick. Below the destinations, when there is a
@@ -34,10 +35,8 @@ Item {
     // The boxes mail does not move into one at a time — dropped from the move
     // picker, which offers the archive tree plus Feed and Paper Trail, whose
     // rows route the sender as well (they are Destinations, not just boxes).
-    // Matches `routingOrder` server-side.
-    readonly property var routingKeys: [
-        "INBOX", "Screener", "Aside", "Reply Later", "Sent", "Drafts", "Junk"
-    ]
+    // The list now lives in Fuzzy.js (ROUTING_KEYS, shared with the row menu
+    // and the archive view's box picker).
 
     function open() {
         query.text = ""
@@ -83,27 +82,13 @@ Item {
     property var rows: (query.text, opened, pane, results())
 
     // ---- archive picker -------------------------------------------------------
-    // A subsequence match: every character of the needle shows up in order in
-    // the haystack. Enough to pull "Archive/2021/receipts" out of a long tree
-    // by typing "a21rec".
-    function fuzzy(needle, hay) {
-        needle = needle.toLowerCase(); hay = hay.toLowerCase()
-        var j = 0
-        for (var i = 0; i < hay.length && j < needle.length; i++)
-            if (hay.charAt(i) === needle.charAt(j)) j++
-        return j === needle.length
-    }
+    // The boxes, fuzzy-filtered by the shared Fuzzy.js subsequence match and
+    // cut to the target's account — work mail moves into the work archive.
     function archiveResults() {
         if (pane !== "archive") return []
         var q = query.text.trim()
-        var out = []
-        for (var i = 0; i < archiveBoxes.length; i++) {
-            var b = archiveBoxes[i]
-            if (root.routingKeys.indexOf(b.box) >= 0) continue
-            if (b.account !== root.archiveAccount) continue
-            if (!q || root.fuzzy(q, b.box)) out.push(b)
-        }
-        return out
+        return Fuzzy.moveBoxes(archiveBoxes, root.archiveAccount)
+            .filter(function (b) { return !q || Fuzzy.fuzzy(q, b.box) })
     }
     property var archRows: (query.text, pane, archiveBoxes, archiveResults())
 
@@ -169,7 +154,7 @@ Item {
         var out = [], exact = false
         for (var i = 0; i < labelRows.length; i++) {
             var l = labelRows[i]
-            if (q && !root.fuzzy(q, l.label)) continue
+            if (q && !Fuzzy.fuzzy(q, l.label)) continue
             if (l.label === q) exact = true
             out.push({ label: l.label, count: l.count || 0, create: false })
         }

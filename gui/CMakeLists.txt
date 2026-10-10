@@ -38,6 +38,7 @@ qt_add_resources(mailbox-gui "qml"
         qml/RecipientPills.qml
         qml/MailFormat.js
         qml/Triage.js
+        qml/Fuzzy.js
         qml/AppButton.qml
         qml/SendUndoToast.qml
         qml/FlashToast.qml

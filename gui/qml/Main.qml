@@ -27,7 +27,8 @@ ApplicationWindow {
         { key: "Aside",       label: "Set Aside",   glyph: "\uf02e" },
         { key: "Reply Later", label: "Reply Later", glyph: "\uf112" },
         { key: "Drafts",      label: "Drafts",      glyph: "\uf044" },
-        { key: "Sent",        label: "Sent",        glyph: "\uf1d8" }
+        { key: "Sent",        label: "Sent",        glyph: "\uf1d8" },
+        { key: "Archive",     label: "Archive",     glyph: "\uf187" }
     ]
 
     // Drafts is not `box view` mail: its rows come from `draft list` and a row
@@ -94,6 +95,15 @@ ApplicationWindow {
     // currentKey() answers "Label" rather than the bucket underneath, which is
     // what keeps the Drafts, Feed and Screener behaviour out of it.
     property string labelView: ""
+    // The Box the archive view is showing, or "" for the picker state. Like a
+    // label it is never a bucket of its own — it lists through bucketIndex's
+    // "Archive" entry — and the account pills stay out of the view: their
+    // rows read one picked Box, whose own account the box name names.
+    property string archiveBox: ""
+    // The archive box picker's field has the keyboard: while it does, the
+    // number keys and the list/reader letters stay hands-off — the field eats
+    // them as text.
+    property bool archiveBoxOpen: false
     function openLabel(name) {
         launcher.close()
         win.labelView = name
@@ -101,7 +111,13 @@ ApplicationWindow {
     }
     function currentKey() { return win.labelView !== "" ? "Label" : buckets[bucketIndex].key }
     // What the bucket header and the reader's crumb call the view we are in.
-    function viewTitle() { return win.labelView !== "" ? win.labelView : buckets[bucketIndex].label }
+    // The archive view carries the chosen Box's own name — "Archive/2021",
+    // not "Archive" — once one is picked.
+    function viewTitle() {
+        if (win.labelView !== "") return win.labelView
+        var b = buckets[bucketIndex]
+        return b.key === "Archive" && win.archiveBox !== "" ? win.archiveBox : b.label
+    }
     function viewGlyph() { return win.labelView !== "" ? "\uf02c" : buckets[bucketIndex].glyph }
     // The Screener asks for a decision about a *sender*, not a read about a
     // mail, so it carries its own triage (route in / block / move) and hides
@@ -535,6 +551,15 @@ ApplicationWindow {
 
     // Re-pull the open bucket's rows in place, without disturbing the reader.
     function refreshBucket() {
+        // The archive view is a box view on the picked Box, nothing else off
+        // the shelves; an unpicked one shows the picker and no rows.
+        if (currentKey() === "Archive") {
+            if (win.archiveBox === "") { listModel.setRows([]); return }
+            Mailbox.call(["box", "view"], { positional: win.archiveViewBox(win.archiveBox), limit: 200 }, function (r) {
+                listModel.setRows(r.ok && r.data ? r.data : [])
+            })
+            return
+        }
         if (win.labelView !== "") {
             Mailbox.call(["label", "view"], { name: win.labelView, limit: 200 }, function (r) {
                 listModel.setRows(r.ok && r.data ? r.data : [])
@@ -611,8 +636,26 @@ ApplicationWindow {
         launcher.close()
         if (i < 0 || i >= buckets.length) return
         win.labelView = ""
+        win.archiveBoxOpen = false
+        // The archive view always starts fresh: an entry puts the fuzzy picker
+        // up (BucketView's onIsArchiveChanged opens it when no Box is picked).
+        if (buckets[i].key === "Archive") win.archiveBox = ""
         bucketIndex = i
+        if (buckets[i].key === "Archive") bucketView.openPicker()
+        // Back to the top, so the picker's header and its dropdown open where
+        // they belong, under the input, not wherever the last scroll left the
+        // view.
+        bucketView.toTop()
         loadBucket()
+    }
+
+    // The Box the archive view reads, pinned to the picked row's own account.
+    // A bare name on `box view` spans accounts (that is what merges the
+    // Inbox); the picker points at one exact Box, so a Primary pick becomes
+    // "primary/Archive" and never blends in a Secondary's tree of the same
+    // name.
+    function archiveViewBox(name) {
+        return accountOfId(name) ? name : "primary/" + name
     }
     function switchToKey(k) {
         for (var i = 0; i < buckets.length; i++)
@@ -831,8 +874,10 @@ ApplicationWindow {
     readonly property bool anyOverlay: composeOpen || searchView.opened
                                      || launcher.opened || quickLook.opened
                                      || contactsPane.hasFocus
+                                     || archiveBoxOpen
     readonly property bool bucketKeys: !composeOpen && !searchView.opened
                                        && !contactsPane.hasFocus
+                                       && !archiveBoxOpen
     readonly property bool navKeys: !openId && !anyOverlay
     readonly property bool readerKeys: !!openId && !anyOverlay
     readonly property bool _rowActionable:
@@ -843,7 +888,8 @@ ApplicationWindow {
     Shortcut {
         sequence: "Escape"
         onActivated: {
-            if (quickLook.opened) quickLook.close()
+            if (win.archiveBoxOpen) bucketView.pickerEscape()
+            else if (quickLook.opened) quickLook.close()
             else if (win.composeOpen) win.composeOpen = false
             else if (searchView.opened) searchView.close()
             else if (launcher.opened) launcher.close()
@@ -884,6 +930,7 @@ ApplicationWindow {
     Shortcut { sequence: "5"; enabled: win.bucketKeys; onActivated: win.switchToKey("Reply Later") }
     Shortcut { sequence: "6"; enabled: win.bucketKeys; onActivated: win.switchToKey("Drafts") }
     Shortcut { sequence: "7"; enabled: win.bucketKeys; onActivated: win.switchToKey("Sent") }
+    Shortcut { sequence: "8"; enabled: win.bucketKeys; onActivated: win.switchToKey("Archive") }
     Shortcut { sequence: "Ctrl+S"; enabled: win.bucketKeys; onActivated: win.switchToKey("Screener") }
     // With more than one account: 0 shows them all, an account's first letter
     // shows only it (P for Personal, W for Work). A letter a list or reader

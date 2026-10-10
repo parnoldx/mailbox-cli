@@ -1,10 +1,68 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import "Fuzzy.js" as Fuzzy
 
 Item {
     id: root
 
     readonly property bool isInbox: win.currentKey() === "INBOX"
+    // The archive view: the picker at the top is its own state, the list
+    // underneath is a plain box view of the picked Box.
+    readonly property bool isArchive: win.currentKey() === "Archive"
+    property var pickBoxes: []
+    property int pickActive: 0
+    // The picker's query. Root owns it so the root-level functions can clear
+    // it: pickQuery itself lives inside the header Component (ids there are
+    // invisible to outer bindings), and two-way binds to this.
+    property string pickFilter: ""
+    // The picker's list: the boxes that have no view or menu route of their
+    // own and would only be reachable by moving. Every account's tree is in:
+    // a Secondary's boxes carry its prefix on the name ("work/Archive/2021"),
+    // and the folder glyph carries that account's color to tell the trees
+    // apart.
+    readonly property var pickMatches:
+        Fuzzy.pickerBoxes(pickBoxes).filter(function (b) {
+            var q = pickFilter.trim()
+            return !q || Fuzzy.fuzzy(q, b.box)
+        })
+
+    // Root owns only properties — pickQuery itself is inside the header
+    // Component, unreachable from here. Setting archiveBoxOpen makes the
+    // field's Row visible, whose onVisibleChanged focuses the field.
+    function openPicker() {
+        pickFilter = ""
+        pickActive = 0
+        win.archiveBoxOpen = true
+    }
+    function chooseBox(i) {
+        var m = pickMatches[i]
+        if (!m) return
+        win.archiveBox = m.box
+        win.loadBucket()
+        pickActive = 0
+        Qt.callLater(function () { win.navView().forceActiveFocus() })
+    }
+    // Escape inside the picker: fold back to the chosen box's button, or, with
+    // none chosen, leave the archive view for the Inbox.
+    function pickerEscape() {
+        if (win.archiveBox !== "") {
+            root.pickFilter = ""
+            win.navView().forceActiveFocus()
+        } else {
+            win.switchToKey("INBOX")
+        }
+    }
+    onIsArchiveChanged: {
+        if (!isArchive) return
+        win.loadArchiveBoxes(function (l) { root.pickBoxes = l || [] })
+        if (win.archiveBox === "") root.openPicker()
+    }
+
+    // Back to the header top: a bucket switch lands at the first row, so the
+    // archive picker's input and its dropdown open where the header is drawn.
+    function toTop() {
+        list.contentY = 0
+    }
 
     // Senders sitting in the Screener, waiting on a decision. Drives the one
     // entry point to the Screener: the button top-left of the Inbox.
@@ -165,12 +223,189 @@ Item {
 
             Item { width: 1; height: 24 }
 
+            // ---- archive view -----------------------------------------------------
+            // Key 8's view: a fuzzy box picker whose list is the same one the
+            // "Move to…" menus offer. When a box is chosen the
+            // picker is a quiet button and the mail follows below.
+            Rectangle {
+                id: pickLine
+                visible: root.isArchive
+                width: Math.min(560, parent.width)
+                height: 38
+                radius: Theme.radiusSmall
+                color: Theme.windowBg
+                border.width: 1
+                border.color: win.archiveBoxOpen ? Theme.accent : Theme.hairline
+                Behavior on color { ColorAnimation { duration: Theme.anim } }
+                Behavior on border.color { ColorAnimation { duration: Theme.anim } }
+
+                // Editing: the field. It is up whenever a box is being hunted
+                // for or none is chosen yet.
+                Row {
+                    visible: win.archiveBox === "" || win.archiveBoxOpen
+                    onVisibleChanged: if (visible) pickQuery.forceActiveFocus()
+                    anchors.fill: parent
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 12
+                    spacing: 10
+                    // The bucket load under the header can strip the field's
+                    // focus again after the Row's own visible-changed focus
+                    // ran (switchTo loads right beside openPicker); refocus
+                    // once the wheel has stopped turning.
+                    Connections {
+                        target: root
+                        function onIsArchiveChanged() {
+                            if (root.isArchive && win.archiveBox === "") pickFocus.restart()
+                        }
+                    }
+                    Timer { id: pickFocus; interval: 1; onTriggered: pickQuery.forceActiveFocus() }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "\uf187"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 13
+                        color: Theme.textDim
+                        Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    }
+                    TextField {
+                        id: pickQuery
+                        text: root.pickFilter
+                        onTextChanged: if (text !== root.pickFilter) root.pickFilter = text
+                        width: parent.width - 34
+                        anchors.verticalCenter: parent.verticalCenter
+                        placeholderText: root.pickMatches.length === 0 ? "No boxes loaded" : "Pick an archive box…"
+                        color: Theme.textPrimary
+                        placeholderTextColor: Theme.textDim
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 13
+                        background: null
+                        leftPadding: 0
+                        // The focus mirror: the Shortcuts read win.archiveBoxOpen,
+                        // so the digits and the j/k/o letters know when the
+                        // field is typing text instead.
+                        onActiveFocusChanged: win.archiveBoxOpen = activeFocus
+                        Keys.onDownPressed: root.pickActive = Math.min(root.pickMatches.length - 1, root.pickActive + 1)
+                        Keys.onUpPressed: root.pickActive = Math.max(0, root.pickActive - 1)
+                        Keys.onReturnPressed: root.chooseBox(root.pickActive)
+                    }
+                }
+
+                // Chosen: box name plus a pencil, one tap to re-pick.
+                Row {
+                    visible: win.archiveBox !== "" && !win.archiveBoxOpen
+                    anchors.fill: parent
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 12
+                    spacing: 10
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "\uf187"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 13
+                        // The picked box's account, same rule as the picker
+                        // rows: "work/…" tints work's color, a Primary box
+                        // the Primary's.
+                        color: win.accountColor(win.accountOfId(win.archiveBox))
+                        Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: win.archiveBox
+                        elide: Text.ElideMiddle
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 13
+                        color: Theme.textPrimary
+                        Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "\uf040"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11
+                        color: Theme.textDim
+                        Behavior on color { ColorAnimation { duration: Theme.anim } }
+                    }
+                    HoverHandler { cursorShape: Qt.PointingHandCursor }
+                    TapHandler { onTapped: root.openPicker() }
+                }
+            }
+
+            // The picker's dropdown. It sits in the header just under the
+            // field, only while that has focus, and pushes the list down the
+            // same way the Command Launcher's card grows.
+            Rectangle {
+                visible: root.isArchive && win.archiveBoxOpen && root.pickMatches.length > 0
+                width: Math.min(560, parent.width)
+                height: 12 + Math.min(root.pickMatches.length, 8) * 36
+                clip: true
+                radius: Theme.radiusSmall
+                color: Theme.railBg
+                border.width: 1
+                border.color: Theme.hairline
+                ListView {
+                    anchors { fill: parent; margins: 6 }
+                    clip: true
+                    spacing: 2
+                    // The matches scroll once they outgrow the eight rows the
+                    // dropdown shows, so a Secondary's tree ("work/…") stays
+                    // reachable without typing to filter it first. currentIndex
+                    // follows pickActive, so j/k and typing keep the row in view.
+                    currentIndex: root.pickActive
+                    model: root.pickMatches
+                    delegate: Rectangle {
+                            width: ListView.view.width
+                            height: 34
+                            radius: Theme.radiusSmall
+                            color: index === root.pickActive ? Theme.selection
+                                 : rowHover.hovered ? Theme.cardHover : "transparent"
+                            Behavior on color { ColorAnimation { duration: Theme.anim } }
+                            // Anchored children, not a Row: a Row ignores
+                            // child anchors and misshapes width-pinned ones,
+                            // which is what had icon and text overlapping.
+                            Text {
+                                id: boxGlyph
+                                anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter }
+                                text: "\uf07b"
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 12
+                                // The owning account's color, read off the
+                                // box name's account prefix ("work/…"), the
+                                // same rule box view uses to open it.
+                                color: win.accountColor(win.accountOfId(modelData.box))
+                                Behavior on color { ColorAnimation { duration: Theme.anim } }
+                            }
+                            Text {
+                                anchors {
+                                    left: boxGlyph.right; leftMargin: 10
+                                    right: parent.right; rightMargin: 44
+                                    verticalCenter: parent.verticalCenter
+                                }
+                                text: modelData.box
+                                elide: Text.ElideMiddle
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 12
+                                color: Theme.textPrimary
+                            }
+                            Pill {
+                                anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                                value: modelData.count || 0
+                            }
+                            HoverHandler {
+                                id: rowHover
+                                onHoveredChanged: if (hovered) root.pickActive = index
+                            }
+                            TapHandler { onTapped: root.chooseBox(index) }
+                        }
+                    }
+                }
+
             // The empty bucket: the end-of-list state, shown when the model
             // has no rows at all.
             Column {
                 width: parent.width
                 spacing: 10
                 visible: listModel.count === 0
+                         && !(root.isArchive && win.archiveBox === "")
                 topPadding: 60
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
