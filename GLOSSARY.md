@@ -118,9 +118,10 @@ out — or the link, when there is no code — puts it on the clipboard and says
 marks the mail read and bins it a quarter of an hour later. The link is copied,
 never followed: opening it would log you in from a notification you had not read.
 A Pickup owes no Routing decision — its sender is a login form you used once.
-Recognised from the subject, which is the only part of an auth mail that announces
-the genre; the body is where the code is extracted, never where the mail is
-classified.
+Recognised from the subject, which is the part of an auth mail that announces
+the genre; the body is where the code is extracted, and it classifies on its
+own only twice: a link whose path names the act, and an auth adjective naming
+the code noun ("verification code"), which is how welcome mail puts it.
 _Avoid_: OTP, 2FA mail, verification email, code (that names what it carries)
 
 **Aside**:

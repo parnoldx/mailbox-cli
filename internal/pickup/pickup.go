@@ -26,6 +26,15 @@
 // on their own; token and auth stay subject-gated, because an opaque token in
 // a query string is every unsubscribe link ever sent.
 //
+// There is one body-first classification besides that link, and it is the
+// same two-word phrase the subject gate trusts, met in the body: an auth
+// adjective naming the code noun ("Your verification code is: 61296136").
+// Welcome mail puts it there — "Welcome to Acme!" names no code word up
+// front, yet the sender is plainly running a login form. This is not the
+// keyword net the corpus sank: that one keyed on "code" alone, this one
+// requires the adjective beside it, and "Buchungscode", "Bestellcode" and
+// plain "Code:" still stay prose.
+//
 // The ignore list comes from OTPHelper, the Android notification reader, which
 // has taken this class of false positive in the field for years.
 package pickup
@@ -125,6 +134,18 @@ var linkAct = regexp.MustCompile(`(?i)\b` +
 // The \b keeps "deactivate" from reading as an activate link: without it the
 // provider's own cancel URL classified a broker's trading-hours mail as a
 // Pickup (2026-09-25).
+//
+// vouchedBody is that body-first classification. The adjective list mirrors
+// the subject gate's strong words minus confirmation: an English booking
+// calls its reference a "confirmation code" too, so that word classifies
+// only when the subject already vouched. The German stems are glued, as the
+// subject gate glues them.
+var vouchedBody = regexp.MustCompile(`(?i)\b(?:` +
+	`(verification|verify|security|access|login|sign[ -]?in|auth\w*|one[ -]?time|otp)[ -]?` +
+	`(?:code|pin|passcode|passwort|kennwort)` +
+	`|(verifizierungs|verifikations|bestätigungs|sicherheits|zugangs|zugriffs|anmelde|einmal|prüf|aktivierungs)` +
+	`(?:code|pin|passwort|kennwort)` +
+	`)`)
 
 // ignore is the false-positive list OTPHelper learned the hard way, plus the
 // German shopping equivalents. A discount code is not a login.
@@ -144,7 +165,12 @@ func Find(subject_, body string) (code, link_ string) {
 	if m := link.FindString(body); m != "" {
 		link_ = trimLink(m)
 	}
-	if !subject.MatchString(subject_) {
+	vouched := subject.MatchString(subject_) ||
+		// Welcome mail: no code word in the subject, but the body names the
+		// whole phrase. Extraction still goes through findCode, which needs
+		// the code near a label anyway — the vouch only unlocks the read.
+		vouchedBody.MatchString(body)
+	if !vouched {
 		if link_ == "" || !linkAct.MatchString(link_) {
 			return "", ""
 		}

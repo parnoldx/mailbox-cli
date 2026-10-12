@@ -47,6 +47,16 @@ func TestFindsCodesAndLinks(t *testing.T) {
 			wantCode: "19624929",
 		},
 		{
+			// Verbatim shape from the Screener, 2026-10-12: the subject is
+			// welcome-mail with no code word in it, the code is named in the
+			// body only. The subject gate stays shut on purpose; the auth
+			// phrase beside the noun in the body is the vouch instead.
+			name:     "welcome mail, code named in the body",
+			subject:  "Welcome to Acme!",
+			body:     "Your verification code is: 61296136\n\nIf you are having any issues with your account, please don't hesitate to contact us by replying to this mail.\n",
+			wantCode: "61296136",
+		},
+		{
 			// Verbatim from the Screener, 2026-09-28: the code is alphanumeric
 			// and sits on a line of its own, which is how Basecamp renders it.
 			// The lone-line net was digits-only and let it through.
@@ -153,6 +163,14 @@ func TestIgnoresMailThatIsNotAPickup(t *testing.T) {
 			"unsubscribe link whose path says deactivate",
 			"Bevorstehende Änderungen der Handelszeiten der Märkte",
 			"https://example.com/deactivate/f3a9c2e1-7b4d-4a86-9c5f-2e8b1d6a4c73?signature=a9d4f17b2c8e5036b1f9a7d4c2e8b6053f9a1d7c4e2b8f605a3d9c1e7b4f2a8d",
+		},
+		{
+			// A welcome mail whose body never names the auth act stays prose:
+			// "account is ready" over a log-in-here link is onboarding, not a
+			// login form waiting on a code.
+			"welcome mail with no code and no act link",
+			"Welcome to Acme!",
+			"Your account is ready. Sign in at https://example.com/app to get started.",
 		},
 		{
 			"discount code in a shop mail",
