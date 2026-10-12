@@ -531,13 +531,4 @@ Item {
         id: bottomStacks
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
     }
-
-    // Connection status: just the dot.
-    Rectangle {
-        anchors { left: parent.left; bottom: parent.bottom; margins: 22 }
-        width: 8; height: 8; radius: 4
-        opacity: 0.85
-        color: Mailbox.online ? Theme.green : Theme.yellow
-        Behavior on color { ColorAnimation { duration: Theme.anim } }
-    }
 }
