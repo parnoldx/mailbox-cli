@@ -108,6 +108,28 @@ func TestInviteToAWorkAddressPicksWork(t *testing.T) {
 	}
 }
 
+// A To line Exchange broke with unquoted commas ("Surname, Given <...>")
+// must still give up its addresses: the one that maps decides the calendar.
+func TestInviteToABrokenToLineStillPicksItsCalendar(t *testing.T) {
+	d, _, _ := seedInviteDAV(t)
+	to := "Peter <me@work.test>, Surname, Given <other@example.com>"
+	got, _, err := d.inviteTarget(vcal.Invite{}, to, d.Primary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "Work" {
+		t.Fatalf("calendar = %q, want Work", got)
+	}
+}
+
+func TestEmailsFromABrokenToLine(t *testing.T) {
+	to := "Peter <me@work.test>, Surname, Given <other@example.com>"
+	got := emailsFromHeader(to)
+	if !slices.Equal(got, []string{"me@work.test", "other@example.com"}) {
+		t.Fatalf("addresses = %v", got)
+	}
+}
+
 func TestInviteToAnUnknownAddressNeedsAChoice(t *testing.T) {
 	d, _, _ := seedInviteDAV(t)
 	in := vcal.Invite{Attendees: []string{"stranger@example.org"}}

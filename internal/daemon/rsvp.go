@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -377,13 +378,20 @@ func (d *Daemon) lookupCalendarEmail(addr string) (string, bool) {
 	return "", false
 }
 
+// emailsFromHeader is every address a To line names. Real mail sometimes
+// breaks RFC 5322 — Exchange writes display names like "Surname, Given"
+// unquoted, and the commas make the whole list unparseable — so a list that
+// will not parse still gives up the addresses a scan can see. Without that,
+// an invite to a broken To line loses the one address that would have said
+// which calendar it belongs on.
 func emailsFromHeader(raw string) []string {
 	list, err := compose.ParseAddressList(raw)
 	if err != nil || len(list) == 0 {
-		if a, aerr := compose.ParseAddress(raw); aerr == nil && a.Addr != "" {
-			return []string{strings.ToLower(a.Addr)}
+		var out []string
+		for _, a := range addrRe.FindAllString(raw, -1) {
+			out = append(out, strings.ToLower(a))
 		}
-		return nil
+		return out
 	}
 	out := make([]string, 0, len(list))
 	for _, a := range list {
@@ -393,6 +401,9 @@ func emailsFromHeader(raw string) []string {
 	}
 	return out
 }
+
+// addrRe picks the addresses out of a To line the parser could not read.
+var addrRe = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
 
 func hostOfURL(raw string) string {
 	u, err := url.Parse(raw)
