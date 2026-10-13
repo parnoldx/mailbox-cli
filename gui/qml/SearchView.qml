@@ -59,7 +59,10 @@ Item {
         color: Qt.rgba(0, 0, 0, 0.55)
         opacity: root.opened ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: Theme.anim } }
-        TapHandler { onTapped: root.close() }
+        // Exclusive grab: with the default DragThreshold policy the tap stays
+        // unaccepted and falls through to whatever sits under the overlay, so
+        // one click on a search hit also opened the inbox row beneath it.
+        TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: root.close() }
     }
 
     Rectangle {

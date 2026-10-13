@@ -70,7 +70,9 @@ Item {
         color: Qt.rgba(0, 0, 0, 0.78)
         opacity: root.opened ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: Theme.anim } }
-        TapHandler { onTapped: root.close() }
+        // Exclusive grab, so a click cannot fall through to what is under the
+        // overlay (same as the search scrim).
+        TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: root.close() }
     }
 
     Item {
