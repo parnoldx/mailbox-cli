@@ -240,8 +240,12 @@ Menu {
                 required property var modelData
                 text: modelData.box
                 onTriggered: {
+                    // capture before dismiss: the shared row reference is gone
+                    // once the menu chain closes
+                    var rid = (menu.row && menu.row.id) || ""
+                    var box = modelData.box
                     menu.dismiss()
-                    win.moveId(menu.row.id, modelData.box, "Moved to " + modelData.box)
+                    if (rid) win.moveId(rid, box, "Moved to " + box)
                 }
             }
             onObjectAdded: (index, object) => moveMenu.insertItem(index, object)
@@ -255,8 +259,9 @@ Menu {
         id: bubbleMenu
         title: "Bubble up"
         onChosen: function (timing) {
+            var rid = (menu.row && menu.row.id) || ""
             menu.dismiss()
-            win.bubbleId(menu.row.id, timing, "Bubbled up")
+            if (rid) win.bubbleId(rid, timing, "Bubbled up")
         }
     }
 
