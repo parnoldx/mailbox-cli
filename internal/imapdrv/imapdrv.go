@@ -188,11 +188,32 @@ func (d *Driver) tryWork(folder string, fn func(*imapclient.Client) error) error
 	return fn(d.work)
 }
 
-// onWorkOnce is onWork without the retry, for an operation that may not be
-// repeated blindly (ADR-0017).
+// onWorkOnce is onWork without repeating the operation itself (ADR-0017): a
+// MOVE whose ack was lost has still happened. A failure before the operation
+// runs is not that case — nothing has happened, and a pooled connection the
+// server quietly dropped is exactly that — so the select gets the same
+// redial-once the reads have and the operation runs on a fresh connection.
 func (d *Driver) onWorkOnce(folder string, fn func(*imapclient.Client) error) error {
 	d.workMu.Lock()
 	defer d.workMu.Unlock()
+
+	var ran bool
+	err := runCapped(d.workConn, func() error {
+		if err := d.selectFolder(folder); err != nil {
+			return err
+		}
+		ran = true
+		return fn(d.work)
+	})
+	if err == nil || ran {
+		return err
+	}
+	c, conn, rerr := d.connect(nil)
+	if rerr != nil {
+		return fmt.Errorf("reconnect after %v: %w", err, rerr)
+	}
+	_ = d.work.Close()
+	d.work, d.workConn = c, conn
 	return runCapped(d.workConn, func() error { return d.tryWork(folder, fn) })
 }
 
