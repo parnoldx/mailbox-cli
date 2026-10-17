@@ -159,33 +159,6 @@ func runDaemon(systemdSocket bool) error {
 	}
 	defer m.Close()
 
-	drv, err := imapdrv.Dial(imapdrv.Config{
-		Host:     cfg.Account.IMAPHost,
-		Port:     cfg.Account.IMAPPort,
-		Username: cfg.Account.Email,
-		Password: cfg.Account.Password,
-	})
-	if err != nil {
-		return err
-	}
-	defer drv.Close()
-
-	ctx0 := context.Background()
-	logger := log.New(os.Stderr, "", log.LstdFlags)
-	r := &mailsync.Reconciler{Account: "primary", Mirror: m, Driver: drv}
-
-	mirrored, watched, err := boxes(ctx0, drv, cfg.Account.Watch)
-	if err != nil {
-		return err
-	}
-	// What discovery no longer offers, the Mirror forgets — a folder deleted
-	// in webmail must not keep haunting listings and search.
-	if err := m.KeepFolders("primary", mirrored); err != nil {
-		return err
-	}
-	logger.Printf("mirroring %d boxes, watching %v", len(mirrored), watched)
-	d := daemon.New("primary", m, r, mirrored, watched, logger)
-
 	// The Outbox is a separate file from the Mirror and outlives it: a mail
 	// that has been composed but not yet sent exists nowhere else (ADR-0013).
 	outPath, err := config.OutboxPath()
@@ -198,108 +171,20 @@ func runDaemon(systemdSocket bool) error {
 	}
 	defer box.Close()
 
-	sentBox := cfg.Account.SentBox
-	if sentBox == "" {
-		// Asked for by its special-use flag rather than guessed from a name.
-		if sentBox, err = drv.SentFolder(ctx0); err != nil {
-			logger.Printf("cannot ask the server where sent mail goes: %v", err)
-		}
+	logger := log.New(os.Stderr, "", log.LstdFlags)
+	primary, err := buildIMAP(context.Background(), "primary", cfg.Account, m, box, logger)
+	if err != nil {
+		return err
 	}
-	if sentBox == "" {
-		logger.Printf("no \\Sent box found: sent mail will not be filed")
-	}
+	defer primary.Close()
+	d := daemon.NewFor(primary, m, logger)
 	d.Outbox = box
-	d.Primary.From = compose.Address{Name: cfg.Account.DisplayName, Addr: cfg.Account.Email}
-	d.Primary.Color = cfg.Account.Color
-	d.Primary.Courier = &outbox.Courier{
-		Box: box, Account: "primary", Filer: drv, SentBox: sentBox, Log: logger,
-		Transport: smtpdrv.New(smtpdrv.Config{
-			Host: cfg.Account.SMTPHost, Port: cfg.Account.SMTPPort,
-			Username: cfg.Account.Email, Password: cfg.Account.Password,
-		}),
-	}
-	logger.Printf("outbox at %s, filing sent mail in %q", outPath, sentBox)
+	logger.Printf("outbox at %s", outPath)
 
-	// The calendars and task lists. The account's own server is enumerated;
-	// anything configured by hand is only used when it has its own credentials,
-	// which means it is on a server we cannot ask (ADR-0010). Skipped entirely
-	// when NoDAV is set (ADR-0025's VPS Daemon): d.DAV stays nil, which the
-	// reconciler and every command already treat as "no calendars configured".
-	if !cfg.Account.NoDAV {
-		primaryDAV := davdrv.New(davdrv.Config{
-			Endpoint: cfg.Account.DAVEndpoint,
-			Username: cfg.Account.Email, Password: cfg.Account.DAVPassword,
-		})
-		clients := []davdrv.Server{primaryDAV}
-		for key, cal := range cfg.CalDAV {
-			if cal.URL == "" || cal.Password == "" {
-				continue // on our own server: discovery finds it
-			}
-			name := cal.Name
-			if name == "" {
-				name = key
-			}
-			kind := cal.Kind
-			if kind == "" {
-				kind = "events"
-			}
-			user := cal.User
-			if user == "" {
-				user = cfg.Account.Email
-			}
-			clients = append(clients, davdrv.Static(
-				davdrv.Config{Endpoint: cal.URL, Username: user, Password: cal.Password},
-				davsync.Collection{Kind: kind, URL: cal.URL, Name: name, Color: cal.Color},
-			))
-			logger.Printf("calendar %q comes from %s with its own credentials", name, cal.URL)
-		}
-		// A Microsoft 365 account's calendars and contacts are its own Graph
-		// driver in the same set, so the agenda and contact lookups read them
-		// like any other collection (ADR-0029).
-		for _, name := range sortedNames(cfg.Secondary) {
-			sec := cfg.Secondary[name]
-			if !sec.Graph() {
-				continue
-			}
-			g, err := openGraph(name, sec)
-			if err != nil {
-				logger.Printf("account %s: calendars and contacts: %v (skipped)", name, err)
-				continue
-			}
-			dav := graphdrv.NewDAV(g.client, g.store, name)
-			dav.Email = sec.Email
-			clients = append(clients, dav)
-			logger.Printf("account %s: calendars and contacts come from Microsoft 365", name)
-		}
-		d.DAV = &davsync.Reconciler{
-			Account: "primary", Mirror: m, Driver: davdrv.NewSet(clients...),
-			Location: time.Local,
-			// Collections this machine does not mirror. Discovery skips them on the
-			// way in and drops them if they are already held (ADR-0013 is why the
-			// list is in the config and not on the row).
-			Exclude: cfg.Collections.Exclude,
-			OnCollection: func(name string, out davsync.Outcome, err error) {
-				switch {
-				case err != nil:
-					logger.Printf("dav %s: %v", name, err)
-				case out.Changed > 0 || out.Deleted > 0:
-					logger.Printf("dav %s: changed=%d deleted=%d full=%v", name, out.Changed, out.Deleted, out.Full)
-				}
-			},
-		}
-
-		d.DAVWriter = &davsync.Writer{
-			Account: "primary", Mirror: m, Driver: davdrv.NewSet(clients...), Reconciler: d.DAV,
-		}
-		d.DAVHome = primaryDAV
-		if u, err := url.Parse(cfg.Account.DAVEndpoint); err == nil {
-			d.DAVHost = u.Host
-		}
-		d.CalendarEmail = calendarEmailMap(cfg)
-		d.TaskList = cfg.Account.TaskList
-		d.AddressBook = cfg.Account.AddressBook
-	} else {
+	if cfg.Account.NoDAV {
 		logger.Printf("no_dav set: calendars, task lists and address books are skipped")
+	} else {
+		setupDAV(d, cfg, m, logger)
 	}
 	d.BubbleMorning, d.BubbleEvening = cfg.Bubble.Morning, cfg.Bubble.Evening
 	if cfg.Pickup.Expiry != "" {
@@ -326,7 +211,7 @@ func runDaemon(systemdSocket bool) error {
 	// Secondary Accounts: an Inbox, a Sent box and the ability to send, each
 	// with its own connections and its own name in an id (ADR-0005).
 	for _, name := range sortedNames(cfg.Secondary) {
-		acct, err := buildSecondary(ctx0, name, cfg.Secondary[name], m, box, logger)
+		acct, err := buildSecondary(context.Background(), name, cfg.Secondary[name], m, box, logger)
 		if err != nil {
 			// A problem as well as a log line, as on a reload: a sign-in refused
 			// while the Daemon was down does not resolve itself.
@@ -350,6 +235,86 @@ func runDaemon(systemdSocket bool) error {
 		return err
 	}
 	return d.Serve(ctx, ln)
+}
+
+// setupDAV wires the calendars, task lists and address books. The account's own
+// server is enumerated; anything configured by hand is only used when it has
+// its own credentials, which means it is on a server we cannot ask (ADR-0010).
+// Not called when NoDAV is set (ADR-0025's VPS Daemon): d.DAV stays nil, which
+// the reconciler and every command already treat as "no calendars configured".
+func setupDAV(d *daemon.Daemon, cfg *config.Config, m *mirror.Mirror, logger *log.Logger) {
+	primaryDAV := davdrv.New(davdrv.Config{
+		Endpoint: cfg.Account.DAVEndpoint,
+		Username: cfg.Account.Email, Password: cfg.Account.DAVPassword,
+	})
+	clients := []davdrv.Server{primaryDAV}
+	for key, cal := range cfg.CalDAV {
+		if cal.URL == "" || cal.Password == "" {
+			continue // on our own server: discovery finds it
+		}
+		name := cal.Name
+		if name == "" {
+			name = key
+		}
+		kind := cal.Kind
+		if kind == "" {
+			kind = "events"
+		}
+		user := cal.User
+		if user == "" {
+			user = cfg.Account.Email
+		}
+		clients = append(clients, davdrv.Static(
+			davdrv.Config{Endpoint: cal.URL, Username: user, Password: cal.Password},
+			davsync.Collection{Kind: kind, URL: cal.URL, Name: name, Color: cal.Color},
+		))
+		logger.Printf("calendar %q comes from %s with its own credentials", name, cal.URL)
+	}
+	// A Microsoft 365 account's calendars and contacts are its own Graph
+	// driver in the same set, so the agenda and contact lookups read them
+	// like any other collection (ADR-0029).
+	for _, name := range sortedNames(cfg.Secondary) {
+		sec := cfg.Secondary[name]
+		if !sec.Graph() {
+			continue
+		}
+		g, err := openGraph(name, sec)
+		if err != nil {
+			logger.Printf("account %s: calendars and contacts: %v (skipped)", name, err)
+			continue
+		}
+		dav := graphdrv.NewDAV(g.client, g.store, name)
+		dav.Email = sec.Email
+		clients = append(clients, dav)
+		logger.Printf("account %s: calendars and contacts come from Microsoft 365", name)
+	}
+	d.DAV = &davsync.Reconciler{
+		Account: "primary", Mirror: m, Driver: davdrv.NewSet(clients...),
+		Location: time.Local,
+		// Collections this machine does not mirror. Discovery skips them on the
+		// way in and drops them if they are already held (ADR-0013 is why the
+		// list is in the config and not on the row).
+		Exclude: cfg.Collections.Exclude,
+		OnCollection: func(name string, out davsync.Outcome, err error) {
+			switch {
+			case err != nil:
+				logger.Printf("dav %s: %v", name, err)
+			case out.Changed > 0 || out.Deleted > 0:
+				logger.Printf("dav %s: changed=%d deleted=%d full=%v", name, out.Changed, out.Deleted, out.Full)
+			}
+		},
+	}
+
+	d.DAVWriter = &davsync.Writer{
+		Account: "primary", Mirror: m, Driver: davdrv.NewSet(clients...), Reconciler: d.DAV,
+	}
+	d.DAVHome = primaryDAV
+	if u, err := url.Parse(cfg.Account.DAVEndpoint); err == nil {
+		d.DAVHost = u.Host
+	}
+	d.CalendarEmail = calendarEmailMap(cfg)
+	d.TaskList = cfg.Account.TaskList
+	d.AddressBook = cfg.Account.AddressBook
 }
 
 // watchable are the Boxes worth an IDLE connection: the ones where a minute of
@@ -454,6 +419,14 @@ func buildSecondary(ctx context.Context, name string, sec config.Account,
 	if sec.Graph() {
 		return buildGraph(ctx, name, sec, m, box, logger)
 	}
+	return buildIMAP(ctx, name, sec, m, box, logger)
+}
+
+// buildIMAP opens an IMAP account's mail connections: the Primary's and a
+// Secondary's are built the same way.
+func buildIMAP(ctx context.Context, name string, sec config.Account,
+	m *mirror.Mirror, box *outbox.Outbox, logger *log.Logger) (*daemon.Account, error) {
+
 	drv, err := imapdrv.Dial(imapdrv.Config{
 		Host: sec.IMAPHost, Port: sec.IMAPPort, Username: sec.Email, Password: sec.Password,
 	})
@@ -482,6 +455,9 @@ func buildSecondary(ctx context.Context, name string, sec config.Account,
 		if sent, err = drv.SentFolder(ctx); err != nil {
 			logger.Printf("account %s: cannot ask where sent mail goes: %v", name, err)
 		}
+	}
+	if sent == "" {
+		logger.Printf("account %s: no \\Sent box found: sent mail will not be filed", name)
 	}
 	if sec.SMTPHost != "" {
 		acct.Courier = &outbox.Courier{

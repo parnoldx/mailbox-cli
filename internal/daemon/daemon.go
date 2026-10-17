@@ -148,7 +148,12 @@ func New(account string, m *mirror.Mirror, r *mailsync.Reconciler, mirrored, wat
 	if r != nil {
 		w = &mailsync.Writer{Account: account, Mirror: m, Driver: r.Driver, Mirrored: mirrored}
 	}
-	primary := NewAccount(account, r, w, mirrored, watched)
+	return NewFor(NewAccount(account, r, w, mirrored, watched), m, logger)
+}
+
+// NewFor builds a Daemon around a Primary Account built elsewhere — by main,
+// with the same code that builds a Secondary one.
+func NewFor(primary *Account, m *mirror.Mirror, logger *log.Logger) *Daemon {
 	primary.Primary = true
 	return &Daemon{
 		Primary: primary, Mirror: m,
