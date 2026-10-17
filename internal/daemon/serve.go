@@ -173,339 +173,336 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 
 	switch strings.Join(req.Cmd, " ") {
 	case "box list":
-		// Both filters are applied here rather than while printing, so a flag
-		// means the same thing whether a caller reads the table or the JSON.
-		unreadOnly := req.Bool("unread")
-		everything := req.Bool("archive")
-		out := []boxRow{}
-		for _, acct := range d.accounts() {
-			counts, err := d.Mirror.BoxCounts(acct.Name)
-			if err != nil {
-				return resp.api(err.Error())
-			}
-			held := map[string]mirror.BoxCount{}
-			for _, c := range counts {
-				held[c.Folder] = c
-			}
-			// Driven by what is mirrored rather than by what has messages in
-			// it, so an empty Box is a row saying it is empty and not a Box
-			// that appears to have stopped existing.
-			for _, folder := range listedBoxes(acct, everything) {
-				c := held[folder]
-				if unreadOnly && c.Unseen == 0 {
-					continue
-				}
-				out = append(out, boxRow{
-					Box:     acct.qualify(shortBox(folder, acct.Mirrored)),
-					Folder:  folder,
-					Account: acct.label(),
-					Count:   c.Count,
-					Unseen:  c.Unseen,
-					Watched: slices.Contains(acct.Watched, folder),
-				})
-			}
-		}
-		return resp.ok(out)
-
+		return d.handleBoxList(req, resp)
 	case "box view":
-		// A Box is named the same way a Message is: `[account/]box`, with the
-		// Primary Account implicit (ADR-0005).
-		// With no account named, a Box several accounts have is listed from all
-		// of them: a listing spans accounts, an id names one.
-		name := req.Str("positional")
-		prefix, rest := splitAccount(name, d.accountNames())
-		limit := req.Int("limit", 50)
-		if prefix == "" {
-			merged, ok, err := d.mergedView(rest, limit)
-			if err != nil {
-				return resp.api(err.Error())
-			}
-			if ok {
-				return resp.ok(merged)
-			}
-		}
-		acct, err := d.accountNamed(prefix)
-		if err != nil {
-			return resp.usage(err.Error())
-		}
-		folder := "INBOX"
-		if rest != "" {
-			folder = resolveBox(rest, acct.Mirrored)
-		}
-		rows, err := d.Mirror.Rows(acct.Name, folder, limit)
-		if err != nil {
-			return resp.api(err.Error())
-		}
-		return resp.ok(viewRows(acct, folder, rows, d.threadSizesFor(acct.Name, rows)))
-
+		return d.handleBoxView(req, resp)
 	case "message view":
-		id := req.Str("positional")
-		acct, folder, uid, err := d.resolveID(id)
-		if err != nil {
-			return resp.usage(err.Error())
-		}
-		r, err := d.Mirror.Row(acct.Name, folder, uid)
-		if errors.Is(err, mirror.ErrNotFound) {
-			return resp.notFound(noSuchMessage(id))
-		}
-		if err != nil {
-			return resp.api(err.Error())
-		}
-		places, err := d.Mirror.Placements(acct.Name, r.Message.ID)
-		if err != nil {
-			return resp.api(err.Error())
-		}
-		m := d.withInvite(ctx, acct, folder, uid, r.Message.ID, r.Message.Key, r.To, viewMessage(acct, folder, r, places))
-		return resp.ok(m)
-
+		return d.handleMessageView(ctx, req, resp)
 	case "attachment list":
-		id := req.Str("positional")
-		acct, folder, uid, _, err := d.resolveAttachmentID(id)
-		if err != nil {
-			return resp.usage(err.Error())
-		}
-		parts, err := d.partsOf(acct, folder, uid)
-		if err != nil {
-			return fail(resp, id, err)
-		}
-		return resp.ok(viewParts(acct, folder, uid, parts))
-
+		return d.handleAttachmentList(req, resp)
 	case "attachment save":
-		id := req.Str("positional")
-		acct, folder, uid, index, err := d.resolveAttachmentID(id)
-		if err != nil {
-			return resp.usage(err.Error())
-		}
-		parts, err := d.partsOf(acct, folder, uid)
-		if err != nil {
-			return fail(resp, id, err)
-		}
-		part, err := pick(acct, folder, uid, parts, index)
-		if err != nil {
-			return resp.usage(err.Error())
-		}
-		out := req.Str("output")
-		force := req.Bool("force")
-		saved, err := d.save(ctx, acct, folder, uid, part, out, force)
-		if err != nil {
-			return resp.api(err.Error())
-		}
-		return resp.ok(saved)
-
+		return d.handleAttachmentSave(ctx, req, resp)
 	case "attachment bytes":
-		id := req.Str("positional")
-		acct, folder, uid, index, err := d.resolveAttachmentID(id)
-		if err != nil {
-			return resp.usage(err.Error())
-		}
-		parts, err := d.partsOf(acct, folder, uid)
-		if err != nil {
-			return fail(resp, id, err)
-		}
-		part, err := pick(acct, folder, uid, parts, index)
-		if err != nil {
-			return resp.usage(err.Error())
-		}
-		if part.Size > maxInlineBytes {
-			return resp.usage(fmt.Sprintf(
-				"%s is %d bytes; use `attachment save` for anything over %d",
-				part.Name(), part.Size, int64(maxInlineBytes)))
-		}
-		if acct.Reconciler == nil {
-			return resp.api("this daemon cannot fetch: no server connection")
-		}
-		body, err := acct.Reconciler.Driver.FetchPart(ctx, folder, uid, part.Path)
-		if err != nil {
-			return resp.api(err.Error())
-		}
-		return resp.ok(inlineBytes{
-			Filename: part.Name(), MIMEType: part.MIMEType, Size: len(body),
-			ContentID: part.ContentID, Base64: base64.StdEncoding.EncodeToString(body),
-		})
-
+		return d.handleAttachmentBytes(ctx, req, resp)
 	case "attachment fileee":
 		return d.handleFileee(ctx, req, resp)
-
 	case "thread view":
-		id := req.Str("positional")
-		acct, folder, uid, err := d.resolveID(id)
-		if err != nil {
-			return resp.usage(err.Error())
-		}
-		r, err := d.Mirror.Row(acct.Name, folder, uid)
-		if errors.Is(err, mirror.ErrNotFound) {
-			return resp.notFound(noSuchMessage(id))
-		}
-		if err != nil {
-			return resp.api(err.Error())
-		}
-		// A Thread never crosses an Account: the same conversation reaching two
-		// accounts is two Threads (ADR-0008).
-		rows, err := d.Mirror.Thread(acct.Name, r.Message.ThreadID)
-		if err != nil {
-			return resp.api(err.Error())
-		}
-		out := make([]message, 0, len(rows))
-		for _, row := range rows {
-			m := viewMessage(acct, row.Placement.Folder, row, nil)
-			m.HasInvite = d.hasCalendarPart(acct, row.Message.ID)
-			out = append(out, m)
-		}
-		return resp.ok(out)
-
+		return d.handleThreadView(req, resp)
 	case "invite show":
-		// The one server read in the invite path, and only on demand: a
-		// client asks for it when it is about to draw the card, not when it
-		// lists the thread. The cache in loadInvite makes the second ask free.
-		id := req.Str("positional")
-		acct, folder, uid, err := d.resolveID(id)
-		if err != nil {
-			return resp.usage(err.Error())
-		}
-		r, err := d.Mirror.Row(acct.Name, folder, uid)
-		if errors.Is(err, mirror.ErrNotFound) {
-			return resp.notFound(noSuchMessage(id))
-		}
-		if err != nil {
-			return resp.api(err.Error())
-		}
-		card := d.inviteCardOf(ctx, acct, folder, uid, r.Message.ID, r.Message.Key, r.To)
-		if card == nil {
-			return resp.ok(nil)
-		}
-		return resp.ok(card)
-
+		return d.handleInviteShow(ctx, req, resp)
 	case "search":
-		text := req.Str("positional")
-		q := mirror.Query{Text: text, From: req.Str("from"), Limit: req.Int("limit", 25)}
-		// `--in` may name an account's Box, and it may name the account alone.
-		box := req.Str("in")
-		prefix, rest := splitAccount(box, d.accountNames())
-		search := d.accounts()
-		if prefix != "" {
-			acct, err := d.accountNamed(prefix)
-			if err != nil {
-				return resp.usage(err.Error())
-			}
-			search = []*Account{acct}
-		}
-		// Empty rather than nil: an empty list of results is a result, and a
-		// caller that gets `null` where it expected a list has to special-case
-		// nothing-matched twice.
-		out := []hit{}
-		for _, acct := range search {
-			aq := q
-			if rest != "" {
-				aq.Box = resolveBox(rest, acct.Mirrored)
-			}
-			hits, err := d.Mirror.Search(acct.Name, aq)
-			if err != nil {
-				return resp.usage(err.Error())
-			}
-			out = append(out, viewHits(acct, hits)...)
-		}
-		// Ranked within an account; newest first across them, because two
-		// accounts' relevance scores are not comparable and pretending they are
-		// would put a five-year-old mail above today's for no visible reason.
-		if len(search) > 1 {
-			sort.SliceStable(out, func(i, j int) bool { return out[i].Date > out[j].Date })
-			if len(out) > q.Limit {
-				out = out[:q.Limit]
-			}
-		}
-		return resp.ok(out)
-
+		return d.handleSearch(ctx, req, resp)
 	case "seen", "unseen":
-		acct, refs, err := d.refs(req)
-		if err != nil {
-			return resp.failed(err)
-		}
-		results, err := acct.Writer.SetSeen(ctx, refs, req.Cmd[0] == "seen")
-		return d.wrote(acct, resp, results, err)
-
+		return d.handleSeen(ctx, req, resp)
 	case "move", "trash", "spam":
-		acct, refs, err := d.refs(req)
-		if err != nil {
-			return resp.failed(err)
-		}
-		if refs, err = d.threaded(acct.Name, refs); err != nil {
-			return resp.api(err.Error())
-		}
-		dest := "Trash"
-		if req.Cmd[0] == "spam" {
-			// Junk is the provider's, not ours: this files mail where the
-			// server's own spam handling can see it, and blocks nobody. The
-			// sender-level decision is `route set --to block`.
-			if dest, err = junkBox(acct); err != nil {
-				return resp.usage(err.Error())
-			}
-		}
-		if req.Cmd[0] == "move" {
-			to := req.Str("to")
-			if to == "" {
-				return resp.usage("move needs --to BOX")
-			}
-			// A move within one account. Moving mail between accounts is a
-			// different operation — a copy and a delete over two servers — and
-			// this is not it.
-			_, box := splitAccount(to, d.accountNames())
-			dest = resolveBox(box, acct.Mirrored)
-		}
-		if req.Cmd[0] == "trash" {
-			// A binned message should count as unread for nobody. Set \Seen
-			// now, while the uid we hold is still the message's — after the
-			// move it has a new one in Trash, which the Mirror never sees.
-			if _, err := acct.Writer.SetSeen(ctx, refs, true); err != nil {
-				return resp.api(err.Error())
-			}
-		}
-		results, err := acct.Writer.Move(ctx, refs, dest)
-		return d.wrote(acct, resp, results, err)
-
+		return d.handleMove(ctx, req, resp)
 	case "send":
 		return d.handleSend(ctx, req, resp)
-
 	case "reply":
 		return d.handleReply(ctx, req, resp)
-
 	case "forward":
 		return d.handleForward(ctx, req, resp)
-
 	case "account list":
-		// What a client needs to paint an account: the name `box view` takes,
-		// the address mail leaves from, and its colour. A row's own account
-		// field is empty for the Primary; primary says which entry that is.
-		out := []accountRow{}
-		for _, a := range d.accounts() {
-			out = append(out, accountRow{
-				Name: a.Name, Email: a.From.Addr, Primary: a.Primary, Color: a.Color,
-			})
-		}
-		return resp.ok(out)
-
+		return d.handleAccountList(resp)
 	case "status":
-		resp.Problems = d.Problems()
-		resp.Inferred = d.RecentInferred()
-		out := []map[string]any{}
-		for _, acct := range d.accounts() {
-			f, err := d.Mirror.Folder(acct.Name, "INBOX")
-			if err != nil {
-				return resp.api(err.Error())
-			}
-			out = append(out, map[string]any{
-				"account": acct.Name, "primary": acct.Primary,
-				"from": acct.From.Addr, "from_name": acct.From.Name,
-				"folder": f.Name, "uidvalidity": f.UIDValidity,
-				"uidnext": f.UIDNext, "highestmodseq": f.HighestModSeq, "count": f.Count,
-				"boxes": len(acct.Mirrored), "watched": acct.Watched,
-			})
-		}
-		return resp.ok(out)
+		return d.handleStatus(resp)
 	}
 
 	resp.Code = "usage"
 	resp.Error = fmt.Sprintf("unknown command %q", strings.Join(req.Cmd, " "))
 	return resp
+}
+
+// handleBoxList lists every account's Boxes. Both filters are applied here
+// rather than while printing, so a flag means the same thing whether a caller reads the table or the JSON.
+func (d *Daemon) handleBoxList(req Request, resp Response) Response {
+	unreadOnly := req.Bool("unread")
+	everything := req.Bool("archive")
+	out := []boxRow{}
+	for _, acct := range d.accounts() {
+		counts, err := d.Mirror.BoxCounts(acct.Name)
+		if err != nil {
+			return resp.api(err.Error())
+		}
+		held := map[string]mirror.BoxCount{}
+		for _, c := range counts {
+			held[c.Folder] = c
+		}
+		// Driven by what is mirrored rather than by what has messages in
+		// it, so an empty Box is a row saying it is empty and not a Box
+		// that appears to have stopped existing.
+		for _, folder := range listedBoxes(acct, everything) {
+			c := held[folder]
+			if unreadOnly && c.Unseen == 0 {
+				continue
+			}
+			out = append(out, boxRow{
+				Box:     acct.qualify(shortBox(folder, acct.Mirrored)),
+				Folder:  folder,
+				Account: acct.label(),
+				Count:   c.Count,
+				Unseen:  c.Unseen,
+				Watched: slices.Contains(acct.Watched, folder),
+			})
+		}
+	}
+	return resp.ok(out)
+}
+
+// handleBoxView lists one Box. A Box is named the same way a Message is:
+// `[account/]box`, with the Primary Account implicit (ADR-0005).
+// With no account named, a Box several accounts have is listed from all
+// of them: a listing spans accounts, an id names one.
+func (d *Daemon) handleBoxView(req Request, resp Response) Response {
+	name := req.Str("positional")
+	prefix, rest := splitAccount(name, d.accountNames())
+	limit := req.Int("limit", 50)
+	if prefix == "" {
+		merged, ok, err := d.mergedView(rest, limit)
+		if err != nil {
+			return resp.api(err.Error())
+		}
+		if ok {
+			return resp.ok(merged)
+		}
+	}
+	acct, err := d.accountNamed(prefix)
+	if err != nil {
+		return resp.usage(err.Error())
+	}
+	folder := "INBOX"
+	if rest != "" {
+		folder = resolveBox(rest, acct.Mirrored)
+	}
+	rows, err := d.Mirror.Rows(acct.Name, folder, limit)
+	if err != nil {
+		return resp.api(err.Error())
+	}
+	return resp.ok(viewRows(acct, folder, rows, d.threadSizesFor(acct.Name, rows)))
+}
+
+func (d *Daemon) handleMessageView(ctx context.Context, req Request, resp Response) Response {
+	id := req.Str("positional")
+	acct, folder, uid, r, err := d.rowOf(id)
+	if err != nil {
+		return resp.failed(err)
+	}
+	places, err := d.Mirror.Placements(acct.Name, r.Message.ID)
+	if err != nil {
+		return resp.api(err.Error())
+	}
+	m := d.withInvite(ctx, acct, folder, uid, r.Message.ID, r.Message.Key, r.To, viewMessage(acct, folder, r, places))
+	return resp.ok(m)
+}
+
+func (d *Daemon) handleAttachmentList(req Request, resp Response) Response {
+	id := req.Str("positional")
+	acct, folder, uid, _, err := d.resolveAttachmentID(id)
+	if err != nil {
+		return resp.usage(err.Error())
+	}
+	parts, err := d.partsOf(acct, folder, uid)
+	if err != nil {
+		return fail(resp, id, err)
+	}
+	return resp.ok(viewParts(acct, folder, uid, parts))
+}
+
+func (d *Daemon) handleAttachmentSave(ctx context.Context, req Request, resp Response) Response {
+	acct, folder, uid, part, err := d.partOf(req.Str("positional"))
+	if err != nil {
+		return resp.failed(err)
+	}
+	out := req.Str("output")
+	force := req.Bool("force")
+	saved, err := d.save(ctx, acct, folder, uid, part, out, force)
+	if err != nil {
+		return resp.api(err.Error())
+	}
+	return resp.ok(saved)
+}
+
+func (d *Daemon) handleAttachmentBytes(ctx context.Context, req Request, resp Response) Response {
+	acct, folder, uid, part, err := d.partOf(req.Str("positional"))
+	if err != nil {
+		return resp.failed(err)
+	}
+	if part.Size > maxInlineBytes {
+		return resp.usage(fmt.Sprintf(
+			"%s is %d bytes; use `attachment save` for anything over %d",
+			part.Name(), part.Size, int64(maxInlineBytes)))
+	}
+	if acct.Reconciler == nil {
+		return resp.api("this daemon cannot fetch: no server connection")
+	}
+	body, err := acct.Reconciler.Driver.FetchPart(ctx, folder, uid, part.Path)
+	if err != nil {
+		return resp.api(err.Error())
+	}
+	return resp.ok(inlineBytes{
+		Filename: part.Name(), MIMEType: part.MIMEType, Size: len(body),
+		ContentID: part.ContentID, Base64: base64.StdEncoding.EncodeToString(body),
+	})
+}
+
+func (d *Daemon) handleThreadView(req Request, resp Response) Response {
+	id := req.Str("positional")
+	acct, _, _, r, err := d.rowOf(id)
+	if err != nil {
+		return resp.failed(err)
+	}
+	// A Thread never crosses an Account: the same conversation reaching two
+	// accounts is two Threads (ADR-0008).
+	rows, err := d.Mirror.Thread(acct.Name, r.Message.ThreadID)
+	if err != nil {
+		return resp.api(err.Error())
+	}
+	out := make([]message, 0, len(rows))
+	for _, row := range rows {
+		m := viewMessage(acct, row.Placement.Folder, row, nil)
+		m.HasInvite = d.hasCalendarPart(acct, row.Message.ID)
+		out = append(out, m)
+	}
+	return resp.ok(out)
+}
+
+// handleInviteShow draws an invite card: the one server read in the invite path, and only on demand: a
+// client asks for it when it is about to draw the card, not when it
+// lists the thread. The cache in loadInvite makes the second ask free.
+func (d *Daemon) handleInviteShow(ctx context.Context, req Request, resp Response) Response {
+	id := req.Str("positional")
+	acct, folder, uid, r, err := d.rowOf(id)
+	if err != nil {
+		return resp.failed(err)
+	}
+	card := d.inviteCardOf(ctx, acct, folder, uid, r.Message.ID, r.Message.Key, r.To)
+	if card == nil {
+		return resp.ok(nil)
+	}
+	return resp.ok(card)
+}
+
+func (d *Daemon) handleSearch(ctx context.Context, req Request, resp Response) Response {
+	text := req.Str("positional")
+	q := mirror.Query{Text: text, From: req.Str("from"), Limit: req.Int("limit", 25)}
+	// `--in` may name an account's Box, and it may name the account alone.
+	box := req.Str("in")
+	prefix, rest := splitAccount(box, d.accountNames())
+	search := d.accounts()
+	if prefix != "" {
+		acct, err := d.accountNamed(prefix)
+		if err != nil {
+			return resp.usage(err.Error())
+		}
+		search = []*Account{acct}
+	}
+	// Empty rather than nil: an empty list of results is a result, and a
+	// caller that gets `null` where it expected a list has to special-case
+	// nothing-matched twice.
+	out := []hit{}
+	for _, acct := range search {
+		aq := q
+		if rest != "" {
+			aq.Box = resolveBox(rest, acct.Mirrored)
+		}
+		hits, err := d.Mirror.Search(acct.Name, aq)
+		if err != nil {
+			return resp.usage(err.Error())
+		}
+		out = append(out, viewHits(acct, hits)...)
+	}
+	// Ranked within an account; newest first across them, because two
+	// accounts' relevance scores are not comparable and pretending they are
+	// would put a five-year-old mail above today's for no visible reason.
+	if len(search) > 1 {
+		sort.SliceStable(out, func(i, j int) bool { return out[i].Date > out[j].Date })
+		if len(out) > q.Limit {
+			out = out[:q.Limit]
+		}
+	}
+	return resp.ok(out)
+}
+
+func (d *Daemon) handleSeen(ctx context.Context, req Request, resp Response) Response {
+	acct, refs, err := d.refs(req)
+	if err != nil {
+		return resp.failed(err)
+	}
+	results, err := acct.Writer.SetSeen(ctx, refs, req.Cmd[0] == "seen")
+	return d.wrote(acct, resp, results, err)
+}
+
+func (d *Daemon) handleMove(ctx context.Context, req Request, resp Response) Response {
+	acct, refs, err := d.refs(req)
+	if err != nil {
+		return resp.failed(err)
+	}
+	if refs, err = d.threaded(acct.Name, refs); err != nil {
+		return resp.api(err.Error())
+	}
+	dest := "Trash"
+	if req.Cmd[0] == "spam" {
+		// Junk is the provider's, not ours: this files mail where the
+		// server's own spam handling can see it, and blocks nobody. The
+		// sender-level decision is `route set --to block`.
+		if dest, err = junkBox(acct); err != nil {
+			return resp.usage(err.Error())
+		}
+	}
+	if req.Cmd[0] == "move" {
+		to := req.Str("to")
+		if to == "" {
+			return resp.usage("move needs --to BOX")
+		}
+		// A move within one account. Moving mail between accounts is a
+		// different operation — a copy and a delete over two servers — and
+		// this is not it.
+		_, box := splitAccount(to, d.accountNames())
+		dest = resolveBox(box, acct.Mirrored)
+	}
+	if req.Cmd[0] == "trash" {
+		// A binned message should count as unread for nobody. Set \Seen
+		// now, while the uid we hold is still the message's — after the
+		// move it has a new one in Trash, which the Mirror never sees.
+		if _, err := acct.Writer.SetSeen(ctx, refs, true); err != nil {
+			return resp.api(err.Error())
+		}
+	}
+	results, err := acct.Writer.Move(ctx, refs, dest)
+	return d.wrote(acct, resp, results, err)
+}
+
+// handleAccountList is what a client needs to paint an account: the name `box view` takes,
+// the address mail leaves from, and its colour. A row's own account
+// field is empty for the Primary; primary says which entry that is.
+func (d *Daemon) handleAccountList(resp Response) Response {
+	out := []accountRow{}
+	for _, a := range d.accounts() {
+		out = append(out, accountRow{
+			Name: a.Name, Email: a.From.Addr, Primary: a.Primary, Color: a.Color,
+		})
+	}
+	return resp.ok(out)
+}
+
+func (d *Daemon) handleStatus(resp Response) Response {
+	resp.Problems = d.Problems()
+	resp.Inferred = d.RecentInferred()
+	out := []map[string]any{}
+	for _, acct := range d.accounts() {
+		f, err := d.Mirror.Folder(acct.Name, "INBOX")
+		if err != nil {
+			return resp.api(err.Error())
+		}
+		out = append(out, map[string]any{
+			"account": acct.Name, "primary": acct.Primary,
+			"from": acct.From.Addr, "from_name": acct.From.Name,
+			"folder": f.Name, "uidvalidity": f.UIDValidity,
+			"uidnext": f.UIDNext, "highestmodseq": f.HighestModSeq, "count": f.Count,
+			"boxes": len(acct.Mirrored), "watched": acct.Watched,
+		})
+	}
+	return resp.ok(out)
 }
 
 // domainOf says which loop owns the data a command answers from, so a reply can
@@ -557,6 +554,27 @@ func fail(resp Response, id string, err error) Response {
 		return resp.notFound(noSuchMessage(id))
 	}
 	return resp.failed(err)
+}
+
+// partOf resolves an attachment id to the one part it names. The error carries
+// its own Code for resp.failed, as fail and pick would have chosen it.
+func (d *Daemon) partOf(id string) (*Account, string, uint32, mirror.Part, error) {
+	acct, folder, uid, index, err := d.resolveAttachmentID(id)
+	if err != nil {
+		return nil, "", 0, mirror.Part{}, usageErr("%s", err)
+	}
+	parts, err := d.partsOf(acct, folder, uid)
+	if errors.Is(err, mirror.ErrNotFound) {
+		return nil, "", 0, mirror.Part{}, notFoundErr("%s", noSuchMessage(id))
+	}
+	if err != nil {
+		return nil, "", 0, mirror.Part{}, err
+	}
+	part, err := pick(acct, folder, uid, parts, index)
+	if err != nil {
+		return nil, "", 0, mirror.Part{}, usageErr("%s", err)
+	}
+	return acct, folder, uid, part, nil
 }
 
 // pick chooses the part a save was asked for. A Message with exactly one
@@ -677,17 +695,12 @@ func (d *Daemon) refs(req Request) (*Account, []mailsync.Ref, error) {
 	var acct *Account
 	refs := make([]mailsync.Ref, 0, len(ids))
 	for _, id := range ids {
-		a, folder, uid, err := d.resolveID(id)
-		if err != nil {
-			return nil, nil, usageErr("%s", err)
-		}
 		// An id that parses but names nothing in the Mirror is the common
 		// case — it was expunged since the listing that printed it. Catch it
 		// here so the reply says so, rather than after a pointless server
 		// round trip that fails with a folder-shaped "INBOX: not found".
-		if _, err := d.Mirror.Row(a.Name, folder, uid); errors.Is(err, mirror.ErrNotFound) {
-			return nil, nil, notFoundErr("%s", noSuchMessage(id))
-		} else if err != nil {
+		a, folder, uid, _, err := d.rowOf(id)
+		if err != nil {
 			return nil, nil, err
 		}
 		if acct == nil {

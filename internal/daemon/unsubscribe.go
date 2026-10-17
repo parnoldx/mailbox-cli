@@ -2,14 +2,12 @@ package daemon
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	compose "mailbox/internal/message"
-	"mailbox/internal/mirror"
 	"mailbox/internal/unsubscribe"
 )
 
@@ -30,16 +28,9 @@ var unsubscribeClient = &http.Client{
 // is trustworthy enough to do blind — the link for a client to open.
 func (d *Daemon) handleUnsubscribe(ctx context.Context, req Request, resp Response) Response {
 	id := req.Str("positional")
-	acct, folder, uid, err := d.resolveID(id)
+	acct, _, _, row, err := d.rowOf(id)
 	if err != nil {
-		return resp.usage(err.Error())
-	}
-	row, err := d.Mirror.Row(acct.Name, folder, uid)
-	if errors.Is(err, mirror.ErrNotFound) {
-		return resp.notFound(noSuchMessage(id))
-	}
-	if err != nil {
-		return resp.api(err.Error())
+		return resp.failed(err)
 	}
 	target := unsubscribeTarget(row.Message)
 	switch target.Kind {

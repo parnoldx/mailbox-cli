@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"mailbox/internal/mirror"
 	"mailbox/internal/routing"
 )
 
@@ -41,6 +42,24 @@ func (d *Daemon) resolveIDOn(value string, home *Account, bare func(*Account) (s
 	}
 	folder, uid, err := parseMessageID(rest, a.Mirrored, box)
 	return a, folder, uid, err
+}
+
+// rowOf resolves id and reads the Row it names. The error carries its own
+// Code for resp.failed: a malformed id is usage, an id the Mirror no longer
+// holds is not_found — it was moved or expunged since the listing.
+func (d *Daemon) rowOf(id string) (*Account, string, uint32, mirror.Row, error) {
+	acct, folder, uid, err := d.resolveID(id)
+	if err != nil {
+		return nil, "", 0, mirror.Row{}, usageErr("%s", err)
+	}
+	r, err := d.Mirror.Row(acct.Name, folder, uid)
+	if errors.Is(err, mirror.ErrNotFound) {
+		return nil, "", 0, mirror.Row{}, notFoundErr("%s", noSuchMessage(id))
+	}
+	if err != nil {
+		return nil, "", 0, mirror.Row{}, err
+	}
+	return acct, folder, uid, r, nil
 }
 
 // inbox is where a bare uid is, for every command but the draft ones.

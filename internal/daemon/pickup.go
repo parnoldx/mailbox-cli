@@ -2,7 +2,6 @@ package daemon
 
 import (
 	"context"
-	"errors"
 	"net/url"
 	"os/exec"
 	"slices"
@@ -310,16 +309,9 @@ func (d *Daemon) handlePickup(ctx context.Context, req Request, resp Response) R
 
 	case "copy":
 		id := req.Text("positional")
-		acct, folder, uid, err := d.resolveID(id)
+		_, _, _, row, err := d.rowOf(id)
 		if err != nil {
-			return resp.usage(err.Error())
-		}
-		row, err := d.Mirror.Row(acct.Name, folder, uid)
-		if errors.Is(err, mirror.ErrNotFound) {
-			return resp.notFound(noSuchMessage(id))
-		}
-		if err != nil {
-			return resp.api(err.Error())
+			return resp.failed(err)
 		}
 		// Only something the Daemon took a code out of: a caller pasting the
 		// wrong id should be told, not handed a link the mail never carried.

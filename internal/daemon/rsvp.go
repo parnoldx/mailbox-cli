@@ -415,20 +415,13 @@ func hostOfURL(raw string) string {
 
 func (d *Daemon) handleRSVP(ctx context.Context, req Request, resp Response) Response {
 	id := req.Str("positional")
-	acct, folder, uid, err := d.resolveID(id)
+	acct, folder, uid, row, err := d.rowOf(id)
 	if err != nil {
-		return resp.usage(err.Error())
+		return resp.failed(err)
 	}
 	partstat, err := rsvpPartstat(req)
 	if err != nil {
 		return resp.usage(err.Error())
-	}
-	row, err := d.Mirror.Row(acct.Name, folder, uid)
-	if errors.Is(err, mirror.ErrNotFound) {
-		return resp.notFound(noSuchMessage(id))
-	}
-	if err != nil {
-		return resp.api(err.Error())
 	}
 	in, err := d.loadInvite(ctx, acct, folder, uid, row.Message.ID, row.Message.Key)
 	if err != nil {

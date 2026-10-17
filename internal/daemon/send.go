@@ -67,19 +67,12 @@ func (d *Daemon) handleReply(ctx context.Context, req Request, resp Response) Re
 	// A reply is sent by the account that received it. Answering from a
 	// different address than the one that was written to is not a default
 	// anybody would want.
-	acct, folder, uid, err := d.resolveID(id)
+	acct, _, _, parent, err := d.rowOf(id)
 	if err != nil {
-		return resp.usage(err.Error())
+		return resp.failed(err)
 	}
 	if !req.Bool("draft") && !req.Bool("dry_run") && (d.Outbox == nil || acct.Courier == nil) {
 		return resp.api(fmt.Sprintf("account %q cannot send: no outbox", acct.Name))
-	}
-	parent, err := d.Mirror.Row(acct.Name, folder, uid)
-	if errors.Is(err, mirror.ErrNotFound) {
-		return resp.notFound(noSuchMessage(id))
-	}
-	if err != nil {
-		return resp.api(err.Error())
 	}
 
 	draft, err := d.draftOf(acct, req)
@@ -530,19 +523,12 @@ func outboxID(req Request) (int64, error) {
 // because the people it is going to were never in that conversation.
 func (d *Daemon) handleForward(ctx context.Context, req Request, resp Response) Response {
 	id := req.Str("positional")
-	acct, folder, uid, err := d.resolveID(id)
+	acct, _, _, original, err := d.rowOf(id)
 	if err != nil {
-		return resp.usage(err.Error())
+		return resp.failed(err)
 	}
 	if d.Outbox == nil || acct.Courier == nil {
 		return resp.api(fmt.Sprintf("account %q cannot send: no outbox", acct.Name))
-	}
-	original, err := d.Mirror.Row(acct.Name, folder, uid)
-	if errors.Is(err, mirror.ErrNotFound) {
-		return resp.notFound(noSuchMessage(id))
-	}
-	if err != nil {
-		return resp.api(err.Error())
 	}
 
 	draft, err := d.draftOf(acct, req)

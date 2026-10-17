@@ -143,7 +143,7 @@ func (d *Daemon) sweepLabel(ctx context.Context, name, to string, resp Response)
 		if to != "" {
 			// The new keyword goes on before the old one comes off, so a failure
 			// half way leaves the mail carrying both rather than neither.
-			if results, err = acct.Writer.SetLabel(ctx, refs, to, true); err != nil {
+			if _, err = acct.Writer.SetLabel(ctx, refs, to, true); err != nil {
 				return resp.api(err.Error())
 			}
 		}
