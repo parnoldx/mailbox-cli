@@ -94,7 +94,10 @@ type Reconciler struct {
 	// config. Discovery skips them on the way in and drops them if they are
 	// already held. It is read under a lock because the config can change
 	// while a cycle is running (ADR-0021).
-	Exclude   []string
+	Exclude []string
+	// Colors are the colours named collections are painted in, from the
+	// config, and beat what the server says. Same lock, same reason.
+	Colors    map[string]string
 	excludeMu sync.RWMutex
 }
 
@@ -103,6 +106,13 @@ func (r *Reconciler) SetExclude(names []string) {
 	r.excludeMu.Lock()
 	defer r.excludeMu.Unlock()
 	r.Exclude = append([]string(nil), names...)
+}
+
+// SetColors replaces the colour overrides on a running Reconciler.
+func (r *Reconciler) SetColors(colors map[string]string) {
+	r.excludeMu.Lock()
+	defer r.excludeMu.Unlock()
+	r.Colors = colors
 }
 
 // Discover asks the servers what collections exist and records them. A
@@ -126,6 +136,9 @@ func (r *Reconciler) Discover(ctx context.Context) ([]mirror.Collection, error) 
 	for _, c := range found {
 		if r.excluded(c.Name) {
 			continue
+		}
+		if color := r.colorFor(c.Name); color != "" {
+			c.Color = color
 		}
 		keep[c.URL] = true
 		if _, err := r.Mirror.PutCollection(mirror.Collection{
@@ -166,6 +179,18 @@ func (r *Reconciler) excluded(name string) bool {
 		}
 	}
 	return false
+}
+
+// colorFor is the colour the config paints a named collection in, or empty.
+func (r *Reconciler) colorFor(name string) string {
+	r.excludeMu.RLock()
+	defer r.excludeMu.RUnlock()
+	for key, color := range r.Colors {
+		if strings.EqualFold(strings.TrimSpace(key), strings.TrimSpace(name)) {
+			return color
+		}
+	}
+	return ""
 }
 
 // SyncKinds reconciles the collections of the kinds named, or all of them when

@@ -136,6 +136,12 @@ type Collections struct {
 	// Exclude is matched against a Collection's display name, which is what
 	// discovery matches on. A URL is never written down by hand (ADR-0010).
 	Exclude []string `toml:"exclude"`
+	// Colors are the colours named calendars and task lists are painted in,
+	// winning over whatever the server says. Keyed by the name calendar list
+	// shows. A server that names no colour at all (a Microsoft 365 group's
+	// calendar always has none) leaves a client painting its own accent —
+	// this is how such a calendar gets a colour of ours.
+	Colors map[string]string `toml:"colors"`
 }
 
 // Bubble is the two hours `mailbox bubble` resolves its timing flags to. HEY's
@@ -200,6 +206,17 @@ func (c *Config) Excluded(name string) bool {
 		}
 	}
 	return false
+}
+
+// CalendarColor is the colour this machine paints a named calendar in, from
+// [collections.colors], where the config wins over the server.
+func (c *Config) CalendarColor(name string) string {
+	for key, color := range c.Collections.Colors {
+		if strings.EqualFold(strings.TrimSpace(key), strings.TrimSpace(name)) {
+			return color
+		}
+	}
+	return ""
 }
 
 // Path returns the config file location.
@@ -274,6 +291,11 @@ func LoadFrom(path string) (*Config, error) {
 	}
 	if !validColor(c.Account.Color) {
 		return nil, fmt.Errorf("%s: account.color %q is neither a palette name nor #rrggbb", path, c.Account.Color)
+	}
+	for name, color := range c.Collections.Colors {
+		if !validColor(color) {
+			return nil, fmt.Errorf("%s: collections.colors.%s %q is neither a palette name nor #rrggbb", path, name, color)
+		}
 	}
 	// Sorted, so an account without a colour gets the same one on every load
 	// rather than whichever the map hands out first.

@@ -63,6 +63,44 @@ func TestDiscoveryRecordsWhatTheServerHas(t *testing.T) {
 	}
 }
 
+// The config paints a named calendar its way, over whatever the server said —
+// which for a calendar the server names no colour for is the only colour it gets.
+func TestTheConfigPaintsANamedCalendar(t *testing.T) {
+	r, f, m := setup(t)
+	f.AddCollection(Collection{Kind: "events", URL: "https://dav.example.org/caldav/grp/", Name: "work/gruppe"})
+	r.Colors = map[string]string{"WORK/GRUPPE": "#04703d"}
+	if _, err := r.Discover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// The override landed, under the name as the config spelled it.
+	cols, err := m.Collections("primary", "events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cols {
+		if c.Name != "work/gruppe" {
+			continue
+		}
+		if c.Color != "#04703d" {
+			t.Fatalf("the override did not land: %+v", c)
+		}
+	}
+	// The server's colour stands where the config says nothing.
+	r.SetColors(map[string]string{})
+	if _, err := r.Discover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	cols, _ = m.Collections("primary", "events")
+	for _, c := range cols {
+		if c.Name != "work/gruppe" {
+			continue
+		}
+		if c.Color != "" {
+			t.Fatalf("the cleared override stuck: %+v", c)
+		}
+	}
+}
+
 func TestFirstSyncTakesEverythingAndRemembersTheToken(t *testing.T) {
 	r, f, m := setup(t)
 	f.Deliver(calURL, "a.ics", event("a@example.org", "Zahnarzt", "20260829T100000"))

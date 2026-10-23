@@ -293,8 +293,10 @@ func setupDAV(d *daemon.Daemon, cfg *config.Config, m *mirror.Mirror, logger *lo
 		Location: time.Local,
 		// Collections this machine does not mirror. Discovery skips them on the
 		// way in and drops them if they are already held (ADR-0013 is why the
-		// list is in the config and not on the row).
+		// list is in the config and not on the row). Colors is the same deal:
+		// what a calendar is painted in here, from the config.
 		Exclude: cfg.Collections.Exclude,
+		Colors:  cfg.Collections.Colors,
 		OnCollection: func(name string, out davsync.Outcome, err error) {
 			switch {
 			case err != nil:
