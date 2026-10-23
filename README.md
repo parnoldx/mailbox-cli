@@ -266,6 +266,13 @@ calendars only, where Exchange sends the invitations itself. A Teams meeting
 cannot be taken off an event again — Microsoft 365 ignores changes to it once
 set, same as Outlook.
 
+On Microsoft 365, the group calendars of the groups the account is a member of
+are discovered beside the account's own (named after the group, as Outlook
+labels them), and their events are read and shown like any other entry. Add a
+new one on the group's side and it appears on the next cycle, no configuration.
+Entries stay written on the group's side: Outlook or the group's space, not
+here.
+
 ### System & Diagnostics
 ```bash
 mailbox doctor                     # Inspect daemon, socket, mirror, and server connectivity

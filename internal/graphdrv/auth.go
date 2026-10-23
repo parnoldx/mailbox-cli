@@ -26,7 +26,12 @@ import (
 // 403 ErrorAccessDenied on messageRules with every Mail scope but that one).
 // OnlineMeetings.ReadWrite is in it for `mailbox meet`: a Teams meeting is
 // minted under /me/onlineMeetings, and Calendars.ReadWrite does not cover it.
-const Scopes = "offline_access User.Read Mail.ReadWrite Mail.Send MailboxSettings.ReadWrite Calendars.ReadWrite Contacts.ReadWrite OnlineMeetings.ReadWrite"
+// Group.ReadWrite.All is in it for the group calendars a Microsoft 365 account
+// is a member of, which live in the group's own mailbox and are refused without
+// it. ReadWrite rather than Read is what the tenant consented (measured:
+// AADSTS65001 on Read.All after ReadWrite.All was granted), and it is the
+// superset.
+const Scopes = "offline_access User.Read Mail.ReadWrite Mail.Send MailboxSettings.ReadWrite Calendars.ReadWrite Contacts.ReadWrite OnlineMeetings.ReadWrite Group.ReadWrite.All"
 
 // Login is where the device-code flow is spoken; a test points it at a fake.
 var Login = "https://login.microsoftonline.com"

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"mailbox/internal/mirror"
 	"mailbox/internal/sync/davsync"
 	"mailbox/internal/vcal"
 	"mailbox/internal/vcard"
@@ -108,6 +109,81 @@ func objects(t *testing.T, ch davsync.Changes) map[string]davsync.Change {
 		out[it.Href] = it
 	}
 	return out
+}
+
+// A group calendar is discovered beside the account's own, named after the
+// group, and its events arrive as iCalendar under the group's path.
+func TestAGroupCalendarIsDiscoveredAndSynced(t *testing.T) {
+	f, d := davSetup(t)
+	f.groups = []fakeGroup{{ID: "grp-1", Name: "IILS mbH (workforce)"}, {ID: "grp-2", Name: "All Company"}}
+	f.groups = []fakeGroup{{ID: "grp-1", Name: "IILS mbH (workforce)"}, {ID: "grp-2", Name: "All Company"}}
+	f.groupNames["grp-1"] = "IILS mbH (workforce)" // grp-2 has no group mailbox
+	f.events["ev-g"] = map[string]any{
+		"id": "ev-g", "iCalUId": "GROUPCAL-UID-1", "type": "singleInstance",
+		"changeKey": "ck-g", "calendar": "grp-1", "subject": "Monatsmeeting",
+		"body":  map[string]any{"contentType": "text", "content": ""},
+		"start": map[string]any{"dateTime": "2026-10-15T09:00:00.0000000", "timeZone": "UTC"},
+		"end":   map[string]any{"dateTime": "2026-10-15T10:00:00.0000000", "timeZone": "UTC"},
+	}
+	ctx := context.Background()
+	cal := byName(t, d)["events work/IILS mbH (workforce)"]
+	if cal.URL == "" {
+		t.Fatal("the group calendar is not discovered")
+	}
+	if _, ok := byName(t, d)["events work/All Company"]; ok {
+		t.Error("a group with no mailbox was listed")
+	}
+	ch, err := d.Sync(ctx, cal.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := objects(t, ch)
+	single := got["/v1.0/groups/grp-1/calendar/GROUPCAL-UID-1.ics"]
+	if single.Data == "" {
+		t.Fatalf("nothing under the group's href: %v", got)
+	}
+	p, err := vcal.Parse(single.Data, time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.UID != "GROUPCAL-UID-1" || p.Summary != "Monatsmeeting" ||
+		!p.Start.Equal(time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)) {
+		t.Fatalf("group event %+v", p)
+	}
+	// A later delta of the same calendar stays quiet until the server moves.
+	ch, err = d.Sync(ctx, cal.URL, ch.Token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ch.Items) != 0 {
+		t.Fatalf("the second sync moved %d objects", len(ch.Items))
+	}
+	f.change("grp-1", "ev-g", false)
+	f.events["ev-g"]["subject"] = "Monatsmeeting (verschoben)"
+	ch, err = d.Sync(ctx, cal.URL, ch.Token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ch.Items) != 1 || ch.Items[0].Deleted {
+		t.Fatalf("the change did not come through: %+v", ch.Items)
+	}
+	// Everything else of a group's is an event addressed like /me's: a new one
+	// is created on the group's events path.
+	before := len(f.calls)
+	uid := "groupcal-new-0001"
+	raw, err := vcal.NewEvent(uid, vcal.EventEdit{
+		Summary: "Neuer Eintrag", Start: time.Date(2026, 10, 20, 14, 0, 0, 0, d.loc),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Put(ctx, davsync.Href(mirror.Collection{URL: cal.URL}, uid), raw, ""); err != nil {
+		t.Fatal(err)
+	}
+	calls := strings.Join(f.calls[before:], "\n")
+	if !strings.Contains(calls, "POST /groups/grp-1/events ") {
+		t.Errorf("the new group event went nowhere:\n%s", calls)
+	}
 }
 
 func TestEventsArriveAsICalendar(t *testing.T) {

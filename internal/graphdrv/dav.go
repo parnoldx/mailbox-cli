@@ -93,6 +93,25 @@ func (d *DAV) split(raw string) (collection, key, href string) {
 
 func isCalendar(api string) bool { return strings.HasPrefix(api, "/me/calendars/") }
 
+// groupCalendarID is the group id when the api path is a group's calendar
+// ("/groups/{id}/calendar"), and empty otherwise.
+func groupCalendarID(api string) string {
+	rest, ok := strings.CutPrefix(api, "/groups/")
+	if !ok || !strings.HasSuffix(rest, "/calendar") {
+		return ""
+	}
+	return strings.TrimSuffix(rest, "/calendar")
+}
+
+// eventsAPIOf is where a collection's events are addressed: a group's
+// calendar reads its events from the group mailbox, everyone else's from /me.
+func eventsAPIOf(api string) string {
+	if id := groupCalendarID(api); id != "" {
+		return "/groups/" + id + "/events"
+	}
+	return "/me/events"
+}
+
 // Collections implements davsync.Driver.
 func (d *DAV) Collections(ctx context.Context) ([]davsync.Collection, error) {
 	var out []davsync.Collection
@@ -111,6 +130,38 @@ func (d *DAV) Collections(ctx context.Context) ([]davsync.Collection, error) {
 			name = d.Account
 		}
 		out = append(out, davsync.Collection{Kind: "events", URL: d.c.Base + "/me/calendars/" + url.PathEscape(c.ID), Name: name, Color: c.HexColor})
+	}
+
+	// Group calendars are not in /me/calendars: each lives in the group's own
+	// mailbox, read when this account is a member and Group.ReadWrite.All is
+	// consented. Graph calls every one of them "Calendar", which is useless as
+	// a picker row, so they are named after the group ("work/IILS mbH
+	// (workforce)"), which is what Outlook labels them too. A group without a
+	// group mailbox (a distribution group answer "MailboxNotEnabledForRESTAPI")
+	// has no calendar to ask about, a refusal counts the same, and both are
+	// skipped: the memberOf list is full of groups nobody has a calendar for.
+	groups, _, err := all[struct {
+		ID   string `json:"id"`
+		Type string `json:"@odata.type"`
+		DN   string `json:"displayName"`
+	}](ctx, d.c, "/me/memberOf?$select=id,displayName&$top=999")
+	if err != nil {
+		return nil, fmt.Errorf("groups: %w", err)
+	}
+	for _, g := range groups {
+		if g.Type != "#microsoft.graph.group" || g.DN == "" {
+			continue
+		}
+		var probe struct {
+			ID string `json:"id"`
+		}
+		if err := d.c.do(ctx, request{method: http.MethodGet,
+			path: "/groups/" + g.ID + "/calendar?$select=id"}, &probe); err != nil {
+			continue
+		}
+		out = append(out, davsync.Collection{Kind: "events",
+			URL:  d.c.Base + "/groups/" + g.ID + "/calendar",
+			Name: d.Account + "/" + g.DN})
 	}
 
 	// The default Contacts folder is not in /me/contactFolders, which lists what
@@ -199,7 +250,7 @@ func (t calToken) String() string {
 // Sync implements davsync.Driver: a delta link is a sync token.
 func (d *DAV) Sync(ctx context.Context, collection, token string) (davsync.Changes, error) {
 	api, _ := d.apiPath(collection)
-	if isCalendar(api) {
+	if isCalendar(api) || groupCalendarID(api) != "" {
 		return d.syncCalendar(ctx, api, token)
 	}
 	return d.syncContacts(ctx, api, token)
@@ -273,6 +324,7 @@ func (d *DAV) syncCalendar(ctx context.Context, api, token string) (davsync.Chan
 		}
 		return davsync.Changes{}, err
 	}
+	evAPI := eventsAPIOf(api)
 	byHref := map[string]davsync.Change{}
 	var order []string
 	add := func(ch davsync.Change) {
@@ -301,7 +353,7 @@ func (d *DAV) syncCalendar(ctx context.Context, api, token string) (davsync.Chan
 		default:
 			if g.Start.DateTime == "" {
 				// A delta that named the event without describing it.
-				if err := d.c.do(ctx, request{method: http.MethodGet, path: "/me/events/" + url.PathEscape(g.ID) + "?" + eventSelect, prefer: []string{utc}}, &g); err != nil {
+				if err := d.c.do(ctx, request{method: http.MethodGet, path: evAPI + "/" + url.PathEscape(g.ID) + "?" + eventSelect, prefer: []string{utc}}, &g); err != nil {
 					if notFound(err) {
 						continue
 					}
@@ -364,8 +416,9 @@ func (d *DAV) singleChange(api string, g graphEvent) (davsync.Change, error) {
 // seriesChange reads a repeating event and its instances in the window and
 // makes one object of them. A master that is gone is a deletion.
 func (d *DAV) seriesChange(ctx context.Context, api, master string, from, to time.Time) (davsync.Change, error) {
+	evAPI := eventsAPIOf(api)
 	var m graphEvent
-	err := d.c.do(ctx, request{method: http.MethodGet, path: "/me/events/" + url.PathEscape(master) + "?" + eventSelect, prefer: []string{utc}}, &m)
+	err := d.c.do(ctx, request{method: http.MethodGet, path: evAPI + "/" + url.PathEscape(master) + "?" + eventSelect, prefer: []string{utc}}, &m)
 	if notFound(err) {
 		if href, ok := d.s.objectHref(master); ok {
 			_ = d.s.dropObject(master)
@@ -377,7 +430,7 @@ func (d *DAV) seriesChange(ctx context.Context, api, master string, from, to tim
 		return davsync.Change{}, err
 	}
 	m.ID = master
-	instances, _, err := all[graphEvent](ctx, d.c, "/me/events/"+url.PathEscape(master)+"/instances?startDateTime="+
+	instances, _, err := all[graphEvent](ctx, d.c, evAPI+"/"+url.PathEscape(master)+"/instances?startDateTime="+
 		from.Format(time.RFC3339)+"&endDateTime="+to.Format(time.RFC3339)+
 		"&$select=type,originalStart,start,end,subject,location,isCancelled&$top=200", utc)
 	if err != nil {
@@ -398,6 +451,7 @@ func (d *DAV) seriesChange(ctx context.Context, api, master string, from, to tim
 // MultiGet implements davsync.Driver: each object read again by its Graph id.
 func (d *DAV) MultiGet(ctx context.Context, collection string, hrefs []string) ([]davsync.Change, error) {
 	api, _ := d.apiPath(collection)
+	events := isCalendar(api) || groupCalendarID(api) != ""
 	var out []davsync.Change
 	for _, h := range hrefs {
 		_, _, href := d.split(h)
@@ -407,7 +461,7 @@ func (d *DAV) MultiGet(ctx context.Context, collection string, hrefs []string) (
 		}
 		var ch davsync.Change
 		var err error
-		if isCalendar(api) {
+		if events {
 			ch, err = d.currentEvent(ctx, api, id)
 		} else {
 			var g graphContact
@@ -431,7 +485,7 @@ func (d *DAV) MultiGet(ctx context.Context, collection string, hrefs []string) (
 // Mirror would hold.
 func (d *DAV) currentEvent(ctx context.Context, api, id string) (davsync.Change, error) {
 	var g graphEvent
-	if err := d.c.do(ctx, request{method: http.MethodGet, path: "/me/events/" + url.PathEscape(id) + "?" + eventSelect, prefer: []string{utc}}, &g); err != nil {
+	if err := d.c.do(ctx, request{method: http.MethodGet, path: eventsAPIOf(api) + "/" + url.PathEscape(id) + "?" + eventSelect, prefer: []string{utc}}, &g); err != nil {
 		return davsync.Change{}, err
 	}
 	g.ID = id
@@ -452,7 +506,7 @@ func (d *DAV) currentEvent(ctx context.Context, api, id string) (davsync.Change,
 func (d *DAV) Put(ctx context.Context, raw, data, ifMatch string) (string, error) {
 	collection, _, href := d.split(raw)
 	id, known := d.s.objectID(href)
-	if isCalendar(collection) {
+	if isCalendar(collection) || groupCalendarID(collection) != "" {
 		return d.putEvent(ctx, collection, href, id, known, data)
 	}
 	return d.putContact(ctx, collection, href, id, known, data)
@@ -473,7 +527,11 @@ func (d *DAV) putEvent(ctx context.Context, collection, href, id string, known b
 		if att, ok := want["attendees"].([]map[string]any); ok && len(att) == 0 {
 			delete(want, "attendees")
 		}
-		if err := d.c.do(ctx, request{method: http.MethodPost, path: collection + "/events", body: jsonBody(want)}, &g); err != nil {
+		path := collection + "/events"
+		if gid := groupCalendarID(collection); gid != "" {
+			path = "/groups/" + gid + "/events"
+		}
+		if err := d.c.do(ctx, request{method: http.MethodPost, path: path, body: jsonBody(want)}, &g); err != nil {
 			return "", err
 		}
 		// No ETag back, so the Writer reads the event again: Exchange adds what
@@ -493,7 +551,7 @@ func (d *DAV) putEvent(ctx context.Context, collection, href, id string, known b
 	if len(patch) == 0 {
 		return now.ETag, nil
 	}
-	if err := d.c.do(ctx, request{method: http.MethodPatch, path: "/me/events/" + url.PathEscape(id), body: jsonBody(patch)}, &g); err != nil {
+	if err := d.c.do(ctx, request{method: http.MethodPatch, path: eventsAPIOf(collection) + "/" + url.PathEscape(id), body: jsonBody(patch)}, &g); err != nil {
 		return "", err
 	}
 	return "", nil // read back, as after a POST
@@ -575,8 +633,8 @@ func (d *DAV) Delete(ctx context.Context, raw, ifMatch string) error {
 		return fmt.Errorf("no object at %s", href)
 	}
 	kind := "/me/contacts/"
-	if isCalendar(collection) {
-		kind = "/me/events/"
+	if isCalendar(collection) || groupCalendarID(collection) != "" {
+		kind = eventsAPIOf(collection) + "/"
 	}
 	path := kind + url.PathEscape(id)
 	if err := d.c.do(ctx, request{method: http.MethodDelete, path: path}, nil); err != nil && !notFound(err) {

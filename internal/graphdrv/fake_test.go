@@ -48,8 +48,16 @@ type fakeGraph struct {
 	// DELETE with refusals, which is how a write that dies halfway is provoked.
 	failPost   int
 	failDelete int
+	// groups are the groups this account is a member of, and groupNames their
+	// calendar names. A group not in groupNames has no group mailbox (404).
+	groups     []fakeGroup
+	groupNames map[string]string
 	// calls is every write, as "METHOD /path body".
 	calls []string
+}
+
+type fakeGroup struct {
+	ID, Name string
 }
 
 type fakeFolder struct{ id, name, parent, wellKnown string }
@@ -78,6 +86,7 @@ func newFakeGraph(t *testing.T) (*fakeGraph, *Client) {
 		t: t, messages: map[string]*fakeMessage{}, events: map[string]map[string]any{},
 		instances: map[string][]map[string]any{}, contacts: map[string]map[string]any{},
 		gone: map[string]bool{}, softDeleted: map[string]bool{}, pageSize: 2,
+		groupNames: map[string]string{},
 	}
 	f.folders = []fakeFolder{
 		{id: "f-inbox", name: "Posteingang", wellKnown: "inbox"},
@@ -171,6 +180,14 @@ func (f *fakeGraph) serve(w http.ResponseWriter, r *http.Request) {
 		f.event(w, r, parts, body)
 	case strings.HasPrefix(path, "/me/contactFolders") || strings.HasPrefix(path, "/me/contacts"):
 		f.contactRoutes(w, r, parts, body)
+	case path == "/me/memberOf":
+		var value []map[string]any
+		for _, g := range f.groups {
+			value = append(value, map[string]any{"id": g.ID, "@odata.type": "#microsoft.graph.group", "displayName": g.Name})
+		}
+		f.writeJSON(w, map[string]any{"value": value})
+	case strings.HasPrefix(path, "/groups/"):
+		f.groupRoutes(w, r, parts, body)
 	default:
 		f.fail(w, http.StatusNotFound, "ErrorItemNotFound")
 	}
@@ -497,6 +514,42 @@ func (f *fakeGraph) message(w http.ResponseWriter, r *http.Request, parts []stri
 		f.writeJSON(w, f.messageJSON(m))
 	default:
 		f.writeJSON(w, f.messageJSON(m))
+	}
+}
+
+// groupRoutes is what a group calendar answers. Events live in one bag keyed
+// by the group id, the same way /me's events are keyed by the calendar id.
+func (f *fakeGraph) groupRoutes(w http.ResponseWriter, r *http.Request, parts []string, body []byte) {
+	group := parts[1]
+	switch {
+	case len(parts) == 3 && parts[2] == "calendar":
+		name, ok := f.groupNames[group]
+		if !ok {
+			f.fail(w, http.StatusNotFound, "MailboxNotEnabledForRESTAPI")
+			return
+		}
+		f.writeJSON(w, map[string]any{"id": group + "-cal", "name": name})
+	case len(parts) == 5 && parts[2] == "calendar" && parts[3] == "calendarView" && parts[4] == "delta":
+		if _, ok := f.groupNames[group]; !ok {
+			f.fail(w, http.StatusNotFound, "MailboxNotEnabledForRESTAPI")
+			return
+		}
+		f.page(w, group, f.initial(group), 0)
+	case len(parts) == 3 && parts[2] == "events" && r.Method == http.MethodPost:
+		var e map[string]any
+		_ = json.Unmarshal(body, &e)
+		id := f.newID("ev")
+		e["id"], e["iCalUId"], e["changeKey"], e["calendar"] = id, "ICALUID-"+id, "ck-"+id, group
+		e["type"] = "singleInstance"
+		if e["recurrence"] != nil {
+			e["type"] = "seriesMaster"
+		}
+		f.events[id] = e
+		f.change(group, id, false)
+		f.writeJSON(w, e)
+	default:
+		// Everything else is an event of the group's, addressed as /me's are.
+		f.event(w, r, append([]string{"me", "events"}, parts[3:]...), body)
 	}
 }
 
