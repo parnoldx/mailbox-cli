@@ -1288,6 +1288,20 @@ function fallbackDraft(text, dayKey, kind) {
   return draft
 }
 
+// The calendars the panel draws: an empty list shows everything the
+// agenda brought back, a filled one keeps only the named collections.
+function visibleEvents(events, names) {
+  if (!names || !names.length) return events || []
+  var wanted = {}
+  for (var i = 0; i < names.length; i++) wanted[String(names[i])] = true
+  var out = []
+  for (var j = 0; j < (events || []).length; j++) {
+    var e = events[j]
+    if (e && wanted[String(e.calendarName)]) out.push(e)
+  }
+  return out
+}
+
 // What the entry pane shows first when a day-list row is clicked open for
 // editing: the fields already known from the agenda row it was drawn from.
 // It is missing the description, link, alarms and repeat rule -- those live
@@ -1296,6 +1310,14 @@ function fallbackDraft(text, dayKey, kind) {
 function draftFromAgendaEvent(event) {
   var draft = emptyDraft("event", (event && event.dateKey) || "")
   if (!event) return draft
+  // A multi-day event comes back as one row per day it touches, and every
+  // row carries the instance's absolute start and end -- not that day's
+  // slice. A row listed under a later day is a continuation, so the pane
+  // anchors on the day the event actually starts; the row's own day would
+  // show a shifted, truncated span (Saturday's row read "Oct 31 16:00 →
+  // Nov 1" for an event that began Friday).
+  var startDay = String(event.start || "").slice(0, 10)
+  if (startDay) draft.dateKey = startDay
   draft.title = event.title || ""
   draft.calendarName = event.calendarName || null
   draft.location = event.location || null
@@ -2435,6 +2457,7 @@ if (typeof module !== "undefined") {
     parseEventPhrase: parseEventPhrase,
     fallbackDraft: fallbackDraft,
     draftFromAgendaEvent: draftFromAgendaEvent,
+    visibleEvents: visibleEvents,
     draftFromEventDetail: draftFromEventDetail,
     draftFromTask: draftFromTask,
     draftFromTaskDetail: draftFromTaskDetail,

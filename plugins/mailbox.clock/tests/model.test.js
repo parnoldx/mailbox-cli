@@ -1379,3 +1379,43 @@ test("a locked Teams draft edits without resending teams", () => {
   assert.equal(args.cmd[1], "edit")
   assert.equal(args.args.teams, undefined)
 })
+
+// A multi-day event is one agenda row per day it touches, each row carrying
+// the instance's absolute start and end. Clicking a continuation row must
+// open the edit pane on the day the event starts, not on the day the row
+// was listed under — that showed a shifted, truncated span.
+test("editing a multi-day event anchors on its real start day", () => {
+  const rows = [
+    { id: 1492, uid: "u", calendar: "Kalender", summary: "Retreat", all_day: false,
+      start: "2026-10-30T16:00:00+01:00", end: "2026-11-01T19:00:00+01:00", date: "2026-10-30" },
+    { id: 1492, uid: "u", calendar: "Kalender", summary: "Retreat", all_day: false,
+      start: "2026-10-30T16:00:00+01:00", end: "2026-11-01T19:00:00+01:00", date: "2026-10-31" },
+    { id: 1492, uid: "u", calendar: "Kalender", summary: "Retreat", all_day: false,
+      start: "2026-10-30T16:00:00+01:00", end: "2026-11-01T19:00:00+01:00", date: "2026-11-01" },
+  ]
+  const doc = Model.mailboxDocument([], rows, [], Date.now())
+  const index = Model.indexEventsByDate(doc.events)
+
+  for (const day of ["2026-10-30", "2026-10-31", "2026-11-01"]) {
+    const clicked = Model.eventsForDateKey(index, day)[0]
+    const form = Model.mergeEntryDraft(Model.draftFromAgendaEvent(clicked), {}, {}, "event").values
+    assert.equal(form.date, "2026-10-30", `clicked ${day}: the pane opens on the start day`)
+    assert.equal(form.start, "16:00")
+    assert.equal(form.end, "19:00")
+    assert.equal(form.endDate, "2026-11-01")
+  }
+})
+
+// The calendar display filter: an empty list draws everything, a filled one
+// keeps only the named collections.
+test("visibleEvents keeps the named calendars and everything when none are named", () => {
+  const events = [
+    { calendarName: "Kalender", title: "privat" },
+    { calendarName: "work", title: "job" },
+    { calendarName: "work/ACME mbH (workforce)", title: "gruppe" }
+  ]
+  assert.equal(Model.visibleEvents(events, []).length, 3)
+  assert.equal(Model.visibleEvents(events, null).length, 3)
+  const shown = Model.visibleEvents(events, ["Kalender", "work/ACME mbH (workforce)"])
+  assert.deepEqual(shown.map(e => e.title), ["privat", "gruppe"])
+})

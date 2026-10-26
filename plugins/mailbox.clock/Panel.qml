@@ -83,6 +83,11 @@ Panel {
   property var eventDoc: null
   property var eventIndex: ({})
   property var visibleEventList: []
+  // The calendars the panel draws, from shell.json. Empty or absent shows
+  // everything the roster holds; a filled list keeps only the named
+  // collections. A display filter only -- the chooser still offers every
+  // calendar for writing an entry to.
+  readonly property var shownCalendars: setting("showCalendars", [])
   property string selectedDayKey: todayKey
   readonly property var selectedEvents: Model.eventsForDateKey(eventIndex, selectedDayKey)
 
@@ -1636,16 +1641,19 @@ Panel {
     to.setDate(to.getDate() + 112)
     // The fixed window around today covers the next-event bar and the
     // default view; paging the grid to a month outside it must not leave
-    // that month showing as empty, so the window grows to cover whatever is
-    // on screen too.
-    var monthStart = new Date(root.viewYear, root.viewMonth, 1)
-    monthStart.setDate(monthStart.getDate() - 7)
-    var monthEnd = new Date(root.viewYear, root.viewMonth + 1, 0)
-    monthEnd.setDate(monthEnd.getDate() + 7)
-    if (monthStart < from) from = monthStart
-    if (monthEnd > to) to = monthEnd
+    // that month showing as empty, so the window grows to cover exactly the
+    // days the drawn grid covers, wherever it is paged to.
+    var grid = Model.monthGrid(root.viewYear, root.viewMonth, root.weekStart, "", null, null)
+    var gridDays = grid[grid.length - 1].days
+    var gridStart = Model.dateFromKey(grid[0].days[0].key, from)
+    var gridEnd = Model.dateFromKey(gridDays[gridDays.length - 1].key, to)
+    if (gridStart < from) from = gridStart
+    if (gridEnd > to) to = gridEnd
     // A wire date, not a display date: the daemon parses 2026-08-29.
     var fromKey = Model.dateKey(from.getFullYear(), from.getMonth(), from.getDate())
+    // The daemon's window end is exclusive -- an agenda stops the day
+    // before `to` -- so the last day on screen asks for one day more.
+    to.setDate(to.getDate() + 1)
     var days = Math.round((to.getTime() - from.getTime()) / 86400000)
     // A call with no arguments sends no args field at all: the daemon reads
     // args as an object, and an empty array is a malformed request it cannot
@@ -1690,7 +1698,7 @@ Panel {
 
   function applyDocument(doc) {
     root.eventDoc = doc
-    root.visibleEventList = doc && doc.events ? doc.events : []
+    root.visibleEventList = Model.visibleEvents(doc && doc.events ? doc.events : [], root.shownCalendars)
     root.eventIndex = Model.indexEventsByDate(root.visibleEventList)
     root.visibleTaskList = Model.tasksFromDocument(doc)
     root.taskIndex = Model.indexTasksByDate(root.visibleTaskList, root.todayKey)

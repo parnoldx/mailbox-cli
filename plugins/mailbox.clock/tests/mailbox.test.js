@@ -16,7 +16,7 @@ const AGENDA = [
     start: "2026-08-31T00:00:00+02:00", summary: "Urlaub",
     time: "all day", uid: "all-day-1" },
   { all_day: false, calendar: "Work", date: "2026-08-31",
-    end: "2026-08-31T09:00:00+02:00", id: 1488, location: "IILS",
+    end: "2026-08-31T09:00:00+02:00", id: 1488, location: "ACME",
     recurring: false, start: "2026-08-31T08:10:00+02:00",
     summary: "Standup https://meet.google.com/abc-defg-hij",
     time: "08:10–09:00", uid: "standup" }
@@ -99,7 +99,7 @@ test("clicking a day-list row prefills the entry pane from what the agenda alrea
   assert.equal(draft.startTime, "08:10")
   assert.equal(draft.endTime, "09:00")
   assert.equal(draft.endDateKey, null)
-  assert.equal(draft.location, "IILS")
+  assert.equal(draft.location, "ACME")
   assert.equal(draft.calendarName, "Work")
   assert.equal(draft.allDay, false)
 
@@ -155,11 +155,11 @@ test("the rest of the picture arrives from event view: notes, link, alarm, repea
 test("an edit names the object by id and leaves the calendar alone", () => {
   const edit = Model.requestToArgs({
     kind: "event", id: 1488, title: "Standup", startMs: 1756634400000,
-    endMs: 1756638000000, allDay: false, calendarName: "Work", location: "IILS" })
+    endMs: 1756638000000, allDay: false, calendarName: "Work", location: "ACME" })
   assert.deepEqual(edit, {
     cmd: ["event", "edit"],
     args: { positional: "1488", title: "Standup",
-      start: "2025-08-31 12:00", end: "2025-08-31 13:00", location: "IILS" }
+      start: "2025-08-31 12:00", end: "2025-08-31 13:00", location: "ACME" }
   })
 })
 
