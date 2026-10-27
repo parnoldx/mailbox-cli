@@ -199,6 +199,7 @@ Menu {
     readonly property var rowBoxes: Fuzzy.moveBoxes(_boxes, win.accountOfId(menu.row.id || ""))
     onAboutToShow: {
         _boxes = []
+        moveMenu.rowId = (menu.row && menu.row.id) || ""
         if (!menu.inScreener)
             win.loadArchiveBoxes(function (list) { menu._boxes = list || [] })
     }
@@ -206,6 +207,12 @@ Menu {
     Menu {
         id: moveMenu
         title: "Move to…"
+        // The row the move acts on, captured when the submenu opens. The
+        // delegate cannot read `menu.row` itself: inside an Item's delegate an
+        // unqualified `menu` is the MenuItem's own `menu` property (the menu
+        // it sits in), not this chain's root Menu, whose `row` is undefined
+        // there — the move used to die on an empty id, silently.
+        property string rowId: ""
         implicitWidth: 208
         topPadding: 6
         bottomPadding: 6
@@ -237,14 +244,13 @@ Menu {
         Instantiator {
             model: menu.rowBoxes
             delegate: MenuItem {
+                id: mb
                 required property var modelData
                 text: modelData.box
                 onTriggered: {
-                    // capture before dismiss: the shared row reference is gone
-                    // once the menu chain closes
-                    var rid = (menu.row && menu.row.id) || ""
+                    var rid = moveMenu.rowId
                     var box = modelData.box
-                    menu.dismiss()
+                    moveMenu.dismiss()
                     if (rid) win.moveId(rid, box, "Moved to " + box)
                 }
             }
