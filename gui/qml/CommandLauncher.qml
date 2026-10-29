@@ -462,7 +462,7 @@ Item {
                     }
 
                     HoverHandler { id: itemHover }
-                    TapHandler { onTapped: root.choose(index) }
+                    TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: root.choose(index) }
                 }
             }
 
@@ -530,7 +530,7 @@ Item {
                     }
 
                     HoverHandler { id: actHover }
-                    TapHandler { onTapped: root.fire(modelData) }
+                    TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: root.fire(modelData) }
                 }
             }
 
@@ -605,7 +605,7 @@ Item {
                     }
 
                     HoverHandler { id: labelHover }
-                    TapHandler { onTapped: root.choose(index) }
+                    TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: root.choose(index) }
                 }
             }
 
@@ -686,7 +686,7 @@ Item {
                     }
 
                     HoverHandler { id: archHover }
-                    TapHandler { onTapped: root.choose(index) }
+                    TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: root.choose(index) }
                 }
             }
         }
