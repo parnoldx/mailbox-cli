@@ -25,6 +25,10 @@ Item {
             var q = pickFilter.trim()
             return !q || Fuzzy.fuzzy(q, b.box)
         })
+    // A new query re-anchors the highlight on the top match: Enter with a
+    // filter open must pick the first hit, not whatever row the cursor or a
+    // hover had marked before the list narrowed.
+    onPickFilterChanged: pickActive = 0
 
     // Root owns only properties — pickQuery itself is inside the header
     // Component, unreachable from here. Setting archiveBoxOpen makes the

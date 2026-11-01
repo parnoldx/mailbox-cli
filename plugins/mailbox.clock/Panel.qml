@@ -83,11 +83,6 @@ Panel {
   property var eventDoc: null
   property var eventIndex: ({})
   property var visibleEventList: []
-  // The calendars the panel draws, from shell.json. Empty or absent shows
-  // everything the roster holds; a filled list keeps only the named
-  // collections. A display filter only -- the chooser still offers every
-  // calendar for writing an entry to.
-  readonly property var shownCalendars: setting("showCalendars", [])
   property string selectedDayKey: todayKey
   readonly property var selectedEvents: Model.eventsForDateKey(eventIndex, selectedDayKey)
 
@@ -1641,19 +1636,16 @@ Panel {
     to.setDate(to.getDate() + 112)
     // The fixed window around today covers the next-event bar and the
     // default view; paging the grid to a month outside it must not leave
-    // that month showing as empty, so the window grows to cover exactly the
-    // days the drawn grid covers, wherever it is paged to.
-    var grid = Model.monthGrid(root.viewYear, root.viewMonth, root.weekStart, "", null, null)
-    var gridDays = grid[grid.length - 1].days
-    var gridStart = Model.dateFromKey(grid[0].days[0].key, from)
-    var gridEnd = Model.dateFromKey(gridDays[gridDays.length - 1].key, to)
-    if (gridStart < from) from = gridStart
-    if (gridEnd > to) to = gridEnd
+    // that month showing as empty, so the window grows to cover whatever is
+    // on screen too.
+    var monthStart = new Date(root.viewYear, root.viewMonth, 1)
+    monthStart.setDate(monthStart.getDate() - 7)
+    var monthEnd = new Date(root.viewYear, root.viewMonth + 1, 0)
+    monthEnd.setDate(monthEnd.getDate() + 7)
+    if (monthStart < from) from = monthStart
+    if (monthEnd > to) to = monthEnd
     // A wire date, not a display date: the daemon parses 2026-08-29.
     var fromKey = Model.dateKey(from.getFullYear(), from.getMonth(), from.getDate())
-    // The daemon's window end is exclusive -- an agenda stops the day
-    // before `to` -- so the last day on screen asks for one day more.
-    to.setDate(to.getDate() + 1)
     var days = Math.round((to.getTime() - from.getTime()) / 86400000)
     // A call with no arguments sends no args field at all: the daemon reads
     // args as an object, and an empty array is a malformed request it cannot
@@ -1698,7 +1690,7 @@ Panel {
 
   function applyDocument(doc) {
     root.eventDoc = doc
-    root.visibleEventList = Model.visibleEvents(doc && doc.events ? doc.events : [], root.shownCalendars)
+    root.visibleEventList = doc && doc.events ? doc.events : []
     root.eventIndex = Model.indexEventsByDate(root.visibleEventList)
     root.visibleTaskList = Model.tasksFromDocument(doc)
     root.taskIndex = Model.indexTasksByDate(root.visibleTaskList, root.todayKey)
@@ -1721,13 +1713,24 @@ Panel {
     root.formRecurrence = { freq: parts[0], interval: parseInt(parts[1] || "1", 10) || 1 }
   }
 
-  // Qt.openUrlExternally rather than the shell helper on purpose. That helper
-  // runs `bash -lc`, and a meeting link is supplied by whoever sent the
-  // invitation, so putting it through a shell would be a command injection.
-  // Model.safeUrl also refuses anything that is not plain https.
+  // Meeting links go to Brave Origin (the team session cookie lives there)
+  // when that browser exists, and fall back to the default browser when it
+  // does not. The probe runs once at panel creation; the answer rarely
+  // changes mid-session.
+  property bool teamBrowserFound: false
+
+  Process {
+    command: ["sh", "-c", "command -v brave-origin"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.teamBrowserFound = String(text || "").trim() !== ""
+    }
+  }
+
   function openExternally(url) {
     if (!url) return
-    Qt.openUrlExternally(url)
+    if (root.teamBrowserFound) Quickshell.execDetached(["brave-origin", url])
+    else Qt.openUrlExternally(url)
     root.close()
   }
 
@@ -1742,6 +1745,9 @@ Panel {
     if (record !== false)
       Quickshell.execDetached(["sh", "-c",
         "voxtype meeting start --title \"" + String(event.title || "Meeting").replace(/"/g, "") + "\" 2>&1 || true"])
+    // argv list, never a shell: the URL comes from whoever sent the
+    // invitation, so a `sh -c` would be command injection. Model.safeUrl
+    // also refuses anything that is not https.
     root.openExternally(url)
   }
 
