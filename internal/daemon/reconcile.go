@@ -117,10 +117,8 @@ func (d *Daemon) Reconcile(was, now *config.Config, a Accounts) Applied {
 		out.Changes = append(out.Changes, fmt.Sprintf("account %s is gone", name))
 	}
 
-	if d.DAV != nil && (!sameStrings(was.Collections.Exclude, now.Collections.Exclude) ||
-		!sameStrings(swapStrings(was.Collections.Colors), swapStrings(now.Collections.Colors))) {
+	if d.DAV != nil && !sameStrings(was.Collections.Exclude, now.Collections.Exclude) {
 		d.DAV.SetExclude(now.Collections.Exclude)
-		d.DAV.SetColors(now.Collections.Colors)
 		out.Changes = append(out.Changes, "the excluded collections changed")
 	}
 	if was.Account.TaskList != now.Account.TaskList ||
@@ -213,16 +211,6 @@ func sameStrings(a, b []string) bool {
 		}
 	}
 	return true
-}
-
-// swapStrings is a map's keys as a slice, sorted, for comparing two of them.
-func swapStrings(m map[string]string) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }
 
 // sortedAccounts keeps the order stable, so a log read twice says the same
