@@ -3,6 +3,7 @@ package vcal
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -285,7 +286,11 @@ func NewEvent(uid string, e EventEdit) (string, error) {
 	ev := ical.NewComponent(ical.CompEvent)
 	ev.Props.SetText(ical.PropUID, uid)
 	ev.Props.SetDateTime(ical.PropDateTimeStamp, time.Now().UTC())
-	setWhen(ev, e.Start, e.End, e.AllDay)
+	end := e.End
+	if !end.IsZero() && e.AllDay {
+		end = namedAllDayEnd(end)
+	}
+	setWhen(ev, e.Start, end, e.AllDay)
 	ev.Props.SetText(ical.PropSummary, e.Summary)
 	if e.Description != "" {
 		ev.Props.SetText(ical.PropDescription, e.Description)
@@ -346,19 +351,30 @@ func (e EventEdit) Empty() bool {
 // and LAST-MODIFIED on what it stored, and a freshly built object without them
 // is refused as an outdated update.
 func SetEvent(raw string, e EventEdit) (string, error) {
-	return edit(raw, func(c *ical.Component) {
-		applyEvent(c, e)
+	var applyErr error
+	out, err := edit(raw, func(c *ical.Component) {
+		applyErr = applyEvent(c, e)
+		if applyErr != nil {
+			return
+		}
 		setRepeat(c, e.Repeat)
 		setTeams(c, e.Teams)
 		setAttendees(c, e.Invite, e.Uninvite)
 	})
+	if applyErr != nil {
+		return "", applyErr
+	}
+	if err != nil {
+		return "", err
+	}
+	return out, nil
 }
 
 // applyEvent writes onto a component what an EventEdit names, and touches
 // nothing it does not. It is the body SetEvent and the occurrence writer
 // share; the rule is SetEvent's business alone, because an override of one
 // instance cannot carry a rule of its own.
-func applyEvent(c *ical.Component, e EventEdit) {
+func applyEvent(c *ical.Component, e EventEdit) error {
 	if e.Summary != "" {
 		c.Props.SetText(ical.PropSummary, e.Summary)
 	}
@@ -370,14 +386,29 @@ func applyEvent(c *ical.Component, e EventEdit) {
 	}
 	setURL(c, e.URL)
 	setAlarms(c, e.Alarms, summaryOf(c, e.Summary))
-	if e.Start.IsZero() {
-		return
+	if e.Start.IsZero() && e.End.IsZero() {
+		return nil
+	}
+	start, allDay := e.Start, e.AllDay
+	if start.IsZero() {
+		// An edit that names only the end keeps the start the entry has, and
+		// with it the kind of entry it is: a bare day stays all-day.
+		start, allDay = timeOf(c, ical.PropDateTimeStart, time.Local)
+		if start.IsZero() {
+			return nil
+		}
 	}
 	end := e.End
 	if end.IsZero() {
-		end = defaultEnd(e.Start, e.AllDay)
+		end = defaultEnd(start, allDay)
+	} else if allDay {
+		end = namedAllDayEnd(end)
 	}
-	setWhen(c, e.Start, end, e.AllDay)
+	if !allDay && !end.After(start) {
+		return errors.New("--end is not after --start")
+	}
+	setWhen(c, start, end, allDay)
+	return nil
 }
 
 // SetOccurrence edits one instance of a repeating event and leaves the rule
@@ -447,7 +478,9 @@ func setOccurrence(raw string, named time.Time, namedIsDay bool, e EventEdit, ex
 		}
 		cal.Children = append(cal.Children, child)
 	}
-	applyEvent(child, e)
+	if err := applyEvent(child, e); err != nil {
+		return "", err
+	}
 	if extra != nil {
 		extra(child)
 	}
@@ -807,6 +840,15 @@ func setLocalOrZoned(c *ical.Component, name string, t time.Time) {
 	prop.SetValueType(ical.ValueDateTime)
 	prop.Value = t.Format("20060102T150405")
 	c.Props.Set(prop)
+}
+
+// namedAllDayEnd turns an end the caller named into the exclusive end the
+// record carries. An all-day end is a DATE read as "the entry is gone by this
+// day", so an entry that runs through the 21st carries the 22nd, while the
+// caller saying "to the 21st" means the 21st is still on the calendar. A clock
+// on the end of an all-day entry is noise: the day is what counts.
+func namedAllDayEnd(end time.Time) time.Time {
+	return end.AddDate(0, 0, 1)
 }
 
 // defaultEnd is how long an event lasts when nobody said: a whole day, or an

@@ -732,6 +732,65 @@ func TestNewEventAndSetEventWriteTheTeamsMarkerAndTheAttendees(t *testing.T) {
 	}
 }
 
+// An all-day end the caller names is the last day the entry is on, and the
+// record carries it exclusively: the holiday that runs to the 15th writes
+// DTEND on the 16th. Written as named, every other client reads the record as
+// ending on the 14th — one day of holiday quietly gone.
+func TestAnAllDayEndNamedByTheCallerIsTheLastDay(t *testing.T) {
+	raw, err := NewEvent("urlaub-mailbox", EventEdit{
+		Summary: "Urlaub",
+		Start:   time.Date(2026, 9, 1, 0, 0, 0, 0, time.Local),
+		End:     time.Date(2026, 9, 15, 0, 0, 0, 0, time.Local),
+		AllDay:  true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if line := indexLine(raw, "DTEND"); line != "DTEND;VALUE=DATE:20260916" {
+		t.Errorf("the named end is not the day after the last day: %s\n%s", line, raw)
+	}
+	// The same for an edit: naming the end of an all-day entry moves its last
+	// day, not the day after it.
+	edited, err := SetEvent(raw, EventEdit{End: time.Date(2026, 9, 20, 0, 0, 0, 0, time.Local)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if line := indexLine(edited, "DTEND"); line != "DTEND;VALUE=DATE:20260921" {
+		t.Errorf("the edited end is not the day after the last day: %s\n%s", line, edited)
+	}
+	if !strings.Contains(edited, "DTSTART;VALUE=DATE:20260901") {
+		t.Errorf("the end-only edit moved the start:\n%s", edited)
+	}
+}
+
+// An edit that names only the end keeps the start the entry has: before, it
+// reported ok and changed nothing, so a caller fixing a wrong end date fixed
+// nothing and read the same wrong end back forever.
+func TestAnEditThatNamesOnlyTheEndKeepsTheStart(t *testing.T) {
+	raw, err := NewEvent("tp-mailbox", EventEdit{
+		Summary: "Tibetan Pulsing",
+		Start:   time.Date(2026, 12, 18, 16, 0, 0, 0, time.Local),
+		End:     time.Date(2026, 12, 22, 14, 0, 0, 0, time.Local),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited, err := SetEvent(raw, EventEdit{End: time.Date(2026, 12, 21, 14, 0, 0, 0, time.Local)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(edited, "DTSTART:20261218T160000") {
+		t.Errorf("the end-only edit moved the start:\n%s", edited)
+	}
+	if line := indexLine(edited, "DTEND:"); line != "DTEND:20261221T140000" {
+		t.Errorf("the named end did not land: %s\n%s", line, edited)
+	}
+	// An end that would put the entry backwards is refused, not written.
+	if _, err := SetEvent(raw, EventEdit{End: time.Date(2026, 12, 18, 15, 0, 0, 0, time.Local)}); err == nil {
+		t.Error("an end before the start was accepted")
+	}
+}
+
 // Parse reads both back, so a caller can show who is on an event and whether
 // it is a Teams meeting without the raw.
 func TestParseReadsTeamsAndAttendees(t *testing.T) {
