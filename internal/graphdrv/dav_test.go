@@ -150,6 +150,54 @@ func TestEventsArriveAsICalendar(t *testing.T) {
 	}
 }
 
+func TestGroupCalendarsArriveAndSync(t *testing.T) {
+	f, d := davSetup(t)
+	ctx := context.Background()
+	got := byName(t, d)
+	cal := got["events work/Team"]
+	if cal.URL == "" {
+		t.Fatalf("no group calendar in %v", got)
+	}
+	// A mail-enabled security group has no calendar and is not offered.
+	if _, ok := got["events work/Verteiler"]; ok {
+		t.Error("Verteiler offered as a calendar")
+	}
+	// A meeting somebody put on the group's calendar, the reason it is wanted.
+	f.events["ev-g"] = map[string]any{
+		"id": "ev-g", "iCalUId": "040000008200E00074C5B7101A82E00800000000GGGG", "type": "singleInstance",
+		"changeKey": "ck-g", "calendar": "g-g-team", "subject": "Weekly",
+		"body":  map[string]any{"contentType": "text", "content": ""},
+		"start": map[string]any{"dateTime": "2026-09-28T10:00:00.0000000", "timeZone": "UTC"},
+		"end":   map[string]any{"dateTime": "2026-09-28T11:00:00.0000000", "timeZone": "UTC"},
+	}
+	ch, err := d.Sync(ctx, cal.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	href := "/v1.0/groups/g-team/calendar/040000008200E00074C5B7101A82E00800000000GGGG.ics"
+	data := objects(t, ch)[href].Data
+	p, err := vcal.Parse(data, time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.UID != "040000008200E00074C5B7101A82E00800000000GGGG" || p.Summary != "Weekly" ||
+		!p.Start.Equal(time.Date(2026, 9, 28, 10, 0, 0, 0, time.UTC)) {
+		t.Fatalf("group event %+v", p)
+	}
+	// An edit is PATCHed under the group, where the event lives.
+	raw, err := vcal.SetEvent(data, vcal.EventEdit{Summary: "Weekly verschoben"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Put(ctx, f.srv.URL+href, raw, "ck-g"); err != nil {
+		t.Fatal(err)
+	}
+	w := f.writes()
+	if len(w) != 1 || w[0] != `PATCH /groups/g-team/events/ev-g {"subject":"Weekly verschoben"}` {
+		t.Fatalf("writes %v", w)
+	}
+}
+
 func TestAnEditSendsOnlyWhatChanged(t *testing.T) {
 	f, d := davSetup(t)
 	ctx := context.Background()

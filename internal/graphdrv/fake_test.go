@@ -37,6 +37,9 @@ type fakeGraph struct {
 	gone map[string]bool
 	// rules are the account's inbox rules, in sequence order.
 	rules []fakeRule
+	// groups are the groups the account belongs to, by id. A Unified one
+	// carries a calendar of its own, served under /groups/{id}.
+	groups map[string]map[string]any
 	// softDeleted marks an event deleted in another client that Graph still
 	// knows about: a GET says 404 but a DELETE says 400, the item sitting
 	// unbound in the deletions folder.
@@ -78,6 +81,10 @@ func newFakeGraph(t *testing.T) (*fakeGraph, *Client) {
 		t: t, messages: map[string]*fakeMessage{}, events: map[string]map[string]any{},
 		instances: map[string][]map[string]any{}, contacts: map[string]map[string]any{},
 		gone: map[string]bool{}, softDeleted: map[string]bool{}, pageSize: 2,
+		groups: map[string]map[string]any{
+			"g-team": {"displayName": "Team", "groupTypes": []any{"Unified"}},
+			"g-list": {"displayName": "Verteiler", "groupTypes": []any{}},
+		},
 	}
 	f.folders = []fakeFolder{
 		{id: "f-inbox", name: "Posteingang", wellKnown: "inbox"},
@@ -169,6 +176,10 @@ func (f *fakeGraph) serve(w http.ResponseWriter, r *http.Request) {
 		f.calendars(w, r, parts, body)
 	case strings.HasPrefix(path, "/me/events/"):
 		f.event(w, r, parts, body)
+	case strings.HasPrefix(path, "/me/memberOf"):
+		f.memberOf(w)
+	case strings.HasPrefix(path, "/groups/"):
+		f.groupRoutes(w, r, parts, body)
 	case strings.HasPrefix(path, "/me/contactFolders") || strings.HasPrefix(path, "/me/contacts"):
 		f.contactRoutes(w, r, parts, body)
 	default:
@@ -524,6 +535,47 @@ func (f *fakeGraph) calendars(w http.ResponseWriter, r *http.Request, parts []st
 		f.events[id] = e
 		f.change(cal, id, false)
 		f.writeJSON(w, e)
+	default:
+		f.fail(w, http.StatusNotFound, "ErrorItemNotFound")
+	}
+}
+
+// memberOf lists the groups the account belongs to, as Collections reads them.
+func (f *fakeGraph) memberOf(w http.ResponseWriter) {
+	var out []any
+	for _, id := range sortedKeys(f.groups) {
+		g := f.groups[id]
+		out = append(out, map[string]any{"id": id, "displayName": g["displayName"], "groupTypes": g["groupTypes"]})
+	}
+	f.writeJSON(w, map[string]any{"value": out})
+}
+
+// groupRoutes serves a group's calendar: a delta over its calendarView and
+// its events read, created, patched, deleted and answered like a personal
+// one's, under /groups/{id}/events where Graph keeps them.
+func (f *fakeGraph) groupRoutes(w http.ResponseWriter, r *http.Request, parts []string, body []byte) {
+	gid := parts[1]
+	if _, ok := f.groups[gid]; !ok {
+		f.fail(w, http.StatusNotFound, "ErrorItemNotFound")
+		return
+	}
+	switch {
+	case len(parts) == 5 && parts[2] == "calendar" && parts[3] == "calendarView" && parts[4] == "delta":
+		f.page(w, "g-"+gid, f.initial("g-"+gid), 0)
+	case len(parts) == 3 && parts[2] == "events" && r.Method == http.MethodPost:
+		var e map[string]any
+		_ = json.Unmarshal(body, &e)
+		id := f.newID("ev")
+		e["id"], e["iCalUId"], e["changeKey"], e["calendar"] = id, "ICALUID-"+id, "ck-"+id, "g-"+gid
+		e["type"] = "singleInstance"
+		if e["recurrence"] != nil {
+			e["type"] = "seriesMaster"
+		}
+		f.events[id] = e
+		f.change("g-"+gid, id, false)
+		f.writeJSON(w, e)
+	case len(parts) >= 4 && parts[2] == "events":
+		f.event(w, r, append([]string{"", "", parts[3]}, parts[4:]...), body)
 	default:
 		f.fail(w, http.StatusNotFound, "ErrorItemNotFound")
 	}

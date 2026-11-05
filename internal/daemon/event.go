@@ -156,11 +156,11 @@ func (d *Daemon) addEvent(ctx context.Context, req Request, resp Response) Respo
 }
 
 // graphCalendar says whether a collection is one of a Microsoft 365 account's
-// calendars. That is the one kind of calendar whose server makes Teams links
-// and sends invitations itself; everywhere else the wishes are refused before
-// anything is written.
+// calendars, its own or a group's it is a member of. That is the kind whose
+// server makes Teams links and sends invitations itself; everywhere else the
+// wishes are refused before anything is written.
 func graphCalendar(col mirror.Collection) bool {
-	return strings.Contains(col.URL, "/me/calendars/")
+	return strings.Contains(col.URL, "/me/calendars/") || strings.Contains(col.URL, "/groups/")
 }
 
 // meetingWish reads the Teams and invite arguments an add or an edit was

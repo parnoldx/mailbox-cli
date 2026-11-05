@@ -91,7 +91,26 @@ func (d *DAV) split(raw string) (collection, key, href string) {
 	return api[:i], key, href
 }
 
-func isCalendar(api string) bool { return strings.HasPrefix(api, "/me/calendars/") }
+// isCalendar says whether an api path is an events collection: a personal
+// calendar's (/me/calendars/{id}) or a Microsoft 365 group's (/groups/{id}/calendar).
+// A group's calendar is never under /me/calendars, so discovery has to look
+// for it separately and the rest of the driver has to tell the two apart.
+func isCalendar(api string) bool {
+	if strings.HasPrefix(api, "/me/calendars/") {
+		return true
+	}
+	return strings.HasPrefix(api, "/groups/") && strings.HasSuffix(api, "/calendar")
+}
+
+// eventBase is the path a single event is read or written at. A personal
+// event's id is unique across the account, so /me/events serves every one of
+// the account's calendars; a group's events live under the group itself.
+func eventBase(api string) string {
+	if strings.HasPrefix(api, "/groups/") {
+		return strings.TrimSuffix(api, "/calendar") + "/events"
+	}
+	return "/me/events"
+}
 
 // Collections implements davsync.Driver.
 func (d *DAV) Collections(ctx context.Context) ([]davsync.Collection, error) {
@@ -111,6 +130,35 @@ func (d *DAV) Collections(ctx context.Context) ([]davsync.Collection, error) {
 			name = d.Account
 		}
 		out = append(out, davsync.Collection{Kind: "events", URL: d.c.Base + "/me/calendars/" + url.PathEscape(c.ID), Name: name, Color: c.HexColor})
+	}
+
+	// Every Microsoft 365 group the account belongs to carries a calendar of
+	// its own — the workforce group's meetings, say — and it is never under
+	// /me/calendars: it is read and written under /groups. A mail-enabled
+	// security group has none, so only Unified groups are offered. Two groups
+	// with the same display name would collide on the name the Mirror keys by.
+	// ponytail: no dedup, rename a group if its name clashes.
+	groups, _, err := all[struct {
+		ID          string   `json:"id"`
+		DisplayName string   `json:"displayName"`
+		GroupTypes  []string `json:"groupTypes"`
+	}](ctx, d.c, "/me/memberOf/microsoft.graph.group?$select=id,displayName,groupTypes&$top=100")
+	if err != nil {
+		return nil, fmt.Errorf("groups: %w", err)
+	}
+	for _, g := range groups {
+		unified := false
+		for _, t := range g.GroupTypes {
+			if t == "Unified" {
+				unified = true
+			}
+		}
+		if !unified {
+			continue
+		}
+		out = append(out, davsync.Collection{Kind: "events",
+			URL:  d.c.Base + "/groups/" + url.PathEscape(g.ID) + "/calendar",
+			Name: d.Account + "/" + g.DisplayName})
 	}
 
 	// The default Contacts folder is not in /me/contactFolders, which lists what
@@ -301,7 +349,7 @@ func (d *DAV) syncCalendar(ctx context.Context, api, token string) (davsync.Chan
 		default:
 			if g.Start.DateTime == "" {
 				// A delta that named the event without describing it.
-				if err := d.c.do(ctx, request{method: http.MethodGet, path: "/me/events/" + url.PathEscape(g.ID) + "?" + eventSelect, prefer: []string{utc}}, &g); err != nil {
+				if err := d.c.do(ctx, request{method: http.MethodGet, path: eventBase(api) + "/" + url.PathEscape(g.ID) + "?" + eventSelect, prefer: []string{utc}}, &g); err != nil {
 					if notFound(err) {
 						continue
 					}
@@ -365,7 +413,7 @@ func (d *DAV) singleChange(api string, g graphEvent) (davsync.Change, error) {
 // makes one object of them. A master that is gone is a deletion.
 func (d *DAV) seriesChange(ctx context.Context, api, master string, from, to time.Time) (davsync.Change, error) {
 	var m graphEvent
-	err := d.c.do(ctx, request{method: http.MethodGet, path: "/me/events/" + url.PathEscape(master) + "?" + eventSelect, prefer: []string{utc}}, &m)
+	err := d.c.do(ctx, request{method: http.MethodGet, path: eventBase(api) + "/" + url.PathEscape(master) + "?" + eventSelect, prefer: []string{utc}}, &m)
 	if notFound(err) {
 		if href, ok := d.s.objectHref(master); ok {
 			_ = d.s.dropObject(master)
@@ -377,7 +425,7 @@ func (d *DAV) seriesChange(ctx context.Context, api, master string, from, to tim
 		return davsync.Change{}, err
 	}
 	m.ID = master
-	instances, _, err := all[graphEvent](ctx, d.c, "/me/events/"+url.PathEscape(master)+"/instances?startDateTime="+
+	instances, _, err := all[graphEvent](ctx, d.c, eventBase(api)+"/"+url.PathEscape(master)+"/instances?startDateTime="+
 		from.Format(time.RFC3339)+"&endDateTime="+to.Format(time.RFC3339)+
 		"&$select=type,originalStart,start,end,subject,location,isCancelled&$top=200", utc)
 	if err != nil {
@@ -431,7 +479,7 @@ func (d *DAV) MultiGet(ctx context.Context, collection string, hrefs []string) (
 // Mirror would hold.
 func (d *DAV) currentEvent(ctx context.Context, api, id string) (davsync.Change, error) {
 	var g graphEvent
-	if err := d.c.do(ctx, request{method: http.MethodGet, path: "/me/events/" + url.PathEscape(id) + "?" + eventSelect, prefer: []string{utc}}, &g); err != nil {
+	if err := d.c.do(ctx, request{method: http.MethodGet, path: eventBase(api) + "/" + url.PathEscape(id) + "?" + eventSelect, prefer: []string{utc}}, &g); err != nil {
 		return davsync.Change{}, err
 	}
 	g.ID = id
@@ -473,7 +521,7 @@ func (d *DAV) putEvent(ctx context.Context, collection, href, id string, known b
 		if att, ok := want["attendees"].([]map[string]any); ok && len(att) == 0 {
 			delete(want, "attendees")
 		}
-		if err := d.c.do(ctx, request{method: http.MethodPost, path: collection + "/events", body: jsonBody(want)}, &g); err != nil {
+		if err := d.c.do(ctx, request{method: http.MethodPost, path: newEventPath(collection), body: jsonBody(want)}, &g); err != nil {
 			return "", err
 		}
 		// No ETag back, so the Writer reads the event again: Exchange adds what
@@ -493,7 +541,7 @@ func (d *DAV) putEvent(ctx context.Context, collection, href, id string, known b
 	if len(patch) == 0 {
 		return now.ETag, nil
 	}
-	if err := d.c.do(ctx, request{method: http.MethodPatch, path: "/me/events/" + url.PathEscape(id), body: jsonBody(patch)}, &g); err != nil {
+	if err := d.c.do(ctx, request{method: http.MethodPatch, path: eventBase(collection) + "/" + url.PathEscape(id), body: jsonBody(patch)}, &g); err != nil {
 		return "", err
 	}
 	return "", nil // read back, as after a POST
@@ -546,11 +594,21 @@ func changed(have, want map[string]any) map[string]any {
 	return out
 }
 
+// newEventPath is where an event is created: inside the collection on a
+// personal calendar; a group's events are created under the group itself, as
+// Graph asks for.
+func newEventPath(collection string) string {
+	if strings.HasPrefix(collection, "/groups/") {
+		return eventBase(collection)
+	}
+	return collection + "/events"
+}
+
 // Respond answers an invite on the event Exchange already made for it, and
 // Exchange sends the reply to the organizer. href is the event's, as the
 // Mirror holds it.
 func (d *DAV) Respond(ctx context.Context, href, partstat string) error {
-	_, _, href = d.split(href)
+	col, _, href := d.split(href)
 	id, ok := d.s.objectID(href)
 	if !ok {
 		return fmt.Errorf("no event at %s", href)
@@ -563,7 +621,7 @@ func (d *DAV) Respond(ctx context.Context, href, partstat string) error {
 	if verb == "" {
 		return fmt.Errorf("unknown RSVP %q: accept, decline or tentative", partstat)
 	}
-	return d.c.do(ctx, request{method: http.MethodPost, path: "/me/events/" + url.PathEscape(id) + "/" + verb,
+	return d.c.do(ctx, request{method: http.MethodPost, path: eventBase(col) + "/" + url.PathEscape(id) + "/" + verb,
 		body: jsonBody(map[string]any{"sendResponse": true})}, nil)
 }
 
@@ -576,7 +634,7 @@ func (d *DAV) Delete(ctx context.Context, raw, ifMatch string) error {
 	}
 	kind := "/me/contacts/"
 	if isCalendar(collection) {
-		kind = "/me/events/"
+		kind = eventBase(collection) + "/"
 	}
 	path := kind + url.PathEscape(id)
 	if err := d.c.do(ctx, request{method: http.MethodDelete, path: path}, nil); err != nil && !notFound(err) {
