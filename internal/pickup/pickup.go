@@ -40,6 +40,7 @@
 package pickup
 
 import (
+	"net/url"
 	"regexp"
 	"strings"
 )
@@ -127,9 +128,16 @@ var link = regexp.MustCompile(`(?i)https?://[^\s<>"'\]]*` +
 
 // linkAct is the narrow form, for when no subject has vouched for the mail:
 // the act named in the path is the classification, and token and auth are left
-// out of it — they name no act an unsubscribe link does not also carry.
+// out of it — they name no act an unsubscribe link does not also carry. It is
+// matched against the URL's path and nothing else (namesAct): a query is where
+// tracking lives, and "?login_modal=true" on a portal's front page is not a
+// magic link.
+//
+// reset is the one act a sender names in the path while putting the login in
+// the host: a provider's "your password is old" mail points at
+// login.example.com/resetpassword, and the click is the whole errand.
 var linkAct = regexp.MustCompile(`(?i)\b` +
-	`(login|signin|sign-in|magic|verify|verifizier|confirm|bestaetig|activate|aktivier|freischalt|passwordless|registr|anmeld|otp)`)
+	`(login|signin|sign-in|magic|verify|verifizier|confirm|bestaetig|activate|aktivier|freischalt|passwordless|reset|registr|anmeld|otp)`)
 
 // The \b keeps "deactivate" from reading as an activate link: without it the
 // provider's own cancel URL classified a broker's trading-hours mail as a
@@ -171,13 +179,31 @@ func Find(subject_, body string) (code, link_ string) {
 		// the code near a label anyway — the vouch only unlocks the read.
 		vouchedBody.MatchString(body)
 	if !vouched {
-		if link_ == "" || !linkAct.MatchString(link_) {
+		if link_ == "" || !namesAct(link_) {
 			return "", ""
 		}
 		return "", link_
 	}
 	code = findCode(body)
 	return code, link_
+}
+
+// namesAct asks whether the URL's path names the act, which is the whole of
+// the narrow classification. The query does not count: it is where portal
+// entry pages keep their switches. A WGV "post is waiting for you" notice put
+// its https://…/meinewgv/?login_modal=true on the clipboard as a login link on
+// 2026-11-12, and a PayPal security notice did the same off a
+// "login-email-trusted-device" campaign parameter. A real magic link names the
+// act in the path — /verify/, /anmelden, /konto/aktivieren/.
+//
+// The cost is the other direction: an act named only in the query is missed
+// and the mail is read as ordinary post. That is the cheap mistake of the two.
+func namesAct(u string) bool {
+	p, err := url.Parse(u)
+	if err != nil {
+		return false
+	}
+	return linkAct.MatchString(p.Path)
 }
 
 // trimLink strips what the match drags in but the URL does not own. An HTML

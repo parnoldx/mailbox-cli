@@ -97,6 +97,15 @@ func TestFindsCodesAndLinks(t *testing.T) {
 			wantCode: "110263",
 		},
 		{
+			// The act sits in the path while the login moved into the host, so
+			// a path-only test still classifies it: a provider's password-reset
+			// mail (SIPGATE, 2026-10-30), where the click is the whole errand.
+			name:     "password reset link",
+			subject:  "Zugang für Ihr Konto erfordert neues Passwort",
+			body:     "Ihr Passwort läuft ab. Neues Passwort setzen: https://login.example.com/resetpassword\n",
+			wantLink: true,
+		},
+		{
 			// From the Inbox, 2026-09-24, sender anonymized: the subject is noun over noun
 			// with no code word, so the gate stays shut — the link is the whole
 			// errand and classifies the mail on its own.
@@ -171,6 +180,15 @@ func TestIgnoresMailThatIsNotAPickup(t *testing.T) {
 			"welcome mail with no code and no act link",
 			"Welcome to Acme!",
 			"Your account is ready. Sign in at https://example.com/app to get started.",
+		},
+		{
+			// A "there is post for you in the portal" notice, 2026-11-12: the
+			// portal's front page carries "?login_modal=true" as a switch, so
+			// the act was read out of the query and the notice was collected as
+			// a Pickup. Its path names no act; the subject gate stays shut.
+			"portal notice whose query says login",
+			"Post von Ihrer Versicherung (123456789)",
+			"Guten Tag,\n\nin Ihrem digitalen Postfach liegt neue Post für Sie.\n\nhttps://www.example.de/meineportal/?login_modal=true\n",
 		},
 		{
 			"discount code in a shop mail",
