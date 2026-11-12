@@ -28,7 +28,8 @@ ApplicationWindow {
         { key: "Reply Later", label: "Reply Later", glyph: "\uf112" },
         { key: "Drafts",      label: "Drafts",      glyph: "\uf044" },
         { key: "Sent",        label: "Sent",        glyph: "\uf1d8" },
-        { key: "Archive",     label: "Archive",     glyph: "\uf187" }
+        { key: "Archive",     label: "Archive",     glyph: "\uf187" },
+        { key: "Trash",       label: "Trash",       glyph: "\uf1f8" }
     ]
 
     // Drafts is not `box view` mail: its rows come from `draft list` and a row
@@ -818,7 +819,7 @@ ApplicationWindow {
                 }
             })
         }
-        if (msg.seen === false) {
+        if (msg.seen === false && !msg.read_only) {
             Mailbox.call(["seen"], { positional: id }, function () {
                 win.loadCounts()
                 win.refreshBucket()
@@ -920,8 +921,13 @@ ApplicationWindow {
             if (Mailbox.online) win.flushPendingOpen()
         }
         // A background change (new mail, a flag flipped) refreshes the list, the
-        // counts and the bottom stacks but must not close the reader.
-        function onPushReceived(e, a, b) { win.loadCounts(); win.refreshBucket(); win.refreshStacks() }
+        // counts and the bottom stacks but must not close the reader. Trash is
+        // read from the server, not the Mirror, so a push about local mail says
+        // nothing about it: that listing is left alone until it is asked for.
+        function onPushReceived(e, a, b) {
+            win.loadCounts(); win.refreshStacks()
+            if (currentKey() !== "Trash") win.refreshBucket()
+        }
     }
 
     // The Feed gets its own scroll-and-expand view; every other bucket is a list.
@@ -949,10 +955,17 @@ ApplicationWindow {
                                        && !contactsPane.hasFocus
                                        && !archiveBoxOpen
     readonly property bool navKeys: !openId && !anyOverlay
-    readonly property bool readerKeys: !!openId && !anyOverlay
+    readonly property bool readerKeys: !!openId && !anyOverlay && !readOnlyOpen
     readonly property bool _rowActionable:
         !openId && !anyOverlay && !feedActive
-        && !isDraftsBucket() && bucketView.currentRowId() !== ""
+        && !isDraftsBucket() && !bucketView.currentRowReadOnly()
+        && bucketView.currentRowId() !== ""
+
+    // The reader has a Message the Mirror does not hold: Trash (ADR-0003). Its
+    // text came from the server for this one look, so reply, set aside, label
+    // and move have nothing to act on: the reader shows no chips and the
+    // triage keys stay off.
+    readonly property bool readOnlyOpen: !!openMsg && openMsg.read_only === true
 
     Shortcut { sequences: ["Ctrl+K", "Ctrl+P"]; enabled: win.bucketKeys; onActivated: launcher.toggle() }
     Shortcut {
@@ -992,7 +1005,8 @@ ApplicationWindow {
     // Number keys switch buckets straight from anywhere (but not mid-compose).
     // The Screener has no number of its own — it sits on Ctrl+S, so the letters
     // below it (and the reader's own b/i) stay untouched. The rest keep their
-    // order: Set Aside 4, Reply Later 5, Drafts 6, Sent 7.
+    // order: Set Aside 4, Reply Later 5, Drafts 6, Sent 7, Archive 8. Trash is
+    // 0: it is read from the server and belongs at the end, past the digits.
     Shortcut { sequence: "1"; enabled: win.bucketKeys; onActivated: win.switchToKey("INBOX") }
     Shortcut { sequence: "2"; enabled: win.bucketKeys; onActivated: win.switchToKey("Feed") }
     Shortcut { sequence: "3"; enabled: win.bucketKeys; onActivated: win.switchToKey("Paper Trail") }
@@ -1001,14 +1015,12 @@ ApplicationWindow {
     Shortcut { sequence: "6"; enabled: win.bucketKeys; onActivated: win.switchToKey("Drafts") }
     Shortcut { sequence: "7"; enabled: win.bucketKeys; onActivated: win.switchToKey("Sent") }
     Shortcut { sequence: "8"; enabled: win.bucketKeys; onActivated: win.switchToKey("Archive") }
+    Shortcut { sequence: "0"; enabled: win.bucketKeys; onActivated: win.switchToKey("Trash") }
     Shortcut { sequence: "Ctrl+S"; enabled: win.bucketKeys; onActivated: win.switchToKey("Screener") }
-    // With more than one account: 0 shows them all, an account's first letter
-    // shows only it (P for Personal, W for Work). A letter a list or reader
-    // shortcut already has gets no key; its pill is still there to click.
-    Shortcut {
-        sequence: "0"; enabled: win.bucketKeys && !win.openId && win.filterApplies()
-        onActivated: win.setAccountFilter("")
-    }
+    // With more than one account: an account's first letter shows only it (P
+    // for Personal, W for Work), and the All pill in the header clears it
+    // again. 0 is Trash now, so "all accounts" has no key of its own. A letter
+    // a list or reader shortcut already has gets no key either.
     Instantiator {
         model: win.multiAccount ? win.accounts : []
         delegate: Shortcut {

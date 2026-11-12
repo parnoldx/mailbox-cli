@@ -496,6 +496,26 @@ func TestForwardStartsANewConversationAndQuotesTheOriginal(t *testing.T) {
 	}
 }
 
+// The original's files travel with the forwarded mail. Dropping them sends a
+// note saying "see attached" with nothing attached; the inline part is body
+// markup and stays behind.
+func TestForwardCarriesTheOriginalsAttachments(t *testing.T) {
+	d, _ := seedSend(t)
+	resp := d.handle(context.Background(), Request{ID: "1", Cmd: []string{"forward"}, Args: map[string]any{
+		"positional": "7", "to": []any{"anna@example.com"},
+	}})
+	if !resp.OK {
+		t.Fatalf("forward: %s (%s)", resp.Error, resp.Code)
+	}
+	copyOf := filedCopy(t, d, resp.Data.(sent).UID)
+	if len(copyOf.Parts) != 1 || copyOf.Parts[0].Filename != "rechnung.pdf" {
+		t.Fatalf("parts = %+v, want just rechnung.pdf", copyOf.Parts)
+	}
+	if string(copyOf.Parts[0].Bytes) != "%PDF-1.4 fake" {
+		t.Errorf("attachment bytes changed on the way out")
+	}
+}
+
 // Fwd: is prefixed once. "Fwd: Fwd: Fwd:" is somebody's client doing this
 // wrong three times.
 func TestForwardSubjectIsPrefixedOnce(t *testing.T) {

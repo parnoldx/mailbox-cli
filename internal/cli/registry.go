@@ -200,7 +200,9 @@ func tree(l Locals) []*Command {
 					"it — Screener, not INBOX/Screener; see `mailbox help ids`. With several " +
 					"accounts a box they all have is listed from all of them, newest first; " +
 					"name one to narrow it — `box view work`, `box view work/Aside`, " +
-					"`box view primary`. A conversation that reached two accounts is two rows.",
+					"`box view primary`. A conversation that reached two accounts is two rows. " +
+					"Trash is the one box not held locally, so listing it asks the server, and " +
+					"its rows are read-only: nothing is moved or flagged from here.",
 				Flags: []Flag{
 					{Name: "limit", Kind: KindInt, Arg: "N", Int: 50, Desc: "how many messages to show"},
 				},
@@ -209,6 +211,7 @@ func tree(l Locals) []*Command {
 					"mailbox box view Screener --limit 10",
 					"mailbox box view work",
 					`mailbox box view "Paper Trail"`,
+					"mailbox box view Trash --limit 10",
 				},
 				Run: runBoxView,
 			}},
@@ -363,9 +366,10 @@ func tree(l Locals) []*Command {
 		{
 			Name: "forward", Section: SectionMail, Short: "Send a message on", Needs: true,
 			Usage: []string{"mailbox forward ID --to ADDR [--body TEXT]"},
-			Long: "The original is quoted whole under a header block. A forward starts a " +
-				"new conversation rather than joining the old one, because the people it " +
-				"goes to were never in that one.",
+			Long: "The original is quoted whole under a header block, and its attachments " +
+				"come along with it (the inline images that are part of a body stay behind). " +
+				"A forward starts a new conversation rather than joining the old one, because " +
+				"the people it goes to were never in that one.",
 			Flags: append([]Flag{
 				{Name: "to", Kind: KindList, Arg: "ADDR", Desc: "who to send it to (repeatable)"},
 				{Name: "cc", Kind: KindList, Arg: "ADDR", Desc: "a copied recipient"},
@@ -789,10 +793,13 @@ func tree(l Locals) []*Command {
 		{
 			Name: "move", Section: SectionOrganize, Short: "Move mail to another box", Needs: true,
 			Usage: []string{"mailbox move ID... --to BOX"},
+			Long: "The box is named the way `box view` names it. Moving mail out of Trash is " +
+				"how it comes back: there is no local copy of a trashed Message, so " +
+				"`mailbox move Trash:123 --to INBOX` is the whole recovery.",
 			Flags: []Flag{
 				{Name: "to", Kind: KindString, Arg: "BOX", Desc: "the box to move into"},
 			},
-			Examples: []string{"mailbox move 36722 --to Archive"},
+			Examples: []string{"mailbox move 36722 --to Archive", "mailbox move Trash:123 --to INBOX"},
 			Run:      runMove,
 		},
 		{
@@ -806,8 +813,11 @@ func tree(l Locals) []*Command {
 		{
 			Name: "trash", Section: SectionOrganize, Short: "Move mail to Trash", Needs: true,
 			Usage: []string{"mailbox trash ID..."},
-			Long:  "Trash is the only box that is not held locally, so a message moved here stops being readable.",
-			Run:   writeVerb("trash"),
+			Long: "Trash is the only box that is not held locally: it is never listed, " +
+				"searched or counted offline. `box view Trash` asks the server for what is " +
+				"sitting there, and one of those messages reads back from the server too, " +
+				"read-only, since there is no local copy to move.",
+			Run: writeVerb("trash"),
 		},
 		{
 			Name: "spam", Section: SectionOrganize, Short: "Move mail to Junk", Needs: true,

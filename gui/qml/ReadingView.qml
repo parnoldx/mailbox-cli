@@ -32,7 +32,7 @@ Item {
         else if (PixelBlock.blocked > 0)
             out.push({ act: "", interactive: false, glyph: "", glyphColor: Theme.green,
                        label: PixelBlock.blocked + (PixelBlock.blocked === 1 ? " tracker blocked" : " trackers blocked") })
-        if (m && !scr) {
+        if (m && !scr && !win.readOnlyOpen) {
             // Reply / Reply later / Set aside / Bubble up stay on the surface;
             // Forward, Label, Move and Trash fold into the More menu (M) so the
             // row fits. kbd is the matching reader Shortcut (Main.qml).
@@ -42,6 +42,11 @@ Item {
             out.push({ act: "bubble",      glyph: "", label: "Bubble up",   kbd: "Z", accentGlyph: true })
             out.push({ act: "more",        glyph: "", label: "More",        kbd: "M", accentGlyph: true })
         }
+        // A Message read out of Trash has the one thing to act on that is not
+        // local: the way back. Move opens the picker the More menu opens, and
+        // the Inbox is in it there.
+        if (m && !scr && win.readOnlyOpen)
+            out.push({ act: "move", glyph: "\uf0b2", label: "Move", accentGlyph: true })
         if (m && scr) {
             out.push({ act: "route-inbox",   glyph: "", label: "Inbox", accentGlyph: true })
             out.push({ act: "route-block",   glyph: "", label: "Block", danger: true })
@@ -54,6 +59,7 @@ Item {
     function fireChip(act, chipItem) {
         var id = win.openMsg ? win.openMsg.id : ""
         if (act === "reply") win.startReply(false)
+        else if (act === "move") win.openMovePicker()
         else if (act === "more") moreMenu.popup(chipItem, 0, chipItem.height + 4)
         else if (act === "screener-move") scMoveMenu.popup(chipItem, 0, chipItem.height + 4)
         else if (act === "bubble") bubbleMenu.popup(chipItem, 0, chipItem.height + 4)
@@ -136,7 +142,8 @@ Item {
         // The Thread's subject, shown once — individual Messages below carry
         // their own sender and date, not another copy of this. The pill after
         // it is the message count, the way the Inbox row that opened this
-        // badges the conversation (HEY's trick).
+        // badges the conversation (HEY's trick). Clicking the subject copies
+        // it, like a link or an address elsewhere in the reader.
         Row {
             width: parent.width
             spacing: 12
@@ -154,6 +161,14 @@ Item {
                 lineHeight: 1.18
                 color: Theme.textPrimary
                 Behavior on color { ColorAnimation { duration: Theme.anim } }
+                HoverHandler { cursorShape: Qt.PointingHandCursor }
+                TapHandler {
+                    onTapped: {
+                        if (!subjectText.text) return
+                        Mailbox.copyText(subjectText.text)
+                        win.flash("Copied the subject")
+                    }
+                }
             }
             // Expand / collapse the whole accordion. Was an "Expand all" chip in
             // the toolbar; now a caret by the count — down opens all, up closes.

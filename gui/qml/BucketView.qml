@@ -94,10 +94,15 @@ Item {
     function currentRowId() {
         return (hi >= 0 && hi < flatRows.length) ? flatRows[hi].id : ""
     }
+    // Whether the highlighted row is one the Mirror does not hold (Trash), so
+    // the triage keys have nothing to act on (see row.read_only).
+    function currentRowReadOnly() {
+        return hi >= 0 && hi < flatRows.length && flatRows[hi].read_only === true
+    }
     // Pop the row menu for `row` at the cursor, and make it the highlighted
     // row so the keys and the launcher line up with what was clicked.
     function showRowMenu(row) {
-        if (!row || !row.id || win.isDraftsBucket()) return
+        if (!row || !row.id || win.isDraftsBucket() || row.read_only) return
         for (var i = 0; i < flatRows.length; i++)
             if (flatRows[i].id === row.id) { hi = i; break }
         rowMenu.row = row
@@ -443,7 +448,9 @@ Item {
             // routes drafts on), the right-click menu is off, and each row
             // carries its own fast-delete.
             showDelete: win.isDraftsBucket()
-            menuEnabled: !win.isDraftsBucket()
+            // Trash rows are read from the server, not the Mirror: there is
+            // nothing local to move, label or set aside.
+            menuEnabled: !win.isDraftsBucket() && !modelData.read_only
             onDeleteClicked: win.deleteDraft(modelData.id)
         }
     }

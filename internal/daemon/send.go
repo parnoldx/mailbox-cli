@@ -523,7 +523,7 @@ func outboxID(req Request) (int64, error) {
 // because the people it is going to were never in that conversation.
 func (d *Daemon) handleForward(ctx context.Context, req Request, resp Response) Response {
 	id := req.Str("positional")
-	acct, _, _, original, err := d.rowOf(id)
+	acct, folder, uid, original, err := d.rowOf(id)
 	if err != nil {
 		return resp.failed(err)
 	}
@@ -546,6 +546,11 @@ func (d *Daemon) handleForward(ctx context.Context, req Request, resp Response) 
 	// block as Markdown would only mangle it, so it stays text/plain.
 	draft.Body = forwardBody(draft.Body, original.Message)
 	draft.BodyHTML = ""
+	// The original's files go with it. A forward that drops them is not
+	// forwarding the mail — and the note may well say "see attached".
+	if err := d.carryAttachments(ctx, acct, folder, uid, original.Message, &draft); err != nil {
+		return resp.failed(err)
+	}
 	return d.deliver(ctx, acct, draft, resp, req)
 }
 
@@ -584,6 +589,44 @@ func forwardBody(note string, m mirror.Message) string {
 	b.WriteString(strings.TrimRight(m.TextPlain, "\n"))
 	b.WriteString("\n")
 	return b.String()
+}
+
+// carryAttachments puts the original's attachments on a forward. The Mirror
+// names them; the bytes are still on the server, so each one is fetched the way
+// `attachment save` fetches it. An inline part is body markup (a signature logo,
+// an <img src="cid:">), not a file somebody put on the mail, and a forward is a
+// plain-text quote with nowhere to put one.
+func (d *Daemon) carryAttachments(ctx context.Context, a *Account, folder string, uid uint32, m mirror.Message, into *compose.Draft) error {
+	parts, err := d.Mirror.Parts(m.ID)
+	if err != nil {
+		return err
+	}
+	var files []mirror.Part
+	for _, p := range parts {
+		if !strings.EqualFold(p.Disposition, "inline") {
+			files = append(files, p)
+		}
+	}
+	if len(files) == 0 {
+		return nil
+	}
+	if a.Reconciler == nil {
+		return fmt.Errorf("cannot forward the attachments of %s: this daemon cannot fetch", a.messageID(folder, uid))
+	}
+	for _, p := range files {
+		body, err := a.Reconciler.Driver.FetchPart(ctx, folder, uid, p.Path)
+		if err != nil {
+			return fmt.Errorf("cannot forward %s: %w", p.Name(), err)
+		}
+		kind := p.MIMEType
+		if kind == "" {
+			kind = "application/octet-stream"
+		}
+		into.Attachments = append(into.Attachments, compose.Attachment{
+			Filename: p.Name(), MIMEType: kind, Content: body,
+		})
+	}
+	return nil
 }
 
 // handleFileee mails one attachment straight to fileee's drop box — that

@@ -99,7 +99,7 @@ func (d *Daemon) handleLabel(ctx context.Context, req Request, resp Response) Re
 // like every other write, so an exit code of 0 means the next read sees it
 // (ADR-0004).
 func (d *Daemon) applyLabel(ctx context.Context, name string, add bool, req Request, resp Response) Response {
-	acct, refs, err := d.refs(req)
+	acct, refs, err := d.refs(ctx, req, false)
 	if err != nil {
 		return resp.failed(err)
 	}

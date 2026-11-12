@@ -83,12 +83,14 @@ Item {
 
     // ---- archive picker -------------------------------------------------------
     // The boxes, fuzzy-filtered by the shared Fuzzy.js subsequence match and
-    // cut to the target's account — work mail moves into the work archive.
+    // cut to the target's account — work mail moves into the work archive. A
+    // Message read out of Trash is on its way back, so its list keeps the Inbox.
     function archiveResults() {
         if (pane !== "archive") return []
         var q = query.text.trim()
-        return Fuzzy.moveBoxes(archiveBoxes, root.archiveAccount)
-            .filter(function (b) { return !q || Fuzzy.fuzzy(q, b.box) })
+        var boxes = win.readOnlyOpen ? Fuzzy.recoverBoxes(archiveBoxes, root.archiveAccount)
+                                     : Fuzzy.moveBoxes(archiveBoxes, root.archiveAccount)
+        return boxes.filter(function (b) { return !q || Fuzzy.fuzzy(q, b.box) })
     }
     property var archRows: (query.text, pane, archiveBoxes, archiveResults())
 
@@ -261,7 +263,8 @@ Item {
             if (ab.box === "Feed" || ab.box === "Paper Trail")
                 win.routeId(ab.box === "Feed" ? "feed" : "paper", "Moved to " + ab.box, id)
             else
-                win.moveId(id, ab.box, "Moved to " + ab.box)
+                win.moveId(id, ab.box, "Moved to " +
+                           (Fuzzy.leaf(ab.box) === "INBOX" ? "Inbox" : ab.box))
             return
         }
         if (listPos < rows.length) {

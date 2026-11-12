@@ -270,6 +270,14 @@ passes any check that the body arrived. Trash is excluded entirely and settledly
 it is where things go to stop being findable. The rule this gives the CLI: **list,
 search and count never touch the network; naming one specific object may.**
 
+The exclusion is from what is *kept*, not from what may be asked for. `box view
+Trash`, and the Trash bucket in the GUI, on 0, reads the folder from the server
+for that one look (uids, then envelopes, then the text of the one message opened),
+and stores nothing: no Mirror row, no search entry, no count. A row read that way
+says `read_only`, because a move, a flag, a label or a Thread to expand all need a
+mirrored Placement that Trash does not have. Everything else that reads mail is
+still local (`internal/daemon/trash.go`).
+
 **ADR-0004 — Writes go through the server, except Send.** A change blocks on the
 round trip and updates the Mirror from the ack in the same transaction, so exit 0
 means it happened and the next read sees it. UIDPLUS gives the new uid on MOVE and

@@ -175,7 +175,7 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 	case "box list":
 		return d.handleBoxList(req, resp)
 	case "box view":
-		return d.handleBoxView(req, resp)
+		return d.handleBoxView(ctx, req, resp)
 	case "message view":
 		return d.handleMessageView(ctx, req, resp)
 	case "attachment list":
@@ -187,7 +187,7 @@ func (d *Daemon) handle(ctx context.Context, req Request) Response {
 	case "attachment fileee":
 		return d.handleFileee(ctx, req, resp)
 	case "thread view":
-		return d.handleThreadView(req, resp)
+		return d.handleThreadView(ctx, req, resp)
 	case "invite show":
 		return d.handleInviteShow(ctx, req, resp)
 	case "search":
@@ -253,12 +253,21 @@ func (d *Daemon) handleBoxList(req Request, resp Response) Response {
 // `[account/]box`, with the Primary Account implicit (ADR-0005).
 // With no account named, a Box several accounts have is listed from all
 // of them: a listing spans accounts, an id names one.
-func (d *Daemon) handleBoxView(req Request, resp Response) Response {
+func (d *Daemon) handleBoxView(ctx context.Context, req Request, resp Response) Response {
 	name := req.Str("positional")
 	prefix, rest := splitAccount(name, d.accountNames())
 	limit := req.Int("limit", 50)
 	if prefix == "" {
 		merged, ok, err := d.mergedView(rest, limit)
+		if err != nil {
+			return resp.api(err.Error())
+		}
+		if ok {
+			return resp.ok(merged)
+		}
+		// Trash spans accounts the way everything else does, and it is the one
+		// Box the mergedView above never sees, because no account holds it.
+		merged, ok, err = d.mergedServerView(ctx, rest, limit)
 		if err != nil {
 			return resp.api(err.Error())
 		}
@@ -274,6 +283,17 @@ func (d *Daemon) handleBoxView(req Request, resp Response) Response {
 	if rest != "" {
 		folder = resolveBox(rest, acct.Mirrored)
 	}
+	// Trash and everything under it is not mirrored (ADR-0003), so listing it
+	// is a server read. It writes nothing.
+	if held, ok, err := d.onServer(ctx, acct, folder); err != nil {
+		return resp.api(err.Error())
+	} else if ok {
+		rows, err := d.serverRows(ctx, acct, held, limit)
+		if err != nil {
+			return resp.api(err.Error())
+		}
+		return resp.ok(rows)
+	}
 	rows, err := d.Mirror.Rows(acct.Name, folder, limit)
 	if err != nil {
 		return resp.api(err.Error())
@@ -283,9 +303,14 @@ func (d *Daemon) handleBoxView(req Request, resp Response) Response {
 
 func (d *Daemon) handleMessageView(ctx context.Context, req Request, resp Response) Response {
 	id := req.Str("positional")
-	acct, folder, uid, r, err := d.rowOf(id)
+	acct, folder, uid, r, remote, err := d.rowOrServer(ctx, id)
 	if err != nil {
 		return resp.failed(err)
+	}
+	if remote {
+		m := viewMessage(acct, folder, r, []mirror.Placement{r.Placement})
+		m.ReadOnly = true
+		return resp.ok(m)
 	}
 	places, err := d.Mirror.Placements(acct.Name, r.Message.ID)
 	if err != nil {
@@ -345,11 +370,18 @@ func (d *Daemon) handleAttachmentBytes(ctx context.Context, req Request, resp Re
 	})
 }
 
-func (d *Daemon) handleThreadView(req Request, resp Response) Response {
+func (d *Daemon) handleThreadView(ctx context.Context, req Request, resp Response) Response {
 	id := req.Str("positional")
-	acct, _, _, r, err := d.rowOf(id)
+	acct, folder, _, r, remote, err := d.rowOrServer(ctx, id)
 	if err != nil {
 		return resp.failed(err)
+	}
+	// Trash holds no mirrored Placement, so there is no conversation to build
+	// (ADR-0008): the one Message comes back on its own, read-only.
+	if remote {
+		m := viewMessage(acct, folder, r, []mirror.Placement{r.Placement})
+		m.ReadOnly = true
+		return resp.ok([]message{m})
 	}
 	// A Thread never crosses an Account: the same conversation reaching two
 	// accounts is two Threads (ADR-0008).
@@ -424,7 +456,7 @@ func (d *Daemon) handleSearch(ctx context.Context, req Request, resp Response) R
 }
 
 func (d *Daemon) handleSeen(ctx context.Context, req Request, resp Response) Response {
-	acct, refs, err := d.refs(req)
+	acct, refs, err := d.refs(ctx, req, false)
 	if err != nil {
 		return resp.failed(err)
 	}
@@ -433,7 +465,9 @@ func (d *Daemon) handleSeen(ctx context.Context, req Request, resp Response) Res
 }
 
 func (d *Daemon) handleMove(ctx context.Context, req Request, resp Response) Response {
-	acct, refs, err := d.refs(req)
+	// Move is the one write that takes Trash mail back out, so an id there is
+	// allowed even though the Mirror holds no Placement for it.
+	acct, refs, err := d.refs(ctx, req, true)
 	if err != nil {
 		return resp.failed(err)
 	}
@@ -684,10 +718,15 @@ type inlineBytes struct {
 // and an id list spanning two of them is a mistake worth naming rather than two
 // half-done commands.
 //
-// Everything that can go wrong here is something the caller typed, so the
-// errors carry their own Code: usage, except for an id that named nothing in
-// the Mirror, which is not_found because it was most likely expunged.
-func (d *Daemon) refs(req Request) (*Account, []mailsync.Ref, error) {
+// unheld says an id in a Box the Mirror does not hold (Trash) is allowed: there
+// is no Row to read there, so the id itself is the whole ref. Every other write
+// refuses those: nothing about a Trashed Message can be flagged, labelled or
+// piled.
+//
+// What the caller typed wrong carries its own Code: usage, or not_found for an
+// id that names nothing (most likely expunged). Resolving a Trash id asks the
+// server, so a network failure there comes back as it is.
+func (d *Daemon) refs(ctx context.Context, req Request, unheld bool) (*Account, []mailsync.Ref, error) {
 	ids := req.Strings("positional")
 	if len(ids) == 0 {
 		return nil, nil, usageErr("no message id given")
@@ -695,13 +734,16 @@ func (d *Daemon) refs(req Request) (*Account, []mailsync.Ref, error) {
 	var acct *Account
 	refs := make([]mailsync.Ref, 0, len(ids))
 	for _, id := range ids {
-		// An id that parses but names nothing in the Mirror is the common
+		// A read of one id: an id that parses but names nothing is the common
 		// case — it was expunged since the listing that printed it. Catch it
 		// here so the reply says so, rather than after a pointless server
 		// round trip that fails with a folder-shaped "INBOX: not found".
-		a, folder, uid, _, err := d.rowOf(id)
+		a, folder, uid, _, remote, err := d.rowOrServer(ctx, id)
 		if err != nil {
 			return nil, nil, err
+		}
+		if remote && !unheld {
+			return nil, nil, notFoundErr("%s", noSuchMessage(id))
 		}
 		if acct == nil {
 			acct = a
@@ -721,11 +763,22 @@ func (d *Daemon) refs(req Request) (*Account, []mailsync.Ref, error) {
 // marking spam the id it gives acts on the whole conversation rather than just
 // the one Message that happened to be shown (ADR-0008: a Thread is one thing,
 // wherever its Messages sit). Deduped, because two refs can expand into the
-// same Thread.
+// same Thread. A ref in a Box the Mirror does not hold (Trash) has no Thread
+// here: it stays the one Message it names.
 func (d *Daemon) threaded(account string, refs []mailsync.Ref) ([]mailsync.Ref, error) {
+	acct, _ := d.accountNamed(account)
 	seen := map[mailsync.Ref]bool{}
 	out := make([]mailsync.Ref, 0, len(refs))
 	for _, ref := range refs {
+		if acct != nil {
+			if _, held := acct.boxNamed(ref.Folder); !held {
+				if !seen[ref] {
+					seen[ref] = true
+					out = append(out, ref)
+				}
+				continue
+			}
+		}
 		row, err := d.Mirror.Row(account, ref.Folder, ref.UID)
 		if err != nil {
 			return nil, err
@@ -792,6 +845,12 @@ func (d *Daemon) wrote(a *Account, resp Response, results []mailsync.Result, err
 	for _, r := range results {
 		c := change{ID: a.messageID(r.Folder, r.UID), Box: r.Folder, Flags: r.Flags, Seen: slices.Contains(r.Flags, `\Seen`)}
 		boxes[r.Folder] = struct{}{}
+		if _, held := a.boxNamed(r.Folder); !held {
+			// Mail coming back out of Trash has no local row to put: only a
+			// cycle can bring it into the destination's listing, whatever uid
+			// the server gave it there.
+			needCycle = true
+		}
 		if r.NewFolder != "" {
 			c.Moved, c.Box = true, r.NewFolder
 			boxes[r.NewFolder] = struct{}{}
@@ -932,6 +991,11 @@ type row struct {
 	// label is something the conversation carries, so a listing that badged
 	// only its newest mail would hide the one put on the reply before it.
 	Labels []string `json:"labels,omitempty"`
+	// ReadOnly marks a Message the Mirror does not hold: Trash and everything
+	// under it (ADR-0003). It was read straight from the server, so nothing
+	// that changes it (a move, a flag, a reply filed away) can act on it, and a
+	// client should not offer those.
+	ReadOnly bool `json:"read_only,omitempty"`
 }
 
 // message is one Message read whole: its headers, its text, and every Box it
@@ -981,6 +1045,10 @@ type message struct {
 	// its own List-Unsubscribe headers, or a link its body carries. Nil means
 	// no button: neither was found.
 	Unsubscribe *unsubscribeInfo `json:"unsubscribe,omitempty"`
+	// ReadOnly says this Message came from a Box the Mirror does not hold
+	// (Trash), read from the server for this one look: no Thread to expand, no
+	// other Placements, and nothing to act on. See row.ReadOnly.
+	ReadOnly bool `json:"read_only,omitempty"`
 }
 
 // unsubscribeInfo is unsubscribe.Target as the client needs it: enough to

@@ -68,6 +68,14 @@ func (w *Writer) setFlags(ctx context.Context, refs []Ref, add, remove []string)
 		if err != nil {
 			return err
 		}
+		// A Box the Mirror does not hold (Trash) has no Placement row to update:
+		// the flags are the server's, and are reported as the server gave them.
+		if !w.mirrors(folder) {
+			for _, u := range updates {
+				out = append(out, Result{Ref: Ref{Folder: folder, UID: u.UID}, Flags: u.Flags})
+			}
+			return nil
+		}
 		tx, err := w.Mirror.Begin(w.Account)
 		if err != nil {
 			return err
@@ -86,6 +94,10 @@ func (w *Writer) setFlags(ctx context.Context, refs []Ref, add, remove []string)
 
 // Move moves Messages to another Box. The Placement moves with them: the
 // Message itself, and the body already paid for, stay exactly where they are.
+//
+// A source the Mirror does not hold is Trash (ADR-0003), and one of those moves
+// is how mail comes back: there is no Placement to carry across, so the server
+// makes the move and the destination picks the Message up on its next cycle.
 func (w *Writer) Move(ctx context.Context, refs []Ref, dest string) ([]Result, error) {
 	var out []Result
 	err := w.perFolder(refs, func(folder string, uids []uint32) error {
@@ -95,6 +107,12 @@ func (w *Writer) Move(ctx context.Context, refs []Ref, dest string) ([]Result, e
 		moved, err := w.Driver.Move(ctx, folder, uids, dest)
 		if err != nil {
 			return err
+		}
+		if !w.mirrors(folder) {
+			for _, uid := range uids {
+				out = append(out, Result{Ref: Ref{Folder: folder, UID: uid}, NewFolder: dest, NewUID: moved[uid]})
+			}
+			return nil
 		}
 		tx, err := w.Mirror.Begin(w.Account)
 		if err != nil {

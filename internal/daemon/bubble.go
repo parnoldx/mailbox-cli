@@ -33,7 +33,7 @@ func (d *Daemon) handleBubble(ctx context.Context, req Request, resp Response) R
 		return resp.usage(err.Error())
 	}
 
-	acct, refs, err := d.refs(req)
+	acct, refs, err := d.refs(ctx, req, false)
 	if err != nil {
 		return resp.failed(err)
 	}

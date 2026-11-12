@@ -37,6 +37,21 @@ function moveBoxes(list, acct) {
     return out
 }
 
+// Out of Trash the way back matters more than the way further: the Inbox is a
+// target there (nowhere else, since moving your own mail to the Inbox is what
+// it already is) and the rest of the list is unchanged.
+function recoverBoxes(list, acct) {
+    var out = []
+    for (var i = 0; i < list.length; i++) {
+        var b = list[i]
+        var name = leaf(b.box)
+        if (ROUTING_KEYS.indexOf(name) >= 0 && name !== "INBOX") continue
+        if (acct !== undefined && acct !== null && b.account !== acct) continue
+        out.push(b)
+    }
+    return out
+}
+
 // The archive view's picker is narrower still: Feed and Paper Trail have
 // their own buckets (keys 2 and 3) with their own views of that mail, so
 // listing them here only makes the same mail reachable two ways. The move

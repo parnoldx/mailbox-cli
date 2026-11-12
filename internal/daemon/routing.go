@@ -792,7 +792,7 @@ func (d *Daemon) handleReplyLater(ctx context.Context, req Request, resp Respons
 // the other pile moves with it — otherwise half the thread shows in the Inbox
 // and half in the pile.
 func (d *Daemon) movePile(ctx context.Context, req Request, resp Response, pileBox string) Response {
-	acct, refs, err := d.refs(req)
+	acct, refs, err := d.refs(ctx, req, false)
 	if err != nil {
 		return resp.failed(err)
 	}
