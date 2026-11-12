@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -22,6 +23,7 @@ func TestBoxViewTrashReadsTheServer(t *testing.T) {
 	newer := f.Deliver("Trash", "new@example.com", "Neue Rechnung", "text")
 	newer.Date = time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)
 	f.SetFlags("Trash", older.UID, `\Seen`)
+	f.Calls = nil // the seed's own cycle ran a Status already
 
 	rows := boxView(t, d, "Trash")
 	if len(rows) != 2 {
@@ -35,6 +37,13 @@ func TestBoxViewTrashReadsTheServer(t *testing.T) {
 	}
 	if !rows[1].Seen || rows[1].ReadOnly == false {
 		t.Errorf("row = %+v, want the \\Seen flag on a read-only row", rows[1])
+	}
+
+	// Status before AllUIDs: a Graph account's uid map for a Box no cycle
+	// syncs is only filled by Status (its delta), so the other order lists an
+	// empty Trash there.
+	if st, all := slices.Index(f.Calls, "Status"), slices.Index(f.Calls, "AllUIDs"); st < 0 || st > all {
+		t.Errorf("calls = %v, want Status before AllUIDs", f.Calls)
 	}
 
 	// Reading Trash leaves the Mirror as empty as it was: this is a look, not

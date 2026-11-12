@@ -126,11 +126,14 @@ func (d *Daemon) mergedServerView(ctx context.Context, box string, limit int) ([
 // serverRows lists a Box the Mirror does not hold, newest first. Only headers
 // come home: a Message's text is fetched when that Message is opened.
 //
-// A driver that answers `AllUIDs` out of its own store rather than the server
-// (Graph does) has nothing to say about a Box the Mirror never held, so a
-// Microsoft 365 account's Trash lists empty until that driver grows a real
-// folder listing. IMAP asks the server and answers.
+// Status comes first because a driver may answer AllUIDs out of its own store
+// rather than the server: Graph keeps a uid map that only a Status (its delta)
+// fills, and no cycle ever runs one for a Box the Mirror does not hold. On IMAP
+// it is one STATUS round trip.
 func (d *Daemon) serverRows(ctx context.Context, a *Account, folder string, limit int) ([]row, error) {
+	if _, err := a.Reconciler.Driver.Status(ctx, []string{folder}); err != nil {
+		return nil, fmt.Errorf("list %s: %w", folder, err)
+	}
 	uids, err := a.Reconciler.Driver.AllUIDs(ctx, folder)
 	if err != nil {
 		return nil, fmt.Errorf("list %s: %w", folder, err)
