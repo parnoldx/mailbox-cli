@@ -274,7 +274,7 @@ func (m *Mail) syncFolder(ctx context.Context, name string) error {
 	}
 	link := f.Delta
 	if link == "" {
-		link = "/me/mailFolders/" + url.PathEscape(f.GraphID) + "/messages/delta?$select=isRead,isDraft,flag,categories"
+		link = "/me/mailFolders/" + url.PathEscape(f.GraphID) + "/messages/delta?$select=isRead,isDraft,flag,categories,receivedDateTime"
 	}
 	items, next, err := all[graphMessage](ctx, m.c, link, "odata.maxpagesize=200")
 	if expired(err) && f.Delta != "" {
@@ -290,7 +290,7 @@ func (m *Mail) syncFolder(ctx context.Context, name string) error {
 	}
 	seen := make([]seenMessage, 0, len(items))
 	for _, it := range items {
-		seen = append(seen, seenMessage{GraphID: it.ID, Removed: it.Removed != nil, Flags: it.flags(), Categories: it.Categories})
+		seen = append(seen, seenMessage{GraphID: it.ID, Removed: it.Removed != nil, Flags: it.flags(), Categories: it.Categories, Received: it.ReceivedDateTime})
 	}
 	return m.s.applyDelta(name, seen, next)
 }

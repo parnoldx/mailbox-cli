@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"mailbox/internal/mirror"
 	"mailbox/internal/sync/mailsync"
@@ -231,6 +232,43 @@ func TestBodiesAndPartsComeFromTheMIME(t *testing.T) {
 	got, err := mail.FetchPart(ctx, "INBOX", 1, "2")
 	if err != nil || string(got) != "%PDF-1.4 fake" {
 		t.Fatalf("part %q, %v", got, err)
+	}
+}
+
+func TestUIDsAscendWithArrivalEvenWhenTheDeltaDoesNot(t *testing.T) {
+	f, mail, _, _ := mailSetup(t)
+	ctx := context.Background()
+	if _, err := mail.Folders(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// The fake's first delta is in id order, which is delivery order, so the
+	// newest mail is delivered first: the batch arrives newest first, as
+	// Graph's does, and a uid has to stand for arrival nonetheless.
+	newest := time.Date(2026, 11, 11, 9, 0, 0, 0, time.UTC)
+	middle := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
+	oldest := time.Date(2025, 9, 1, 9, 0, 0, 0, time.UTC)
+	f.deliverAt("f-trash", "newest", "newest@example.com", newest)
+	f.deliverAt("f-trash", "middle", "middle@example.com", middle)
+	f.deliverAt("f-trash", "oldest", "oldest@example.com", oldest)
+
+	if _, err := mail.Status(ctx, []string{"Trash"}); err != nil {
+		t.Fatal(err)
+	}
+	uids, err := mail.AllUIDs(ctx, "Trash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	envs, err := mail.FetchEnvelopes(ctx, "Trash", uids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []time.Time
+	for _, e := range envs {
+		got = append(got, e.InternalDate)
+	}
+	want := []time.Time{oldest, middle, newest}
+	if !slices.Equal(got, want) {
+		t.Fatalf("uids %v carry dates %v, want %v", uids, got, want)
 	}
 }
 

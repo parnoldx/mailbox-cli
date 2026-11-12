@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"mailbox/internal/sync/mailsync"
@@ -150,12 +151,20 @@ type seenMessage struct {
 	Removed    bool
 	Flags      []string
 	Categories []string
+	// Received is when Graph says it arrived, which is what its uid stands for;
+	// a removal carries none.
+	Received time.Time
 }
 
 // applyDelta writes one delta's worth of changes and the link that follows
 // them, together: a crash between the two would either lose changes or apply
 // them twice.
 func (s *Store) applyDelta(folder string, items []seenMessage, link string) error {
+	// A delta reports a folder newest first, but a uid is arrival order: the
+	// oldest item of the batch takes the lowest uid. Stable, so messages with
+	// one receivedDateTime keep the order the delta gave them. A removal has no
+	// date and sorts first, which costs nothing: removals delete by graph id.
+	slices.SortStableFunc(items, func(a, b seenMessage) int { return a.Received.Compare(b.Received) })
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err

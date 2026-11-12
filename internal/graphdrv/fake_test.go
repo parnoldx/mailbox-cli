@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // fakeGraph is a scripted Graph: enough of mail folders, messages, events and
@@ -62,6 +63,7 @@ type fakeMessage struct {
 	read       bool
 	flagged    bool
 	categories []string
+	received   time.Time
 	mime       string
 }
 
@@ -106,12 +108,26 @@ func (f *fakeGraph) newID(prefix string) string {
 	return fmt.Sprintf("%s-%d", prefix, f.next)
 }
 
+// fakeReceived is the time a message the fake delivered without one of its own
+// carries: the same instant serverRow's tests have always seen.
+var fakeReceived = time.Date(2026, 9, 26, 10, 0, 5, 0, time.UTC)
+
 // deliver puts a message in a folder, as mail arriving.
 func (f *fakeGraph) deliver(folder, subject, messageID string) string {
+	return f.deliverAt(folder, subject, messageID, fakeReceived)
+}
+
+// deliverAt is deliver with the receivedDateTime Graph would report, which is
+// not delivery order: a delta is free to hand the whole folder back newest
+// first.
+func (f *fakeGraph) deliverAt(folder, subject, messageID string, received time.Time) string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if received.IsZero() {
+		received = fakeReceived
+	}
 	id := f.newID("m")
-	f.messages[id] = &fakeMessage{id: id, folder: folder, mime: fmt.Sprintf(
+	f.messages[id] = &fakeMessage{id: id, folder: folder, received: received, mime: fmt.Sprintf(
 		"From: Sender <sender@example.com>\r\nTo: me@example.com\r\nSubject: %s\r\nMessage-ID: <%s>\r\n"+
 			"Date: Sat, 26 Sep 2026 10:00:00 +0000\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nbody of %s\r\n",
 		subject, messageID, subject)}
@@ -320,8 +336,13 @@ func (f *fakeGraph) messageJSON(m *fakeMessage) map[string]any {
 	if cats == nil {
 		cats = []string{}
 	}
+	received := m.received
+	if received.IsZero() {
+		received = fakeReceived
+	}
 	return map[string]any{"id": m.id, "isRead": m.read, "isDraft": m.folder == "f-drafts",
-		"flag": map[string]string{"flagStatus": status}, "categories": cats}
+		"flag": map[string]string{"flagStatus": status}, "categories": cats,
+		"receivedDateTime": received.Format(time.RFC3339)}
 }
 
 // page answers a first delta: pageSize items and a nextLink, then the rest and
@@ -466,7 +487,6 @@ func (f *fakeGraph) envelopeJSON(m *fakeMessage) map[string]any {
 	out["from"] = map[string]any{"emailAddress": map[string]string{"name": "Sender", "address": "sender@example.com"}}
 	out["toRecipients"] = []any{map[string]any{"emailAddress": map[string]string{"address": "me@example.com"}}}
 	out["sentDateTime"] = "2026-09-26T10:00:00Z"
-	out["receivedDateTime"] = "2026-09-26T10:00:05Z"
 	out["internetMessageHeaders"] = headers
 	out["singleValueExtendedProperties"] = []any{map[string]string{"id": "Integer 0xe08", "value": strconv.Itoa(len(m.mime))}}
 	return out
