@@ -77,7 +77,18 @@ func (d *Daemon) onServer(ctx context.Context, a *Account, name string) (folder 
 // mergedServerView lists a Box the Mirror does not hold from every account that
 // has one, newest first. ok is false for fewer than two accounts, the same way
 // mergedView decides: one account is listed exactly as it always was.
+//
+// A Box any account holds is not this path at all, whatever the other accounts
+// say about it: mergedView above already answered for an account that has it,
+// and only the accounts that do not would be asked here. Asked, they would
+// answer from the server, which is a round trip on a listing that is local
+// (ADR-0001). Trash is the Box nobody holds.
 func (d *Daemon) mergedServerView(ctx context.Context, box string, limit int) ([]row, bool, error) {
+	for _, a := range d.accounts() {
+		if _, held := a.boxNamed(resolveBox(box, a.Mirrored)); held {
+			return nil, false, nil
+		}
+	}
 	type part struct {
 		acct   *Account
 		folder string

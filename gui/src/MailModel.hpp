@@ -63,6 +63,9 @@ private:
         // The Secondary Account this row is on — empty for the Primary's, and
         // for every row when only one account is configured.
         QString account;
+        // A row the Mirror does not hold (Trash): read from the server, so
+        // the only write it takes is a move back out.
+        bool readOnly = false;
     };
     static QVariantMap rowMap(const Row &r);
     QList<Row> m_rows;

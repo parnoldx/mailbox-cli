@@ -39,12 +39,16 @@ function moveBoxes(list, acct) {
 
 // Out of Trash the way back matters more than the way further: the Inbox is a
 // target there (nowhere else, since moving your own mail to the Inbox is what
-// it already is) and the rest of the list is unchanged.
+// it already is) and the archive tree stays. Feed and Paper Trail drop with
+// the routing Destinations: their rows go down the sender-routing path, which
+// reads the local Mirror and so cannot find a Trash id, so the mail would
+// stay where it is.
 function recoverBoxes(list, acct) {
     var out = []
     for (var i = 0; i < list.length; i++) {
         var b = list[i]
         var name = leaf(b.box)
+        if (name === "Feed" || name === "Paper Trail") continue
         if (ROUTING_KEYS.indexOf(name) >= 0 && name !== "INBOX") continue
         if (acct !== undefined && acct !== null && b.account !== acct) continue
         out.push(b)

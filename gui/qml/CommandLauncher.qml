@@ -21,6 +21,10 @@ Item {
     //   label-rename  no list: the field is the new name for the label being viewed
     property string pane: ""
     property string archiveTargetId: ""
+    // Whether that target is a Trash row or message: only the move out is
+    // allowed, so the picker offers the way back (Fuzzy.recoverBoxes). Captured
+    // when the pane opens, since the id it belongs to is captured too.
+    property bool archiveReadOnly: false
     // The account the target Thread is in: the picker narrows to that
     // account's archive tree — work mail moves into the work archive, personal
     // into the personal one ("" is the Primary).
@@ -42,6 +46,7 @@ Item {
         query.text = ""
         pane = ""
         archiveTargetId = ""
+        archiveReadOnly = false
         // active is a list position, not a bucket index — they differ now that
         // the Screener is skipped. Land on the current bucket if it is listed.
         active = 0
@@ -84,19 +89,22 @@ Item {
     // ---- archive picker -------------------------------------------------------
     // The boxes, fuzzy-filtered by the shared Fuzzy.js subsequence match and
     // cut to the target's account — work mail moves into the work archive. A
-    // Message read out of Trash is on its way back, so its list keeps the Inbox.
+    // Message read out of Trash is on its way back, so its list keeps the
+    // Inbox. `archiveReadOnly` says the same for a Trash row that was never
+    // opened.
     function archiveResults() {
         if (pane !== "archive") return []
         var q = query.text.trim()
-        var boxes = win.readOnlyOpen ? Fuzzy.recoverBoxes(archiveBoxes, root.archiveAccount)
-                                     : Fuzzy.moveBoxes(archiveBoxes, root.archiveAccount)
+        var boxes = root.archiveReadOnly ? Fuzzy.recoverBoxes(archiveBoxes, root.archiveAccount)
+                                         : Fuzzy.moveBoxes(archiveBoxes, root.archiveAccount)
         return boxes.filter(function (b) { return !q || Fuzzy.fuzzy(q, b.box) })
     }
-    property var archRows: (query.text, pane, archiveBoxes, archiveResults())
+    property var archRows: (query.text, pane, archiveBoxes, archiveReadOnly, archiveResults())
 
     function enterArchive() {
         root.archiveTargetId = win.actionTargetId()
         if (!root.archiveTargetId) { root.close(); return }
+        root.archiveReadOnly = win.actionTargetReadOnly()
         root.pane = "archive"
         root.archiveAccount = win.accountOfId(root.archiveTargetId)
         root.active = 0
@@ -191,6 +199,10 @@ Item {
             return _q ? all.filter(function (a) { return a.label.toLowerCase().indexOf(_q) >= 0 }) : all
         }
         if (win.actionTargetId() === "") return _f([])
+        // A read-only target (Trash) is not in the Mirror: the only write it
+        // takes is the move back out, so that is the one row.
+        if (win.actionTargetReadOnly())
+            return _f([ { id: "archive", label: "Move to\u2026", glyph: "\uf187", kbd: "" } ])
         // A Drafts row stands for a draft, not a thread to triage — only
         // Compose applies (opening the row is what edits or sends it).
         if (!win.openId && win.currentKey() === "Drafts") return _f([])

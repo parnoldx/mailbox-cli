@@ -516,6 +516,70 @@ func TestForwardCarriesTheOriginalsAttachments(t *testing.T) {
 	}
 }
 
+// A forward carries files, not body markup. The driver records what a body draws
+// with no disposition at all: a cid-referenced logo, and the invite card. Only
+// the parts that are files ever reach the outgoing mail, and a part the sender
+// merely named (a `name=` PDF) is one of those.
+func TestForwardCarriesFilesAndNotBodyMarkup(t *testing.T) {
+	d, _ := seedSend(t)
+	// What the original carries, on both sides: the server has the bytes, the
+	// Mirror has the names.
+	extra := []mirror.Part{
+		{Path: "4", MIMEType: "image/png", ContentID: "logo@example.com", Size: 21},
+		{Path: "5", MIMEType: "text/calendar", Filename: "invite.ics", Size: 22},
+		{Path: "6", MIMEType: "application/pdf", Filename: "anhang.pdf", Size: 23},
+	}
+	f := fakeOf(d)
+	for _, m := range f.Folder("INBOX").Msgs {
+		if m.UID != 7 {
+			continue
+		}
+		for _, p := range extra {
+			m.Parts = append(m.Parts, mailsync.FakePart{
+				PartInfo: mailsync.PartInfo{
+					Path: p.Path, MIMEType: p.MIMEType, Filename: p.Filename,
+					Disposition: p.Disposition, ContentID: p.ContentID, Size: p.Size,
+				},
+				Bytes: []byte("%PDF-1.4 fake"),
+			})
+		}
+	}
+	row, err := d.Mirror.Row("primary", "INBOX", 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts, err := d.Mirror.Parts(row.Message.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := d.Mirror.Begin("primary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if err := tx.PutParts(row.Message.ID, append(parts, extra...)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := d.handle(context.Background(), Request{ID: "1", Cmd: []string{"forward"}, Args: map[string]any{
+		"positional": "7", "to": []any{"anna@example.com"},
+	}})
+	if !resp.OK {
+		t.Fatalf("forward: %s (%s)", resp.Error, resp.Code)
+	}
+	copyOf := filedCopy(t, d, resp.Data.(sent).UID)
+	var names []string
+	for _, p := range copyOf.Parts {
+		names = append(names, p.Filename)
+	}
+	if len(names) != 2 || names[0] != "rechnung.pdf" || names[1] != "anhang.pdf" {
+		t.Fatalf("forward carried %v, want the two PDFs only", names)
+	}
+}
+
 // Fwd: is prefixed once. "Fwd: Fwd: Fwd:" is somebody's client doing this
 // wrong three times.
 func TestForwardSubjectIsPrefixedOnce(t *testing.T) {

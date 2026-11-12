@@ -503,6 +503,12 @@ ApplicationWindow {
         if (win.openMsg) return win.openMsg.id
         return bucketView.currentRowId()
     }
+    // Whether that target is one the daemon only allows a move out of (Trash):
+    // the launcher offers nothing else on it.
+    function actionTargetReadOnly() {
+        if (win.openMsg) return win.openMsg.read_only === true
+        return bucketView.currentRowReadOnly()
+    }
     // A row asks (right-click) for its triage menu — forwarded to the list
     // view, which owns the one shared RowActions instance.
     function showRowMenu(row) { bucketView.showRowMenu(row) }

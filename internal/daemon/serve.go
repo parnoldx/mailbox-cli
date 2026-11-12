@@ -465,9 +465,10 @@ func (d *Daemon) handleSeen(ctx context.Context, req Request, resp Response) Res
 }
 
 func (d *Daemon) handleMove(ctx context.Context, req Request, resp Response) Response {
-	// Move is the one write that takes Trash mail back out, so an id there is
-	// allowed even though the Mirror holds no Placement for it.
-	acct, refs, err := d.refs(ctx, req, true)
+	// Move and spam are the two writes that take Trash mail back out, so an id
+	// there is allowed even though the Mirror holds no Placement for it.
+	// `trash` is not one of them: mail already there has nowhere to go.
+	acct, refs, err := d.refs(ctx, req, req.Cmd[0] != "trash")
 	if err != nil {
 		return resp.failed(err)
 	}
@@ -719,38 +720,110 @@ type inlineBytes struct {
 // half-done commands.
 //
 // unheld says an id in a Box the Mirror does not hold (Trash) is allowed: there
-// is no Row to read there, so the id itself is the whole ref. Every other write
-// refuses those: nothing about a Trashed Message can be flagged, labelled or
-// piled.
+// is no Row to read there, so the id is confirmed against the server and the id
+// itself is the whole ref. That confirmation is one folder listing per Box and
+// never a body: a move of twenty Trashed Messages is one FETCH, not twenty
+// opens. Every other write refuses those: nothing about a Trashed Message can
+// be flagged, labelled or piled, and nothing is asked of the server to say so.
 //
 // What the caller typed wrong carries its own Code: usage, or not_found for an
-// id that names nothing (most likely expunged). Resolving a Trash id asks the
-// server, so a network failure there comes back as it is.
+// id that names nothing (most likely expunged). Confirming a Trash id does talk
+// to the server, so a network failure there comes back as it is.
 func (d *Daemon) refs(ctx context.Context, req Request, unheld bool) (*Account, []mailsync.Ref, error) {
 	ids := req.Strings("positional")
 	if len(ids) == 0 {
 		return nil, nil, usageErr("no message id given")
 	}
+	// Every id keeps the place the caller gave it, so that the reply's changes
+	// line up with the ids typed even when some of them are the server's.
+	type slot struct {
+		ref mailsync.Ref
+		id  string
+	}
+	slots := make([]slot, 0, len(ids))
 	var acct *Account
-	refs := make([]mailsync.Ref, 0, len(ids))
+	// The Trash ids, grouped by the Box they name. A Box is confirmed with one
+	// round trip however many ids are in it, so the group is the unit of work.
+	type boxKey struct{ account, box string }
+	var order []boxKey
+	grouped := map[boxKey][]int{}
 	for _, id := range ids {
-		// A read of one id: an id that parses but names nothing is the common
-		// case — it was expunged since the listing that printed it. Catch it
-		// here so the reply says so, rather than after a pointless server
-		// round trip that fails with a folder-shaped "INBOX: not found".
-		a, folder, uid, _, remote, err := d.rowOrServer(ctx, id)
+		a, folder, uid, err := d.resolveID(id)
 		if err != nil {
-			return nil, nil, err
-		}
-		if remote && !unheld {
-			return nil, nil, notFoundErr("%s", noSuchMessage(id))
+			return nil, nil, usageErr("%s", err)
 		}
 		if acct == nil {
 			acct = a
 		} else if !strings.EqualFold(acct.Name, a.Name) {
 			return nil, nil, usageErr("%s and %s are on different accounts — one command, one account", ids[0], id)
 		}
-		refs = append(refs, mailsync.Ref{Folder: folder, UID: uid})
+		if _, held := a.boxNamed(folder); !held {
+			if !unheld {
+				// Trash is the one Box the Mirror does not hold (ADR-0003), so an
+				// id there names nothing a flag or a label could change. `trash`
+				// says the mail is already where it was going; every other write
+				// names the two that do act there, rather than "deleted since it
+				// was listed" about mail that was listed a moment ago.
+				if req.Cmd[0] == "trash" {
+					return nil, nil, usageErr("%s is already in Trash — nothing to move", id)
+				}
+				return nil, nil, notFoundErr("%s is in Trash, which is not held locally: only move and spam act on it", id)
+			}
+			// The Box is spelled the way it was typed until the server's own
+			// spelling is learnt below, so the grouping folds case itself.
+			k := boxKey{a.Name, strings.ToLower(folder)}
+			if _, seen := grouped[k]; !seen {
+				order = append(order, k)
+			}
+			grouped[k] = append(grouped[k], len(slots))
+			slots = append(slots, slot{ref: mailsync.Ref{Folder: folder, UID: uid}, id: id})
+			continue
+		}
+		// An id that parses but names nothing in the Mirror is the common case
+		// — it was expunged since the listing that printed it. Catch it here so
+		// the reply says so, rather than after a pointless server round trip
+		// that fails with a folder-shaped "INBOX: not found".
+		if _, err := d.Mirror.Row(a.Name, folder, uid); err != nil {
+			if errors.Is(err, mirror.ErrNotFound) {
+				return nil, nil, notFoundErr("%s", noSuchMessage(id))
+			}
+			return nil, nil, err
+		}
+		slots = append(slots, slot{ref: mailsync.Ref{Folder: folder, UID: uid}, id: id})
+	}
+	for _, k := range order {
+		first := slots[grouped[k][0]]
+		folder, ok, err := d.onServer(ctx, acct, first.ref.Folder)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !ok {
+			return nil, nil, notFoundErr("%s", noSuchMessage(first.id))
+		}
+		uids := make([]uint32, 0, len(grouped[k]))
+		for _, i := range grouped[k] {
+			uids = append(uids, slots[i].ref.UID)
+		}
+		// Headers only: this asks which of the ids are really there, and what
+		// one of them says is not part of moving it.
+		envs, err := acct.Reconciler.Driver.FetchEnvelopes(ctx, folder, uids)
+		if err != nil {
+			return nil, nil, fmt.Errorf("read %s: %w", folder, err)
+		}
+		found := make(map[uint32]bool, len(envs))
+		for _, e := range envs {
+			found[e.UID] = true
+		}
+		for _, i := range grouped[k] {
+			if !found[slots[i].ref.UID] {
+				return nil, nil, notFoundErr("%s", noSuchMessage(slots[i].id))
+			}
+			slots[i].ref.Folder = folder
+		}
+	}
+	refs := make([]mailsync.Ref, 0, len(slots))
+	for _, s := range slots {
+		refs = append(refs, s.ref)
 	}
 	if acct.Writer == nil {
 		return nil, nil, usageErr("this daemon cannot write: no server connection")
@@ -845,18 +918,24 @@ func (d *Daemon) wrote(a *Account, resp Response, results []mailsync.Result, err
 	for _, r := range results {
 		c := change{ID: a.messageID(r.Folder, r.UID), Box: r.Folder, Flags: r.Flags, Seen: slices.Contains(r.Flags, `\Seen`)}
 		boxes[r.Folder] = struct{}{}
+		fromHeld := true
 		if _, held := a.boxNamed(r.Folder); !held {
 			// Mail coming back out of Trash has no local row to put: only a
-			// cycle can bring it into the destination's listing, whatever uid
-			// the server gave it there.
-			needCycle = true
+			// cycle can bring it into the destination's listing, so the ack is
+			// not yet a Message anybody can read.
+			needCycle, fromHeld = true, false
 		}
 		if r.NewFolder != "" {
 			c.Moved, c.Box = true, r.NewFolder
 			boxes[r.NewFolder] = struct{}{}
-			if r.NewUID != 0 {
+			switch {
+			case !fromHeld:
+				// NewID stays empty: the destination uid resolves once the
+				// cycle has the Message, and an id a caller acts on before then
+				// would name nothing.
+			case r.NewUID != 0:
 				c.NewID = a.messageID(r.NewFolder, r.NewUID)
-			} else {
+			default:
 				needCycle = true
 			}
 		}
@@ -945,7 +1024,9 @@ func junkBox(a *Account) (string, error) {
 type change struct {
 	ID string `json:"id"`
 	// NewID is empty when the Message moved to a Box the Mirror does not hold,
-	// or when the server did not say where it landed.
+	// when the Box it came from is one the Mirror does not hold (Trash: the
+	// destination has no row for it until a cycle runs), or when the server did
+	// not say where it landed.
 	NewID string   `json:"new_id,omitempty"`
 	Box   string   `json:"box"`
 	Moved bool     `json:"moved"`
@@ -992,9 +1073,11 @@ type row struct {
 	// only its newest mail would hide the one put on the reply before it.
 	Labels []string `json:"labels,omitempty"`
 	// ReadOnly marks a Message the Mirror does not hold: Trash and everything
-	// under it (ADR-0003). It was read straight from the server, so nothing
-	// that changes it (a move, a flag, a reply filed away) can act on it, and a
-	// client should not offer those.
+	// under it (ADR-0003). It was read straight from the server, so the only
+	// things that can act on it are the server's own move (out of Trash, or to
+	// spam); a flag, a label or a pile needs a mirrored Placement it does not
+	// have, and a client should not offer those. See change.NewID for what a
+	// move of one reports back.
 	ReadOnly bool `json:"read_only,omitempty"`
 }
 

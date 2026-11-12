@@ -593,9 +593,9 @@ func forwardBody(note string, m mirror.Message) string {
 
 // carryAttachments puts the original's attachments on a forward. The Mirror
 // names them; the bytes are still on the server, so each one is fetched the way
-// `attachment save` fetches it. An inline part is body markup (a signature logo,
-// an <img src="cid:">), not a file somebody put on the mail, and a forward is a
-// plain-text quote with nowhere to put one.
+// `attachment save` fetches it. What stays behind is body markup (see
+// inlinePart): a forward is a plain-text quote with nowhere to put a signature
+// logo or an invite card.
 func (d *Daemon) carryAttachments(ctx context.Context, a *Account, folder string, uid uint32, m mirror.Message, into *compose.Draft) error {
 	parts, err := d.Mirror.Parts(m.ID)
 	if err != nil {
@@ -603,7 +603,7 @@ func (d *Daemon) carryAttachments(ctx context.Context, a *Account, folder string
 	}
 	var files []mirror.Part
 	for _, p := range parts {
-		if !strings.EqualFold(p.Disposition, "inline") {
+		if !inlinePart(p) {
 			files = append(files, p)
 		}
 	}
@@ -627,6 +627,23 @@ func (d *Daemon) carryAttachments(ctx context.Context, a *Account, folder string
 		})
 	}
 	return nil
+}
+
+// inlinePart says a part is body markup rather than a file somebody put on the
+// mail: it is drawn in the body (a signature logo, an <img src="cid:">) or it
+// is not the mail's text at all (a calendar invite, which the reader draws as a
+// card beside it). The driver records both with no disposition, so a part with
+// none is judged by what it holds: a Content-ID is something a body refers to,
+// and text/calendar is the invite. A sender who wrote disposition `attachment`
+// meant a file, and a part that only names a file (`name=` alone: a PDF) is one.
+func inlinePart(p mirror.Part) bool {
+	if strings.EqualFold(p.Disposition, "inline") {
+		return true
+	}
+	if p.Disposition != "" {
+		return false
+	}
+	return p.ContentID != "" || strings.HasPrefix(strings.ToLower(p.MIMEType), "text/calendar")
 }
 
 // handleFileee mails one attachment straight to fileee's drop box — that

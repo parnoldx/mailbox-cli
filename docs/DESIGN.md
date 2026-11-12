@@ -274,8 +274,10 @@ The exclusion is from what is *kept*, not from what may be asked for. `box view
 Trash`, and the Trash bucket in the GUI, on 0, reads the folder from the server
 for that one look (uids, then envelopes, then the text of the one message opened),
 and stores nothing: no Mirror row, no search entry, no count. A row read that way
-says `read_only`, because a move, a flag, a label or a Thread to expand all need a
-mirrored Placement that Trash does not have. Everything else that reads mail is
+says `read_only`: the only things that can act on it are the server's own move,
+which is how it comes back (`mailbox move Trash:123 --to INBOX`), and marking it
+spam. Everything else needs a mirrored Placement Trash does not have: a flag, a
+label, a pile or a Thread to expand. Everything else that reads mail is
 still local (`internal/daemon/trash.go`).
 
 **ADR-0004 — Writes go through the server, except Send.** A change blocks on the

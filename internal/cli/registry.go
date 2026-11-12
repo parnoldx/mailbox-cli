@@ -201,8 +201,9 @@ func tree(l Locals) []*Command {
 					"accounts a box they all have is listed from all of them, newest first; " +
 					"name one to narrow it — `box view work`, `box view work/Aside`, " +
 					"`box view primary`. A conversation that reached two accounts is two rows. " +
-					"Trash is the one box not held locally, so listing it asks the server, and " +
-					"its rows are read-only: nothing is moved or flagged from here.",
+					"Trash is the one box not held locally, so listing it asks the server. A row " +
+					"read from there can only be moved back out (`mailbox move Trash:123 --to " +
+					"INBOX`) or marked spam, and is otherwise read-only: no flag, label or pile.",
 				Flags: []Flag{
 					{Name: "limit", Kind: KindInt, Arg: "N", Int: 50, Desc: "how many messages to show"},
 				},
@@ -815,8 +816,10 @@ func tree(l Locals) []*Command {
 			Usage: []string{"mailbox trash ID..."},
 			Long: "Trash is the only box that is not held locally: it is never listed, " +
 				"searched or counted offline. `box view Trash` asks the server for what is " +
-				"sitting there, and one of those messages reads back from the server too, " +
-				"read-only, since there is no local copy to move.",
+				"sitting there, and one of those messages reads back from the server too. " +
+				"Such a message can only be moved back out (`mailbox move Trash:123 --to " +
+				"INBOX`) or marked spam; it is otherwise read-only, with no flag, label or " +
+				"pile to set on it.",
 			Run: writeVerb("trash"),
 		},
 		{

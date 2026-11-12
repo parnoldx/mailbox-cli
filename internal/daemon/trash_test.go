@@ -2,6 +2,9 @@ package daemon
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -100,6 +103,151 @@ func TestMoveOutOfTrashRecoversIt(t *testing.T) {
 	if held, err := d.Mirror.Rows("primary", "INBOX", 50); err != nil || len(held) != 1 {
 		t.Fatalf("the Mirror holds %d Inbox rows (%v), want only the seeded one", len(held), err)
 	}
+	// And no new id is handed back for it: the Inbox has no row until that
+	// cycle runs, so an id here would name nothing.
+	if got[0].NewID != "" {
+		t.Errorf("new_id = %q, want none until the cycle has the Message", got[0].NewID)
+	}
+}
+
+// Several Trashed ids are one round trip per Box, not one per id: the server is
+// asked which of them are really there with a single header fetch, and the text
+// of a Message nobody is going to read is not asked for at all.
+func TestMoveOfSeveralTrashedMessagesAsksTheServerOnce(t *testing.T) {
+	d := seed(t)
+	f := fakeOf(d)
+	for i := 1; i <= 3; i++ {
+		f.Deliver("Trash", "gone@example.com", fmt.Sprintf("Weg %d", i), "text")
+	}
+
+	got := write(t, d, []string{"move"}, map[string]any{
+		"positional": []any{"Trash:1", "Trash:2", "Trash:3"}, "to": "INBOX",
+	})
+	if len(got) != 3 {
+		t.Fatalf("move returned %+v", got)
+	}
+	for _, op := range []string{"Folders", "FetchEnvelopes"} {
+		if n := callsBefore(t, f, "Move", op); n != 1 {
+			t.Errorf("%s ran %d times for three ids, want 1", op, n)
+		}
+	}
+	if n := callsBefore(t, f, "Move", "FetchBodies"); n != 0 {
+		t.Errorf("FetchBodies ran %d times to move mail out of Trash", n)
+	}
+	var back []string
+	for _, m := range f.Folder("INBOX").Msgs {
+		if strings.HasPrefix(m.Subject, "Weg ") {
+			back = append(back, m.Subject)
+		}
+	}
+	if len(back) != 3 {
+		t.Fatalf("INBOX holds %v, want all three recovered", back)
+	}
+}
+
+// A uid the server does not answer with is not there: the error says so before
+// anything is moved.
+func TestMoveOfAVanishedTrashedMessageIsNotFound(t *testing.T) {
+	d := seed(t)
+	f := fakeOf(d)
+	resp := d.handle(context.Background(), Request{ID: "1", Cmd: []string{"move"},
+		Args: map[string]any{"positional": []any{"Trash:99"}, "to": "INBOX"}})
+	if resp.OK || resp.Code != "not_found" {
+		t.Fatalf("resp = %+v, want not_found", resp)
+	}
+	if n := f.CallCount("Move"); n != 0 {
+		t.Errorf("Move ran %d times for a uid the server does not hold", n)
+	}
+}
+
+// `trash` on mail already in Trash has nowhere to go, and says so before it
+// writes anything: the seed \Seen it used to set was a real STORE on the server.
+// `spam` is a move out of Trash like `move`, so it still works.
+func TestTrashOfATrashedMessageWritesNothing(t *testing.T) {
+	d := seed(t)
+	f := fakeOf(d)
+	f.Deliver("Trash", "sorry@example.com", "Aus Versehen", "text")
+
+	resp := d.handle(context.Background(), Request{ID: "1", Cmd: []string{"trash"},
+		Args: map[string]any{"positional": []any{"Trash:1"}}})
+	if resp.OK || resp.Code != "usage" {
+		t.Fatalf("trash: %+v, want a usage error saying it is already there", resp)
+	}
+	if !strings.Contains(resp.Error, "already in Trash") {
+		t.Errorf("error = %q, want it to say the mail is already in Trash", resp.Error)
+	}
+	for _, op := range []string{"StoreFlags", "Move"} {
+		if n := f.CallCount(op); n != 0 {
+			t.Errorf("%s ran %d times for mail already in Trash", op, n)
+		}
+	}
+
+	write(t, d, []string{"spam"}, map[string]any{"positional": []any{"Trash:1"}})
+	if n := len(f.Folder("Junk").Msgs); n != 1 {
+		t.Errorf("Junk holds %d messages, want the one marked spam", n)
+	}
+}
+
+// The writes that refuse a Trashed id refuse it without asking the server:
+// nothing is there to ask about, and a read-only write is not worth a round
+// trip (ADR-0001).
+func TestWritesThatRefuseTrashAskTheServerNothing(t *testing.T) {
+	d := seed(t)
+	f := fakeOf(d)
+	f.Deliver("Trash", "sorry@example.com", "Aus Versehen", "text")
+
+	resp := d.handle(context.Background(), Request{ID: "1", Cmd: []string{"seen"},
+		Args: map[string]any{"positional": []any{"Trash:1"}}})
+	if resp.OK || resp.Code != "not_found" {
+		t.Fatalf("seen: %+v, want not_found", resp)
+	}
+	if n := f.CallCount("Folders"); n != 0 {
+		t.Errorf("Folders ran %d times for an id the Mirror does not hold", n)
+	}
+}
+
+// A Box one account holds is listed from that account and from no server: the
+// accounts that do not have it are never asked, because asking them would be a
+// round trip on a listing that is local (ADR-0001). Only a Box no account holds
+// (Trash) is the server's.
+func TestBoxViewOfABoxOneAccountHoldsAsksNobody(t *testing.T) {
+	d, second, _ := twoAccounts(t)
+	// Screener is the Primary's: the gmx account has no such Box, and its own
+	// server is off.
+	second.Fail["Folders"] = errors.New("offline")
+
+	resp := d.handle(context.Background(), Request{ID: "1", Cmd: []string{"box", "view"},
+		Args: map[string]any{"positional": "Screener"}})
+	if !resp.OK {
+		t.Fatalf("box view: %s (%s)", resp.Error, resp.Code)
+	}
+	rows := resp.Data.([]row)
+	if len(rows) != 1 || rows[0].ID != "Screener:42" {
+		t.Fatalf("rows = %+v, want the Primary's Screener", rows)
+	}
+	if n := second.CallCount("Folders"); n != 0 {
+		t.Errorf("the account without the Box was asked %d times", n)
+	}
+	if n := fakeOf(d).CallCount("Folders"); n != 0 {
+		t.Errorf("the Primary's server was asked %d times", n)
+	}
+}
+
+// callsBefore counts one operation among the calls the fake ran up to its first
+// stop, so a test can say what a command asked for before it wrote anything.
+func callsBefore(t *testing.T, f *mailsync.Fake, stop, op string) int {
+	t.Helper()
+	n := 0
+	for _, c := range f.Calls {
+		if c == stop {
+			return n
+		}
+		if c == op {
+			n++
+		}
+	}
+	t.Fatalf("the fake never ran %s", stop)
+	return 0
 }
 
 // Every other write refuses an id in Trash: there is no Placement to flag or
