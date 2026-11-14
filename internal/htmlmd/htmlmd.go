@@ -4,6 +4,7 @@ package htmlmd
 
 import (
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -607,7 +608,7 @@ func (m *markdownizer) element(n *node) {
 		m.block(func() { m.write("---") })
 	case tag == "h1" || tag == "h2" || tag == "h3" || tag == "h4" || tag == "h5" || tag == "h6":
 		m.heading(n)
-	case contains([]string{"p", "div", "section", "article", "header", "footer", "tbody", "thead"}, tag):
+	case slices.Contains([]string{"p", "div", "section", "article", "header", "footer", "tbody", "thead"}, tag):
 		m.block(func() { m.children(n) })
 	case tag == "blockquote":
 		if kind, inner := calloutFromBlock(n); kind != "" {
@@ -639,15 +640,6 @@ func (m *markdownizer) element(n *node) {
 	default:
 		m.children(n)
 	}
-}
-
-func contains(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }
 
 func (m *markdownizer) heading(n *node) {
@@ -789,7 +781,7 @@ func (m *markdownizer) layoutTable(n *node) {
 		if child.tag == "td" || child.tag == "th" {
 			c := child
 			m.block(func() { m.children(c) })
-		} else if contains([]string{"tbody", "thead", "tfoot", "tr"}, child.tag) {
+		} else if slices.Contains([]string{"tbody", "thead", "tfoot", "tr"}, child.tag) {
 			m.layoutTable(child)
 		} else {
 			m.walk(child)
