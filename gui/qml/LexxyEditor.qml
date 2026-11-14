@@ -1,13 +1,14 @@
 import QtQuick
 import QtQuick.Window
 import QtWebEngine
+import "Callouts.js" as Callouts
 
 // The compose body editor: Basecamp's Lexxy (github.com/basecamp/lexxy) running
 // in a WebEngineView. The self-contained bundle and its stylesheet are inlined
 // from C++ (LexxyJs / LexxyCss) the same way ReadingView inlines Dark Reader.
 //
-// Content is HTML. getHtml() is async — WebEngine round-trips through
-// runJavaScript — so callers pass a callback.
+// Content is HTML. getHtml() is async, WebEngine round-trips through
+// runJavaScript, so callers pass a callback.
 Item {
     id: root
 
@@ -18,7 +19,7 @@ Item {
     // the file; onNavigationRequested catches that and hands the path here for
     // ComposerView's attachment tray.
     signal fileDropped(string url)
-    // The toolbar's AI button (see calloutBootJS) — ComposerView starts the
+    // The toolbar's AI button (see calloutBootJS), ComposerView starts the
     // agent draft from it.
     signal aiDraft()
     // Ctrl+Enter inside the page (see the keydown listener in calloutBootJS).
@@ -55,7 +56,7 @@ Item {
             "}" +
             // Lexxy sizes itself to ~8 rows and draws its own border; here it is
             // the whole pane, so stretch it (and its contenteditable) to fill
-            // the WebEngine viewport and drop the frame — ComposerView already
+            // the WebEngine viewport and drop the frame, ComposerView already
             // wraps it in one.
             "lexxy-editor{background:transparent;color:" + Theme.textPrimary + ";" +
             "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;" +
@@ -96,17 +97,15 @@ Item {
             "document.addEventListener('keydown',function(e){",
             "if((e.ctrlKey||e.metaKey)&&(e.key==='Enter'||e.key==='Return')){e.preventDefault();window.location='mailbox-send:';}",
             "},true);",
-            "var kinds=[",
-            "{kind:'note',label:'Note',bg:'#dbeafe',fg:'#1e3a8a'},",
-            "{kind:'tip',label:'Tip',bg:'#dcfce7',fg:'#14532d'},",
-            "{kind:'warning',label:'Warning',bg:'#fef3c7',fg:'#78350f'}",
-            "];",
+            // The palette comes from Callouts.js, which is also what
+            // internal/htmlmd draws the same three boxes with.
+            "var kinds=" + JSON.stringify(Callouts.kinds) + ";",
             "function htmlFor(k){",
             "return '<blockquote><p><strong>'+k.label+'</strong></p><p><br></p></blockquote><p><br></p>';",
             "}",
             "function tagCallouts(){",
             "var ed=document.getElementById('ed');if(!ed)return;",
-            "var labels={note:1,tip:1,warning:1};",
+            "var labels=" + JSON.stringify(Callouts.labels()) + ";",
             "function kindOf(el){",
             "var p=el.querySelector('p');if(!p)return '';",
             "var t=(p.textContent||'').trim().split('\\n')[0].trim().toLowerCase();",
@@ -164,7 +163,7 @@ Item {
             "panel.appendChild(b);",
             "});",
             "wrap.appendChild(btn);wrap.appendChild(panel);",
-            // The AI button — first in the toolbar, before every Lexxy button.
+            // The AI button, first in the toolbar, before every Lexxy button.
             // A plain button: clicking it just raises 'mailbox-ai:draft', which
             // onNavigationRequested intercepts (the fileDropped trick) and
             // turns into the aiDraft signal. Busy state is answered QML-side.
@@ -197,7 +196,7 @@ Item {
             "<style>" + base + "</style>" +
             "<style id='omarchy'>" + root.paletteCss() + "</style>" +
             "<scr" + "ipt type='module'>" + lib + "</scr" + "ipt></head>" +
-            // attachments='false' — this app has no direct-upload endpoint, so
+            // attachments='false', this app has no direct-upload endpoint, so
             // Lexxy's inline uploader just spins forever. Dropped files go to
             // ComposerView's attachment tray instead (see fileDropped).
             "<body><lexxy-editor id='ed' attachments='false'></lexxy-editor></body></html>"
@@ -233,10 +232,10 @@ Item {
         web.runJavaScript("(function(){var e=document.getElementById('ed');if(e)e.focus();})()")
     }
     // Focus with the caret at the very start of the document rather than the
-    // end — what a reply wants, so you type above the quoted parent. Lexxy is
+    // end, what a reply wants, so you type above the quoted parent. Lexxy is
     // Lexical underneath; its editor takes focus({defaultSelection:'rootStart'}).
     function focusStart() {
-        // Focus inside the page only moves the caret — QML's active focus must
+        // Focus inside the page only moves the caret, QML's active focus must
         // be on the WebEngineView first, or keystrokes stay in the TextField.
         web.forceActiveFocus()
         web.runJavaScript(
@@ -315,11 +314,11 @@ Item {
     // QtWebEngine paints a stale black surface after a Wayland unmap (a
     // workspace switch away and back). A plain focus change to another window
     // does NOT unmap the surface, so covering the editor on every !win.active
-    // just blanks it whenever focus wanders — wrong when the mailbox window is
+    // just blanks it whenever focus wanders, wrong when the mailbox window is
     // still on screen (tiled beside another, on a second monitor). So: cover
     // only when the window is genuinely hidden or minimised, and on the way
     // back force a few fresh frames by flipping the view's visibility once and
-    // oscillating its width by a pixel. On a bare refocus, oscillate only —
+    // oscillating its width by a pixel. On a bare refocus, oscillate only,
     // no cover. (Same mechanism as FeedArticle / ThreadMessage.)
     property bool _nudge: false
     property bool _webShown: true
@@ -340,7 +339,7 @@ Item {
             if (++count >= 4) { stop(); root.covered = false }
         }
     }
-    // Window hidden/minimised, or a bare workspace switch (SurfaceWatcher) —
+    // Window hidden/minimised, or a bare workspace switch (SurfaceWatcher),
     // cover the editor, then force fresh frames on the way back.
     WebRevive {
         window: Window.window

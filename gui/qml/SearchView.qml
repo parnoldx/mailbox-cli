@@ -3,7 +3,7 @@ import QtQuick.Controls.Basic
 
 // Full-screen search over every Box. `search` is a ranked full-text query
 // answered entirely from the Mirror (never a server query); a hit opens in the
-// reader like any other message. Open only — no triage from here.
+// reader like any other message. Open only, no triage from here.
 Item {
     id: root
     property bool opened: false
@@ -84,57 +84,24 @@ Item {
         clip: true
 
         // Search field
-        Rectangle {
-            id: field
+        FilterField {
+            id: query
             anchors { top: parent.top; left: parent.left; right: parent.right; margins: 12 }
-            height: 42
-            radius: Theme.radiusSmall
-            color: Theme.windowBg
-            border.width: 1
-            border.color: query.activeFocus ? Theme.accent : Theme.hairline
-            Behavior on color { ColorAnimation { duration: Theme.anim } }
-            Behavior on border.color { ColorAnimation { duration: Theme.anim } }
-
-            Row {
-                anchors.fill: parent
-                anchors.leftMargin: 14
-                anchors.rightMargin: 14
-                spacing: 10
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: ""
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 13
-                    color: Theme.textDim
-                    Behavior on color { ColorAnimation { duration: Theme.anim } }
-                }
-                TextField {
-                    id: query
-                    width: parent.width - 34
-                    anchors.verticalCenter: parent.verticalCenter
-                    placeholderText: "Search every box…"
-                    color: Theme.textPrimary
-                    placeholderTextColor: Theme.textDim
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 13
-                    background: null
-                    leftPadding: 0
-                    onTextChanged: debounce.restart()
-                    Keys.onDownPressed: root.move(1)
-                    Keys.onUpPressed: root.move(-1)
-                    Keys.onReturnPressed: {
-                        if (root.rows.length > 0) root.openActive()
-                        else win.runSearch(query.text)
-                    }
-                    Keys.onEscapePressed: root.close()
-                }
+            placeholder: "Search every box…"
+            onEdited: debounce.restart()
+            onDownPressed: root.move(1)
+            onUpPressed: root.move(-1)
+            onReturnPressed: {
+                if (root.rows.length > 0) root.openActive()
+                else win.runSearch(query.text)
             }
+            onEscapePressed: root.close()
         }
 
         // Count / empty line
         Text {
             id: countLine
-            anchors { top: field.bottom; left: parent.left; leftMargin: 16; topMargin: 8 }
+            anchors { top: query.bottom; left: parent.left; leftMargin: 16; topMargin: 8 }
             visible: root._typed
             text: root.rows.length === 0
                 ? "No matches"
@@ -150,7 +117,7 @@ Item {
         ListView {
             id: list
             anchors {
-                top: countLine.visible ? countLine.bottom : field.bottom
+                top: countLine.visible ? countLine.bottom : query.bottom
                 left: parent.left; right: parent.right; bottom: parent.bottom
                 leftMargin: 12; rightMargin: 12; topMargin: 4; bottomMargin: 12
             }

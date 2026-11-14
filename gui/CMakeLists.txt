@@ -39,6 +39,7 @@ qt_add_resources(mailbox-gui "qml"
         qml/MailFormat.js
         qml/Triage.js
         qml/Fuzzy.js
+        qml/Callouts.js
         qml/AppButton.qml
         qml/SendUndoToast.qml
         qml/FlashToast.qml
@@ -58,6 +59,7 @@ qt_add_resources(mailbox-gui "qml"
         qml/Kbd.qml
         qml/AttachmentChip.qml
         qml/QuickLook.qml
+        qml/FilterField.qml
         qml/vendor/darkreader.js
         qml/vendor/feed.html
         qml/vendor/lexxy.js
@@ -70,8 +72,8 @@ target_link_libraries(mailbox-gui PRIVATE
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Network Qt6::WebEngineQuick Qt6::PdfQuick Qt6::QuickDialogs2 Qt6::Multimedia)
 
 # `cmake --install build --prefix ~/.local` drops the binary on PATH as
-# `mailbox-gui` — the name the mailbox.email notification widget shells out
-# to by default when you click a message — plus the .desktop entry and icon
+# `mailbox-gui`, the name the mailbox.email notification widget shells out
+# to by default when you click a message, plus the .desktop entry and icon
 # so the launcher can find it.
 include(GNUInstallDirs)
 install(TARGETS mailbox-gui RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

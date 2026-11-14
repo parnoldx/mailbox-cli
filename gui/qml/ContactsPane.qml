@@ -3,7 +3,7 @@ import QtQuick.Controls.Basic
 
 // The contacts pane: a 380px column that slides in from the right and pushes
 // the mail views aside (Main anchors them to its left edge). One `contact
-// list` call loads every card — the live book is ~143 rows — and the filter
+// list` call loads every card, the live book is ~143 rows, and the filter
 // runs client-side. Phase 2 adds the Add/Edit form, delete confirmation and
 // the sender lookup the reader's Shift+P lands on.
 Item {
@@ -23,7 +23,7 @@ Item {
     property var contacts: []      // everything from `contact list`
     property var selected: null    // contact shown in detail, null = list view
     property int active: 0
-    property bool formOpen: false  // the add/edit form is up — a third state beside list and detail
+    property bool formOpen: false  // the add/edit form is up, a third state beside list and detail
     property var editing: null     // the card the form edits, null = add mode
     property bool saving: false    // a save is in flight; the Save button sleeps
     property bool confirmDelete: false  // the detail's action row shows "Delete <name>? Yes / No"
@@ -44,7 +44,7 @@ Item {
     }
     function toggle() { opened ? close() : open() }
     // Ctrl+O again while the pane sits open behind the mail: focus comes back to
-    // where the pane was — the detail if one is showing, the filter otherwise.
+    // where the pane was, the detail if one is showing, the filter otherwise.
     function refocus() {
         Qt.callLater(function () {
             if (root.selected) detail.forceActiveFocus()
@@ -99,7 +99,7 @@ Item {
 
     // ---- phase 2: add / edit / delete -------------------------------------
     // The form covers list and detail both, and Cancel returns to wherever it
-    // was opened from — the list for Add, the detail for Edit.
+    // was opened from, the list for Add, the detail for Edit.
     function openAdd(name, email) {
         root.editing = null
         f_name.text = name || ""
@@ -133,7 +133,7 @@ Item {
     // Save: `contact add` for a new card. For an edit, `contact update` with
     // only the fields that changed (empty means "unchanged" on the daemon, so
     // a cleared field is simply not sent), then a new email, then a new phone
-    // — one after another, stopping at the first failure.
+    //, one after another, stopping at the first failure.
     function save() {
         if (root.saving) return
         var name = f_name.text.trim()
@@ -165,7 +165,7 @@ Item {
         if (f_org.text.trim() !== "" && f_org.text.trim() !== (c.organisation || "")) up.org = f_org.text.trim()
         if (f_note.text.trim() !== "" && f_note.text !== (c.note || "")) up.note = f_note.text
         if (!em && !ph && !up.name && up.org === undefined && up.note === undefined) {
-            // Nothing changed and nothing to add — just go back to the detail.
+            // Nothing changed and nothing to add, just go back to the detail.
             root.formOpen = false
             showDetail(root.selected)
             return
@@ -292,7 +292,7 @@ Item {
         visible: !root.selected && !root.formOpen
     }
 
-    // New contact — beside the header, list view only.
+    // New contact, beside the header, list view only.
     Text {
         anchors { top: parent.top; right: parent.right; topMargin: 14; rightMargin: 16 }
         visible: !root.selected && !root.formOpen
@@ -305,59 +305,28 @@ Item {
         TapHandler { onTapped: root.openAdd() }
     }
 
-    Rectangle {
-        id: fieldWrap
+    FilterField {
+        id: query
         anchors { top: head.bottom; left: parent.left; right: parent.right
                   topMargin: 10; leftMargin: 12; rightMargin: 12 }
         height: 42
-        radius: Theme.radiusSmall
-        color: Theme.railBg
-        border.width: 1
-        border.color: query.activeFocus ? Theme.accent : Theme.hairline
-        Behavior on color { ColorAnimation { duration: Theme.anim } }
-        Behavior on border.color { ColorAnimation { duration: Theme.anim } }
+        background: Theme.railBg
+        placeholder: "Filter contacts…"
         visible: !root.selected && !root.formOpen
-
-        Row {
-            anchors.fill: parent
-            anchors.leftMargin: 14
-            anchors.rightMargin: 14
-            spacing: 10
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "\uf002"
-                font.family: Theme.fontFamily
-                font.pixelSize: 13
-                color: Theme.textDim
-                Behavior on color { ColorAnimation { duration: Theme.anim } }
-            }
-            TextField {
-                id: query
-                width: parent.width - 34
-                anchors.verticalCenter: parent.verticalCenter
-                placeholderText: "Filter contacts…"
-                color: Theme.textPrimary
-                placeholderTextColor: Theme.textDim
-                font.family: Theme.fontFamily
-                font.pixelSize: 13
-                background: null
-                leftPadding: 0
-                onTextChanged: root.active = 0
-                // `n` opens the Add form — but only from an empty filter,
-                // otherwise it is text.
-                Keys.onPressed: function (e) {
-                    if (e.key === Qt.Key_N && text === "") { root.openAdd(); e.accepted = true }
-                }
-                Keys.onDownPressed: { list.forceActiveFocus(); root.move(1) }
-                Keys.onUpPressed: root.move(-1)
-                Keys.onReturnPressed: if (root.rows.length > 0) root.openActive()
-            }
+        onEdited: root.active = 0
+        // `n` opens the Add form, but only from an empty filter, otherwise it
+        // is text.
+        onKeyPressed: function (e) {
+            if (e.key === Qt.Key_N && query.text === "") { root.openAdd(); e.accepted = true }
         }
+        onDownPressed: { list.forceActiveFocus(); root.move(1) }
+        onUpPressed: root.move(-1)
+        onReturnPressed: if (root.rows.length > 0) root.openActive()
     }
 
     ListView {
         id: list
-        anchors { top: fieldWrap.bottom; left: parent.left; right: parent.right
+        anchors { top: query.bottom; left: parent.left; right: parent.right
                   bottom: parent.bottom; leftMargin: 8; rightMargin: 8
                   topMargin: 6; bottomMargin: 8 }
         clip: true
@@ -436,7 +405,7 @@ Item {
     }
 
     Text {
-        anchors { top: fieldWrap.bottom; horizontalCenter: parent.horizontalCenter; topMargin: 24 }
+        anchors { top: query.bottom; horizontalCenter: parent.horizontalCenter; topMargin: 24 }
         visible: !root.selected && !root.formOpen && root.rows.length === 0
         text: root.contacts.length === 0 ? "No contacts yet" : "No matches"
         font.family: Theme.fontFamily
@@ -627,7 +596,7 @@ Item {
                 Behavior on color { ColorAnimation { duration: Theme.anim } }
             }
 
-            // Action row — Edit and Delete, or the confirmation that replaces
+            // Action row, Edit and Delete, or the confirmation that replaces
             // it in place (Return = Yes, Esc = No).
             Row {
                 width: parent.width
@@ -752,7 +721,7 @@ Item {
             }
 
             // In edit mode the addresses already on the card, read-only above
-            // the add fields — the daemon never throws an address away.
+            // the add fields, the daemon never throws an address away.
             Repeater {
                 model: root.editing ? root.editing.emails || [] : []
                 delegate: Text {

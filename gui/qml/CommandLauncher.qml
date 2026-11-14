@@ -7,7 +7,7 @@ import "Fuzzy.js" as Fuzzy
 // arrow keys or digits to pick. Below the destinations, when there is a
 // message to act on (the open Thread, or the highlighted row of a list
 // bucket), the same triage the reading view and the row right-click menu
-// offer — Reply now, Reply later, Set aside, Trash.
+// offer, Reply now, Reply later, Set aside, Trash.
 Item {
     id: root
     property bool opened: false
@@ -15,9 +15,9 @@ Item {
 
     // "" is the switcher. Everything else is a second pane opened over it, each
     // one a list the field filters and Enter picks from:
-    //   archive       the target's archive boxes — Enter moves the Thread there
-    //   labels        every label — Enter opens it as a view
-    //   label-apply   every label — Enter puts one on the target, or takes it off
+    //   archive       the target's archive boxes, Enter moves the Thread there
+    //   labels        every label, Enter opens it as a view
+    //   label-apply   every label, Enter puts one on the target, or takes it off
     //   label-rename  no list: the field is the new name for the label being viewed
     property string pane: ""
     property string archiveTargetId: ""
@@ -26,17 +26,17 @@ Item {
     // when the pane opens, since the id it belongs to is captured too.
     property bool archiveReadOnly: false
     // The account the target Thread is in: the picker narrows to that
-    // account's archive tree — work mail moves into the work archive, personal
+    // account's archive tree, work mail moves into the work archive, personal
     // into the personal one ("" is the Primary).
     property string archiveAccount: ""
     property var archiveBoxes: []
     // The Thread the label picker is labelling, and the labels it already
-    // carries — kept here rather than re-read after every toggle so the ticks
+    // carries, kept here rather than re-read after every toggle so the ticks
     // answer at once and the pane can stay open for a second label.
     property string labelTargetId: ""
     property var labelsOnTarget: []
     property var labelRows: []
-    // The boxes mail does not move into one at a time — dropped from the move
+    // The boxes mail does not move into one at a time, dropped from the move
     // picker, which offers the archive tree plus Feed and Paper Trail, whose
     // rows route the sender as well (they are Destinations, not just boxes).
     // The list now lives in Fuzzy.js (ROUTING_KEYS, shared with the row menu
@@ -47,7 +47,7 @@ Item {
         pane = ""
         archiveTargetId = ""
         archiveReadOnly = false
-        // active is a list position, not a bucket index — they differ now that
+        // active is a list position, not a bucket index, they differ now that
         // the Screener is skipped. Land on the current bucket if it is listed.
         active = 0
         for (var i = 0; i < rows.length; i++)
@@ -63,7 +63,7 @@ Item {
         // Hand keyboard focus back to the bucket view. Otherwise the search
         // field keeps active focus while hidden and claims the bucket-jump
         // number keys (1–7) as text input before the window Shortcuts can see
-        // them — so after closing the launcher you could not switch buckets
+        // them, so after closing the launcher you could not switch buckets
         // until you had entered one some other way.
         query.focus = false
         win.navView().forceActiveFocus()
@@ -88,7 +88,7 @@ Item {
 
     // ---- archive picker -------------------------------------------------------
     // The boxes, fuzzy-filtered by the shared Fuzzy.js subsequence match and
-    // cut to the target's account — work mail moves into the work archive. A
+    // cut to the target's account, work mail moves into the work archive. A
     // Message read out of Trash is on its way back, so its list keeps the
     // Inbox. `archiveReadOnly` says the same for a Trash row that was never
     // opened.
@@ -153,7 +153,7 @@ Item {
         root.active = 0
         root.opened = true
         query.text = win.labelView
-        Qt.callLater(function () { query.forceActiveFocus(); query.selectAll() })
+        Qt.callLater(function () { query.forceActiveFocus(); query.input.selectAll() })
     }
     function onTarget(name) { return root.labelsOnTarget.indexOf(name) >= 0 }
     // The labels the field has narrowed to. In the apply pane a query matching
@@ -175,19 +175,19 @@ Item {
     property var labelShown: (query.text, pane, labelRows, labelResults())
 
     // The action rows: Compose is always here (it needs no target), the triage
-    // rows only when there is a message to act on. Context-aware — the pile you
+    // rows only when there is a message to act on. Context-aware, the pile you
     // are already in offers "Move to Inbox" instead of a move onto itself.
     // `kbd` is the matching global key, where there is one.
     function actionResults() {
         if (!opened || pane !== "") return []
         var _q = query.text.trim().toLowerCase()
-        // Compose needs no target, so it is always offered — and answers to C
+        // Compose needs no target, so it is always offered, and answers to C
         // here, the key that opens it everywhere else. `_f` appends it and then
         // narrows the whole list to the query, so typing "trash" / "set aside"
         // lands the highlight on that action instead of leaving it on the first
         // row (where Return would fire the wrong thing).
         var _compose = [ { id: "compose", label: "Compose new message", glyph: "\uf040", kbd: "C" } ]
-        // Search needs no target either, and answers to / here — the key that
+        // Search needs no target either, and answers to / here, the key that
         // opens the search overlay everywhere else.
         var _search = [ { id: "search", label: "Search all mail", glyph: "\uf002", kbd: "/" } ]
         // Labels needs no target either: it is the way into browsing one.
@@ -203,7 +203,7 @@ Item {
         // takes is the move back out, so that is the one row.
         if (win.actionTargetReadOnly())
             return _f([ { id: "archive", label: "Move to\u2026", glyph: "\uf187", kbd: "" } ])
-        // A Drafts row stands for a draft, not a thread to triage — only
+        // A Drafts row stands for a draft, not a thread to triage, only
         // Compose applies (opening the row is what edits or sends it).
         if (!win.openId && win.currentKey() === "Drafts") return _f([])
         // The Screener is a decision about the sender, not a read about a mail:
@@ -270,7 +270,7 @@ Item {
             var id = root.archiveTargetId
             root.close()
             // Feed and Paper Trail are Destinations: moving mail there decides
-            // the sender's routing too — the same decision the Screener's menu
+            // the sender's routing too, the same decision the Screener's menu
             // makes, from wherever the mail was read.
             if (ab.box === "Feed" || ab.box === "Paper Trail")
                 win.routeId(ab.box === "Feed" ? "feed" : "paper", "Moved to " + ab.box, id)
@@ -288,7 +288,7 @@ Item {
     }
     function fire(a) {
         if (!a) { root.close(); return }
-        // Compose stands on its own — no message to target, so it runs before
+        // Compose stands on its own (no message to target), so it runs before
         // the guard below.
         if (a.id === "compose") { root.close(); win.startCompose(); return }
         if (a.id === "search") { root.close(); win.openSearch(); return }
@@ -351,72 +351,41 @@ Item {
             spacing: 8
 
             // Search field
-            Rectangle {
+            FilterField {
+                id: query
                 width: parent.width - 24
-                height: 42
-                radius: Theme.radiusSmall
-                color: Theme.windowBg
-                border.width: 1
-                border.color: query.activeFocus ? Theme.accent : Theme.hairline
-                Behavior on color { ColorAnimation { duration: Theme.anim } }
-                Behavior on border.color { ColorAnimation { duration: Theme.anim } }
-
-                Row {
-                    anchors.fill: parent
-                    anchors.leftMargin: 14
-                    anchors.rightMargin: 14
-                    spacing: 10
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: root.pane === "archive" ? "\uf187"
-                            : root.pane === "" ? "\uf002" : "\uf02c"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 13
-                        color: Theme.textDim
-                        Behavior on color { ColorAnimation { duration: Theme.anim } }
+                icon: root.pane === "archive" ? "\uf187"
+                    : root.pane === "" ? "\uf002" : "\uf02c"
+                placeholder: root.pane === "archive" ? "Move to…"
+                           : root.pane === "labels" ? "Open a label…"
+                           : root.pane === "label-apply" ? "Label as…"
+                           : root.pane === "label-rename" ? "New name…"
+                           : "Jump to…"
+                onEdited: root.active = 0
+                onDownPressed: root.active = Math.min(root.total() - 1, root.active + 1)
+                onUpPressed: root.active = Math.max(0, root.active - 1)
+                onReturnPressed: root.choose(root.active)
+                onEscapePressed: root.pane !== "" ? root.exitPane() : root.close()
+                onKeyPressed: function (e) {
+                    // In a second pane every key is filter text, so no
+                    // compose/search/digit shortcuts steal it.
+                    if (root.pane !== "") return
+                    // C on an empty field is the compose shortcut, the same as
+                    // `c` everywhere else; once a query is being typed it is
+                    // just a letter to match on.
+                    if (query.text === "" && e.key === Qt.Key_C
+                            && !(e.modifiers & Qt.ControlModifier)) {
+                        root.fire({ id: "compose" }); e.accepted = true; return
                     }
-                    TextField {
-                        id: query
-                        width: parent.width - 34
-                        anchors.verticalCenter: parent.verticalCenter
-                        placeholderText: root.pane === "archive" ? "Move to…"
-                                       : root.pane === "labels" ? "Open a label…"
-                                       : root.pane === "label-apply" ? "Label as…"
-                                       : root.pane === "label-rename" ? "New name…"
-                                       : "Jump to…"
-                        color: Theme.textPrimary
-                        placeholderTextColor: Theme.textDim
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 13
-                        background: null
-                        leftPadding: 0
-                        onTextChanged: root.active = 0
-                        Keys.onDownPressed: root.active = Math.min(root.total() - 1, root.active + 1)
-                        Keys.onUpPressed: root.active = Math.max(0, root.active - 1)
-                        Keys.onReturnPressed: root.choose(root.active)
-                        Keys.onEscapePressed: root.pane !== "" ? root.exitPane() : root.close()
-                        Keys.onPressed: function (e) {
-                            // In a second pane every key is filter text — no
-                            // compose/search/digit shortcuts to steal it.
-                            if (root.pane !== "") return
-                            // C on an empty field is the compose shortcut, the
-                            // same as `c` everywhere else; once a query is being
-                            // typed it is just a letter to match on.
-                            if (query.text === "" && e.key === Qt.Key_C
-                                    && !(e.modifiers & Qt.ControlModifier)) {
-                                root.fire({ id: "compose" }); e.accepted = true; return
-                            }
-                            // Likewise / on an empty field opens search, mirroring
-                            // the global `/` shortcut.
-                            if (query.text === "" && e.key === Qt.Key_Slash
-                                    && !(e.modifiers & Qt.ControlModifier)) {
-                                root.fire({ id: "search" }); e.accepted = true; return
-                            }
-                            if (e.text.length === 1 && e.text >= "1" && e.text <= "9") {
-                                var n = parseInt(e.text) - 1
-                                if (n < root.rows.length) { root.choose(n); e.accepted = true }
-                            }
-                        }
+                    // Likewise / on an empty field opens search, mirroring the
+                    // global `/` shortcut.
+                    if (query.text === "" && e.key === Qt.Key_Slash
+                            && !(e.modifiers & Qt.ControlModifier)) {
+                        root.fire({ id: "search" }); e.accepted = true; return
+                    }
+                    if (e.text.length === 1 && e.text >= "1" && e.text <= "9") {
+                        var n = parseInt(e.text) - 1
+                        if (n < root.rows.length) { root.choose(n); e.accepted = true }
                     }
                 }
             }
@@ -565,7 +534,7 @@ Item {
                          && root.labelShown.length === 0
                 leftPadding: 4
                 topPadding: 4
-                text: root.pane === "labels" ? "No labels yet — put one on a message first"
+                text: root.pane === "labels" ? "No labels yet: put one on a message first"
                                              : "Type a name to make one"
                 font.family: Theme.fontFamily
                 font.pixelSize: 12
@@ -628,7 +597,7 @@ Item {
             Text {
                 visible: root.pane === "label-rename"
                 leftPadding: 4
-                text: "Rename “" + win.labelView + "” — Enter to rename"
+                text: "Rename “" + win.labelView + "”: Enter to rename"
                 font.family: Theme.fontFamily
                 font.pixelSize: 10
                 font.weight: Font.DemiBold
