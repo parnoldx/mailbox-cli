@@ -11,7 +11,7 @@ import (
 
 // runPickupList reads the Pickups the Daemon is still holding: the mail is
 // already read and already on the clipboard when it was collected, so this is
-// how the code or the link is found a second time — after the clipboard has
+// how the code or the link is found a second time, after the clipboard has
 // been overwritten by the next thing copied, which is what happens to a link
 // you were not ready to paste.
 func runPickupList(in *input, stdout, stderr io.Writer) int {
@@ -29,27 +29,13 @@ func runPickupCopy(in *input, stdout, stderr io.Writer) int {
 }
 
 // printPickups lists what is held and what each one carries. A code is shown as
-// itself — it is short and there is nothing to protect it from, since reading
-// it is the whole errand — while a link shows its host and never its token.
+// itself, it is short and there is nothing to protect it from, since reading
+// it is the whole errand, while a link shows its host and never its token.
 func printPickups(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(stdout, resp.Data)
-	if !ok {
-		return
-	}
-	if len(rows) == 0 {
-		fmt.Fprintln(stderr, "nothing has been collected")
-		return
-	}
-	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	for _, r := range rows {
-		m, ok := r.(map[string]any)
-		if !ok {
-			continue
-		}
+	eachRow(stdout, stderr, resp, "nothing has been collected", func(tw *tabwriter.Writer, m map[string]any) {
 		fmt.Fprintf(tw, "%v\t%v\t%v\t%v\n",
 			str(m["id"]), truncate(str(m["from"]), 30), arrival(str(m["arrived"])), held(m))
-	}
-	tw.Flush()
+	})
 }
 
 // printPickupCopied confirms the hand-over by naming the same readable half the
@@ -80,7 +66,7 @@ func held(m map[string]any) string {
 
 // arrival is the held-for term: how long ago the mail landed, which is the
 // clock the expiry runs on. A stamp that will not parse is printed as it came
-// rather than as "0 seconds" — a wrong age reads as a fresh code.
+// rather than as "0 seconds", a wrong age reads as a fresh code.
 func arrival(s string) string {
 	t, err := time.Parse(time.RFC3339, s)
 	if err != nil {

@@ -71,7 +71,7 @@ func localChecks(ctx context.Context, offline bool) []check {
 		mode := info.Mode().Perm()
 		detail := fmt.Sprintf("%04o", mode)
 		if mode&0o077 != 0 {
-			detail += " — it holds a password; chmod 600 it"
+			detail += ", it holds a password; chmod 600 it"
 		}
 		out = append(out, check{Name: "config mode", OK: mode&0o077 == 0, Detail: detail})
 	}
@@ -93,7 +93,7 @@ func localChecks(ctx context.Context, offline bool) []check {
 			out = append(out, check{Name: p.name, Detail: err.Error()})
 			continue
 		}
-		detail := path + " — not written yet"
+		detail := path + ", not written yet"
 		if info, err := os.Stat(path); err == nil {
 			detail = fmt.Sprintf("%s, %s", path, humanBytes(info.Size()))
 		}
@@ -118,7 +118,7 @@ func localChecks(ctx context.Context, offline bool) []check {
 		})
 		// The Primary Account has to be able to file what the Routing sends it.
 		// Without these Boxes a `fileinto` finds nothing and the mail lands in
-		// the Inbox as though no decision was made — `mailbox route` refuses
+		// the Inbox as though no decision was made, `mailbox route` refuses
 		// outright rather than write a rule that does nothing (ADR-0019).
 		have := make([]string, len(boxes))
 		for i, b := range boxes {
@@ -126,7 +126,7 @@ func localChecks(ctx context.Context, offline bool) []check {
 		}
 		if missing := setup.MissingBoxes(have); len(missing) > 0 {
 			out = append(out, check{Name: "routing", Detail: fmt.Sprintf(
-				"this account has no %s — routed mail cannot be filed; run `mailbox setup` and repair",
+				"this account has no %s, routed mail cannot be filed; run `mailbox setup` and repair",
 				strings.Join(missing, ", "))})
 		} else {
 			out = append(out, check{
@@ -154,7 +154,7 @@ func localChecks(ctx context.Context, offline bool) []check {
 		}
 		if missing := setup.MissingPiles(have); len(missing) > 0 {
 			out = append(out, check{Name: name + " piles", Detail: fmt.Sprintf(
-				"this account has no %s — aside and bubble cannot file; run `mailbox setup` and repair",
+				"this account has no %s, aside and bubble cannot file; run `mailbox setup` and repair",
 				strings.Join(missing, ", "))})
 		} else {
 			out = append(out, check{Name: name + " piles", OK: true,
@@ -177,17 +177,17 @@ func localChecks(ctx context.Context, offline bool) []check {
 		}
 		out = append(out, check{
 			Name: "dav", OK: true,
-			Detail: fmt.Sprintf("%s — %s", a.DAVEndpoint, strings.Join(names, ", ")),
+			Detail: fmt.Sprintf("%s, %s", a.DAVEndpoint, strings.Join(names, ", ")),
 		})
 	}
 	// ManageSieve is only reachable when it is: an account without it still
 	// works, it just cannot be triaged. So its absence is a note, not a
-	// failure — a healthy setup without it has to exit 0.
+	// failure, a healthy setup without it has to exit 0.
 	addr := net.JoinHostPort(a.SieveHost, fmt.Sprint(a.SievePort))
 	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
 	if err != nil {
 		out = append(out, check{Name: "sieve", OK: true, Detail: fmt.Sprintf(
-			"%s not reachable (%s) — everything works, but sieve scripts cannot be edited",
+			"%s not reachable (%s), everything works, but sieve scripts cannot be edited",
 			addr, err.Error())})
 	} else {
 		conn.Close()
@@ -212,10 +212,10 @@ func graphCheck(ctx context.Context, probe setup.Servers, name string, a config.
 		return check{Name: name + " microsoft 365", Detail: err.Error()}
 	case !strings.EqualFold(st.Email, a.Email):
 		return check{Name: name + " microsoft 365", Detail: fmt.Sprintf(
-			"signed in as %s, not %s — run `mailbox setup` and repair", st.Email, a.Email)}
+			"signed in as %s, not %s, run `mailbox setup` and repair", st.Email, a.Email)}
 	case len(st.Missing) > 0:
 		return check{Name: name + " piles", Detail: fmt.Sprintf(
-			"this account has no %s — aside and bubble cannot file; run `mailbox setup` and repair",
+			"this account has no %s, aside and bubble cannot file; run `mailbox setup` and repair",
 			strings.Join(st.Missing, ", "))}
 	}
 	return check{Name: name + " microsoft 365", OK: true,
@@ -228,7 +228,7 @@ func daemonChecks(stdout io.Writer) []check {
 	if err != nil {
 		return []check{{
 			Name: "daemon", Detail: fmt.Sprintf(
-				"nothing listening at %s — start one with: mailbox daemon", socket),
+				"nothing listening at %s, start one with: mailbox daemon", socket),
 		}}
 	}
 	conn.Close()
@@ -257,7 +257,7 @@ func daemonChecks(stdout io.Writer) []check {
 			}
 			if resp.Mirror != nil && !resp.Mirror.Connected {
 				out = append(out, check{
-					Name: "mirror", Detail: "behind — the daemon cannot reach the server"})
+					Name: "mirror", Detail: "behind, the daemon cannot reach the server"})
 			} else {
 				out = append(out, check{Name: "mirror", OK: true, Detail: "up to date"})
 			}

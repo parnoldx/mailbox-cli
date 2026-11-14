@@ -151,7 +151,7 @@ func (in *input) List(name string) []string {
 	return nil
 }
 
-// replyWatchFlags are the "if no reply by" reminder flags — HEY's Bubble Up,
+// replyWatchFlags are the "if no reply by" reminder flags, HEY's Bubble Up,
 // matched from the sending side: --if-no-reply is the switch, and the timing
 // is the same one flag `mailbox bubble` takes (see its Flags below), required
 // only once --if-no-reply asks for it. Shared by compose, reply, forward and
@@ -167,6 +167,11 @@ var replyWatchFlags = []Flag{
 		Desc: "hold it in the outbox and send it later, e.g. 2026-09-06T14:00"},
 }
 
+// draftAccount is the flag every draft verb takes: a draft is mail in the
+// drafts box, and whose box it is decides which one.
+var draftAccount = Flag{Name: "account", Kind: KindString, Arg: "NAME",
+	Desc: "whose drafts (default the primary)"}
+
 // tree is the whole command surface. Everything printed as help, everything
 // listed by `mailbox commands`, and everything the dispatcher will run is here
 // and only here.
@@ -180,7 +185,7 @@ func tree(l Locals) []*Command {
 				Usage: []string{"mailbox box list [--archive] [--unread]"},
 				Long: "The boxes mail moves through, in that order: inbox, feed, paper " +
 					"trail, screener, aside, reply later, sent, drafts, junk. Everything " +
-					"else — the archive tree, and the block drop box under the screener — is " +
+					"else (the archive tree, and the block drop box under the screener) is " +
 					"behind --archive. Driven by what is held rather than by what has mail " +
 					"in it, so an empty box is a row saying so.",
 				Flags: []Flag{
@@ -197,9 +202,9 @@ func tree(l Locals) []*Command {
 				Name: "view", Short: "List the mail in a box",
 				Usage: []string{"mailbox box view [BOX] [--limit N]"},
 				Long: "With no box named this is the inbox. A box under it is named without " +
-					"it — Screener, not INBOX/Screener; see `mailbox help ids`. With several " +
+					"it: Screener, not INBOX/Screener; see `mailbox help ids`. With several " +
 					"accounts a box they all have is listed from all of them, newest first; " +
-					"name one to narrow it — `box view work`, `box view work/Aside`, " +
+					"name one to narrow it, `box view work`, `box view work/Aside`, " +
 					"`box view primary`. A conversation that reached two accounts is two rows. " +
 					"Trash is the one box not held locally, so listing it asks the server. A row " +
 					"read from there can only be moved back out (`mailbox move Trash:123 --to " +
@@ -224,7 +229,7 @@ func tree(l Locals) []*Command {
 				Usage:    []string{"mailbox message view ID"},
 				Examples: []string{"mailbox message view 36722", "mailbox message view Screener:342"},
 				Notes: []string{
-					"Reading a message leaves it unread — the unread count belongs to whoever is looking in another client; run `mailbox seen` when it should be read.",
+					"Reading a message leaves it unread: the unread count belongs to whoever is looking in another client, so run `mailbox seen` when it should be read.",
 				},
 				Run: runMessageView,
 			}},
@@ -236,7 +241,7 @@ func tree(l Locals) []*Command {
 				Usage:    []string{"mailbox invite show ID"},
 				Examples: []string{"mailbox invite show 36722"},
 				Notes: []string{
-					"The card is fetched from the server once and cached; reading a thread never fetches it. Graph (Microsoft 365) mail carries no card — the event is already on the calendar.",
+					"The card is fetched from the server once and cached; reading a thread never fetches it. Graph (Microsoft 365) mail carries no card: the event is already on the calendar.",
 					"The card lists what else is already on that day, with this invite marked, so the answer can see where it fits.",
 				},
 				Run: runInvite,
@@ -277,8 +282,8 @@ func tree(l Locals) []*Command {
 				"                [--attach PATH] [--account NAME] [--draft]",
 			},
 			Long: "Omit --body and the text is read from stdin, which is how a heredoc " +
-				"or a generated mail gets in. The body is Markdown — plain prose is " +
-				"Markdown too — and the mail carries both it and a rendered HTML copy; " +
+				"or a generated mail gets in. The body is Markdown, plain prose is " +
+				"Markdown too, and the mail carries both it and a rendered HTML copy; " +
 				"pass --body-html instead to send HTML you already have. With --draft " +
 				"it goes to the drafts box instead of out, and `mailbox draft` takes " +
 				"it from there.",
@@ -357,9 +362,9 @@ func tree(l Locals) []*Command {
 			Usage: []string{"mailbox unsubscribe ID"},
 			Long: "Uses whatever the message itself offers: a one-click POST when the " +
 				"sender declared RFC 8058 support, a plain email when List-Unsubscribe " +
-				"names only a mailto:, or — failing both — the link to open by hand.",
+				"names only a mailto:, or, failing both, the link to open by hand.",
 			Notes: []string{
-				"When the only way out is a page, the answer is `Open to finish: URL` — nothing has left the list until that page is opened.",
+				"When the only way out is a page, the answer is `Open to finish: URL`, and nothing has left the list until that page is opened.",
 			},
 			Examples: []string{"mailbox unsubscribe 36722"},
 			Run:      runUnsubscribe,
@@ -393,7 +398,7 @@ func tree(l Locals) []*Command {
 					Name: "list", Short: "What is waiting to be finished",
 					Usage: []string{"mailbox draft list [--account NAME] [--limit N]"},
 					Flags: []Flag{
-						{Name: "account", Kind: KindString, Arg: "NAME", Desc: "whose drafts (default the primary)"},
+						draftAccount,
 						{Name: "limit", Kind: KindInt, Arg: "N", Int: 25, Desc: "how many to show"},
 					},
 					Run: draftVerb("list"),
@@ -401,10 +406,10 @@ func tree(l Locals) []*Command {
 				{
 					Name: "show", Short: "Read a draft", Needs: true,
 					Usage: []string{"mailbox draft show ID"},
-					Long: "The id draft list printed, or a bare uid — the command has already " +
+					Long: "The id `draft list` printed, or a bare uid: the command has already " +
 						"said which box this is about.",
 					Examples: []string{"mailbox draft show Drafts:12", "mailbox draft show 12"},
-					Flags:    []Flag{{Name: "account", Kind: KindString, Arg: "NAME", Desc: "whose drafts (default the primary)"}},
+					Flags:    []Flag{draftAccount},
 					Run:      draftVerb("show"),
 				},
 				{
@@ -416,7 +421,7 @@ func tree(l Locals) []*Command {
 						"IMAP has no in-place edit: an edit writes a new draft and trashes the old, so the id changes and the reply names the new one.",
 					},
 					Flags: []Flag{
-						{Name: "account", Kind: KindString, Arg: "NAME", Desc: "whose drafts (default the primary)"},
+						draftAccount,
 						{Name: "to", Kind: KindList, Arg: "ADDR", Desc: "replace the recipients"},
 						{Name: "cc", Kind: KindList, Arg: "ADDR", Desc: "replace the copied recipients"},
 						{Name: "subject", Kind: KindString, Arg: "S", Desc: "a new subject"},
@@ -431,7 +436,7 @@ func tree(l Locals) []*Command {
 					Long: "It goes through the outbox like any other send, and the draft is " +
 						"trashed only once the mail is out.",
 					Flags: append([]Flag{
-						{Name: "account", Kind: KindString, Arg: "NAME", Desc: "whose drafts (default the primary)"},
+						draftAccount,
 						{Name: "to", Kind: KindList, Arg: "ADDR", Desc: "replace the recipients"},
 						{Name: "cc", Kind: KindList, Arg: "ADDR", Desc: "replace the copied recipients"},
 						{Name: "subject", Kind: KindString, Arg: "S", Desc: "a new subject"},
@@ -443,7 +448,7 @@ func tree(l Locals) []*Command {
 				{
 					Name: "delete", Short: "Trash a draft", Needs: true,
 					Usage: []string{"mailbox draft delete ID [--account NAME]"},
-					Flags: []Flag{{Name: "account", Kind: KindString, Arg: "NAME", Desc: "whose drafts (default the primary)"}},
+					Flags: []Flag{draftAccount},
 					Run:   draftVerb("delete"),
 				},
 			},
@@ -571,7 +576,7 @@ func tree(l Locals) []*Command {
 				"Besides the changes, three lines describe the watch itself: \"ready\" once " +
 				"every box and collection is caught up, \"disconnected\" when the daemon " +
 				"stops answering, and \"resync\" when a box changed more than the mirror " +
-				"could follow one message at a time — re-read that box. A resync is a " +
+				"could follow one message at a time: re-read that box. A resync is a " +
 				"change of its own: reported by default, commands run for it and " +
 				"--exit-on-first counts it. A collection resyncs the same way, and " +
 				"collection_resync is the same word for it. Ready and disconnected are " +
@@ -620,7 +625,7 @@ func tree(l Locals) []*Command {
 					Name: "list", Short: "The decisions already made",
 					Usage: []string{"mailbox route list [--script]"},
 					Flags: []Flag{
-						{Name: "script", Kind: KindBool, Desc: "print the sieve script — or, on a Microsoft 365 account, the rules — the routing comes from"},
+						{Name: "script", Kind: KindBool, Desc: "print the sieve script, or on a Microsoft 365 account the rules, that the routing comes from"},
 						{Name: "account", Kind: KindString, Arg: "NAME", Desc: "whose routing; the primary when omitted"},
 					},
 					Examples: []string{"mailbox route list"},
@@ -704,8 +709,9 @@ func tree(l Locals) []*Command {
 			Needs: true,
 			Long: "Bubble Up, matched from HEY: the thread leaves the inbox and comes " +
 				"back on its own at the time you pick, unread so the phone raises a " +
-				"notification. It waits in Aside carrying a keyword — no separate box — " +
-				"and a reply arriving brings it back early. One timing flag is required " +
+				"notification. It waits in Aside carrying a keyword rather than in a box " +
+				"of its own, and a reply arriving brings it back early. One timing flag " +
+				"is required " +
 				"and there is no default. --on takes a bare date and lands at 08:00, or " +
 				"at 18:00 when the date is today. `mailbox bubble list` shows what is " +
 				"waiting and when each is due; --now brings a thread back straight away.",
@@ -728,7 +734,7 @@ func tree(l Locals) []*Command {
 			Name: "label", Section: SectionOrganize, Short: "Labels on mail",
 			Long: "A label is an imap keyword, not a box: a message carries as many as you " +
 				"like and keeps all of them when it moves. A label in use needs no " +
-				"creating — adding it to mail is what makes it exist.",
+				"creating: adding it to mail is what makes it exist.",
 			Sub: []*Command{
 				{
 					Name: "list", Short: "Labels, and how much carries each",
@@ -880,7 +886,7 @@ func tree(l Locals) []*Command {
 						"--repeat makes it one entry and a rule, not a row per week. " +
 						"--teams and --invite work on a Microsoft 365 calendar, where Exchange " +
 						"sends the invitations itself; a Teams meeting cannot be taken off " +
-						"again — Microsoft 365 ignores changes to it once set, same as Outlook.",
+						"again, and Microsoft 365 ignores changes to it once set, same as Outlook.",
 					Flags: []Flag{
 						{Name: "start", Kind: KindString, Arg: "WHEN", Desc: "2026-09-01, or 2026-09-01 14:00"},
 						{Name: "end", Kind: KindString, Arg: "WHEN", Desc: "when it finishes"},
@@ -914,7 +920,7 @@ func tree(l Locals) []*Command {
 						"                      [--occurrence WHEN] [--invite ADDR] [--uninvite ADDR]",
 					},
 					Long: "Only what is named changes. A repeating entry is one rule, so " +
-						"editing its time moves every instance of it — unless --occurrence " +
+						"editing its time moves every instance of it, unless --occurrence " +
 						"names one day, which is changed on its own and leaves the rest of " +
 						"the rule standing. --repeat none takes the rule off, and --alarm " +
 						"none takes the reminders off.",
@@ -964,7 +970,7 @@ func tree(l Locals) []*Command {
 			Usage: []string{"mailbox meet [TITLE] [--account NAME] [--start WHEN] [--end WHEN]"},
 			Long: "Makes a Teams meeting on a Microsoft 365 account and prints only its " +
 				"join link, so it pipes: `mailbox meet Sync | wl-copy`. Nothing is put " +
-				"on any calendar and nobody is invited — for that, `event add --teams`.",
+				"on any calendar and nobody is invited, for that, `event add --teams`.",
 			Flags: []Flag{
 				{Name: "account", Kind: KindString, Arg: "NAME", Desc: "which Microsoft 365 account"},
 				{Name: "start", Kind: KindString, Arg: "WHEN", Desc: "2026-09-01 14:00 (default now)"},
@@ -1154,7 +1160,7 @@ func tree(l Locals) []*Command {
 					Name: "update", Short: "Change what a contact says", Needs: true,
 					Usage: []string{"mailbox contact update ID [--name TEXT] [--org TEXT] [--note TEXT]"},
 					Long: "Only what is named changes, and addresses and numbers are left " +
-						"alone — adding one of those is `contact email` or `contact phone`.",
+						"alone, adding one of those is `contact email` or `contact phone`.",
 					Flags: []Flag{
 						{Name: "name", Kind: KindString, Arg: "TEXT", Desc: "a new name"},
 						{Name: "org", Kind: KindString, Arg: "TEXT", Desc: "the organisation"},
@@ -1212,7 +1218,7 @@ func tree(l Locals) []*Command {
 			Long: "It holds every connection to the servers and does not return; stop it " +
 				"with Ctrl-C. Under socket activation nothing runs this by hand: the unit " +
 				"passes --systemd-socket and the daemon takes the listening socket it was " +
-				"given instead of binding one. That flag is an assertion — without a socket " +
+				"given instead of binding one. That flag is an assertion, without a socket " +
 				"passed in it fails rather than quietly binding a second one nobody is " +
 				"connected to.",
 			Flags: []Flag{

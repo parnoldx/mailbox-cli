@@ -175,7 +175,7 @@ func TestWordsAndFlagsReachTheDaemon(t *testing.T) {
 	}
 
 	// A box name with a space, given unquoted as two words, and the same box by
-	// the short alias `mailbox route` uses — both resolve to INBOX/Paper Trail.
+	// the short alias `mailbox route` uses, both resolve to INBOX/Paper Trail.
 	for _, name := range [][]string{{"Paper", "Trail"}, {"trail"}} {
 		args := append([]string{"box", "view"}, name...)
 		out, errs, code := run(t, args...)
@@ -223,7 +223,7 @@ func TestBehindNoticeCarriesTheAgeAndTheCycle(t *testing.T) {
 		{
 			"behind with a cycle running",
 			&daemon.MirrorState{SyncedAt: &at, Syncing: true},
-			"41 minutes ago; a sync is running",
+			"41 minutes ago) and a sync is running",
 		},
 		{
 			"never reached",
@@ -275,7 +275,7 @@ func serveCapture(t *testing.T) *daemon.Request {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A command that never connects — a flag the parser refuses, say — must
+	// A command that never connects, a flag the parser refuses, say, must
 	// not hang the test in its cleanup, waiting for a request that never
 	// comes. Any real request arrives at once, so a short deadline is free.
 	type deadliner interface{ SetDeadline(time.Time) error }
@@ -306,7 +306,7 @@ func serveCapture(t *testing.T) *daemon.Request {
 }
 
 // --title on `habit edit` and --name on `contact update` are documented flags.
-// They used to be declared but never put on the wire — an edit that silently
+// They used to be declared but never put on the wire, an edit that silently
 // changed nothing.
 func TestChangeFlagsReachTheDaemon(t *testing.T) {
 	for _, tt := range [][]string{
@@ -331,7 +331,7 @@ func TestChangeFlagsReachTheDaemon(t *testing.T) {
 
 // --account on the draft verbs says whose drafts box the command looks in. The
 // daemon has always read it, but the CLI never put it on the wire, so a draft
-// saved on a Secondary — `compose --account work --draft` — was invisible to
+// saved on a Secondary, `compose --account work --draft`, was invisible to
 // `draft list` and could not be opened, edited or sent.
 func TestDraftAccountReachesTheDaemon(t *testing.T) {
 	serveSeeded(t)
@@ -341,7 +341,7 @@ func TestDraftAccountReachesTheDaemon(t *testing.T) {
 	bareOut, _, bareCode := run(t, "draft", "list")
 	namedOut, _, namedCode := run(t, "draft", "list", "--account", "primary")
 	if namedCode != bareCode || namedOut != bareOut {
-		t.Fatalf("--account primary: exit %d, out %q — bare: exit %d, out %q",
+		t.Fatalf("--account primary: exit %d, out %q, bare: exit %d, out %q",
 			namedCode, namedOut, bareCode, bareOut)
 	}
 	if _, errs, code := run(t, "draft", "list", "--account", "gmx"); code == ExitOK || !strings.Contains(errs, "no account called") {
@@ -367,7 +367,7 @@ func TestDraftAccountReachesTheDaemon(t *testing.T) {
 }
 
 // --dry-run must stop at the preview: who would get the reply, printed as
-// plain lines — never the "sent to" wording of a real send.
+// plain lines, never the "sent to" wording of a real send.
 func TestReplyDryRunPrintsRecipientsWithoutSending(t *testing.T) {
 	serveSeeded(t)
 	out, errs, code := run(t, "reply", "Screener:40", "--bcc", "privat@example.com", "--dry-run", "--body", "checking first")

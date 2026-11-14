@@ -20,7 +20,7 @@ import (
 
 // code is one backticked span. A span is checked when it starts with `mailbox`
 // or with the name of a top-level command, which leaves the spans that are
-// output rather than input — `--json`, `[]`, `{ok, data, mirror}` — alone.
+// output rather than input, `--json`, `[]`, `{ok, data, mirror}`, alone.
 var code = regexp.MustCompile("`([^`]+)`")
 
 func TestSkillNamesOnlyRealCommands(t *testing.T) {

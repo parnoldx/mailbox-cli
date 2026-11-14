@@ -172,7 +172,7 @@ func runAttachmentSave(in *input, stdout, stderr io.Writer) int {
 }
 
 // runAttachmentBytes fetches one small part and prints the daemon's reply as
-// JSON — it exists for a reading pane inlining cid: images, not for a terminal.
+// JSON, it exists for a reading pane inlining cid: images, not for a terminal.
 func runAttachmentBytes(in *input, stdout, stderr io.Writer) int {
 	return request(daemon.Request{
 		Cmd:  []string{"attachment", "bytes"},
@@ -310,27 +310,13 @@ func runSearch(in *input, stdout, stderr io.Writer) int {
 // printHits prints one line per Message: the id to read it with, where it is,
 // and the text around the match.
 func printHits(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(stdout, resp.Data)
-	if !ok {
-		return
-	}
-	if len(rows) == 0 {
-		fmt.Fprintln(stderr, "nothing matched")
-	}
-	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	for _, r := range rows {
-		m, ok := r.(map[string]any)
-		if !ok {
-			continue
-		}
+	eachRow(stdout, stderr, resp, "nothing matched", func(tw *tabwriter.Writer, m map[string]any) {
 		fmt.Fprintf(tw, "%v\t%v\t%v\t%v\n", m["id"], m["date"],
 			truncate(str(m["from"]), 24), truncate(str(m["subject"]), 40))
 		if snip := str(m["snippet"]); snip != "" {
 			fmt.Fprintf(tw, "\t\t\t%s\n", truncate(snip, 72))
 		}
-	}
-	_ = tw.Flush()
-	behindNotice(stderr, resp)
+	})
 }
 
 // writeVerb handles the write verbs that take ids and nothing else. They block
@@ -359,16 +345,7 @@ func runMove(in *input, stdout, stderr io.Writer) int {
 // printChanges says what a write did, one line per Message, in the id form the
 // next command would use.
 func printChanges(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(stdout, resp.Data)
-	if !ok {
-		return
-	}
-	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	for _, r := range rows {
-		m, ok := r.(map[string]any)
-		if !ok {
-			continue
-		}
+	eachRow(stdout, stderr, resp, "", func(tw *tabwriter.Writer, m map[string]any) {
 		moved, _ := m["moved"].(bool)
 		switch {
 		case moved && str(m["new_id"]) != "":
@@ -384,9 +361,7 @@ func printChanges(stdout, stderr io.Writer, resp daemon.Response) {
 			}
 			fmt.Fprintf(tw, "%v\t%v\n", m["id"], flags)
 		}
-	}
-	_ = tw.Flush()
-	behindNotice(stderr, resp)
+	})
 }
 
 // rowsOf reads a listing out of a reply and fieldsOf one record. A reply with
@@ -408,6 +383,35 @@ func rowsOf(stdout io.Writer, data any) ([]any, bool) {
 		encodeJSON(stdout, data)
 	}
 	return rows, ok
+}
+
+// eachRow walks a listing reply one row at a time into one aligned table, and
+// says why when there is nothing to walk. Every listing is an answer, so the
+// freshness notice follows either way: an empty answer off a Mirror that has
+// not reached the server yet is exactly when it matters most.
+//
+// A reply that is not a listing never reaches the row function: rowsOf prints it
+// as JSON and reports it as not drawable.
+func eachRow(stdout, stderr io.Writer, resp daemon.Response, empty string, row func(*tabwriter.Writer, map[string]any)) {
+	list, ok := rowsOf(stdout, resp.Data)
+	if !ok {
+		return
+	}
+	if len(list) == 0 {
+		if empty != "" {
+			fmt.Fprintln(stderr, empty)
+		}
+		behindNotice(stderr, resp)
+		return
+	}
+	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
+	for _, r := range list {
+		if m, ok := r.(map[string]any); ok {
+			row(tw, m)
+		}
+	}
+	_ = tw.Flush()
+	behindNotice(stderr, resp)
 }
 
 func fieldsOf(stdout io.Writer, data any) (map[string]any, bool) {
@@ -457,7 +461,7 @@ func request(req daemon.Request, asJSON bool, render renderer, stdout, stderr io
 			// the screen reads as the command having hung or having said nothing
 			// on purpose.
 			if errors.Is(err, io.EOF) {
-				fmt.Fprintln(stderr, "the daemon went away before answering — check: journalctl --user -u mailbox")
+				fmt.Fprintln(stderr, "the daemon went away before answering, check: journalctl --user -u mailbox")
 			} else {
 				fmt.Fprintf(stderr, "read: %v\n", err)
 			}
@@ -521,7 +525,7 @@ func printMessage(stdout, stderr io.Writer, resp daemon.Response) {
 			fmt.Fprintf(stdout, " (%s)", org)
 		}
 		if answer := str(inv["response"]); answer != "" {
-			fmt.Fprintf(stdout, " — %s", strings.ToLower(answer))
+			fmt.Fprintf(stdout, ", %s", strings.ToLower(answer))
 		}
 		fmt.Fprintln(stdout)
 	}
@@ -545,23 +549,13 @@ func runAccountList(in *input, stdout, stderr io.Writer) int {
 }
 
 func printAccounts(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(stdout, resp.Data)
-	if !ok {
-		return
-	}
-	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	for _, r := range rows {
-		m, ok := r.(map[string]any)
-		if !ok {
-			continue
-		}
+	eachRow(stdout, stderr, resp, "", func(tw *tabwriter.Writer, m map[string]any) {
 		mark := " "
 		if primary, _ := m["primary"].(bool); primary {
 			mark = "*"
 		}
 		fmt.Fprintf(tw, "%s\t%v\t%v\t%v\n", mark, str(m["name"]), str(m["email"]), str(m["color"]))
-	}
-	_ = tw.Flush()
+	})
 }
 
 func printStatus(stdout, stderr io.Writer, resp daemon.Response) {
@@ -612,24 +606,12 @@ func numOf(v any) int64 {
 	return int64(f)
 }
 
+// printTable is the plain box listing: a mark for unread, the id to read it
+// with, and who it is from.
 func printTable(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(stdout, resp.Data)
-	if !ok {
-		return
-	}
 	// Silence on an empty listing reads like a command that failed quietly, so
-	// it says so — on stderr, because it is not a result.
-	if len(rows) == 0 {
-		fmt.Fprintln(stderr, "nothing there")
-		behindNotice(stderr, resp)
-		return
-	}
-	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	for _, r := range rows {
-		m, ok := r.(map[string]any)
-		if !ok {
-			continue
-		}
+	// it says so, on stderr, because it is not a result.
+	eachRow(stdout, stderr, resp, "nothing there", func(tw *tabwriter.Writer, m map[string]any) {
 		mark := " "
 		if seen, _ := m["seen"].(bool); !seen {
 			mark = "*"
@@ -639,9 +621,7 @@ func printTable(stdout, stderr io.Writer, resp daemon.Response) {
 			subject = fmt.Sprintf("%s (%d)", subject, int(count))
 		}
 		fmt.Fprintf(tw, "%s\t%v\t%v\t%v\t%v\n", mark, m["id"], m["date"], truncate(str(m["from"]), 28), subject)
-	}
-	_ = tw.Flush()
-	behindNotice(stderr, resp)
+	})
 }
 
 // behindNotice mentions the Mirror only when it is Behind. A stale answer is
@@ -656,12 +636,12 @@ func behindNotice(stderr io.Writer, resp daemon.Response) {
 	if st == nil || st.Connected {
 		return
 	}
-	msg := "notice: mirror is behind — the daemon has not reached the server yet"
+	msg := "notice: the mirror is behind (the daemon has not reached the server yet)"
 	if st.SyncedAt != nil {
-		msg = fmt.Sprintf("notice: mirror is behind — last reached %s ago", since(*st.SyncedAt))
+		msg = fmt.Sprintf("notice: the mirror is behind (last reached %s ago)", since(*st.SyncedAt))
 	}
 	if st.Syncing {
-		msg += "; a sync is running"
+		msg += " and a sync is running"
 	}
 	fmt.Fprintln(stderr, msg)
 }

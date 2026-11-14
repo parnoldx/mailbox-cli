@@ -24,20 +24,7 @@ func runBoxList(in *input, stdout, stderr io.Writer) int {
 // printBoxes prints one line per Box: the name that reads it, what is in it,
 // and a mark for the ones the daemon watches rather than polls.
 func printBoxes(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(stdout, resp.Data)
-	if !ok {
-		return
-	}
-	if len(rows) == 0 {
-		fmt.Fprintln(stderr, "no boxes match")
-		return
-	}
-	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	for _, r := range rows {
-		m, ok := r.(map[string]any)
-		if !ok {
-			continue
-		}
+	eachRow(stdout, stderr, resp, "no boxes match", func(tw *tabwriter.Writer, m map[string]any) {
 		mark := " "
 		if boolOf(m["watched"]) {
 			mark = "*"
@@ -48,12 +35,10 @@ func printBoxes(stdout, stderr io.Writer, resp daemon.Response) {
 		}
 		// The count leads and the name trails: a box name can be sixty
 		// characters deep and padding every row out to the longest one makes
-		// the numbers unreadable. Names are never truncated — a name that
+		// the numbers unreadable. Names are never truncated, a name that
 		// cannot be copied cannot be used.
 		fmt.Fprintf(tw, "%s\t%v\t%v\n", mark, count, str(m["box"]))
-	}
-	_ = tw.Flush()
-	behindNotice(stderr, resp)
+	})
 }
 
 func runSieveList(in *input, stdout, stderr io.Writer) int {
@@ -112,7 +97,7 @@ func runSievePut(in *input, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stdout, "stored %s, %d bytes\n", str(m["name"]), int(numOf(m["bytes"])))
 		if !boolOf(m["active"]) {
-			fmt.Fprintf(stderr, "notice: %s is not the active script — nothing changed until it is\n", str(m["name"]))
+			fmt.Fprintf(stderr, "notice: %s is not the active script, so nothing changed until it is\n", str(m["name"]))
 		}
 	}, stdout, stderr)
 }
@@ -127,20 +112,7 @@ func runSieveActivate(in *input, stdout, stderr io.Writer) int {
 // printScripts marks the active script and the one the routing owns, because
 // those are the two facts that decide whether editing one is safe.
 func printScripts(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(stdout, resp.Data)
-	if !ok {
-		return
-	}
-	if len(rows) == 0 {
-		fmt.Fprintln(stderr, "no scripts on the server")
-		return
-	}
-	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	for _, r := range rows {
-		m, ok := r.(map[string]any)
-		if !ok {
-			continue
-		}
+	eachRow(stdout, stderr, resp, "no scripts on the server", func(tw *tabwriter.Writer, m map[string]any) {
 		mark := " "
 		if boolOf(m["active"]) {
 			mark = "*"
@@ -150,6 +122,5 @@ func printScripts(stdout, stderr io.Writer, resp daemon.Response) {
 			note = "the routing's own"
 		}
 		fmt.Fprintf(tw, "%s\t%v\t%v\n", mark, str(m["name"]), note)
-	}
-	_ = tw.Flush()
+	})
 }

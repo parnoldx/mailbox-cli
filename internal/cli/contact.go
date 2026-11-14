@@ -30,27 +30,12 @@ func contactVerb(verb string) func(*input, io.Writer, io.Writer) int {
 }
 
 func printContacts(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(stdout, resp.Data)
-	if !ok {
-		return
-	}
-	if len(rows) == 0 {
-		fmt.Fprintln(stderr, "nobody matched")
-		return
-	}
-	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	for _, r := range rows {
-		m, ok := r.(map[string]any)
-		if !ok {
-			continue
-		}
+	eachRow(stdout, stderr, resp, "nobody matched", func(tw *tabwriter.Writer, m map[string]any) {
 		emails := strs(asAny(m["emails"]))
 		phones := strs(asAny(m["phones"]))
 		fmt.Fprintf(tw, "%v\t%v\t%v\t%v\n", m["id"], truncate(str(m["name"]), 28),
 			truncate(strings.Join(emails, " "), 34), truncate(strings.Join(phones, " "), 24))
-	}
-	_ = tw.Flush()
-	behindNotice(stderr, resp)
+	})
 }
 
 func printContact(stdout, stderr io.Writer, resp daemon.Response) {

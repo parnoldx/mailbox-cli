@@ -62,21 +62,8 @@ func printMeet(stdout, stderr io.Writer, resp daemon.Response) {
 // printAgenda prints the days, each with what is on it. The id comes first,
 // because the next thing a caller does is read one of them.
 func printAgenda(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(stdout, resp.Data)
-	if !ok {
-		return
-	}
-	if len(rows) == 0 {
-		fmt.Fprintln(stderr, "nothing in that window")
-		return
-	}
-	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
 	day := ""
-	for _, r := range rows {
-		m, ok := r.(map[string]any)
-		if !ok {
-			continue
-		}
+	eachRow(stdout, stderr, resp, "nothing in that window", func(tw *tabwriter.Writer, m map[string]any) {
 		if d := str(m["date"]); d != day {
 			day = d
 			if day != "" {
@@ -90,9 +77,7 @@ func printAgenda(stdout, stderr io.Writer, resp daemon.Response) {
 		}
 		fmt.Fprintf(tw, "  %v\t%v\t%v%s\t%v\n", m["id"], str(m["time"]),
 			truncate(str(m["summary"]), 44), mark, str(m["calendar"]))
-	}
-	_ = tw.Flush()
-	behindNotice(stderr, resp)
+	})
 }
 
 // dayHeading writes the weekday out, because "is that a Saturday" is the second
@@ -114,28 +99,13 @@ func dayHeading(date string) string {
 }
 
 func printCalendars(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(stdout, resp.Data)
-	if !ok {
-		return
-	}
-	if len(rows) == 0 {
-		fmt.Fprintln(stderr, "no calendars in the mirror yet")
-		return
-	}
-	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	for _, r := range rows {
-		m, ok := r.(map[string]any)
-		if !ok {
-			continue
-		}
+	eachRow(stdout, stderr, resp, "no calendars in the mirror yet", func(tw *tabwriter.Writer, m map[string]any) {
 		count := ""
 		if n, ok := m["count"].(float64); ok {
 			count = fmt.Sprintf("%d entries", int(n))
 		}
 		fmt.Fprintf(tw, "%v\t%v\t%v\t%v\n", str(m["name"]), str(m["kind"]), count, str(m["synced_at"]))
-	}
-	_ = tw.Flush()
-	behindNotice(stderr, resp)
+	})
 }
 
 // listOf is an answer field as the list it is; anything else is no list.
@@ -190,7 +160,7 @@ func printEvent(stdout, stderr io.Writer, resp daemon.Response) {
 	if alarms := minutes(m["alarms"]); alarms != "" {
 		fmt.Fprintf(stdout, "%-10s %s\n", "Reminds:", alarms)
 	}
-	// Who is on it, and whether they have answered — the account's own answer
+	// Who is on it, and whether they have answered, the account's own answer
 	// is left off, because the person reading is the one who gave it.
 	for _, e := range listOf(m["attendees"]) {
 		a, ok := e.(map[string]any)

@@ -52,8 +52,8 @@ func runLabelCreate(in *input, stdout, stderr io.Writer) int {
 }
 
 // runLabelRename and runLabelDelete are about the label rather than about any
-// mail, so the word is the label itself — `mailbox label rename learn --to
-// lernen` — where add and remove take ids and name the label in a flag.
+// mail, so the word is the label itself, `mailbox label rename learn --to
+// lernen`, where add and remove take ids and name the label in a flag.
 func runLabelRename(in *input, stdout, stderr io.Writer) int {
 	to := in.Str("to")
 	if to == "" {
@@ -79,28 +79,13 @@ func runLabelList(in *input, stdout, stderr io.Writer) int {
 }
 
 func printLabels(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(stdout, resp.Data)
-	if !ok {
-		return
-	}
-	if len(rows) == 0 {
-		fmt.Fprintln(stderr, "no labels yet — make one with: mailbox label add ID --to NAME")
-		return
-	}
-	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	for _, r := range rows {
-		m, ok := r.(map[string]any)
-		if !ok {
-			continue
-		}
+	eachRow(stdout, stderr, resp, "no labels yet: make one with `mailbox label add ID --to NAME`", func(tw *tabwriter.Writer, m map[string]any) {
 		count := ""
 		if n := int(numOf(m["count"])); n > 0 {
 			count = fmt.Sprintf("%d", n)
 		}
 		fmt.Fprintf(tw, "%v\t%v\n", str(m["label"]), count)
-	}
-	_ = tw.Flush()
-	behindNotice(stderr, resp)
+	})
 }
 
 // runForward sends a message on. The body is a note above the original, so an
@@ -171,8 +156,8 @@ func printEventChange(stdout, stderr io.Writer, resp daemon.Response) {
 	}
 }
 
-// draftVerb reads and changes the unsent pile. The id may be bare — `draft` has
-// already said which box this is about — so it is passed through untouched and
+// draftVerb reads and changes the unsent pile. The id may be bare, `draft` has
+// already said which box this is about, so it is passed through untouched and
 // the daemon resolves it against the drafts box.
 func draftVerb(verb string) func(*input, io.Writer, io.Writer) int {
 	return func(in *input, stdout, stderr io.Writer) int {
@@ -214,7 +199,7 @@ func printDraftSaved(stdout, stderr io.Writer, resp daemon.Response) {
 			return
 		}
 		fmt.Fprintf(stdout, "saved  %s\n", str(m["subject"]))
-		fmt.Fprintln(stderr, "notice: the server did not say what id it has now — try draft list")
+		fmt.Fprintln(stderr, "notice: the server did not say what id it has now: try `mailbox draft list`")
 		return
 	}
 	printSent(stdout, stderr, resp)

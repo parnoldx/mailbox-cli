@@ -52,7 +52,7 @@ func runCompose(in *input, stdout, stderr io.Writer) int {
 	}, in.JSON(), render, stdout, stderr)
 }
 
-// withReplyWatch adds the "if no reply by" reminder flags — HEY's Bubble Up,
+// withReplyWatch adds the "if no reply by" reminder flags, HEY's Bubble Up,
 // applied to a message on its way out instead of one already sitting in the
 // Inbox. --if-no-reply is the switch; the timing is the same one flag `mailbox
 // bubble` takes (bubbleWhen on the daemon side), shared by send, reply,
@@ -117,7 +117,7 @@ func outboxVerb(verb string) func(*input, io.Writer, io.Writer) int {
 }
 
 // composeBody is the plain-text body a send or reply carries. With --body-html
-// it is --body, if given, and stdin is left alone — reading stdin here too
+// it is --body, if given, and stdin is left alone, reading stdin here too
 // would make a `--body-html` mail a hang on the tty. Without --body-html it is
 // --body or stdin, as before, and the daemon renders it from Markdown.
 func composeBody(in *input, stderr io.Writer) (string, int) {
@@ -144,7 +144,7 @@ func bodyText(body string, stderr io.Writer) (string, int) {
 	}
 	info, err := os.Stdin.Stat()
 	if err == nil && info.Mode()&os.ModeCharDevice != 0 {
-		// A terminal — whether --body was empty or an explicit "-", stdin has
+		// A terminal, whether --body was empty or an explicit "-", stdin has
 		// nothing to send and nothing that will ever end. Waiting on a tty here
 		// would just look like a hang.
 		fmt.Fprint(stderr, "no body: pass --body TEXT, or pipe the text in\n")
@@ -268,7 +268,7 @@ func printSent(stdout, stderr io.Writer, resp daemon.Response) {
 	}
 	if state := str(m["state"]); state == "answered" {
 		// A Microsoft 365 invite: Exchange sends the reply, not our Outbox.
-		fmt.Fprintf(stdout, "%s — Exchange replies to %s\n", m["subject"], strings.Join(strs(asAny(m["recipients"])), ", "))
+		fmt.Fprintf(stdout, "%s, Exchange replies to %s\n", m["subject"], strings.Join(strs(asAny(m["recipients"])), ", "))
 		return
 	}
 	if state := str(m["state"]); state == "scheduled" {
@@ -279,25 +279,12 @@ func printSent(stdout, stderr io.Writer, resp daemon.Response) {
 	if id := str(m["id"]); id != "" {
 		fmt.Fprintf(stdout, "filed as %s\n", id)
 	} else {
-		fmt.Fprintln(stderr, "notice: the copy is not filed yet — the daemon will retry it")
+		fmt.Fprintln(stderr, "notice: the copy is not filed yet, the daemon will retry it")
 	}
 }
 
 func printOutbox(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(stdout, resp.Data)
-	if !ok {
-		return
-	}
-	if len(rows) == 0 {
-		fmt.Fprintln(stderr, "the outbox is empty")
-		return
-	}
-	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	for _, r := range rows {
-		m, ok := r.(map[string]any)
-		if !ok {
-			continue
-		}
+	eachRow(stdout, stderr, resp, "the outbox is empty", func(tw *tabwriter.Writer, m map[string]any) {
 		where := str(m["placement"])
 		if where == "" {
 			where = strings.Join(strs(asAny(m["recipients"])), ", ")
@@ -307,6 +294,5 @@ func printOutbox(stdout, stderr io.Writer, resp daemon.Response) {
 		if e := str(m["error"]); e != "" {
 			fmt.Fprintf(tw, "\t\t\t%s\n", truncate(strings.ReplaceAll(e, "\n", " "), 72))
 		}
-	}
-	_ = tw.Flush()
+	})
 }

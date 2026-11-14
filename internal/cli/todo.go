@@ -46,20 +46,7 @@ func habitVerb(verb string) func(*input, io.Writer, io.Writer) int {
 }
 
 func printTodos(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(stdout, resp.Data)
-	if !ok {
-		return
-	}
-	if len(rows) == 0 {
-		fmt.Fprintln(stderr, "nothing on the list")
-		return
-	}
-	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	for _, r := range rows {
-		m, ok := r.(map[string]any)
-		if !ok {
-			continue
-		}
+	eachRow(stdout, stderr, resp, "nothing on the list", func(tw *tabwriter.Writer, m map[string]any) {
 		mark := " "
 		if done, _ := m["done"].(bool); done {
 			mark = "✓"
@@ -68,9 +55,7 @@ func printTodos(stdout, stderr io.Writer, resp daemon.Response) {
 		}
 		fmt.Fprintf(tw, "%s\t%v\t%v\t%v\t%v\t%v\n", mark, m["id"], str(m["due"]),
 			priorityMark(str(m["priority"])), truncate(str(m["summary"]), 48), str(m["list"]))
-	}
-	_ = tw.Flush()
-	behindNotice(stderr, resp)
+	})
 }
 
 func printTodo(stdout, stderr io.Writer, resp daemon.Response) {
@@ -115,20 +100,7 @@ func priorityMark(priority string) string {
 }
 
 func printHabits(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(stdout, resp.Data)
-	if !ok {
-		return
-	}
-	if len(rows) == 0 {
-		fmt.Fprintln(stderr, "no habits yet — add one with: mailbox habit add NAME")
-		return
-	}
-	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	for _, r := range rows {
-		m, ok := r.(map[string]any)
-		if !ok {
-			continue
-		}
+	eachRow(stdout, stderr, resp, "no habits yet, add one with: mailbox habit add NAME", func(tw *tabwriter.Writer, m map[string]any) {
 		mark := " "
 		switch {
 		case boolOf(m["done"]):
@@ -142,9 +114,7 @@ func printHabits(stdout, stderr io.Writer, resp daemon.Response) {
 		}
 		fmt.Fprintf(tw, "%s\t%v\t%v\t%v\n", mark, truncate(str(m["name"]), 32),
 			strings.Join(strs(asAny(m["days"])), ","), streak)
-	}
-	_ = tw.Flush()
-	behindNotice(stderr, resp)
+	})
 }
 
 func boolOf(v any) bool {

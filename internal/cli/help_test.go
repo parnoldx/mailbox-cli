@@ -47,7 +47,7 @@ func TestOverviewMatchesTheGoldenFile(t *testing.T) {
 
 // The topics are for somebody who asked about help. On the root they would be a
 // heading of things that are not commands, in a list that exists to say what
-// the commands are — but they still have to be findable from there.
+// the commands are, but they still have to be findable from there.
 func TestTopicsAreListedOnlyUnderHelp(t *testing.T) {
 	out, _, code := run(t)
 	if code != ExitOK {
@@ -253,7 +253,7 @@ func TestBareGroupIsItsIndex(t *testing.T) {
 	}
 }
 
-// A wrong subcommand is a mistake, so it fails — but it fails with the list the
+// A wrong subcommand is a mistake, so it fails, but it fails with the list the
 // caller needed, because the caller cannot scroll back.
 func TestAWrongSubcommandPrintsTheIndexAndFails(t *testing.T) {
 	out, errs, code := run(t, "todo", "frobnicate")
@@ -304,7 +304,7 @@ func TestHelpTopics(t *testing.T) {
 	}
 }
 
-// An unknown flag prints the command's own page, not Go's flag package dump —
+// An unknown flag prints the command's own page, not Go's flag package dump,
 // and names the flag the way every other line of help names one.
 func TestAnUnknownFlagPrintsThePageWithTwoDashes(t *testing.T) {
 	_, errs, code := run(t, "search", "rechnung", "--nope")

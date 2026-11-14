@@ -1,4 +1,4 @@
-mailbox — mail, calendars, todos and contacts
+mailbox, mail, calendars, todos and contacts
 
 USAGE
   mailbox <command> [flags]
@@ -55,7 +55,7 @@ SYSTEM
 FLAGS
   --json        print the response envelope
 
-Ids are [account/]box:uid — 36722, Screener:342, gmx/INBOX:412.
+Ids are [account/]box:uid, 36722, Screener:342, gmx/INBOX:412.
 
   mailbox <command> --help   one command
   mailbox help               ids, exit-codes, environment, architecture

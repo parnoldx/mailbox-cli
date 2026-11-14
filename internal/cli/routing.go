@@ -19,19 +19,7 @@ func runScreener(in *input, stdout, stderr io.Writer) int {
 }
 
 func printScreener(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(stdout, resp.Data)
-	if !ok {
-		return
-	}
-	if len(rows) == 0 {
-		fmt.Fprintln(stderr, "nothing is waiting for a decision")
-	}
-	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	for _, r := range rows {
-		m, ok := r.(map[string]any)
-		if !ok {
-			continue
-		}
+	eachRow(stdout, stderr, resp, "nothing is waiting for a decision", func(tw *tabwriter.Writer, m map[string]any) {
 		count := fmt.Sprintf("%d", int(numOf(m["count"])))
 		if unread := int(numOf(m["unread"])); unread > 0 && unread != int(numOf(m["count"])) {
 			count = fmt.Sprintf("%d (%d new)", int(numOf(m["count"])), unread)
@@ -39,9 +27,7 @@ func printScreener(stdout, stderr io.Writer, resp daemon.Response) {
 		fmt.Fprintf(tw, "%v\t%v\t%v\t%v\t%v\n",
 			truncate(str(m["address"]), 34), count, str(m["newest"]),
 			truncate(str(m["subject"]), 38), str(m["id"]))
-	}
-	_ = tw.Flush()
-	behindNotice(stderr, resp)
+	})
 }
 
 // runRouteList prints the decisions already made. The sieve script on the
@@ -75,7 +61,7 @@ func printRouting(stdout, stderr io.Writer, resp daemon.Response) {
 		return
 	}
 	if active, _ := m["active"].(bool); !active {
-		fmt.Fprintln(stderr, "notice: the routing script is not the active one — nothing below is in force")
+		fmt.Fprintln(stderr, "notice: the routing script is not the active one, so nothing below is in force")
 	}
 	rows, _ := m["routes"].([]any)
 	if len(rows) == 0 {
@@ -104,16 +90,7 @@ func printRouting(stdout, stderr io.Writer, resp daemon.Response) {
 // was already here, because those are two different things and only one of
 // them is visible in a box listing afterwards.
 func printDecisions(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(stdout, resp.Data)
-	if !ok {
-		return
-	}
-	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	for _, r := range rows {
-		m, ok := r.(map[string]any)
-		if !ok {
-			continue
-		}
+	eachRow(stdout, stderr, resp, "", func(tw *tabwriter.Writer, m map[string]any) {
 		what := "-> " + str(m["to"])
 		if changed, _ := m["changed"].(bool); !changed {
 			what = "already " + str(m["to"])
@@ -131,14 +108,12 @@ func printDecisions(stdout, stderr io.Writer, resp daemon.Response) {
 			moved = fmt.Sprintf("binned %d", n)
 		}
 		fmt.Fprintf(tw, "%v\t%v\t%v\n", str(m["address"]), what, moved)
-	}
-	_ = tw.Flush()
-	behindNotice(stderr, resp)
+	})
 }
 
 // asideVerb puts mail in the read-later pile, and takes it back out. It is a
 // move and not a route: the Routing decides about senders, and what to read
-// later is decided one conversation at a time — the daemon moves the whole
+// later is decided one conversation at a time, the daemon moves the whole
 // thread of the id it is given.
 func asideVerb(done bool) func(*input, io.Writer, io.Writer) int {
 	return pileVerb("aside", done)
@@ -152,7 +127,7 @@ func replyLaterVerb(done bool) func(*input, io.Writer, io.Writer) int {
 }
 
 // pileVerb is the shared body of the hand-tended piles: a Move into the named
-// pile, or — with `done` — back out to the Inbox.
+// pile, or, with `done`, back out to the Inbox.
 func pileVerb(name string, done bool) func(*input, io.Writer, io.Writer) int {
 	cmd := []string{name}
 	if done {
@@ -165,8 +140,8 @@ func pileVerb(name string, done bool) func(*input, io.Writer, io.Writer) int {
 	}
 }
 
-// runBubble sets a thread aside with a return time — HEY's Bubble Up, one
-// timing flag required — lists what is bubbled, or with --now brings a thread
+// runBubble sets a thread aside with a return time, HEY's Bubble Up, one
+// timing flag required, lists what is bubbled, or with --now brings a thread
 // back straight away. Scheduling only happens here, on the home machine; the
 // always-on VPS daemon just runs the return loop.
 func runBubble(in *input, stdout, stderr io.Writer) int {
@@ -192,28 +167,13 @@ func runBubble(in *input, stdout, stderr io.Writer) int {
 }
 
 // printBubbles lists bubbled threads with the time each comes back, soonest
-// first. A due one — its instant already passed — returns on the next loop tick.
+// first. A due one, its instant already passed, returns on the next loop tick.
 func printBubbles(stdout, stderr io.Writer, resp daemon.Response) {
-	rows, ok := rowsOf(stdout, resp.Data)
-	if !ok {
-		return
-	}
-	if len(rows) == 0 {
-		fmt.Fprintln(stderr, "nothing is bubbled")
-		return
-	}
-	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	for _, r := range rows {
-		m, ok := r.(map[string]any)
-		if !ok {
-			continue
-		}
+	eachRow(stdout, stderr, resp, "nothing is bubbled", func(tw *tabwriter.Writer, m map[string]any) {
 		when := str(m["return"])
 		if due, _ := m["due"].(bool); due {
 			when += " (due)"
 		}
 		fmt.Fprintf(tw, "%v\t%v\t%v\n", m["id"], when, truncate(str(m["subject"]), 40))
-	}
-	_ = tw.Flush()
-	behindNotice(stderr, resp)
+	})
 }

@@ -10,7 +10,7 @@ import (
 // tagline says what the program is over, not how it works. What it is built on
 // is a question somebody may go on to ask, and `mailbox help architecture` is
 // where it is answered.
-const tagline = "mailbox — mail, calendars, todos and contacts"
+const tagline = "mailbox, mail, calendars, todos and contacts"
 
 // globalNote is the one line every page carries about the flag every command
 // takes. The overview prints the flag properly; a page mentions it and moves on.
@@ -69,7 +69,7 @@ A read never waits on a server at all.
   MAILBOX_OUTBOX   where the outbox file is kept
   MAILBOX_SOCKET   where the daemon listens
                    (default $XDG_RUNTIME_DIR/mailbox.sock)
-  MAILBOX_FOLDER   mirror only these boxes, comma separated — for development
+  MAILBOX_FOLDER   mirror only these boxes, comma separated, for development
 
 Credentials are in the config file and not in the environment. Write it
 with mailbox setup.
@@ -176,7 +176,7 @@ func overview(root []*Command, withTopics bool) string {
 	b.WriteString("\nFLAGS\n")
 	fmt.Fprintf(&b, "  %-*s  %s\n", w, "--json", "print the response envelope")
 
-	b.WriteString("\nIds are [account/]box:uid — 36722, Screener:342, gmx/INBOX:412.\n")
+	b.WriteString("\nIds are [account/]box:uid, 36722, Screener:342, gmx/INBOX:412.\n")
 	b.WriteString("\n  mailbox <command> --help   one command\n")
 	if withTopics {
 		b.WriteString("  mailbox help <topic>       a topic above\n")
@@ -199,8 +199,8 @@ func topicNames() []string {
 // idNote is added to every command whose usage names an ID. That a missing id
 // is exit 2 and ordinary belongs where an agent first meets the command, not
 // only in `mailbox help exit-codes`.
-const idNote = "Nothing has that id: exit 2 — usually it was expunged since the listing " +
-	"that named it. A retry asks the same question."
+const idNote = "Nothing has that id: exit 2. Usually it was expunged since the listing " +
+	"that named it, and a retry asks the same question."
 
 // notesFor is a command's own notes plus, when its usage names an ID, the
 // exit-2 note. Derived rather than stored: no registry entry repeats it.
@@ -330,13 +330,6 @@ func wrap(s string, n int) string {
 		out = append(out, line)
 	}
 	return strings.Join(out, "\n")
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 // commandInfo is one runnable command in the machine index. The first four
