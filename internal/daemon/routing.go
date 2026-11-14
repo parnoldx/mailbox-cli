@@ -53,8 +53,8 @@ func (d *Daemon) routingLoop(ctx context.Context) {
 		every = 10 * time.Minute
 	}
 	for {
-		// An account can gain a Routing mid-run — a config reload builds one
-		// (ADR-0021) — so who has one is asked every tick, not once at start.
+		// An account can gain a Routing mid-run, a config reload builds one
+		// (ADR-0021), so who has one is asked every tick, not once at start.
 		for _, a := range d.accounts() {
 			if !(a.Primary && d.Sieve != nil) && a.Routing == nil {
 				continue
@@ -105,7 +105,7 @@ func (d *Daemon) readRouting(ctx context.Context) (routingState, error) {
 
 // readRoutingOn is readRouting for one account: a Graph account's Routing is
 // its inbox rules, the Primary's is the Sieve script (ADR-0032). An IMAP
-// Secondary has neither — its accounts do not route — and falling through to
+// Secondary has neither, its accounts do not route, and falling through to
 // the Primary's Sieve here would let a decision made on a Secondary rewrite
 // the Primary's script.
 func (d *Daemon) readRoutingOn(ctx context.Context, a *Account) (routingState, error) {
@@ -195,7 +195,7 @@ func (d *Daemon) refreshRoutingOn(ctx context.Context, a *Account) error {
 		return err
 	}
 	if !st.exists {
-		// A Graph account whose rules have all gone — deleted in Outlook, say —
+		// A Graph account whose rules have all gone, deleted in Outlook, say,
 		// had a Routing the Mirror still shows. The server is the record, so
 		// the projection follows it to empty; but only when there was one, and
 		// only on a clean read, so a database error does not overwrite it with
@@ -208,11 +208,11 @@ func (d *Daemon) refreshRoutingOn(ctx context.Context, a *Account) error {
 		return nil
 	}
 	if routing.Unreadable(st.rules) {
-		d.logf("routing %s: %d of its rules cannot be read back — decisions there are refused until it is repaired",
+		d.logf("routing %s: %d of its rules cannot be read back, decisions there are refused until it is repaired",
 			a.label(), len(st.rules))
 	}
 	if !st.inForce {
-		d.logf("routing %s: not in force — undecided senders are not being held for a decision", a.label())
+		d.logf("routing %s: not in force, undecided senders are not being held for a decision", a.label())
 	}
 	return d.storeRoutingOn(a, st.raw, st.inForce, st.lists)
 }
@@ -239,8 +239,8 @@ func (d *Daemon) storeRoutingOn(a *Account, raw string, active bool, lists *rout
 // handleScreener answers who is waiting for a decision. It is a Mirror read
 // grouped by sender, because the decision is about a sender and not about a
 // mail: five mails from one address are one thing to decide, not five. Every
-// account with a Routing has a Screener, so the account named — the Primary
-// when none is — decides whose is listed.
+// account with a Routing has a Screener, so the account named, the Primary
+// when none is, decides whose is listed.
 func (d *Daemon) handleScreener(req Request, resp Response) Response {
 	a, err := d.routeAccount(req, nil)
 	if err != nil {
@@ -284,7 +284,7 @@ func groupBySender(a *Account, box string, rows []mirror.Row) []waiting {
 	var order []string
 	for _, r := range rows {
 		// A Pickup owes no decision. The code has been taken out of it, it is
-		// already read, and the Daemon bins it within the quarter hour — the
+		// already read, and the Daemon bins it within the quarter hour, the
 		// sender is a login form you used once, not somebody to route. Leaving
 		// it in would put a red badge on the widget for exactly as long as the
 		// mail took to expire.
@@ -392,8 +392,8 @@ type decision struct {
 }
 
 // handleRoute decides where a sender's mail goes. One command does both halves
-// of the decision — the script that files their next mail, and the mail already
-// sitting in the Screener — because a caller who has to run two commands to
+// of the decision, the script that files their next mail, and the mail already
+// sitting in the Screener, because a caller who has to run two commands to
 // finish one decision will one day run only the first.
 //
 // The server first, then the Mirror, then the mail (ADR-0004). A script the
@@ -431,21 +431,21 @@ func (d *Daemon) handleRoute(ctx context.Context, req Request, resp Response) Re
 	if err != nil {
 		return resp.api(err.Error())
 	}
-	// A Graph rule that could not be read back — its Box is gone — is the one
+	// A Graph rule that could not be read back, its Box is gone, is the one
 	// thing a decision refuses on a Graph account: the write would carry over
 	// only the decisions it could read and quietly forget the rest.
 	if a.Routing != nil && routing.Unreadable(st.rules) {
-		return resp.api("some of this account's routing rules cannot be read back — a Box they name is gone. " +
+		return resp.api("some of this account's routing rules cannot be read back: a Box they name is gone. " +
 			"Recreate the Box, or delete the rule where it was written, and decide again")
 	}
 	// Never disable somebody else's filtering to enable ours: activating a
 	// script deactivates the one that was running, and that is somebody's
 	// webmail rules. So the decision is refused unless the Routing already
-	// runs — because it is active, or because the active script includes it.
+	// runs, because it is active, or because the active script includes it.
 	if a.Routing == nil && !st.inForce && !st.activate {
 		return resp.api(fmt.Sprintf(
 			"%q is the active sieve script and it does not include %q, so the routing "+
-				"would be stored and never run — add `include %q;` to the end of %q, "+
+				"would be stored and never run. Add `include %q;` to the end of %q, "+
 				"or make %q the active script",
 			st.active, routing.ScriptName, routing.ScriptName, st.active, routing.ScriptName))
 	}
@@ -463,7 +463,7 @@ func (d *Daemon) handleRoute(ctx context.Context, req Request, resp Response) Re
 
 	// What is already here, after the decision is in the lists: a domain key
 	// has to see Of() so a more specific address rule is not swept along. Block
-	// is not collected here — it bins out of two Boxes, once the script is
+	// is not collected here, it bins out of two Boxes, once the script is
 	// stored, and files nothing.
 	screener, hasScreener := a.boxNamed(routing.BoxScreener)
 	waiting := map[string][]mailsync.Ref{}
@@ -487,38 +487,13 @@ func (d *Daemon) handleRoute(ctx context.Context, req Request, resp Response) Re
 		}
 		if _, ok := a.boxNamed(box); !ok {
 			return resp.usage(fmt.Sprintf(
-				"this account has no %q box — create it before routing mail there", box))
+				"this account has no %q box: create it before routing mail there", box))
 		}
 	}
 
 	if changed || !st.exists {
-		if a.Routing != nil {
-			// The rules the server should run, whole; ours are replaced and
-			// nobody else's touched (ADR-0032).
-			rules := st.lists.Rules()
-			if err := a.Routing.SetRules(ctx, rules); err != nil {
-				return resp.api(err.Error())
-			}
-			b, err := json.Marshal(rules)
-			if err != nil {
-				return resp.api(err.Error())
-			}
-			// The server took the list or refused it, so what we sent is what
-			// it now runs, and storing it is storing the ack (ADR-0004).
-			if err := d.storeRoutingOn(a, string(b), true, st.lists); err != nil {
-				return resp.api(err.Error())
-			}
-		} else {
-			script := st.lists.Script()
-			if err := d.Sieve.PutScript(ctx, routing.ScriptName, script, st.activate); err != nil {
-				return resp.api(err.Error())
-			}
-			// What the server accepted is what it compiled: PUTSCRIPT either takes
-			// the script or refuses it, so the bytes we sent are the bytes it now
-			// runs, and storing them is storing the ack (ADR-0004).
-			if err := d.storeRoutingOn(a, script, true, st.lists); err != nil {
-				return resp.api(err.Error())
-			}
+		if err := d.storeLists(ctx, a, st); err != nil {
+			return resp.api(err.Error())
 		}
 	}
 
@@ -534,82 +509,116 @@ func (d *Daemon) handleRoute(ctx context.Context, req Request, resp Response) Re
 	}
 
 	if pile := pileFor(to, total); pile != "" {
-		box, _ := a.boxNamed(pile)
-		for i, addr := range addresses {
-			refs := waiting[addr]
-			if len(refs) == 0 {
-				continue
-			}
-			results, err := a.Writer.Move(ctx, refs, box)
-			if err != nil {
-				return resp.api(err.Error())
-			}
-			for _, r := range results {
-				if r.NewUID != 0 {
-					out[i].Moved = append(out[i].Moved, a.messageID(r.NewFolder, r.NewUID))
-				} else {
-					out[i].Moved = append(out[i].Moved, box)
-				}
-			}
+		if err := d.sweepPile(ctx, a, addresses, waiting, out, pile, screener); err != nil {
+			return resp.api(err.Error())
 		}
-		d.push(Push{Event: "mail.changed", Account: a.Name, Box: screener})
-		d.push(Push{Event: "mail.changed", Account: a.Name, Box: box})
 	}
 
-	// The mail the decision was made about moves with it, when the Screener is
-	// not the one holding it: "this belongs in the Paper Trail", read in the
-	// Inbox, is a decision about the sender, and the mail it was read on should
-	// not stay behind to contradict it. Read on arrival, the same way the
-	// script marks what it files there. A Screener target is the sweep's job
-	// above, and one already sitting in the destination needs nothing.
 	if to == routing.Feed || to == routing.PaperTrail {
-		dest, _ := a.boxNamed(to.Box())
-		for _, t := range targets {
-			t = strings.TrimSpace(t)
-			if strings.Contains(t, "@") {
-				continue // an address was decided about, no mail named
-			}
-			acct, folder, uid, err := d.resolveID(t)
-			if err != nil {
-				return resp.api(err.Error())
-			}
-			if acct.Name != a.Name ||
-				strings.EqualFold(folder, routing.BoxScreener) ||
-				strings.EqualFold(folder, to.Box()) {
-				continue
-			}
-			row, err := d.Mirror.Row(acct.Name, folder, uid)
-			if err != nil {
-				return resp.api(err.Error())
-			}
-			ref := mailsync.Ref{Folder: folder, UID: uid}
-			// \Seen first, while the uid we hold is still the mail's — the
-			// same order trash bins in, for the same reason.
-			if _, err := a.Writer.SetSeen(ctx, []mailsync.Ref{ref}, true); err != nil {
-				return resp.api(err.Error())
-			}
-			results, err := a.Writer.Move(ctx, []mailsync.Ref{ref}, dest)
-			if err != nil {
-				return resp.api(err.Error())
-			}
-			d.push(Push{Event: "mail.changed", Account: a.Name, Box: folder})
-			d.push(Push{Event: "mail.changed", Account: a.Name, Box: to.Box()})
-			addr := routing.AddressOf(row.From)
-			for i := range out {
-				if out[i].Address != addr {
-					continue
-				}
-				for _, r := range results {
-					if r.NewUID != 0 {
-						out[i].Moved = append(out[i].Moved, a.messageID(r.NewFolder, r.NewUID))
-					} else {
-						out[i].Moved = append(out[i].Moved, to.Box())
-					}
-				}
-			}
+		if err := d.moveDecidedMail(ctx, a, to, targets, out); err != nil {
+			return resp.api(err.Error())
 		}
 	}
 	return resp.ok(out)
+}
+
+// sweepPile moves the mail a decision was made about into the pile the
+// destination keeps it in: the senders' waiting mail moves as one, and each
+// decision reports the ids it now reads them with.
+func (d *Daemon) sweepPile(ctx context.Context, a *Account, addresses []string, waiting map[string][]mailsync.Ref, out []decision, pile, screener string) error {
+	box, _ := a.boxNamed(pile)
+	for i, addr := range addresses {
+		refs := waiting[addr]
+		if len(refs) == 0 {
+			continue
+		}
+		results, err := a.Writer.Move(ctx, refs, box)
+		if err != nil {
+			return err
+		}
+		for _, r := range results {
+			out[i].Moved = append(out[i].Moved, movedInto(a, r, box))
+		}
+	}
+	d.push(Push{Event: "mail.changed", Account: a.Name, Box: screener})
+	d.push(Push{Event: "mail.changed", Account: a.Name, Box: box})
+	return nil
+}
+
+// storeLists puts the decision where the account's server will run it: the
+// rules on a Microsoft 365 account, the Sieve script on IMAP. What the server
+// accepted is what it runs, so the same bytes go into the Mirror as the ack
+// (ADR-0004), one round trip, and the ack is the record.
+func (d *Daemon) storeLists(ctx context.Context, a *Account, st routingState) error {
+	if a.Routing != nil {
+		// The rules the server should run, whole; ours are replaced and
+		// nobody else's touched (ADR-0032).
+		rules := st.lists.Rules()
+		if err := a.Routing.SetRules(ctx, rules); err != nil {
+			return err
+		}
+		b, err := json.Marshal(rules)
+		if err != nil {
+			return err
+		}
+		return d.storeRoutingOn(a, string(b), true, st.lists)
+	}
+	script := st.lists.Script()
+	if err := d.Sieve.PutScript(ctx, routing.ScriptName, script, st.activate); err != nil {
+		return err
+	}
+	return d.storeRoutingOn(a, script, true, st.lists)
+}
+
+// moveDecidedMail carries the mail the decision was read on to where the
+// decision sends it, when the Screener is not the one holding it: "this belongs
+// in the Paper Trail", read in the Inbox, is a decision about the sender, and the
+// mail it was read on should not stay behind to contradict it. Read on arrival,
+// the same way the script marks what it files there. A Screener target is the
+// sweep's job, and one already sitting in the destination needs nothing.
+func (d *Daemon) moveDecidedMail(ctx context.Context, a *Account, to routing.Destination, targets []string, out []decision) error {
+	dest, _ := a.boxNamed(to.Box())
+	for _, t := range targets {
+		t = strings.TrimSpace(t)
+		if strings.Contains(t, "@") {
+			continue // an address was decided about, no mail named
+		}
+		acct, folder, uid, err := d.resolveID(t)
+		if err != nil {
+			return err
+		}
+		if acct.Name != a.Name ||
+			strings.EqualFold(folder, routing.BoxScreener) ||
+			strings.EqualFold(folder, to.Box()) {
+			continue
+		}
+		row, err := d.Mirror.Row(acct.Name, folder, uid)
+		if err != nil {
+			return err
+		}
+		ref := mailsync.Ref{Folder: folder, UID: uid}
+		// \Seen first, while the uid we hold is still the mail's, the same
+		// order trash bins in, for the same reason.
+		if _, err := a.Writer.SetSeen(ctx, []mailsync.Ref{ref}, true); err != nil {
+			return err
+		}
+		results, err := a.Writer.Move(ctx, []mailsync.Ref{ref}, dest)
+		if err != nil {
+			return err
+		}
+		d.push(Push{Event: "mail.changed", Account: a.Name, Box: folder})
+		d.push(Push{Event: "mail.changed", Account: a.Name, Box: to.Box()})
+		addr := routing.AddressOf(row.From)
+		for i := range out {
+			if out[i].Address != addr {
+				continue
+			}
+			for _, r := range results {
+				out[i].Moved = append(out[i].Moved, movedInto(a, r, to.Box()))
+			}
+		}
+	}
+	return nil
 }
 
 // binBlocked empties a blocked sender's mail out of the Screener and out of the
@@ -636,7 +645,7 @@ func (d *Daemon) binBlocked(ctx context.Context, a *Account, addr string, lists 
 	}
 	// \Seen first, while the uids we hold are still the mails': after the move
 	// they have new ones in Trash, which the Mirror never sees. `trash` sets it
-	// in the same order and for the same reason — a binned mail counts as
+	// in the same order and for the same reason, a binned mail counts as
 	// unread for nobody.
 	if _, err := a.Writer.SetSeen(ctx, refs, true); err != nil {
 		return 0, err
@@ -651,6 +660,16 @@ func (d *Daemon) binBlocked(ctx context.Context, a *Account, addr string, lists 
 	return len(results), nil
 }
 
+// movedInto is how a decision reports one moved mail: the id to read it with
+// when the destination is mirrored, else the Box name, the id it had is gone
+// either way.
+func movedInto(a *Account, r mailsync.Result, box string) string {
+	if r.NewUID != 0 {
+		return a.messageID(r.NewFolder, r.NewUID)
+	}
+	return box
+}
+
 // pileFor is where mail already in the Screener goes for a decision, empty when
 // there is none to move.
 func pileFor(to routing.Destination, waiting int) string {
@@ -662,11 +681,11 @@ func pileFor(to routing.Destination, waiting int) string {
 
 // senders turns what a caller typed into addresses. A target with an `@` in it
 // is an address; anything else is a message id, and the address is whoever sent
-// that Message — which is how the decision is usually made, by an agent that
+// that Message, which is how the decision is usually made, by an agent that
 // has just read the mail and has its id in hand.
 // routeAccount is the account a screener or route call is about: the account
-// the caller named, else the account a target id carries — `work/Screener:12`
-// is a decision on work — else the Primary. Every target must sit on the one
+// the caller named, else the account a target id carries, `work/Screener:12`
+// is a decision on work, else the Primary. Every target must sit on the one
 // account, because a decision is made on one server's lists.
 func (d *Daemon) routeAccount(req Request, targets []string) (*Account, error) {
 	name := req.Str("account")
@@ -734,7 +753,7 @@ func (d *Daemon) sendersOn(a *Account, targets []string) ([]string, error) {
 	return out, nil
 }
 
-// senderRefs is every Placement in a Box that really is from address — the
+// senderRefs is every Placement in a Box that really is from address, the
 // Screener for a decision's sweep, and the Block Box too when the decision is a
 // block. The Mirror narrows it with a substring match over the From header and the
 // header is parsed here, because `bob@example.com` is a substring of
@@ -782,14 +801,14 @@ func (d *Daemon) handleReplyLater(ctx context.Context, req Request, resp Respons
 	return d.movePile(ctx, req, resp, routing.BoxReplyLater)
 }
 
-// movePile puts mail into one of the hand-tended piles, or — with a `done`
-// sub-verb — takes it back out to the Inbox. Both piles behave the same way;
+// movePile puts mail into one of the hand-tended piles, or, with a `done`
+// sub-verb, takes it back out to the Inbox. Both piles behave the same way;
 // only the Box they land in differs.
 //
 // A pile is a decision about a conversation, not one Message (the user thinks
 // in HEY's terms: the thread is set aside, or owed a reply). So the id given is
 // expanded to its whole Thread and every one of its Messages in the Inbox or
-// the other pile moves with it — otherwise half the thread shows in the Inbox
+// the other pile moves with it, otherwise half the thread shows in the Inbox
 // and half in the pile.
 func (d *Daemon) movePile(ctx context.Context, req Request, resp Response, pileBox string) Response {
 	acct, refs, err := d.refs(ctx, req, false)
@@ -805,7 +824,7 @@ func (d *Daemon) movePile(ctx context.Context, req Request, resp Response, pileB
 		return resp.usage(fmt.Sprintf("this account has no %q box", want))
 	}
 	// Sweep the whole Thread out of everywhere it could be shown alongside the
-	// destination — the Inbox and both piles — minus the destination itself,
+	// destination, the Inbox and both piles, minus the destination itself,
 	// which Writer.Move refuses as a no-op move.
 	var from []string
 	for _, b := range []string{routing.BoxInbox, routing.BoxAside, routing.BoxReplyLater} {
