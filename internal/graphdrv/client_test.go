@@ -12,8 +12,8 @@ import (
 )
 
 // A Graph that refuses the first call with the "invalid lifetime" answer a
-// lying clock produces — the token on disk looks fresh locally, Graph has
-// already expired it — and answers the retry. The client is to force a refresh
+// lying clock produces, the token on disk looks fresh locally, Graph has
+// already expired it, and answers the retry. The client is to force a refresh
 // between the two, and the forced refresh is to use the refresh token on disk.
 func TestClientRefreshesAfterARefusedToken(t *testing.T) {
 	login := &fakeLogin{}

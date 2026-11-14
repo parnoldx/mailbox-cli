@@ -245,7 +245,7 @@ func singleICal(uid string, g graphEvent, loc *time.Location, self string) (stri
 // seriesICal is a repeating event as one calendar object: the master with its
 // rule, an override for every instance that was moved or retitled, and a
 // cancelled override for every instance the rule makes and the server no longer
-// has. That is what vcal expands — "a repeating event is one row" — and only the
+// has. That is what vcal expands, "a repeating event is one row", and only the
 // window the instances were read for is described.
 func seriesICal(uid string, master graphEvent, instances []graphEvent, from, to time.Time, loc *time.Location, self string) (string, error) {
 	mc := veventOf(uid, master, loc, self)
@@ -465,7 +465,7 @@ func recurrenceOf(rule string, start time.Time, loc *time.Location, zoneName str
 
 // eventFields is what a write sends: an event's calendar object as the Graph
 // properties it maps to. The same function reads what the server has now, so a
-// field the edit did not touch compares equal and is not sent — a PATCH of what
+// field the edit did not touch compares equal and is not sent, a PATCH of what
 // changed, which cannot drop what we do not model (ADR-0010). self is the
 // account's own address: its own ATTENDEE is its RSVP answer, never a person to
 // invite again.
@@ -510,7 +510,7 @@ func eventFields(raw string, loc *time.Location, zoneName, self string) (map[str
 	// The attendees as the server should hold them, sorted by address so that
 	// a read-back in any order compares equal and an unrelated edit does not
 	// PATCH the roster back. Everyone but the account itself is invited as a
-	// required attendee; answers are never sent — they are the server's.
+	// required attendee; answers are never sent, they are the server's.
 	att := []map[string]any{}
 	for _, a := range p.Attendees {
 		if a.Address == strings.ToLower(self) {

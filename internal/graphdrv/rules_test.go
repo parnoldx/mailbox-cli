@@ -16,7 +16,7 @@ func rulesSetup(t *testing.T) (*fakeGraph, *Mail) {
 	if _, err := mail.Folders(ctx); err != nil {
 		t.Fatal(err)
 	}
-	// The Routing Boxes: setup makes them, and every rule names one of them —
+	// The Routing Boxes: setup makes them, and every rule names one of them,
 	// a decision never creates a Box (ADR-0019).
 	for _, name := range []string{routing.BoxScreener, routing.BoxFeed, routing.BoxPaperTrail, routing.BoxBlock} {
 		if err := mail.CreateFolder(ctx, name); err != nil {
@@ -86,7 +86,7 @@ func TestDecisionsRoundTripThroughRules(t *testing.T) {
 		t.Errorf("the catch-all did not survive the write")
 	}
 	// Feed and Paper Trail are read on arrival, Block is deleted, Inbox is
-	// neither — the same semantics the script writes.
+	// neither, the same semantics the script writes.
 	for _, r := range got {
 		switch {
 		case r.CatchAll || r.Dest == routing.Block:
@@ -130,7 +130,7 @@ func TestSetRulesLeavesForeignRulesAlone(t *testing.T) {
 	}
 }
 
-// A write replaces the whole set: two writes leave one catch-all, not two —
+// A write replaces the whole set: two writes leave one catch-all, not two,
 // a decision that forgets to delete the old rules would double every list.
 func TestSetRulesReplaces(t *testing.T) {
 	f, mail := rulesSetup(t)
@@ -157,7 +157,7 @@ func TestSetRulesReplaces(t *testing.T) {
 }
 
 // A rule whose move target is a folder this program no longer knows is read
-// back unreadable rather than dropped, and Unreadable says so — the caller
+// back unreadable rather than dropped, and Unreadable says so, the caller
 // refuses to decide on an account whose Routing it cannot read whole.
 func TestUnreadableRulesAreCarriedNotDropped(t *testing.T) {
 	f, mail := rulesSetup(t)
@@ -208,8 +208,8 @@ func TestFailedWriteLeavesTheOldRules(t *testing.T) {
 	}
 }
 
-// A delete of the old set that fails is an error, not a success — old and new
-// sets running side by side is two Routings — and a second write clears the
+// A delete of the old set that fails is an error, not a success, old and new
+// sets running side by side is two Routings, and a second write clears the
 // leftovers, because ours are replaced whole.
 func TestFailedDeleteIsAnErrorAndTheNextWriteClearsIt(t *testing.T) {
 	f, mail := rulesSetup(t)

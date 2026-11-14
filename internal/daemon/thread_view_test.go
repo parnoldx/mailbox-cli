@@ -12,7 +12,7 @@ import (
 
 // threadedBox builds a Mirror holding one Thread of three Messages, all
 // placed in INBOX (the way a real back-and-forth would arrive), plus one
-// unrelated Message — so `box view` has both a conversation to collapse and a
+// unrelated Message, so `box view` has both a conversation to collapse and a
 // row that should stay on its own.
 func threadedBox(t *testing.T) *Daemon {
 	t.Helper()
@@ -102,8 +102,8 @@ func TestBoxViewMarksAThreadUnreadIfAnyMessageIs(t *testing.T) {
 	}
 }
 
-// The Count badge is the whole conversation's size — the number the reader
-// shows — even when only part of the Thread sits in the Box being listed.
+// The Count badge is the whole conversation's size, the number the reader
+// shows, even when only part of the Thread sits in the Box being listed.
 func TestBoxViewCountsTheWholeThreadNotJustThisBox(t *testing.T) {
 	d := seed(t)
 	// The Rechnung thread: billing@ in INBOX:7, plus a reply of ours filed in

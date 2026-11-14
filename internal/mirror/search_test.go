@@ -7,7 +7,7 @@ import (
 )
 
 // seedSearch builds a Mirror with three Messages: one in the Inbox, one in the
-// Inbox and Archive both, and one whose Placement has gone — trashed after it
+// Inbox and Archive both, and one whose Placement has gone, trashed after it
 // was mirrored.
 func seedSearch(t *testing.T) *Mirror {
 	t.Helper()

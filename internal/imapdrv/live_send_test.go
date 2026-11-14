@@ -66,7 +66,7 @@ func TestLiveSend(t *testing.T) {
 	}
 
 	// Gate: APPEND reports where the copy landed. Without UIDPLUS this is 0 and
-	// the copy waits for a cycle to be found — worth knowing which we are on.
+	// the copy waits for a cycle to be found, worth knowing which we are on.
 	uid, err := drv.Append(ctx, liveFolder, []string{`\Seen`}, raw)
 	if err != nil {
 		t.Fatalf("append the sent copy: %v", err)

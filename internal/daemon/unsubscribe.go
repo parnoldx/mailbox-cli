@@ -13,7 +13,7 @@ import (
 
 // unsubscribeClient is the one-click POST (RFC 8058): no cookies, no
 // redirects followed blind, and a short timeout so a dead list host does not
-// hang the request. A redirect is answered as the 3xx it is — Go would
+// hang the request. A redirect is answered as the 3xx it is, Go would
 // otherwise turn the POST into a GET, drop the List-Unsubscribe body, and
 // report the landing page's 200 as an unsubscribe that never happened. The
 // caller's fallback (hand the URL to a browser) is the right answer to a
@@ -24,8 +24,8 @@ var unsubscribeClient = &http.Client{
 }
 
 // handleUnsubscribe leaves the list a message belongs to, however it offers
-// to be left: an RFC 8058 one-click POST, a plain mailto:, or — when neither
-// is trustworthy enough to do blind — the link for a client to open.
+// to be left: an RFC 8058 one-click POST, a plain mailto:, or, when neither
+// is trustworthy enough to do blind, the link for a client to open.
 func (d *Daemon) handleUnsubscribe(ctx context.Context, req Request, resp Response) Response {
 	id := req.Str("positional")
 	acct, _, _, row, err := d.rowOf(id)
@@ -38,7 +38,7 @@ func (d *Daemon) handleUnsubscribe(ctx context.Context, req Request, resp Respon
 		if err := postOneClick(ctx, target.URL); err != nil {
 			// Some list hosts sit behind a WAF that 403s anything that is not
 			// a browser, One-Click header or not. That is the host's problem,
-			// not a reason to leave the caller with nothing to do about it —
+			// not a reason to leave the caller with nothing to do about it,
 			// the same URL still works from an actual browser.
 			if d.Log != nil {
 				d.Log.Printf("unsubscribe: one-click POST %s: %v", target.URL, err)
@@ -81,7 +81,7 @@ func postOneClick(ctx context.Context, url string) error {
 	httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	// Go's default User-Agent ("Go-http-client/1.1") is on every WAF's bot
 	// list, and a one-click endpoint is exactly the sort of thing a WAF
-	// guards — a browser-shaped one gets through the same door a person
+	// guards, a browser-shaped one gets through the same door a person
 	// clicking the link would.
 	httpReq.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "+
 		"(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")

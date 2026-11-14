@@ -11,7 +11,7 @@ Item {
     property string label: "To"
     property var recipients: []
     // Called (with no args) when Tab should move focus onward from this row's
-    // input — e.g. to the next pill row, or to Subject. Left null to fall back
+    // input, e.g. to the next pill row, or to Subject. Left null to fall back
     // to whatever the window's default focus chain would otherwise do.
     property var tabNext: null
     signal changed()
@@ -79,7 +79,7 @@ Item {
 
     // Your own send-from addresses (win.selfRecipients, primary first),
     // promoted above everything else when the query is a prefix of the name or
-    // the address's local part — so typing your own name to mail yourself a
+    // the address's local part, so typing your own name to mail yourself a
     // note beats whatever correspondent search digs up for it.
     function _promoteSelf(q, list) {
         var lc = root._norm(q)
@@ -112,7 +112,7 @@ Item {
             root.suggestions = root._promoteSelf(q, contactHits)
             root.sugActive = 0
             // Addresses actually seen in mail, appended below the address
-            // book's own matches — not gated on those coming up empty, since
+            // book's own matches, not gated on those coming up empty, since
             // being in the address book doesn't mean it's who this is to.
             Mailbox.call(["correspondent", "search"], { positional: q, limit: 6 }, function (r2) {
                 if (input.text.trim() !== q) return
@@ -128,7 +128,7 @@ Item {
                     var lc = root._norm(corr[j].email)
                     var nm2 = root._norm(corr[j].name)
                     // Skip an address already listed, and skip a second address
-                    // for somebody already shown by name — a contact reappearing
+                    // for somebody already shown by name, a contact reappearing
                     // under a mail-only address reads as a duplicate, not a find.
                     if (knownEmails[lc] || (nm2 && knownNames[nm2])) continue
                     knownEmails[lc] = true
@@ -244,7 +244,7 @@ Item {
                     if (root.tabNext) { root.tabNext(); e.accepted = true }
                     else e.accepted = false
                 }
-                // On blur, only keep what was actually typed — do not silently
+                // On blur, only keep what was actually typed, do not silently
                 // pick a highlighted suggestion (that is Enter's / Tab's job and
                 // would race a click on a different row).
                 onActiveFocusChanged: if (!activeFocus) {

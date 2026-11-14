@@ -71,7 +71,7 @@ type Outcome struct {
 }
 
 // ObjectChange is one object a sync wrote or deleted, as the Mirror holds it
-// afterwards — or as it last held it, for a deletion. Added and Deleted are
+// afterwards, or as it last held it, for a deletion. Added and Deleted are
 // exclusive; neither means the object was already there and changed.
 type ObjectChange struct {
 	Object  mirror.Object
@@ -109,7 +109,7 @@ func (r *Reconciler) SetExclude(names []string) {
 // collection that has disappeared, or that this machine has excluded, is
 // dropped with its objects.
 //
-// The prune is skipped when the answer was partial — some servers answered and
+// The prune is skipped when the answer was partial, some servers answered and
 // some did not. Dropping an unreachable server's calendars because it could not
 // be asked would turn a network problem into data loss, and the next answer
 // would refetch every object it ever held.
@@ -213,7 +213,7 @@ func (r *Reconciler) SyncKinds(ctx context.Context, kinds ...string) (map[string
 //
 // There is no journal here and none is needed. The token and the objects it
 // describes are written in one transaction, so a crash anywhere leaves the old
-// token with the old objects — and asking again from the old token returns the
+// token with the old objects, and asking again from the old token returns the
 // same changes. The mail side needs a journal because a modseq can be advanced
 // over a half-fetched folder; here that state cannot be constructed.
 func (r *Reconciler) Sync(ctx context.Context, c mirror.Collection) (Outcome, error) {
@@ -254,8 +254,8 @@ func (r *Reconciler) Sync(ctx context.Context, c mirror.Collection) (Outcome, er
 
 	// What each change is about to do to what the Mirror holds, read before the
 	// transaction writes over it: whether an object is arriving or changing, and
-	// what a deleted one was. A full sync is not described object by object —
-	// every one of them would look new — so it costs nothing there.
+	// what a deleted one was. A full sync is not described object by object,
+	// every one of them would look new, so it costs nothing there.
 	var deltas []ObjectChange
 	if !full {
 		deltas, err = r.describe(c, changes.Items)
@@ -316,7 +316,7 @@ func (r *Reconciler) Sync(ctx context.Context, c mirror.Collection) (Outcome, er
 
 // describe says what each change will do to the Mirror, by asking what is there
 // now. One read per changed object, and none at all on a cycle that found
-// nothing — which is nearly all of them.
+// nothing, which is nearly all of them.
 func (r *Reconciler) describe(c mirror.Collection, items []Change) ([]ObjectChange, error) {
 	var out []ObjectChange
 	for _, it := range items {

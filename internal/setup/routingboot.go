@@ -10,7 +10,7 @@ import (
 
 // RoutingBoxes are the Boxes the Routing needs on the Primary Account. A fresh
 // account has none of them, and until it does every `mailbox route` call is
-// refused with the Box named (ADR-0019) — a `fileinto` into a Box that is not
+// refused with the Box named (ADR-0019), a `fileinto` into a Box that is not
 // there files nowhere.
 //
 // Setup creates them because setup is the only place a human is present to be
@@ -27,7 +27,7 @@ var RoutingBoxes = []string{
 
 // PileBoxes are the Boxes a Secondary Account needs for the piles: Set Aside
 // and Reply Later, which `aside`, `reply-later` and `bubble` move mail into.
-// Only these two — the Screener and the Routing stay the Primary's.
+// Only these two, the Screener and the Routing stay the Primary's.
 var PileBoxes = []string{routing.BoxAside, routing.BoxReplyLater}
 
 // BoxMaker creates a Box on the Primary Account.
@@ -156,7 +156,7 @@ type RuleOps interface {
 }
 
 // EnsureGraphRouting creates the Routing Boxes a Graph account has not got and,
-// when the account carries none of our rules, puts the catch-all up — the rule
+// when the account carries none of our rules, puts the catch-all up, the rule
 // that files everything undecided into the Screener, so the first mail from a
 // sender nothing has been decided about waits for one (ADR-0032). Rules a human
 // wrote are never touched, so an account that has any of ours is left alone.

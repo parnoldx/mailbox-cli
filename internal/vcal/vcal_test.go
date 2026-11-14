@@ -146,7 +146,7 @@ END:VEVENT
 func TestARepeatingEventKeepsItsLocalTimeAcrossDST(t *testing.T) {
 	// Berlin leaves summer time on 25 October 2026. A weekly 09:30 meeting is
 	// at 09:30 local on both sides of that, which is two different hours in
-	// UTC — expanding in UTC is how a standup drifts by an hour every autumn.
+	// UTC, expanding in UTC is how a standup drifts by an hour every autumn.
 	from := time.Date(2026, 10, 19, 0, 0, 0, 0, berlin)
 	to := time.Date(2026, 10, 27, 0, 0, 0, 0, berlin)
 	got, err := Occurrences(wrap(weekly), from, to, berlin)
@@ -624,7 +624,7 @@ END:VEVENT
 	}
 }
 
-// The machine's own zone is written floating, not as TZID=Local — a name no
+// The machine's own zone is written floating, not as TZID=Local, a name no
 // other client knows.
 func TestALocalEventIsWrittenFloating(t *testing.T) {
 	raw := weeklyRaw(t)
@@ -699,7 +699,7 @@ func indexLine(raw, name string) string {
 }
 
 // A Teams meeting rides the object as a marker property, because that is how
-// the Graph writer knows to ask for an online meeting — and there is no off to
+// the Graph writer knows to ask for an online meeting, and there is no off to
 // write, since Graph ignores changes to it once the meeting exists.
 func TestNewEventAndSetEventWriteTheTeamsMarkerAndTheAttendees(t *testing.T) {
 	raw, err := NewEvent("meet-mailbox", EventEdit{
@@ -718,8 +718,8 @@ func TestNewEventAndSetEventWriteTheTeamsMarkerAndTheAttendees(t *testing.T) {
 		t.Errorf("the invitees are not on the object:\n%s", raw)
 	}
 
-	// An edit adds, and a second invite of somebody already there — even under
-	// another case — does not put them on twice.
+	// An edit adds, and a second invite of somebody already there, even under
+	// another case, does not put them on twice.
 	edited, err := SetEvent(raw, EventEdit{Invite: []string{"ANNA@example.com"}, Uninvite: []string{"BERT@example.de"}})
 	if err != nil {
 		t.Fatal(err)
@@ -735,7 +735,7 @@ func TestNewEventAndSetEventWriteTheTeamsMarkerAndTheAttendees(t *testing.T) {
 // An all-day end the caller names is the last day the entry is on, and the
 // record carries it exclusively: the holiday that runs to the 15th writes
 // DTEND on the 16th. Written as named, every other client reads the record as
-// ending on the 14th — one day of holiday quietly gone.
+// ending on the 14th, one day of holiday quietly gone.
 func TestAnAllDayEndNamedByTheCallerIsTheLastDay(t *testing.T) {
 	raw, err := NewEvent("urlaub-mailbox", EventEdit{
 		Summary: "Urlaub",

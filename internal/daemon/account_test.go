@@ -159,7 +159,7 @@ func TestNothingMatchedIsAnEmptyListNotNothing(t *testing.T) {
 	}
 	hits, ok := resp.Data.([]hit)
 	if !ok || hits == nil {
-		t.Fatalf("data = %#v — a caller reading this over the socket gets null and has to guess", resp.Data)
+		t.Fatalf("data = %#v: a caller reading this over the socket gets null and has to guess", resp.Data)
 	}
 	if len(hits) != 0 {
 		t.Fatalf("hits = %+v", hits)

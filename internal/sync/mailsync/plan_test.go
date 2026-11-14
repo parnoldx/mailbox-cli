@@ -104,7 +104,7 @@ func TestMakePlanWithoutCondStore(t *testing.T) {
 
 	got := MakePlan(local, remote)
 	if got.Action != ActionIncremental {
-		t.Errorf("action = %v, want incremental — a modseq-less server would never sync flags", got.Action)
+		t.Errorf("action = %v, want incremental: a modseq-less server would never sync flags", got.Action)
 	}
 	if got.FlagsSince != 0 {
 		t.Errorf("FlagsSince = %d, want 0 (fetch all flags)", got.FlagsSince)

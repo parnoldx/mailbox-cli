@@ -51,7 +51,7 @@ void MailboxClient::connectSocket() {
         return;
     // The private per-user runtime directory, never a bare name in the
     // world-writable /tmp: any local user could create that first and be handed
-    // the requests meant for the daemon. No runtime dir means no connection —
+    // the requests meant for the daemon. No runtime dir means no connection,
     // the amber dot beats talking to an impostor.
     const QString dir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
     if (dir.isEmpty())
@@ -135,7 +135,7 @@ void MailboxClient::deliver(const QString &id, const QVariantMap &reply) {
 
 // ---- agent draft -----------------------------------------------------------
 
-// ponytail: pi hardcoded — it is what `omarchy default agent` picks on this
+// ponytail: pi hardcoded, it is what `omarchy default agent` picks on this
 // machine, and omarchy-agent has no non-interactive spelling to lean on.
 // Revisit if Omarchy ever grows `omarchy default agent --print`.
 void MailboxClient::agentDraft(const QString &sessionId, const QString &prompt, const QJSValue &callback) {
@@ -200,7 +200,7 @@ void MailboxClient::agentDraft(const QString &sessionId, const QString &prompt, 
 
     p->start();
     // QProcess's default ReadWrite leaves the child's stdin an open pipe, and
-    // pi waits on piped stdin for the prompt instead of taking the argv one —
+    // pi waits on piped stdin for the prompt instead of taking the argv one,
     // it hung forever until this sends EOF. (stdout stays readable.)
     p->closeWriteChannel();
 }

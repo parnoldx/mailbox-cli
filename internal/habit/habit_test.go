@@ -28,7 +28,7 @@ func TestCompletingADayIsIdempotent(t *testing.T) {
 	h.Complete("2026-08-29")
 	h.Complete("2026-08-29")
 	if len(h.Done) != 1 {
-		t.Fatalf("done = %v — a habit is a fact about a day, not a counter", h.Done)
+		t.Fatalf("done = %v: a habit is a fact about a day, not a counter", h.Done)
 	}
 	h.Uncomplete("2026-08-29")
 	if h.DoneOn("2026-08-29") {

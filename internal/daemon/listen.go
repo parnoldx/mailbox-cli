@@ -18,7 +18,7 @@ var systemdFD uintptr = 3
 //
 // Under systemd the listener is inherited: the socket unit binds the path,
 // which is what lets the first widget to connect start the daemon (ADR-0012).
-// Passing --systemd-socket is an assertion, not a preference — a daemon that
+// Passing --systemd-socket is an assertion, not a preference, a daemon that
 // finds no inherited socket fails here rather than binding one of its own,
 // because a unit that silently binds a second socket looks healthy and is
 // talked to by nobody.
@@ -29,7 +29,7 @@ func Listen(socket string, systemd bool) (net.Listener, error) {
 	if socket == "" {
 		return nil, errors.New("no socket path: set XDG_RUNTIME_DIR or MAILBOX_SOCKET")
 	}
-	// Someone answering on this path is a live daemon — most likely the
+	// Someone answering on this path is a live daemon, most likely the
 	// socket-activated one. Removing the path below would unlink it out from
 	// under that daemon, which keeps its listening socket and its systemd
 	// unit: it looks healthy, logs that it is listening, and is reachable by

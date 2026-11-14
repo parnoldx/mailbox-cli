@@ -469,7 +469,7 @@ Item {
                 }
                 DragHandler {
                     id: textSelectionDrag
-                    // stock: Mouse | Stylus, passive — the TableView's
+                    // stock: Mouse | Stylus, passive, the TableView's
                     // Flickable wins the exclusive grab and the drag scrolls
                     // instead of selecting. Take the grab so drag = select;
                     // scrolling stays on wheel/scrollbar. TouchPad added so

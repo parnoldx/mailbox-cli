@@ -64,7 +64,7 @@ func (d *Daemon) handleDraft(ctx context.Context, req Request, resp Response) Re
 	}
 
 	// Every other verb acts on a draft that already exists, and its id names
-	// the account it lives in — usually the one --account names too. When the
+	// the account it lives in, usually the one --account names too. When the
 	// two differ the draft is being moved: the new version is filed under
 	// --account and the old one binned where it was.
 	home, box, row, err := d.draftRow(acct, req)
@@ -97,7 +97,7 @@ func (d *Daemon) handleDraft(ctx context.Context, req Request, resp Response) Re
 				return out
 			}
 			// The draft goes only once the mail is out. A send that failed
-			// leaves it where it was, so nothing is lost by retrying — and a
+			// leaves it where it was, so nothing is lost by retrying, and a
 			// failure to bin it is not a failure of the send, which has already
 			// happened: the reply says the mail went either way.
 			_, _ = home.Writer.Move(ctx, []mailsync.Ref{{Folder: box, UID: row.Placement.UID}}, "Trash")
@@ -113,8 +113,8 @@ func (d *Daemon) saveDraft(ctx context.Context, acct *Account, box string, draft
 	return d.putDraft(ctx, acct, box, acct, box, nil, draft, resp)
 }
 
-// replaceDraft writes the new version — filed under acct, which may not be
-// where the old one lives — and trashes the old one, in that order: a crash
+// replaceDraft writes the new version, filed under acct, which may not be
+// where the old one lives, and trashes the old one, in that order: a crash
 // between them leaves two drafts, which is recoverable, where the other order
 // loses the only copy.
 func (d *Daemon) replaceDraft(ctx context.Context, acct *Account, home *Account, old mirror.Row, draft compose.Draft, resp Response) Response {
@@ -225,8 +225,8 @@ func (d *Daemon) draftFrom(acct *Account, row mirror.Row, req Request) (compose.
 	return draft, nil
 }
 
-// draftRow finds the draft a caller named. An id may be bare — the command has
-// already said which account this is about, and that is where the draft lives —
+// draftRow finds the draft a caller named. An id may be bare, the command has
+// already said which account this is about, and that is where the draft lives,
 // or qualified the ordinary way, and a qualified id names the account the draft
 // lives in even when --account is moving it somewhere else.
 func (d *Daemon) draftRow(acct *Account, req Request) (*Account, string, mirror.Row, error) {

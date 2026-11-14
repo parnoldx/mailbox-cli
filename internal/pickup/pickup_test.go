@@ -2,7 +2,7 @@ package pickup
 
 import "testing"
 
-// The mails a Pickup is for. The first one is from the Mirror — it was the
+// The mails a Pickup is for. The first one is from the Mirror, it was the
 // single true positive in 1445 real messages, and it is the reason the subject
 // gate allows words between "verify your" and "email". Real senders are
 // anonymized to example.com with random tokens; the URL shapes are kept.
@@ -40,7 +40,7 @@ func TestFindsCodesAndLinks(t *testing.T) {
 		},
 		{
 			// Verbatim from the Screener: the compound is why this one was
-			// missed — nothing in the subject starts with a code stem.
+			// missed, nothing in the subject starts with a code stem.
 			name:     "german compound noun",
 			subject:  "Ihr Doctrinus-Kontoprüfcode",
 			body:     "Kontoprüfcode:\n19624929\n\nDer Code funktioniert nur für 30 Minuten.",
@@ -88,7 +88,7 @@ func TestFindsCodesAndLinks(t *testing.T) {
 		},
 		{
 			// Verbatim from the Screener: HTML-only mail, subject is the bare
-			// noun "Anmeldung" over a preference center — no verb, no code
+			// noun "Anmeldung" over a preference center, no verb, no code
 			// word. Body is what HTMLToMarkdown renders; the code is the lone
 			// bold line.
 			name:     "preference center login",
@@ -107,7 +107,7 @@ func TestFindsCodesAndLinks(t *testing.T) {
 		},
 		{
 			// From the Inbox, 2026-09-24, sender anonymized: the subject is noun over noun
-			// with no code word, so the gate stays shut — the link is the whole
+			// with no code word, so the gate stays shut, the link is the whole
 			// errand and classifies the mail on its own.
 			name:     "act-named link without a vouching subject",
 			subject:  "Ihr Konto Login Bestätigung",
@@ -207,7 +207,7 @@ func TestIgnoresMailThatIsNotAPickup(t *testing.T) {
 
 // The clipboard used to carry what the match dragged in rather than the URL:
 // an HTML mail renders to Markdown as [text](url), and the regex swallowed the
-// closing paren — a magic link that pasted as "…token=abc)" and failed. Same
+// closing paren, a magic link that pasted as "…token=abc)" and failed. Same
 // for a sentence mark after a plain-text URL.
 func TestLinkIsTrimmedOfWrapperAndPunctuation(t *testing.T) {
 	cases := []struct{ name, body, want string }{

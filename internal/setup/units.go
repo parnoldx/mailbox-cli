@@ -37,7 +37,7 @@ func UnitDir() (string, error) {
 //
 // The unit runs the binary that installed it, which is the only claim setup can
 // honestly make. Running `make install` and `mailbox setup` again is what moves
-// a unit from a checkout to ~/.local/bin — and the compare-and-replace above is
+// a unit from a checkout to ~/.local/bin, and the compare-and-replace above is
 // what makes that a repair rather than a puzzle.
 func ExecPath() (string, error) {
 	exe, err := os.Executable()
@@ -149,7 +149,7 @@ func (SystemctlUser) IsEnabled(unit string) (bool, error) { return ask("is-enabl
 func (SystemctlUser) IsActive(unit string) (bool, error)  { return ask("is-active", unit) }
 
 // ask runs a systemctl query. A non-zero exit is the answer "no" rather than a
-// failure — `is-enabled` on a unit that is not there exits 1 and says so.
+// failure, `is-enabled` on a unit that is not there exits 1 and says so.
 func ask(verb, unit string) (bool, error) {
 	out, err := exec.Command("systemctl", "--user", verb, unit).Output()
 	answer := strings.TrimSpace(string(out))
@@ -173,7 +173,7 @@ func runCmd(name string, args ...string) error {
 	return nil
 }
 
-// NoSystemd stands in where there is no user session to install into — the VPS,
+// NoSystemd stands in where there is no user session to install into, the VPS,
 // where the answer is a system unit written by hand (ADR-0012).
 type NoSystemd struct{}
 

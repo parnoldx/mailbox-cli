@@ -1,4 +1,4 @@
-// Model.js — Pure data transformations, string parsing, and formatting
+// Model.js, Pure data transformations, string parsing, and formatting
 // for the mailbox email and screening plugin.
 
 function cleanSenderName(fromStr) {
@@ -162,7 +162,7 @@ function filterMessages(messages, accountFilter, stateFilter) {
 }
 
 // One reverse-chron stream of the unread inbox. Read mail is not shown here at
-// all, that is the desktop client's job — and neither is the Screener: mail in
+// all, that is the desktop client's job, and neither is the Screener: mail in
 // there owes a decision whenever you next sit down, which is a client job too,
 // not something a notification widget should carry.
 function feedItems(messages, accountFilter) {
@@ -206,14 +206,14 @@ function accountFilterOptions(accounts, messages) {
 }
 
 // How long the bar key means anything. A Pickup is collected within a second
-// of landing, so this runs from arrival — and it is deliberately far shorter
+// of landing, so this runs from arrival, and it is deliberately far shorter
 // than the fifteen minutes the mail itself is kept: the key says "it is ready
 // NOW, paste it", not "here is a badge for the afternoon". The mail, the
 // panel's list and `mailbox pickup list` all keep the longer window.
 var PICKUP_ICON_MS = 60000
 
-// One held Pickup as a row shows it. `value` is what gets pasted — a code or a
-// URL — and `label` is what a row prints in its place: the code itself, or the
+// One held Pickup as a row shows it. `value` is what gets pasted, a code or a
+// URL, and `label` is what a row prints in its place: the code itself, or the
 // host a link logs you in to, never a screenful of token. Which is which comes
 // from the daemon, so nothing here has to decide what a Pickup is.
 function pickupItem(raw, nowMs) {

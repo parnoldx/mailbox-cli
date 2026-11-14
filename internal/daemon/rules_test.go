@@ -121,7 +121,7 @@ func TestScreenerIsPerAccount(t *testing.T) {
 	}
 }
 
-// A decision on work writes work's rules — the feed rule and the catch-all —
+// A decision on work writes work's rules, the feed rule and the catch-all,
 // and moves what was waiting. The Primary's sieve is never touched, because
 // there isn't one: this account has none, and the call must not need it.
 func TestRouteOnAGraphAccountWritesItsRules(t *testing.T) {
@@ -181,7 +181,7 @@ func TestRouteOnAGraphAccountWritesDomainRules(t *testing.T) {
 	}
 }
 
-// A decision refused by the account's server leaves everything as it was —
+// A decision refused by the account's server leaves everything as it was,
 // the rules on the server are the record, and a write that did not happen
 // writes no projection.
 func TestRefusedRulesLeaveTheMirrorAlone(t *testing.T) {
@@ -227,7 +227,7 @@ func slicesContains(hay []string, needle string) bool {
 
 // An IMAP Secondary has no Routing of its own, and the fall-through to the
 // Primary's Sieve would let a decision made on it rewrite the Primary's
-// script — so it refuses, whatever the destination.
+// script, so it refuses, whatever the destination.
 func TestRouteRefusedOnAnIMAPSecondary(t *testing.T) {
 	d, rules := seedWorkScreener(t)
 	acct := NewAccount("gmx",

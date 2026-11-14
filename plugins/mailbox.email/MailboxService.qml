@@ -3,7 +3,7 @@ import Quickshell
 import Quickshell.Io
 import "Model.js" as Model
 
-// MailboxService.qml — Direct unix socket client to the mailbox daemon.
+// MailboxService.qml, Direct unix socket client to the mailbox daemon.
 //
 // Maintains the live mirror connection over $XDG_RUNTIME_DIR/mailbox.sock,
 // handling real-time push events (`mail.changed`) and exposing clean QML
@@ -127,7 +127,7 @@ Item {
       for (var i = 0; i < boxList.length; i++) {
         var b = boxList[i]
         if (b && b.account) accMap[b.account] = true
-        // Count unseen in inbox and watched boxes — but never the Screener.
+        // Count unseen in inbox and watched boxes, but never the Screener.
         // It is watched (that is how screening stays live), so without this it
         // lands in totalUnread and raises the bar icon as "unread mail", which
         // is the same alarm by another name. Screener mail is not counted or
@@ -186,7 +186,7 @@ Item {
           }
         }
         // 3. Held pickups. A code is worth fifteen minutes and then nothing,
-        // so it is the one thing the bar has to show besides new mail — and
+        // so it is the one thing the bar has to show besides new mail, and
         // unlike a toast it is still there when you look up again. A daemon
         // too old to answer empties the list rather than leaving a stale icon.
         root.call(["pickup", "list"], {}, function(errPickups, held) {
@@ -260,7 +260,7 @@ Item {
   }
 
   // Hand a held Pickup over again: the code, or the link, back on the
-  // clipboard. Copied, never followed — the same errand the daemon ran when the
+  // clipboard. Copied, never followed, the same errand the daemon ran when the
   // mail arrived, run again because the clipboard has moved on since.
   function copyPickup(id, done) {
     _action(["pickup", "copy"], { positional: id }, "Copied", done)

@@ -250,7 +250,7 @@ func TestEventAddRefusesARuleItCannotRead(t *testing.T) {
 }
 
 // An edit names what it changes, and "none" is how a caller names taking one
-// off — otherwise a rule could be added and never removed.
+// off, otherwise a rule could be added and never removed.
 func TestEventEditTakesTheRuleAndTheRemindersOff(t *testing.T) {
 	d, f, _ := seedTasks(t)
 	added := mustAsk(t, d, []string{"event", "add"}, map[string]any{
@@ -475,7 +475,7 @@ func TestCalendarListSaysTeamsAndOwner(t *testing.T) {
 }
 
 // A Teams event carries the marker and its invitees in the raw, and the reply
-// says what Graph was asked for — including that no link came back, which on
+// says what Graph was asked for, including that no link came back, which on
 // the fake is always the case.
 func TestEventAddWithTeamsAndInvite(t *testing.T) {
 	d, f := seedGraph(t)
@@ -541,7 +541,7 @@ func TestEventEditAndViewCarryTheRoster(t *testing.T) {
 }
 
 // event view drops the account's own answer from the roster, and a name that
-// is only the address again — Exchange's spelling of an outsider.
+// is only the address again, Exchange's spelling of an outsider.
 func TestViewAttendeesDropsTheOwnerAndEchoedNames(t *testing.T) {
 	got := viewAttendees([]vcal.Attendee{
 		{Address: "work@example.com", Partstat: vcal.PartstatAccepted},

@@ -4,12 +4,12 @@ import QtQuick.Controls.Basic
 // The Composer's Send caret. Unlike BubbleMenu (bubbling a thread already in
 // the Inbox is one reversible move, so picking a time fires it at once), this
 // is attached to a draft that has not gone out yet, and offers two staged,
-// mutually exclusive holds — picking one shows the resolved choice and waits
+// mutually exclusive holds, picking one shows the resolved choice and waits
 // here for an explicit Send rather than firing immediately:
 //
 //   - "Bubble up if no reply": sends now, but the copy in Sent comes back to
 //     the Inbox on its own if the thread stays quiet (four timing choices).
-//   - "Send later": does not send now at all — the outbox holds the mail
+//   - "Send later": does not send now at all, the outbox holds the mail
 //     until the picked date and hour (internal/daemon/send.go, sendAt).
 Popup {
     id: root
@@ -19,11 +19,11 @@ Popup {
     padding: 6
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
-    // Fired once, when Send is pressed here — the same timing shape `bubble`
+    // Fired once, when Send is pressed here, the same timing shape `bubble`
     // and `send --if-no-reply` take: {tomorrow:true} | {weekend:true} |
     // {next_week:true} | {on:"YYYY-MM-DD"}.
     signal send(var timing)
-    // Fired once, when Send is pressed after picking a date and hour — the
+    // Fired once, when Send is pressed after picking a date and hour, the
     // local "YYYY-MM-DDTHH:mm" send_at takes.
     signal sendLater(string sendAtIso)
 
@@ -31,14 +31,14 @@ Popup {
     property string label: ""
     property string sendAtIso: ""
     property string sendAtLabel: ""
-    // "" | "watch-choosing" | "later-choosing" — which staged flow, if any, is
+    // "" | "watch-choosing" | "later-choosing", which staged flow, if any, is
     // showing its picker right now.
     property string mode: ""
     property var dateOptions: []
     property var hourOptions: []
 
     function _pad(n) { return n < 10 ? "0" + n : "" + n }
-    // Today, tomorrow, then one date a day out to a month from now — the
+    // Today, tomorrow, then one date a day out to a month from now, the
     // range HEY-style schedule-send pickers offer, capped rather than open
     // ended so the list stays one scroll, not a calendar to hunt through.
     function _dateOptions() {
@@ -52,7 +52,7 @@ Popup {
         return out
     }
     // Hourly slots for one date, in whatever the OS locale shows a short time
-    // as (24h or 12h with AM/PM) — Qt.formatTime already knows which. Today
+    // as (24h or 12h with AM/PM), Qt.formatTime already knows which. Today
     // only offers hours still ahead: picking one always lands in the future.
     function _hourOptions(dateValue) {
         var todayValue = Qt.formatDate(new Date(), "yyyy-MM-dd")
@@ -109,7 +109,7 @@ Popup {
 
     // A dropdown styled like the rest of this popup rather than the platform's
     // own combo box, so it reads as one menu: a field showing the current
-    // choice. The options list is NOT a floating box over the field — that
+    // choice. The options list is NOT a floating box over the field, that
     // box used to open upward, outside this popup's bounds, where the modal
     // overlay ate the mouse wheel before it ever reached the list and nothing
     // scrolled. The options now render in-flow below the field row
@@ -119,7 +119,7 @@ Popup {
         property var options: []
         property int currentIndex: 0
         property bool open: false
-        // The sibling dropdown — opening one closes the other.
+        // The sibling dropdown, opening one closes the other.
         property var other: null
         readonly property var currentValue: field.options.length > 0 ? field.options[field.currentIndex].value : null
         readonly property string currentLabel: field.options.length > 0 ? field.options[field.currentIndex].label : ""
@@ -255,7 +255,7 @@ Popup {
                     // Reads options[currentIndex] directly rather than the
                     // currentValue alias: that alias is itself a binding on
                     // currentIndex, and picking it up here raced its own
-                    // update — this always sees the date that was just
+                    // update, this always sees the date that was just
                     // chosen, so tomorrow (and beyond) always gets the full
                     // 24 hours, not today's "hours still ahead" list.
                     onCurrentIndexChanged: {
@@ -273,7 +273,7 @@ Popup {
             }
 
             // The open dropdown's options, rendered in-flow below the fields so
-            // they live inside the popup's bounds — the old floating list
+            // they live inside the popup's bounds, the old floating list
             // opened upward outside the popup, where the modal overlay
             // swallowed the mouse wheel and nothing scrolled. Capped at eight
             // rows and scrolls beyond that; the always-on scrollbar says so.

@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import "MailFormat.js" as Fmt
 
-// The five-second grace period — but only when there is something worth
+// The five-second grace period, but only when there is something worth
 // pausing for: the body mentions an attachment and none was actually
 // attached (warnAttachment). Every other send has nothing to catch, so it
 // skips the toast entirely and goes out at once, with just a "Sent" flash.
@@ -50,7 +50,7 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         width: Math.min(520, parent.width - 64)
         height: col.implicitHeight + 22
-        // Drops down from the top, same edge as the "Draft saved" flash — the
+        // Drops down from the top, same edge as the "Draft saved" flash, the
         // bottom is the Reply Later / Set Aside stacks' turf on the Inbox.
         y: root.phase !== "" ? 28 : -height - 8
         Behavior on y { NumberAnimation { duration: Theme.anim; easing.type: Easing.OutCubic } }

@@ -7,11 +7,11 @@ import "MailFormat.js" as Fmt
 
 // One Message in an open Thread's accordion: a collapsed one-line row by
 // default (avatar, name, date, a snippet), expanding in place to the same
-// rendering a single message used to get — real HTML via WebEngine with Dark
+// rendering a single message used to get, real HTML via WebEngine with Dark
 // Reader and inline images, or plain/markdown text otherwise. Every property
 // that used to read the window's one open message now reads this instance's
 // own msg, so several of these can be expanded at once without fighting over
-// shared state (ADR: HEY's own thread view is exactly this — an accordion of
+// shared state (ADR: HEY's own thread view is exactly this, an accordion of
 // equals, not one enlarged message plus summaries of the rest).
 Item {
     id: root
@@ -101,7 +101,7 @@ Item {
                 // DarkReader (a synchronous <script> in the body) has already
                 // re-tinted it, so the mail is safe to show. Waiting for
                 // LoadSucceededStatus instead means waiting for every remote
-                // image in a newsletter — seconds after the text is readable.
+                // image in a newsletter, seconds after the text is readable.
                 if (root.webCovered && !root.reviving) root.restoreScroll()
             })
     }
@@ -111,7 +111,7 @@ Item {
     height: col.implicitHeight
 
     // The WebEngineView is the expensive part, so it only exists at all while
-    // this Message is both expanded and HTML — collapse it and the Loader
+    // this Message is both expanded and HTML, collapse it and the Loader
     // tears the whole render down.
     readonly property bool htmlMode: root.expanded
         && !!(root.msg.body_html && root.msg.body_html.length > 0)
@@ -132,7 +132,7 @@ Item {
     function fromName(s) { return Fmt.displayName(s) }
     function fromAddr(s) { return Fmt.address(s) }
 
-    // One header line of recipients: "To: <a>Anna</a>, <a>Bob</a>" — display
+    // One header line of recipients: "To: <a>Anna</a>, <a>Bob</a>", display
     // names as links whose href is the address, so a click copies it.
     function esc(s) {
         return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
@@ -165,7 +165,7 @@ Item {
         var d = new Date(s)
         return isNaN(d.getTime()) ? "" : Qt.formatDateTime(d, "HH:mm")
     }
-    // One line of taste for the collapsed row — not a rendering of the body,
+    // One line of taste for the collapsed row, not a rendering of the body,
     // just enough to remember what this Message said without opening it.
     function snippet() {
         if (root.invite && root.invite.summary)
@@ -245,8 +245,8 @@ Item {
     }
     // An inline image was clicked in the page: open it in the lightbox. The
     // page hands us the cid we stamped onto the img (native data: URIs come
-    // through as the URI itself). The zoom overlay lives on the window —
-    // win.zoomImage() — so it sits above the reader wherever this Message
+    // through as the URI itself). The zoom overlay lives on the window,
+    // win.zoomImage(), so it sits above the reader wherever this Message
     // sits in the accordion.
     function zoomInline(tok) {
         var uri = root.cidMap[tok] || (tok.indexOf("data:") === 0 ? tok : "")
@@ -281,14 +281,14 @@ Item {
           "::-webkit-scrollbar:horizontal{height:0 !important;display:none !important;}" +
           "::-webkit-scrollbar-thumb{background:" + sbThumb + ";border-radius:5px;}"
 
-        // The mail's HTML is the raw part off the wire — the daemon does not
-        // sanitise it, by design — so a <script> it carried would otherwise run
+        // The mail's HTML is the raw part off the wire, the daemon does not
+        // sanitise it, by design, so a <script> it carried would otherwise run
         // in this page. script-src with a per-render nonce stops that, plus
         // inline on*= handlers and javascript: URLs; only the two DarkReader
         // scripts below carry the nonce. 'strict-dynamic' then lets a script
-        // that is already trusted inject further ones — DarkReader appends its
+        // that is already trusted inject further ones, DarkReader appends its
         // own CSSStyleSheet proxy unconditionally, and would log a refusal on
-        // every mail without it — while parser-inserted script, which is all a
+        // every mail without it, while parser-inserted script, which is all a
         // mail can carry, stays blocked. Mail CSS and images are left alone,
         // and runJavaScript() from QML is browser-initiated, so measuring and
         // cid-patching are unaffected. Nothing here reaches other mail (this is
@@ -325,7 +325,7 @@ Item {
         // refresh redirects and stray CSP from the body.
         var mail = String(root.msg.body_html).replace(/<meta\b[^>]*>/gi, "")
         // DarkReader overrides colours through a stylesheet rule, which the
-        // cascade ranks below an inline `style="…!important"` on the element —
+        // cascade ranks below an inline `style="…!important"` on the element,
         // so a mail that hard-codes a light `background:#fff !important` inline
         // (e.g. the unbox.at catch-all banner) stays light. Drop !important
         // from inline background/colour decls only so the invert can land.
@@ -373,7 +373,7 @@ Item {
     // The attachment list arriving does not change the page: inline images are
     // patched into the DOM, and themedHtml() never reads `attachments`. It used
     // to re-render here, which threw the in-flight load away ~50ms in and
-    // doubled time-to-first-paint — and fired once per row per response,
+    // doubled time-to-first-paint, and fired once per row per response,
     // because attachmentsFor() hands back a fresh [] on every map change.
     onAttachmentsChanged: root.fetchCids()
     Connections { target: Theme; function onChanged() { root.renderHtml() } }
@@ -413,7 +413,7 @@ Item {
     function restoreScroll() {
         var y = root.savedScroll
         root.savedScroll = 0
-        // Nothing to put back — an ordinary open, where the cover is only the
+        // Nothing to put back, an ordinary open, where the cover is only the
         // dark-mail anti-flash. Uncover now: waiting out the timer below was a
         // fifth of a second of blank sheet on every single mail.
         if (y <= 1 || !webLoader.item) { root.webCovered = false; return }
@@ -424,7 +424,7 @@ Item {
     }
     Timer { id: uncoverTimer; interval: 220; onTriggered: root.webCovered = false }
 
-    // Window hidden/minimised, or a bare workspace switch (SurfaceWatcher) —
+    // Window hidden/minimised, or a bare workspace switch (SurfaceWatcher),
     // cover up, and rebuild the view on the way back.
     WebRevive {
         window: Window.window
@@ -438,7 +438,7 @@ Item {
         width: parent.width
         spacing: 10
 
-        // ---- Collapsed / header row — always visible, click toggles. -----
+        // ---- Collapsed / header row, always visible, click toggles. -----
         Rectangle {
             width: parent.width
             height: 52
@@ -508,7 +508,7 @@ Item {
             TapHandler { onTapped: win.toggleExpanded(root.msg.id) }
         }
 
-        // ---- Expanded — the full message. ---------------------------------
+        // ---- Expanded, the full message. ---------------------------------
         Column {
             id: body
             width: parent.width
@@ -560,7 +560,7 @@ Item {
                 }
                 // Recipients, right of the sender and left of the date stamp:
                 // display names only, wrapping. Each name is a link that copies
-                // the address. Bcc never reaches a received message — the
+                // the address. Bcc never reaches a received message, the
                 // sender's server strips it.
                 Column {
                     id: rcpts
@@ -651,7 +651,7 @@ Item {
                             HoverHandler { id: unsubHover; cursorShape: Qt.PointingHandCursor }
                             TapHandler { onTapped: root.doUnsubscribe() }
                         }
-                        // Dark-mail toggle, this Message's own — HTML mail only.
+                        // Dark-mail toggle, this Message's own, HTML mail only.
                         Rectangle {
                             anchors.right: parent.right
                             visible: root.htmlMode
@@ -863,7 +863,7 @@ Item {
                 }
             }
 
-            // Attachments — collapsed behind a toggle when every part is an
+            // Attachments, collapsed behind a toggle when every part is an
             // inline image the body already shows, same as before.
             Column {
                 id: attachBlock
@@ -919,7 +919,7 @@ Item {
             }
 
             // HTML mail: real WebEngine render, only instantiated while this
-            // Message is both expanded and HTML — that's the whole point of
+            // Message is both expanded and HTML, that's the whole point of
             // the Loader, versus a WebEngineView permanently alive per row.
             Rectangle {
                 id: sheet
@@ -946,10 +946,10 @@ Item {
                     sourceComponent: WebEngineView {
                         backgroundColor: root.applyDark ? Theme.background : "#ffffff"
                         // Arm the tracking-pixel blocker before this mail's HTML
-                        // fetches anything remote — main.cpp leaves it unarmed
+                        // fetches anything remote, main.cpp leaves it unarmed
                         // to keep Chromium off the Inbox's start-up path.
                         Component.onCompleted: PixelBlock.arm()
-                        // The page's rendered height moves after first paint —
+                        // The page's rendered height moves after first paint,
                         // inline images decode, DarkReader re-tints, a width
                         // change reflows. This fires on each of those, so the
                         // sheet resizes to real content without a guessed delay.
@@ -973,7 +973,7 @@ Item {
                                 // listener (so it wins over the mail's own <a> wraps)
                                 // intercepts clicks on data: images and reports the
                                 // cid back over the console. CSP only gates script
-                                // the mail carried — runJavaScript is trusted.
+                                // the mail carried, runJavaScript is trusted.
                                 webLoader.item.runJavaScript(
                                   "(function(){if(document.__mbZoom)return;document.__mbZoom=1;" +
                                   "document.addEventListener('click',function(e){" +
@@ -1028,7 +1028,7 @@ Item {
                 }
             }
 
-            // Plain / Markdown mail: native rich text, no Loader needed — it
+            // Plain / Markdown mail: native rich text, no Loader needed, it
             // is cheap enough to just toggle visible with the rest.
             TextEdit {
                 width: parent.width

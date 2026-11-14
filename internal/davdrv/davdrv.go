@@ -1,8 +1,8 @@
 // Package davdrv implements davsync.Driver over CalDAV and CardDAV.
 //
 // The requests are written here rather than taken from a library. The one thing
-// this program needs from these protocols — sync-collection with the object
-// data in the same round trip — is what go-webdav's CalDAV client does not
+// this program needs from these protocols, sync-collection with the object
+// data in the same round trip, is what go-webdav's CalDAV client does not
 // have, and re-encoding a parsed calendar to store it would throw away the
 // record itself (ADR-0010). What is left is four XML documents (ADR-0015).
 package davdrv
@@ -73,8 +73,8 @@ func (c *Client) Collections(ctx context.Context) ([]davsync.Collection, error) 
 }
 
 // EnsureCalendar returns the collection with this display name, creating it if
-// the server does not have one. It is used for exactly one collection — the
-// habits calendar — because that is the only thing this program keeps that has
+// the server does not have one. It is used for exactly one collection, the
+// habits calendar, because that is the only thing this program keeps that has
 // no home of its own anywhere (ADR-0018).
 func (c *Client) EnsureCalendar(ctx context.Context, displayName string, comps []string) (davsync.Collection, error) {
 	if found, ok, err := c.named(ctx, displayName); err != nil || ok {
@@ -178,7 +178,7 @@ func (c *Client) homes(ctx context.Context, principal string) (calendars, cards 
 }
 
 // list enumerates one home. A collection that holds neither events, tasks nor
-// contacts — a scheduling inbox, the home itself — is not something a caller
+// contacts, a scheduling inbox, the home itself, is not something a caller
 // can be shown, so it is dropped here.
 func (c *Client) list(ctx context.Context, home string) ([]davsync.Collection, error) {
 	body := `<d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:a="http://apple.com/ns/ical/">
@@ -346,7 +346,7 @@ func (c *Client) MultiGet(ctx context.Context, collection string, hrefs []string
 }
 
 // Put writes one object. ifMatch is the ETag the caller believes it is
-// replacing — empty to create, and "*" to replace whatever is there. The
+// replacing, empty to create, and "*" to replace whatever is there. The
 // returned ETag is what the server says the object is now; a server that does
 // not return one leaves the caller to read it back (ADR-0004).
 //
@@ -546,7 +546,7 @@ func (c *Client) resolve(href string) string {
 
 // pathOf reduces an href to the path a server uses to name it. Servers answer
 // with paths and accept them in multiget, and a write has to be able to produce
-// an href in the same shape — otherwise the object we wrote and the same object
+// an href in the same shape, otherwise the object we wrote and the same object
 // coming back on the next sync are two rows in the Mirror.
 func pathOf(href string) string {
 	u, err := url.Parse(strings.TrimSpace(href))
@@ -635,8 +635,8 @@ type comp struct {
 var _ davsync.Driver = (*Client)(nil)
 
 // Static makes a Client that does not discover: it reports the collections it
-// was told about. It is for a server that is not the account's own — a work
-// calendar at another provider, with its own credentials — where there is a URL
+// was told about. It is for a server that is not the account's own, a work
+// calendar at another provider, with its own credentials, where there is a URL
 // and nothing to enumerate from.
 func Static(cfg Config, collections ...davsync.Collection) *Client {
 	c := New(cfg)
@@ -653,7 +653,7 @@ type Set struct {
 }
 
 // Server is one member of a Set: a DAV server, or anything else that speaks
-// for its collections as one — a Microsoft 365 account over Graph (ADR-0029).
+// for its collections as one, a Microsoft 365 account over Graph (ADR-0029).
 type Server interface {
 	davsync.WriteDriver
 	// Owns says whether a collection or object URL is on this server.

@@ -24,7 +24,7 @@ type Account struct {
 	Primary bool
 	// Graph is a Microsoft 365 account. Exchange puts an invite on its
 	// calendar before any client sees it, so an RSVP answers that event
-	// through Respond — Exchange tells the organizer — rather than sending
+	// through Respond, Exchange tells the organizer, rather than sending
 	// iMIP and writing a second copy.
 	Graph   bool
 	Respond func(ctx context.Context, href, partstat string) error

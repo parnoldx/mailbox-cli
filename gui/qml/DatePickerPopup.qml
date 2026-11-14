@@ -4,7 +4,7 @@ import QtQuick.Controls.Basic
 // A month grid for "Bubble up… Pick a date". No native QtQuick.Controls
 // calendar exists in this build, so it's a small custom one in the same
 // hand-styled idiom as the rest of gui/qml (compare ScreenerMoveMenu, Chip).
-// Emits picked("YYYY-MM-DD") — the exact shape `--on DATE` takes — and closes.
+// Emits picked("YYYY-MM-DD"), the exact shape `--on DATE` takes, and closes.
 Popup {
     id: root
     modal: true
@@ -103,7 +103,7 @@ Popup {
             columns: 7
 
             // Monday-first offset for the 1st of the shown month, and the
-            // month's day count — both recomputed whenever `shown` changes.
+            // month's day count, both recomputed whenever `shown` changes.
             readonly property int firstWeekday: (new Date(shown.getFullYear(), shown.getMonth(), 1).getDay() + 6) % 7
             readonly property int dayCount: new Date(shown.getFullYear(), shown.getMonth() + 1, 0).getDate()
 

@@ -69,8 +69,8 @@ func TestDraftListAndShowReadTheDraftsBox(t *testing.T) {
 }
 
 // There is no in-place edit on imap. The new version is written first and the
-// old one trashed second, so a crash between them leaves two drafts — which is
-// recoverable — rather than none.
+// old one trashed second, so a crash between them leaves two drafts, which is
+// recoverable, rather than none.
 func TestDraftEditWritesANewVersionAndTrashesTheOld(t *testing.T) {
 	d, _ := seedDraft(t)
 	resp := mustAsk(t, d, []string{"draft", "edit"}, map[string]any{
@@ -185,7 +185,7 @@ func twoDraftAccounts(t *testing.T) (*Daemon, *stubTransport) {
 
 // A draft being sent from another account moves: the id names where it lives,
 // --account names where it is going. The edit files the new version in the
-// second account's drafts box and bins the old one in the first's — a mail
+// second account's drafts box and bins the old one in the first's, a mail
 // that never existed on the account it is leaving is not a copy that lingers.
 func TestDraftEditMovesItToAnotherAccount(t *testing.T) {
 	d, _ := twoDraftAccounts(t)
@@ -261,7 +261,7 @@ func TestDraftSaveFilesANewDraftWithoutSending(t *testing.T) {
 }
 
 // `reply --draft` is the same reply, written to the drafts box instead of the
-// outbox — so who it answers and what thread it is in still come from the
+// outbox, so who it answers and what thread it is in still come from the
 // parent, and nothing goes out.
 func TestReplyDraftFilesTheAnswerWithoutSendingIt(t *testing.T) {
 	d, tr := seedDraft(t)

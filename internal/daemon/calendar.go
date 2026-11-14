@@ -77,14 +77,14 @@ type event struct {
 	Alarms []int  `json:"alarms,omitempty"`
 	// Teams says the event is a Microsoft 365 online meeting, and Attendees
 	// is everyone else on it with the answer they have given so far. The
-	// account's own answer is not among them — it is the caller asking.
+	// account's own answer is not among them, it is the caller asking.
 	Teams     bool         `json:"teams"`
 	Attendees []attendee   `json:"attendees"`
 	Next      []occurrence `json:"next,omitempty"`
 }
 
 // attendee is one person on an event, as event view shows them. Answer is
-// accepted, tentative, declined or none — never empty.
+// accepted, tentative, declined or none, never empty.
 type attendee struct {
 	Address string `json:"address"`
 	Name    string `json:"name,omitempty"`
@@ -388,7 +388,7 @@ func (d *Daemon) davCycle(ctx context.Context, reason string, kinds ...string) {
 
 // davLoop runs the DAV cycles, one at a time, forever: the timer's and the ones
 // a command asked for. It is the mail cycleLoop's counterpart, and it exists
-// for the same reason — two cycles at once would both ask from the same sync
+// for the same reason, two cycles at once would both ask from the same sync
 // token, and the one that finished second would commit the older answer over
 // the newer one.
 //

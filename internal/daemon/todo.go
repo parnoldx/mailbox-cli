@@ -25,7 +25,7 @@ type todo struct {
 	Priority string `json:"priority,omitempty"`
 	Status   string `json:"status,omitempty"`
 	Done     bool   `json:"done"`
-	// Description and URL are only filled in by `todo view` — a list would
+	// Description and URL are only filled in by `todo view`, a list would
 	// pay to parse the raw of every row for two fields it never shows.
 	Description string `json:"description,omitempty"`
 	URL         string `json:"url,omitempty"`
@@ -300,7 +300,7 @@ func (d *Daemon) handleHabit(ctx context.Context, req Request, resp Response) Re
 }
 
 // habits reads the Habit record. create says whether to make the calendar and
-// the object if they are not there yet — a list must not create anything, and a
+// the object if they are not there yet, a list must not create anything, and a
 // change has to.
 func (d *Daemon) habits(ctx context.Context, create bool) (habit.Bag, mirror.Collection, mirror.Object, error) {
 	col, err := d.Mirror.CollectionNamed(d.Primary.Name, "", habit.CalendarName)

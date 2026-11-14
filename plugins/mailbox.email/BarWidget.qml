@@ -5,7 +5,7 @@ import qs.Commons
 import qs.Ui
 import "Model.js" as Model
 
-// BarWidget.qml — Email notification bar icon and host for the Mailbox popup panel.
+// BarWidget.qml, Email notification bar icon and host for the Mailbox popup panel.
 //
 // Appears in the top bar when there is unread inbox mail, or when the daemon is
 // holding a Pickup. When everything is read and nothing is held the widget
@@ -13,7 +13,7 @@ import "Model.js" as Model
 //
 // Unread inbox mail and held Pickups are the only two things it knows about.
 // The Screener is not here at all: screening is a decision owed whenever you
-// next sit down, so it lives in the desktop client. A Pickup is the opposite —
+// next sit down, so it lives in the desktop client. A Pickup is the opposite,
 // it is already read, it owes no decision, and it is worthless in minutes,
 // which is why it takes the icon: a toast is silenced by Do Not Disturb and
 // gone in seconds, and the code is on the clipboard with nothing on screen
@@ -131,7 +131,7 @@ BarWidget {
     function refresh(): string { if (service) service.refresh(); return "ok" }
     function unread(): int { return root.unseenCount }
     // The held pickups, for anything that wants to ask the bar instead of the
-    // daemon — and for a test that has to see the icon's state without eyes.
+    // daemon, and for a test that has to see the icon's state without eyes.
     // `pickups` is what the panel lists (held until binned); `pickupKey` is
     // only whether the key is on the bar, which is the shorter window.
     function pickups(): int { return root.pickupCount }
@@ -139,7 +139,7 @@ BarWidget {
   }
 
   // The two icons the slot can carry. A Component cannot sit inside the
-  // ternary below — QML parses the object literal as a token, not a value —
+  // ternary below, QML parses the object literal as a token, not a value,
   // so the envelope is declared here and only chosen there.
   Component {
     id: envelopeIcon
@@ -170,7 +170,7 @@ BarWidget {
         : "Mailbox")
 
     // The slot carries one icon. When a Pickup is held it is the key glyph and
-    // nothing else — the envelope says "mail to read", which is exactly what a
+    // nothing else, the envelope says "mail to read", which is exactly what a
     // collected code is not.
     text: root.pickupReady ? "󰌆" : ""
     active: root.pickupReady

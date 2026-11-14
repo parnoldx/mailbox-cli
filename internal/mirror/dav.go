@@ -271,7 +271,7 @@ func (m *Mirror) Todos(account, collection string, includeDone bool) ([]Object, 
 
 // joinValues and splitValues keep a list of addresses or numbers in one column.
 // They are separated by newlines rather than spaces because a phone number has
-// spaces in it — "+49 30 000" stored space-separated comes back as three
+// spaces in it, "+49 30 000" stored space-separated comes back as three
 // numbers, which is how a contact ends up with a phone book instead of a phone.
 func joinValues(values []string) string { return strings.Join(values, "\n") }
 
@@ -286,7 +286,7 @@ func splitValues(s string) []string {
 }
 
 // Contacts searches the address books. Every term has to match somewhere on the
-// card — the name, an address, a number, the organisation — which is how a
+// card, the name, an address, a number, the organisation, which is how a
 // caller finds somebody by the half of the name they remember.
 //
 // It is a LIKE over the projection rather than an FTS index: an address book is

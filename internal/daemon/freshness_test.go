@@ -35,7 +35,7 @@ func mirrorOf(t *testing.T, d *Daemon, cmd ...string) *MirrorState {
 }
 
 // Gate: the collections have their own freshness. A DAV server nobody has
-// reached must not be covered for by a healthy IMAP one — the loops are
+// reached must not be covered for by a healthy IMAP one, the loops are
 // separate, so the answers about them are too.
 func TestTodoFreshnessIsNotMailFreshness(t *testing.T) {
 	d, _, _ := seedTasks(t)

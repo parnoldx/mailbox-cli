@@ -15,11 +15,11 @@ import (
 )
 
 // handleBubble sets a thread aside with a return time, lists the threads that
-// carry one, or — with --now — brings one back straight away.
+// carry one, or, with --now, brings one back straight away.
 //
 // It matches HEY's `hey bubble up`: one timing flag is required and there is no
 // config default (D2). A bubbled thread is an Aside thread that also carries a
-// `$bubble-*` keyword — no new Box (D5) — and `bubbleLoop` moves it back to the
+// `$bubble-*` keyword, no new Box (D5), and `bubbleLoop` moves it back to the
 // Inbox when its instant passes, `\Seen` stripped so the iPhone raises a push
 // (D8). Scheduling happens only on the home machine; the always-on VPS Daemon
 // runs only the loop (ADR-0025). See ADR-0023 in docs/DESIGN.md.
@@ -50,7 +50,7 @@ func (d *Daemon) handleBubble(ctx context.Context, req Request, resp Response) R
 
 	if now {
 		// `--now` is the manual form of the timed return: the exact same code
-		// path, run immediately. It works on a thread that is not in Aside too —
+		// path, run immediately. It works on a thread that is not in Aside too,
 		// an Inbox thread just gets `\Unseen` + `$bubbled` and floats, no round
 		// trip.
 		results, err := d.bringBack(ctx, acct, refs)
@@ -127,8 +127,8 @@ func bubbleRows(a *Account, refs []mirror.BubbleRef, keep map[int64]bool) []bubb
 }
 
 // setBubble writes the return-time keyword onto a thread's members and, for the
-// ones still in the Inbox, moves them into Aside. Re-timing swaps the keyword —
-// one at a time — and moves nothing, because the thread is already in Aside.
+// ones still in the Inbox, moves them into Aside. Re-timing swaps the keyword,
+// one at a time, and moves nothing, because the thread is already in Aside.
 func (d *Daemon) setBubble(ctx context.Context, a *Account, refs []mailsync.Ref, when time.Time) ([]bubbleRow, error) {
 	keyword := bubble.Keyword(when)
 
@@ -142,7 +142,7 @@ func (d *Daemon) setBubble(ctx context.Context, a *Account, refs []mailsync.Ref,
 		}
 	}
 	if len(toAside) > 0 && !hasAside {
-		return nil, fmt.Errorf("this account has no %q box — `mailbox setup`, repair, creates it", routing.BoxAside)
+		return nil, fmt.Errorf("this account has no %q box, `mailbox setup`, repair, creates it", routing.BoxAside)
 	}
 
 	// Strip any keyword already there, so a re-timed thread carries exactly one.
@@ -171,7 +171,7 @@ func (d *Daemon) setBubble(ctx context.Context, a *Account, refs []mailsync.Ref,
 	}
 	// The flags are the server's answer, not our request. A server without
 	// `\*` in PERMANENTFLAGS accepts the STORE and keeps no keyword, and a
-	// bubble with no keyword is a return that never comes (ADR-0023) — so
+	// bubble with no keyword is a return that never comes (ADR-0023), so
 	// refuse before the move sets the thread aside for good.
 	for _, r := range stored {
 		if !slices.Contains(r.Flags, keyword) {
@@ -287,7 +287,7 @@ func (d *Daemon) bubbleLoop(ctx context.Context) {
 
 // returnDue is one bubbleLoop tick: every bubbled thread whose bubble_at is at
 // or before now, brought back. The scan runs the whole account, not just
-// Aside — bubble_at is a projection of a flag, not a folder property, and the
+// Aside, bubble_at is a projection of a flag, not a folder property, and the
 // "if no reply by" reminder puts the keyword on a Sent copy instead.
 func (d *Daemon) returnDue(ctx context.Context, a *Account) {
 	due, err := d.Mirror.BubblesDueAccount(a.Name, time.Now())
@@ -297,7 +297,7 @@ func (d *Daemon) returnDue(ctx context.Context, a *Account) {
 	}
 	// The due scan already names every Placement to bring back: setBubble writes
 	// the keyword onto every member of the Thread, so each one comes back due in
-	// its own right. Reading the Thread here instead was wrong — Mirror.Thread
+	// its own right. Reading the Thread here instead was wrong, Mirror.Thread
 	// collapses a Message to one Row and prefers its Inbox Placement, so a mail
 	// sent to yourself (one copy in Sent carrying the keyword, one delivered to
 	// the Inbox) looked like it was already home and never returned. Working off
@@ -364,7 +364,7 @@ func (d *Daemon) bubbleWhen(req Request) (when time.Time, now bool, err error) {
 		day, perr := time.ParseInLocation("2006-01-02", on, time.Local)
 		if perr != nil {
 			return time.Time{}, false, fmt.Errorf(
-				"--on takes a date like 2026-09-10 — got %q", on)
+				"--on takes a date like 2026-09-10, got %q", on)
 		}
 		if day.Equal(today) {
 			// This morning has passed: HEY's "Later today".
@@ -375,13 +375,13 @@ func (d *Daemon) bubbleWhen(req Request) (when time.Time, now bool, err error) {
 }
 
 // replyWatch resolves an optional "if no reply by" reminder off a send,
-// reply, forward or draft-send request — HEY's "Bubble Up – if no reply by",
+// reply, forward or draft-send request, HEY's "Bubble Up – if no reply by",
 // matched: the sent copy comes back to the Inbox on its own if the thread
 // stays quiet. ok is false when none was requested, which is the common case
 // and changes nothing else about the send.
 //
-// The timing is the same one bubble ID uses (bubbleWhen) — one of --on,
-// --tomorrow, --weekend, --next-week — required only once --if-no-reply asks
+// The timing is the same one bubble ID uses (bubbleWhen), one of --on,
+// --tomorrow, --weekend, --next-week, required only once --if-no-reply asks
 // for it. --now makes no sense here: there is nothing yet to bring back.
 func (d *Daemon) replyWatch(acct *Account, req Request) (when time.Time, ok bool, err error) {
 	if !req.Bool("if_no_reply") {
@@ -404,7 +404,7 @@ func (d *Daemon) replyWatch(acct *Account, req Request) (when time.Time, ok bool
 // or draft-send request. Zero time means send it now, which is every request
 // before this existed. The GUI's composer picks a date and an hour and hands
 // them over already combined, in the local wall clock, the same convention
-// the `bubble` keyword uses (package bubble) — no timezone, both machines are
+// the `bubble` keyword uses (package bubble), no timezone, both machines are
 // assumed to agree on one.
 func (d *Daemon) sendAt(req Request) (time.Time, error) {
 	raw := strings.TrimSpace(req.Str("send_at"))
@@ -413,7 +413,7 @@ func (d *Daemon) sendAt(req Request) (time.Time, error) {
 	}
 	t, err := time.ParseInLocation("2006-01-02T15:04", raw, time.Local)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("send_at takes a local date and time like 2026-09-06T14:00 — got %q", raw)
+		return time.Time{}, fmt.Errorf("send_at takes a local date and time like 2026-09-06T14:00, got %q", raw)
 	}
 	return t, nil
 }

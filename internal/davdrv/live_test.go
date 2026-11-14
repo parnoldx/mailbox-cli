@@ -77,7 +77,7 @@ func TestLiveDiscovery(t *testing.T) {
 		kinds[col.Kind]++
 		t.Logf("%-8s %-28s %s", col.Kind, col.Name, col.URL)
 		if col.Name == "" {
-			t.Errorf("collection %s has no display name — it is what a caller has to type", col.URL)
+			t.Errorf("collection %s has no display name: it is what a caller has to type", col.URL)
 		}
 		if !strings.HasPrefix(col.URL, "http") {
 			t.Errorf("collection url is not absolute: %q", col.URL)

@@ -15,7 +15,7 @@ Row {
             height: 16
             width: pillText.implicitWidth + 14
             radius: 8
-            // avatarColor() is a Q_INVOKABLE with no NOTIFY of its own — reading
+            // avatarColor() is a Q_INVOKABLE with no NOTIFY of its own, reading
             // the avatarPalette property is what ties these colours to a theme
             // change (same trick as Avatar.qml).
             readonly property color tint: Theme.avatarPalette && Theme.avatarColor(modelData)

@@ -40,7 +40,7 @@ int main(int argc, char *argv[]) {
     app.setApplicationDisplayName("Mailbox");
     // Matches share/applications/mailbox-gui.desktop so Wayland app_id
     // (and the launcher icon lookup) land on our .desktop file. Leave
-    // applicationName as "Mailbox" — AppConfigLocation is $XDG_CONFIG_HOME/Mailbox.
+    // applicationName as "Mailbox", AppConfigLocation is $XDG_CONFIG_HOME/Mailbox.
     app.setDesktopFileName(QStringLiteral("mailbox-gui"));
     app.setWindowIcon(QIcon(QStringLiteral(":/icons/mailbox-gui.svg")));
     QQuickStyle::setStyle("Basic");
@@ -59,7 +59,7 @@ int main(int argc, char *argv[]) {
     // The two hand-tended piles shown as stacks along the bottom of the Inbox.
     MailModel asideModel;
     MailModel replyLaterModel;
-    // Results of the full-screen search overlay — its own model so opening a
+    // Results of the full-screen search overlay, its own model so opening a
     // hit and coming back does not leave the bucket list showing the results.
     MailModel searchModel;
 

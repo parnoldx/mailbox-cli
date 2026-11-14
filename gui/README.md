@@ -1,8 +1,8 @@
-# mailbox-gui — a HEY-style desktop client that wears the Omarchy theme
+# mailbox-gui: a HEY-style desktop client that wears the Omarchy theme
 
-A deliberately small Qt client for `mailbox` — the only mail client this repo
-ships. It follows the HEY workflow — one full-screen view at a time plus a
-numbered command launcher, no three-pane layout — and it retints itself the
+A deliberately small Qt client for `mailbox`, the only mail client this repo
+ships. It follows the HEY workflow, one full-screen view at a time plus a
+numbered command launcher, no three-pane layout, and it retints itself the
 instant you switch Omarchy themes.
 
 ## What it shows
@@ -14,7 +14,7 @@ instant you switch Omarchy themes.
 - **Threads are an accordion of equals.** Opening a message opens its whole
   conversation (`thread view`): every message a collapsed one-line row, the
   newest and anything unread expanded. `Return` on a row expands or collapses
-  it in place — several at once is fine — and the up/down icon in the header
+  it in place, several at once is fine, and the up/down icon in the header
   toggles the lot. A one-message thread just looks like a single message.
 - **Set Aside and Reply Later ride the Inbox.** The two hand-tended piles show
   as little fanned card stacks along the bottom of the Inbox (`BottomStacks` /
@@ -22,13 +22,13 @@ instant you switch Omarchy themes.
   it, tap the pile's glyph to jump to that bucket in full.
 - **Search over every box.** `/` (or `Ctrl+F`) opens a full-screen ranked
   full-text search answered entirely from the Mirror; a hit opens in the
-  reader. Open only — no triage from the results.
+  reader. Open only, no triage from the results.
 - **Triage menu on every row.** Right-click a row in a list bucket for the same
   four moves the reading-view toolbar offers, acting on the whole thread; in
   the Screener it is instead a decision about the sender (let in / block /
   Feed / Paper Trail / Set aside / Trash). The vocabulary is shared in
   `Triage.js`.
-- **The Feed reads like a feed.** The Feed does not hand off to the reader — it
+- **The Feed reads like a feed.** The Feed does not hand off to the reader, it
   is one chronological column of cards, each with the sender, the subject and the
   first few lines of the body. `Return` (or a click) expands a card to its whole
   text in place; `Return` again, `Show less` or `Esc` collapses it. A rule across
@@ -46,14 +46,14 @@ instant you switch Omarchy themes.
   filtered as you type across name, emails, phones and organisation, and a detail view where a
   click on an email writes to it (the icon beside it copies) and a click on a phone copies it.
   The `+` button (or `n` on the list) adds a card; Edit (`e`) opens a form that changes name,
-  org and note and appends a new email or phone — existing addresses cannot be removed or
+  org and note and appends a new email or phone, existing addresses cannot be removed or
   cleared, the daemon never throws one away (ADR-0010). Delete (`d`) asks inline first.
   `Shift+P` in the reader opens the sender's card, or the Add form prefilled with their name
   and address when they are not on one yet.
 - **Live Omarchy theming.** `OmarchyTheme` (C++) reads the active palette from
   `~/.local/state/omarchy/current/theme/colors.toml` and re-emits `changed()` the
   moment it moves. Every colour in the UI is a binding with a `ColorAnimation`,
-  so `omarchy theme set "Gruvbox"` morphs the whole window — dark or light — with
+  so `omarchy theme set "Gruvbox"` morphs the whole window, dark or light, with
   no restart. Font is JetBrainsMono Nerd Font, radii/hairlines/pills match the
   rest of the desktop.
 - **Quick Look.** Clicking an attachment fetches it via `attachment save` to a
@@ -79,19 +79,19 @@ instant you switch Omarchy themes.
   Cc/Bcc rows and fills Cc with everyone else the parent reached (the read's
   `reply_all`), so the recipients are on screen and editable before sending;
   switching it off takes exactly those pills back out. The body is **Basecamp's
-  [Lexxy](https://github.com/basecamp/lexxy)** editor — the real thing, its
+  [Lexxy](https://github.com/basecamp/lexxy)** editor, the real thing, its
   self-contained bundle vendored in `qml/vendor/lexxy.{js,css}` and inlined into
   a WebEngine document by `LexxyEditor.qml`, retinted to the live Omarchy
   palette; it produces HTML, sent as `body_html` (the daemon keeps a plain-text
   twin, ADR-0022). Files attach via the paperclip in the action bar or by
-  drag-and-drop onto the editor. **Send is deferred five seconds** — the
+  drag-and-drop onto the editor. **Send is deferred five seconds**, the
   composer closes at once and a banner counts down with an `Undo` that reopens
   it with everything intact. If the body says "attached" and nothing is, the
   banner says so. Drives `send` / `reply` / `draft save` on the daemon.
 - **Draft with AI.** A robot button in the composer's action bar (replies only)
   runs the default Omarchy agent (`pi -p`, non-interactive) with the parent's
   text and recipient in the prompt; the agent reads one of two answering-style
-  skills — `~/.pi/agent/skills/mail-style-{personal,work}/SKILL.md` — and the
+  skills, `~/.pi/agent/skills/mail-style-{personal,work}/SKILL.md`, and the
   reply text replaces the editor above the quoted parent. The pi session id is
   the replied-to message's id, so pressing the button again continues the same
   conversation: a fresh attempt with memory, not a blank one. Nothing is ever
@@ -159,9 +159,9 @@ the flags.
 
 `mailbox-gui.desktop` declares `x-scheme-handler/mailto`, so the client is
 offered as a `mailto:` opener as soon as it is installed; a `mailto:` argument
-(RFC 6068 — `to` in the path, then `?subject=`/`?body=`/`?cc=`/`?bcc=`) opens
+(RFC 6068, `to` in the path, then `?subject=`/`?body=`/`?cc=`/`?bcc=`) opens
 the composer prefilled. To make it the *default* handler, run `make
-register-mailto` from the repo root (kept separate — it changes a desktop-wide
+register-mailto` from the repo root (kept separate, it changes a desktop-wide
 preference).
 
 Requires Qt 6 (Core, Gui, Qml, Quick, QuickControls2, Network, WebEngineQuick, PdfQuick, QuickDialogs2).
@@ -203,7 +203,7 @@ qml/Main.qml         window, view state, all shortcuts, the thread/pile/route/mo
 qml/BucketView.qml   full-screen bucket, New/Seen split, keyboard highlight
 qml/BottomStacks.qml Reply Later + Set Aside as fanned card stacks along the Inbox bottom
 qml/PileStack.qml    one such pile: a glyph plus up to three stacked cards
-qml/FeedView.qml     The Feed's data half — rows, body prefetch, watermark; drives feed.html
+qml/FeedView.qml     The Feed's data half, rows, body prefetch, watermark; drives feed.html
 qml/ReadingView.qml  full-screen thread: header, toolbar, the accordion
 qml/ThreadMessage.qml  one message in the accordion: collapsed row <-> full HTML/text render
 qml/SearchView.qml   full-screen Mirror full-text search; a hit opens in the reader
@@ -224,15 +224,15 @@ qml/QuickLook.qml        in-app preview overlay (PDF pages, image, text)
 qml/ReaderMoreMenu.qml   the reader's "More" menu: Forward, Label, Move, Summarize, Trash
 qml/MailFormat.js        shared pure string helpers (initials, subject stripping, address + file-url parsing)
 qml/vendor/feed.html       the Feed's one HTML document (a single scroll surface)
-qml/vendor/lexxy.{js,css}  Lexxy build (rollup, self-contained: Lexical + deps), MIT — see LICENSE.lexxy
-qml/vendor/darkreader.js   vendored Dark Reader engine for dark-theme mail — see LICENSE.darkreader
+qml/vendor/lexxy.{js,css}  Lexxy build (rollup, self-contained: Lexical + deps), MIT, see LICENSE.lexxy
+qml/vendor/darkreader.js   vendored Dark Reader engine for dark-theme mail, see LICENSE.darkreader
 qml/MailRow.qml qml/Avatar.qml qml/Pill.qml qml/Kbd.qml qml/SectionLabel.qml
 ```
 
 ## Regenerating the vendored Lexxy bundle
 
 `qml/vendor/lexxy.js` is the self-contained build (the `rollup.config.mjs`
-target, which inlines Lexical and the rest — only `@rails/activestorage` stays
+target, which inlines Lexical and the rest, only `@rails/activestorage` stays
 external, and it is only touched if you paste an image *into* the editor).
 `qml/vendor/lexxy.css` is `app/assets/stylesheets/lexxy-{variables,editor,content}.css`
 concatenated. To refresh against a new Lexxy:

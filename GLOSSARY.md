@@ -2,15 +2,15 @@
 
 Agent-facing command `mailbox` over mail, calendars, todos and contacts. A daemon
 holds a local Mirror of the servers; the CLI reads the Mirror and never waits on a
-network. The CLI is not a mail client: the human surfaces — the Qt client in
-`gui/`, the bar widgets in `plugins/` — are clients of the same socket reading the
+network. The CLI is not a mail client: the human surfaces, the Qt client in
+`gui/`, the bar widgets in `plugins/`, are clients of the same socket reading the
 same Mirror. How it fits together: [docs/DESIGN.md](docs/DESIGN.md).
 
 ## The Mirror
 
 **Mirror**:
 The daemon's local copy of what the servers hold. It is the answer a read command
-gives, not an optimisation in front of one — dropping it changes what the CLI can
+gives, not an optimisation in front of one, dropping it changes what the CLI can
 answer until it is rebuilt.
 _Avoid_: cache, index, local store
 
@@ -50,7 +50,7 @@ ID means.
 _Avoid_: main account, default account
 
 **Secondary Account**:
-An Account with an Inbox, Drafts and Sent, the ability to Send, and the piles —
+An Account with an Inbox, Drafts and Sent, the ability to Send, and the piles,
 Aside, Reply Later and Bubble Up. A Graph Secondary can also carry the full
 Routing (Screener, Feed, Paper Trail, Block) as inbox rules; an IMAP Secondary
 carries only the piles. Its own connections and its own cycle, sharing the one
@@ -86,7 +86,7 @@ _Avoid_: filter, rule, sieve (that is the language it is written in)
 **Destination**:
 Where the Routing sends one sender's mail: Inbox, Feed, Paper Trail or Block. The
 Screener is the absence of one, not a fifth. Named by an address or by a domain key.
-A decision can be made on mail read in any Box, not only the Screener's — the mail
+A decision can be made on mail read in any Box, not only the Screener's, the mail
 it was read on moves with it.
 _Avoid_: category, label, bucket
 
@@ -100,7 +100,7 @@ Box `INBOX/Feed`. Mail to skim rather than answer, marked read on arrival.
 _Avoid_: newsletters, subscriptions
 
 **Paper Trail**:
-Box `INBOX/Paper Trail` — the name has a space in it. Receipts, confirmations,
+Box `INBOX/Paper Trail`, the name has a space in it. Receipts, confirmations,
 records; marked read on arrival.
 _Avoid_: PaperTrail, receipts, archive
 
@@ -114,10 +114,10 @@ _Avoid_: spam, junk (those are the provider's), blacklist
 **Pickup**:
 Mail that is collected rather than read: a login code, magic link or registration
 link, worth thirty seconds and then nothing. On arrival the Daemon takes the code
-out — or the link, when there is no code — puts it on the clipboard and says so,
+out, or the link, when there is no code, puts it on the clipboard and says so,
 marks the mail read and bins it a quarter of an hour later. The link is copied,
 never followed: opening it would log you in from a notification you had not read.
-A Pickup owes no Routing decision — its sender is a login form you used once.
+A Pickup owes no Routing decision, its sender is a login form you used once.
 Recognised from the subject, which is the part of an auth mail that announces
 the genre; the body is where the code is extracted, and it classifies on its
 own only twice: a link whose path names the act, and an auth adjective naming
@@ -126,7 +126,7 @@ _Avoid_: OTP, 2FA mail, verification email, code (that names what it carries)
 
 **Aside**:
 Box `INBOX/Aside`, the read-later pile. A conversation is moved there and back as a
-whole — setting one Message aside takes the rest of its thread out of the Inbox
+whole, setting one Message aside takes the rest of its thread out of the Inbox
 with it, so the two never show halves of one conversation. The Routing never fills
 it: "read this later" is a decision about a conversation, not about who sent it. A
 reply landing in the thread pulls its Aside Messages back to the Inbox. A copy in
@@ -134,17 +134,17 @@ Sent stays put.
 _Avoid_: snooze, star, later, set-aside (as a verb)
 
 **Reply Later**:
-Box `INBOX/Reply Later` — the name has a space in it. The pile of conversations you
+Box `INBOX/Reply Later`, the name has a space in it. The pile of conversations you
 owe a reply. Like Aside it takes and releases a whole thread at a time, and the
-Routing never fills it. Answering the conversation — or a reply arriving in it from
-anyone — pulls its Messages back to the Inbox: the debt is paid, or the conversation
+Routing never fills it. Answering the conversation, or a reply arriving in it from
+anyone, pulls its Messages back to the Inbox: the debt is paid, or the conversation
 is live again.
 _Avoid_: snooze, follow-up, todo, reply-later (as a verb)
 
 **Bubble**:
 A thread set aside to come back to the Inbox on its own at a time you pick, unread,
 so the phone raises a notification. It waits in Aside carrying a `$bubble-*` IMAP
-keyword — the return time, and the record; the Mirror's column beside it is a
+keyword, the return time, and the record; the Mirror's column beside it is a
 projection.
 _Avoid_: snooze, reminder, defer
 
@@ -155,7 +155,7 @@ _Avoid_: sequence number, uid (that names a Placement)
 
 **Placement**:
 Where a Message currently sits: a Box, a uid, and its flags. A Message usually has
-one; a mail sent to yourself has two. Named `[account/]box:uid` —
+one; a mail sent to yourself has two. Named `[account/]box:uid`,
 `INBOX/Screener:342` on the Primary Account, `gmx/INBOX:412` on a Secondary one.
 _Avoid_: copy, location, instance
 
@@ -163,7 +163,7 @@ _Avoid_: copy, location, instance
 Messages linked by References and In-Reply-To, built by the Daemon across every
 Box. Confined to one Account: the same conversation reaching two Accounts is two
 Threads. A Box listing collapses it to one row badged with the whole Thread's size
-— every Message wherever it sits — not just the part of it in the Box being listed.
+, every Message wherever it sits, not just the part of it in the Box being listed.
 _Avoid_: conversation, IMAP thread (that is per-folder and narrower)
 
 **Label**:
@@ -171,7 +171,7 @@ An IMAP keyword on a Placement. A Message carries as many as you like and keeps 
 of them when it moves, which is the whole difference between labelling something and
 putting it in a Box. The list is derived from the mail carrying them; only a Label
 created and not yet used is remembered in the Mirror. A listing shows the Labels of
-the whole Thread, one word each — a space would reach the server as two keywords.
+the whole Thread, one word each, a space would reach the server as two keywords.
 _Avoid_: tag, folder, category
 
 **Search**:
@@ -202,7 +202,7 @@ _Avoid_: failed, stuck, pending
 ## Calendars and contacts
 
 **Collection**:
-A CalDAV or CardDAV collection on a server — one calendar, one task list, or one
+A CalDAV or CardDAV collection on a server, one calendar, one task list, or one
 address book. Found by enumerating the server and matching its display name, never
 by a URL written down by hand.
 _Avoid_: folder, home, calendar (that is one kind of Collection)

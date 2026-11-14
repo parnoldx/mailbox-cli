@@ -5,7 +5,7 @@ import "MailFormat.js" as Fmt
 
 // An attachment card. The body opens an in-app Quick Look preview; the tray icon
 // pops a "Save as…" dialog and lets the daemon write the file where you choose.
-// The F mails the file to fileee's drop box — any attachment, not just PDFs:
+// The F mails the file to fileee's drop box, any attachment, not just PDFs:
 // fileee files photos and screenshots too.
 Rectangle {
     id: root

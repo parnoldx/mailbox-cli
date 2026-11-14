@@ -14,7 +14,7 @@ import (
 
 // The config file is the record and the Daemon reconciles it (ADR-0021). It is
 // re-read at the top of each cycle when the file has moved, and immediately
-// when a client asks — `mailbox setup` asks, so the wizard does not sit for up
+// when a client asks, `mailbox setup` asks, so the wizard does not sit for up
 // to a minute looking broken.
 //
 // There is no file watch. TOML is written by temp-file-and-rename, so an
@@ -37,7 +37,7 @@ type Applier func(cfg *config.Config) (Applied, error)
 
 // Problem is something the program needs a human for. It is a short list on
 // purpose: a daemon that cries wolf gets muted, and everything that resolves
-// itself — Behind, one Box failing to sync — belongs in the log instead.
+// itself, Behind, one Box failing to sync, belongs in the log instead.
 type Problem struct {
 	Name   string `json:"name"`
 	Detail string `json:"detail"`
@@ -47,7 +47,7 @@ type Problem struct {
 type reloadState struct {
 	mu sync.Mutex
 	// applyMu serialises Apply. reloadConfig is reachable from two goroutines
-	// at once — the Primary's cycle loop and the socket's reload command — and
+	// at once, the Primary's cycle loop and the socket's reload command, and
 	// the applier is a plain closure over last-applied config, so two
 	// overlapping applies would run Reconcile twice against the same "was".
 	// Not mu: Apply calls stop(), which locks mu.
@@ -105,7 +105,7 @@ func (d *Daemon) reloadConfig(reason string) []string {
 	}
 	cfg, err := config.LoadFrom(d.ConfigPath)
 	if err != nil {
-		d.logf("config (%s): %v — carrying on with the last one that worked", reason, err)
+		d.logf("config (%s): %v, carrying on with the last one that worked", reason, err)
 		d.setProblem("config", err.Error())
 		return nil
 	}
@@ -128,7 +128,7 @@ func (d *Daemon) reloadConfig(reason string) []string {
 		d.logf("config (%s): re-read, nothing to apply", reason)
 	}
 	if applied.Restart {
-		d.logf("config (%s): %s — exiting; the next connection starts a new one",
+		d.logf("config (%s): %s, exiting; the next connection starts a new one",
 			reason, applied.Reason)
 		d.stop()
 	}

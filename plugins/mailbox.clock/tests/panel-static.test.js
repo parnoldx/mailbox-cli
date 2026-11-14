@@ -116,7 +116,7 @@ test("the Teams toggle and the invite row are wired to the daemon and the roster
 // The meet button is a standing errand on the bucket header: gated on any
 // Microsoft 365 calendar in the roster, minted by one bare daemon call, with
 // the copying and the notification left to the daemon (--copy). Success stays
-// silent in the panel — the notification is the feedback — so meetStatus is
+// silent in the panel, the notification is the feedback, so meetStatus is
 // error-only.
 test("the meet button mints and lets the daemon copy", () => {
   for (const needle of [

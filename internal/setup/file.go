@@ -10,7 +10,7 @@ import (
 // The config file is the record (ADR-0021), and a person or an agent may have
 // written parts of it. So setup edits it a block at a time: it appends the
 // block it is adding and removes the block it is removing, and every other
-// line — comments, hand-written tables, accounts it never touched — is left
+// line, comments, hand-written tables, accounts it never touched, is left
 // exactly as it was. Nothing here rewrites the file wholesale except the first
 // write, when there is nothing to lose.
 

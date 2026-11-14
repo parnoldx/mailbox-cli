@@ -71,7 +71,7 @@ func (d *Daemon) handleSieve(ctx context.Context, req Request, resp Response) Re
 			return resp.usage("sieve put needs a script to upload")
 		}
 		// The server compiles it and refuses what it cannot, which is the check
-		// that matters — an uploaded script that does not compile would
+		// that matters, an uploaded script that does not compile would
 		// otherwise sit there looking fine.
 		if err := d.Sieve.PutScript(ctx, name, content, false); err != nil {
 			return resp.api(err.Error())
@@ -97,7 +97,7 @@ func (d *Daemon) handleSieve(ctx context.Context, req Request, resp Response) Re
 	return resp.usage(fmt.Sprintf("unknown sieve command %q", verb))
 }
 
-// putResult says what landed, and whether it is what the server is running —
+// putResult says what landed, and whether it is what the server is running,
 // uploading over the active script changes behaviour immediately, and uploading
 // beside it changes nothing until somebody activates it.
 type putResult struct {

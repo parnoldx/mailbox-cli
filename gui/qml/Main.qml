@@ -39,17 +39,17 @@ ApplicationWindow {
     property int bucketIndex: 0
     property var counts: ({})
     property string openId: ""      // "" → bucket view, otherwise reading view
-    // openMsg is always the newest Message of openThread — the one thread-level
+    // openMsg is always the newest Message of openThread, the one thread-level
     // actions (Reply, Trash, the subject line) name. It never changes as the
     // accordion below it expands and collapses; that is what expandedIds is for.
     property var openMsg: null
-    // Every Message of openMsg's Thread, oldest first — a Message on its own
+    // Every Message of openMsg's Thread, oldest first, a Message on its own
     // comes back as a one-element Thread, so this is always what backs the
     // reader.
     property var openThread: []
     property bool openLoading: false
     // Which Messages of openThread are expanded, keyed by id, and each one's
-    // attachments once fetched — both keyed rather than single-valued because
+    // attachments once fetched, both keyed rather than single-valued because
     // several can be open in the accordion at once.
     property var expandedIds: ({})
     property var attachmentsById: ({})
@@ -125,7 +125,7 @@ ApplicationWindow {
         })
     }
 
-    // A `mailto:` URI in argv, or "" — the desktop's mailto handler (see
+    // A `mailto:` URI in argv, or "", the desktop's mailto handler (see
     // mailbox-gui.desktop) launches us with one of these.
     readonly property string _mailtoArg: {
         var a = Qt.application.arguments
@@ -135,7 +135,7 @@ ApplicationWindow {
     }
     // Were we launched straight into the composer (`--compose` or a mailto:
     // link)? Used as the initial value of composeOpen so the compose view is
-    // opaque on the very first frame — no half-second of Inbox behind a fade.
+    // opaque on the very first frame, no half-second of Inbox behind a fade.
     readonly property bool _bootCompose: Qt.application.arguments.indexOf("--compose") >= 0
                                          || _mailtoArg !== ""
 
@@ -161,17 +161,17 @@ ApplicationWindow {
     function feed() { win._feedLoaded = true; return feedLoader.item }
 
     // The label being browsed as its own view, or "". A label is not a Box, so
-    // it is not a bucket — but it lists like one, and while it is up
+    // it is not a bucket, but it lists like one, and while it is up
     // currentKey() answers "Label" rather than the bucket underneath, which is
     // what keeps the Drafts, Feed and Screener behaviour out of it.
     property string labelView: ""
     // The Box the archive view is showing, or "" for the picker state. Like a
-    // label it is never a bucket of its own — it lists through bucketIndex's
-    // "Archive" entry — and the account pills stay out of the view: their
+    // label it is never a bucket of its own, it lists through bucketIndex's
+    // "Archive" entry, and the account pills stay out of the view: their
     // rows read one picked Box, whose own account the box name names.
     property string archiveBox: ""
     // The archive box picker's field has the keyboard: while it does, the
-    // number keys and the list/reader letters stay hands-off — the field eats
+    // number keys and the list/reader letters stay hands-off, the field eats
     // them as text.
     property bool archiveBoxOpen: false
     function openLabel(name) {
@@ -181,8 +181,8 @@ ApplicationWindow {
     }
     function currentKey() { return win.labelView !== "" ? "Label" : buckets[bucketIndex].key }
     // What the bucket header and the reader's crumb call the view we are in.
-    // The archive view carries the chosen Box's own name — "Archive/2021",
-    // not "Archive" — once one is picked.
+    // The archive view carries the chosen Box's own name, "Archive/2021",
+    // not "Archive", once one is picked.
     function viewTitle() {
         if (win.labelView !== "") return win.labelView
         var b = buckets[bucketIndex]
@@ -191,7 +191,7 @@ ApplicationWindow {
     function viewGlyph() { return win.labelView !== "" ? "\uf02c" : buckets[bucketIndex].glyph }
     // The Screener asks for a decision about a *sender*, not a read about a
     // mail, so it carries its own triage (route in / block / move) and hides
-    // the reply actions — you screen someone in before you answer them.
+    // the reply actions, you screen someone in before you answer them.
     // With a reader open this is read off that Message's own Box, not the
     // bucket behind it: `--open Screener:42` from the notification widget (and
     // a search hit) opens Screener mail while the bucket is still the Inbox,
@@ -211,7 +211,7 @@ ApplicationWindow {
             id: win.openMsg.id,
             all: !!all,
             // Who a reply-all would also reach, as the daemon works it out
-            // (message.reply_all) — the composer shows them as Cc pills.
+            // (message.reply_all), the composer shows them as Cc pills.
             replyAllCc: win.openMsg.reply_all || [],
             from: win.openMsg.from || "",
             subject: win.openMsg.subject || "",
@@ -230,7 +230,7 @@ ApplicationWindow {
         composer().openForward({ id: win.openMsg.id, subject: win.openMsg.subject || "" })
         win.composeOpen = true
     }
-    // A mailto: URI handed to us by the desktop — see mailbox-gui.desktop
+    // A mailto: URI handed to us by the desktop, see mailbox-gui.desktop
     // (MimeType=x-scheme-handler/mailto, Exec ends in %u). Opens the composer
     // prefilled from the link.
     function startMailto(uri) {
@@ -257,7 +257,7 @@ ApplicationWindow {
             var key = parts[i].slice(0, eq).toLowerCase()
             var val = dec(parts[i].slice(eq + 1))
             // Nautilus "Send To" / xdg-email hand attachments over as attach=
-            // (or attachment=) query params — file:// URIs or plain paths.
+            // (or attachment=) query params, file:// URIs or plain paths.
             function asPath(v) { return String(v).replace(/^file:\/\//, "") }
             if (key === "attach" || key === "attachment") out.attachments.push(asPath(val))
             else if (key === "to") tos.push(val)
@@ -295,7 +295,7 @@ ApplicationWindow {
     // and clean up after themselves: leave the reader if it is the id being
     // moved, then refresh the list, the counts and the bottom stacks.
 
-    // True when a reader is open on the Thread this id belongs to — the id
+    // True when a reader is open on the Thread this id belongs to, the id
     // that opened it is not always its newest Message, so compare against the
     // whole Thread, not just win.openId.
     function _actsOnOpenThread(id) {
@@ -325,7 +325,7 @@ ApplicationWindow {
             win.refreshStacks()
         })
     }
-    // Move a Thread into a hand-tended pile, or — with `done` — back to the
+    // Move a Thread into a hand-tended pile, or, with `done`, back to the
     // Inbox out of one. `pile` is "aside" or "reply-later"; `label` is what
     // the flash says.
     function pileId(pile, label, id, done) {
@@ -365,7 +365,7 @@ ApplicationWindow {
             if (typeof done === "function") done(ok)
         })
     }
-    // Leaves the list a message is from. `done(ok, kind, url)` — kind is
+    // Leaves the list a message is from. `done(ok, kind, url)`, kind is
     // "done" when the daemon already finished it, or "link" when the caller
     // still has to open url itself (ThreadMessage does).
     function unsubscribeId(id, done) {
@@ -380,8 +380,8 @@ ApplicationWindow {
     }
     // Bubble Up (ADR-0023): set a Thread aside with a return time, or re-time
     // one already bubbled. `timing` is what BubbleMenu's chosen() signal
-    // carries — {tomorrow:true} | {weekend:true} | {next_week:true} |
-    // {on:"YYYY-MM-DD"} — merged straight onto the request the same shape
+    // carries, {tomorrow:true} | {weekend:true} | {next_week:true} |
+    // {on:"YYYY-MM-DD"}, merged straight onto the request the same shape
     // `mailbox bubble` takes.
     function bubbleId(id, timing, label) {
         if (!id) return
@@ -394,7 +394,7 @@ ApplicationWindow {
             win.refreshStacks()
         })
     }
-    // Move a Thread into a named Box — the Command Launcher's archive picker,
+    // Move a Thread into a named Box, the Command Launcher's archive picker,
     // where `box` is a short name off `box list --archive` (e.g. "Archive/2019").
     function moveId(id, box, label) {
         if (!id || !box) return
@@ -408,7 +408,7 @@ ApplicationWindow {
     }
     // ---- labels -----------------------------------------------------------
     // A label is an imap keyword, not a Box: putting one on does not move the
-    // mail, so nothing leaves the reader or the list — only the pills change.
+    // mail, so nothing leaves the reader or the list, only the pills change.
     function labelId(id, name, add) {
         if (!id || !name) return
         Mailbox.call(["label", add ? "add" : "remove"], { positional: id, name: name }, function (r) {
@@ -421,11 +421,11 @@ ApplicationWindow {
             if (ok && win.openId) win.openMessage(win.openId, true)
         })
     }
-    // What a Thread is labelled with, for the picker's ticks — from the reader
+    // What a Thread is labelled with, for the picker's ticks, from the reader
     // when one is open on it, otherwise from its row in the list.
     function labelsOn(id) {
         if (win._actsOnOpenThread(id)) {
-            // The Thread's labels, not the newest Message's — the same union a
+            // The Thread's labels, not the newest Message's, the same union a
             // list row shows, because a label is put on the conversation.
             var seen = []
             for (var t = 0; t < win.openThread.length; t++) {
@@ -440,7 +440,7 @@ ApplicationWindow {
             if (rows[i].id === id) return rows[i].labels || []
         return []
     }
-    // Every label there is, with its count — `{ label, count }` rows.
+    // Every label there is, with its count, `{ label, count }` rows.
     function loadLabels(cb) {
         Mailbox.call(["label", "list"], {}, function (r) {
             cb(r.ok && r.data ? r.data : [])
@@ -457,7 +457,7 @@ ApplicationWindow {
         })
     }
     // Takes the keyword off every message carrying it. The mail stays where it
-    // is — this ends the label, not the mail — so it drops back to the Inbox.
+    // is, this ends the label, not the mail, so it drops back to the Inbox.
     function deleteLabel(name) {
         if (!name) return
         Mailbox.call(["label", "delete"], { name: name }, function (r) {
@@ -466,10 +466,10 @@ ApplicationWindow {
             else win.refreshBucket()
         })
     }
-    // The launcher's label picker, opened on one Thread — from the row menu,
+    // The launcher's label picker, opened on one Thread, from the row menu,
     // the reader toolbar or the launcher itself.
     function openLabelPicker(id) { launcher.openLabelPicker(id) }
-    // "Move" chip / V — the launcher's archive-box picker, acting on the open
+    // "Move" chip / V, the launcher's archive-box picker, acting on the open
     // Thread (launcher.enterArchive reads win.actionTargetId itself).
     function openMovePicker() { launcher.enterArchive() }
     function openLabelRename() { launcher.openLabelRename() }
@@ -482,7 +482,7 @@ ApplicationWindow {
         })
     }
 
-    // Open a Thread and drop straight into a reply to its newest Message —
+    // Open a Thread and drop straight into a reply to its newest Message,
     // "Reply now" from a row that has not been opened yet.
     property bool _replyOnOpen: false
     function openThenReply(id) {
@@ -509,7 +509,7 @@ ApplicationWindow {
         if (win.openMsg) return win.openMsg.read_only === true
         return bucketView.currentRowReadOnly()
     }
-    // A row asks (right-click) for its triage menu — forwarded to the list
+    // A row asks (right-click) for its triage menu, forwarded to the list
     // view, which owns the one shared RowActions instance.
     function showRowMenu(row) { bucketView.showRowMenu(row) }
     // Called by ComposerView when Send is pressed: close the view now, hand the
@@ -537,7 +537,7 @@ ApplicationWindow {
         })
     }
 
-    // The addresses this install sends as, primary account first — so the
+    // The addresses this install sends as, primary account first, so the
     // composer can offer "email yourself" without a hardcoded address. Filled
     // once from `status`; each row carries { from, from_name, primary }.
     property var selfRecipients: []
@@ -557,7 +557,7 @@ ApplicationWindow {
 
     // Every configured account, Primary first: { name, email, primary, color,
     // label }. The account colours, the filter pills and the composer's From
-    // pill are drawn only when there is more than one — a single account looks
+    // pill are drawn only when there is more than one, a single account looks
     // exactly as it always did.
     property var accounts: []
     readonly property bool multiAccount: accounts.length > 1
@@ -599,7 +599,7 @@ ApplicationWindow {
         return a && !a.primary ? a.name : ""
     }
     // The Primary Account's own name, for qualifying an id when a mail moves
-    // off it — ids never name the Primary, so "primary/Drafts:6" is how a
+    // off it, ids never name the Primary, so "primary/Drafts:6" is how a
     // draft that lives there says so while --account points elsewhere.
     function primaryName() {
         var a = accountNamed("")
@@ -612,7 +612,7 @@ ApplicationWindow {
         return c.charAt(0) === "#" ? c : (Theme[c] || Theme.accent)
     }
     // Which account the list shows: "" is all of them. It narrows only the
-    // buckets a Secondary has too — the Screener, Feed and Paper Trail are the
+    // buckets a Secondary has too, the Screener, Feed and Paper Trail are the
     // Primary's alone (a Secondary has no Routing).
     property string accountFilter: ""
     property bool _filterChosen: false
@@ -655,7 +655,7 @@ ApplicationWindow {
             listModel.setRows(r.ok && r.data ? r.data : [])
         })
     }
-    // Re-pull the Drafts list, but only when it is the bucket on screen — the
+    // Re-pull the Drafts list, but only when it is the bucket on screen, the
     // composer calls this after saving, editing or discarding a draft.
     function refreshDrafts() {
         if (win.isDraftsBucket()) win.refreshBucket()
@@ -663,7 +663,7 @@ ApplicationWindow {
     }
 
     // How many drafts are on the pile, for the badge the composer shows in its
-    // header. Just the length of `draft list` — there is no dedicated count
+    // header. Just the length of `draft list`, there is no dedicated count
     // verb and 200 is the same cap the Drafts bucket itself uses.
     property int draftCount: 0
     function refreshDraftCount() {
@@ -739,12 +739,12 @@ ApplicationWindow {
     }
 
     // `thread view` reads the whole conversation the id belongs to, oldest
-    // first — a Message on its own comes back as a one-element Thread, so this
+    // first, a Message on its own comes back as a one-element Thread, so this
     // is the one call the reader ever needs to open anything. Opens with the
-    // newest Message expanded, plus any Message still unread — everything
+    // newest Message expanded, plus any Message still unread, everything
     // already read starts collapsed.
     function openMessage(id, forceReader) {
-        // A Drafts row opens the composer, not the reader — unless the caller
+        // A Drafts row opens the composer, not the reader, unless the caller
         // (a search hit) explicitly wants the reader.
         if (win.isDraftsBucket() && !forceReader) { win.openDraft(id); return }
         win.openId = id
@@ -759,7 +759,7 @@ ApplicationWindow {
             if (win.openId !== id) return
             var thread = (r.ok && r.data) ? r.data : []
             // Bad id, or the message vanished (trashed elsewhere, a stale deep
-            // link) between the click and the reply — don't leave the reader
+            // link) between the click and the reply, don't leave the reader
             // sitting on a blank window. Bounce to the Inbox and say why, the
             // same way trashCurrent() reports its outcome.
             if (thread.length === 0) {
@@ -779,8 +779,8 @@ ApplicationWindow {
             for (var i = 0; i < thread.length; i++)
                 if (i === thread.length - 1 || thread[i].seen === false) open[thread[i].id] = true
             win.expandedIds = open
-            // The id that opened it is not always the newest — a search hit or
-            // a deep link can name any Message of the conversation — that one
+            // The id that opened it is not always the newest, a search hit or
+            // a deep link can name any Message of the conversation, that one
             // gets the QuickLook demo treatment (--ql) if it carries an image.
             for (var eid in open) win._loadExpanded(eid, eid === id)
         })
@@ -788,7 +788,7 @@ ApplicationWindow {
 
     // Invite cards arrive off the critical path: thread view only marks which
     // rows carry one (has_invite), the card itself is one cached daemon call
-    // per row, patched in as it lands — the reader never waits on the server
+    // per row, patched in as it lands, the reader never waits on the server
     // to open.
     function _loadInvites() {
         for (var i = 0; i < win.openThread.length; i++) {
@@ -806,7 +806,7 @@ ApplicationWindow {
     }
 
     // Fetches attachments (once) and marks read a Message that just became
-    // expanded — what opening used to do for the single message, now done per
+    // expanded, what opening used to do for the single message, now done per
     // accordion row instead of once for the whole reader.
     function _loadExpanded(id, allowQuickLookDemo) {
         var msg = null
@@ -868,7 +868,7 @@ ApplicationWindow {
 
     // `--open <id>`: raise the reader shell immediately so the bucket never
     // flashes behind it, then load the message the moment the daemon socket is
-    // up (onlineChanged) — or after a short grace, so a start with no daemon
+    // up (onlineChanged), or after a short grace, so a start with no daemon
     // still resolves (to the "not running" flash) instead of hanging on "opening…".
     property string pendingOpenId: ""
     function openWhenReady(id) {
@@ -946,13 +946,13 @@ ApplicationWindow {
     // four-or-five-term guard (and drifting: some used to check quickLook,
     // some didn't).
     //
-    // anyOverlay      — a full-screen overlay is up and should eat plain keys.
-    // bucketKeys      — bucket/number switching: off only mid-compose or with
+    // anyOverlay     , a full-screen overlay is up and should eat plain keys.
+    // bucketKeys     , bucket/number switching: off only mid-compose or with
     //                   the search field focused (both take raw text).
-    // navKeys         — list navigation (j/k/o/Return): a list is on screen.
-    // readerKeys      — reader actions (r/l/a/z/f/b/v/t, or i/b in Screener):
+    // navKeys        , list navigation (j/k/o/Return): a list is on screen.
+    // readerKeys     , reader actions (r/l/a/z/f/b/v/t, or i/b in Screener):
     //                   a reader is on screen.
-    // _rowActionable  — row triage: a list row is highlighted and actionable.
+    // _rowActionable , row triage: a list row is highlighted and actionable.
     readonly property bool anyOverlay: composeOpen || searchView.opened
                                      || launcher.opened || quickLook.opened
                                      || contactsPane.hasFocus
@@ -994,7 +994,7 @@ ApplicationWindow {
         onActivated: win.startCompose()
     }
     // Toggle the contacts pane. With it open but the mail holding focus, Ctrl+O
-    // hands focus back into the pane instead of closing — one key returns you.
+    // hands focus back into the pane instead of closing, one key returns you.
     Shortcut {
         sequence: "Ctrl+O"
         enabled: !win.composeOpen && !searchView.opened && !launcher.opened
@@ -1009,7 +1009,7 @@ ApplicationWindow {
         onActivated: searchView.open()
     }
     // Number keys switch buckets straight from anywhere (but not mid-compose).
-    // The Screener has no number of its own — it sits on Ctrl+S, so the letters
+    // The Screener has no number of its own, it sits on Ctrl+S, so the letters
     // below it (and the reader's own b/i) stay untouched. The rest keep their
     // order: Set Aside 4, Reply Later 5, Drafts 6, Sent 7, Archive 8. Trash is
     // 0: it is read from the server and belongs at the end, past the digits.
@@ -1059,14 +1059,14 @@ ApplicationWindow {
     // Screener the chips become I/B sender decisions, so all but A/T stay off.
     // Add the sender of the message you are reading to the contacts: their
     // card's detail if the address is already on one, the Add form prefilled
-    // otherwise. Shift+P — plain p is the Personal account filter.
+    // otherwise. Shift+P, plain p is the Personal account filter.
     Shortcut {
         sequence: "Shift+P"; enabled: win.readerKeys
         onActivated: {
             var raw = win.openMsg ? win.openMsg.from : ""
             if (!raw) return
             // displayName falls back to the address when there is no display
-            // name — that is no name, so leave the name field empty instead.
+            // name, that is no name, so leave the name field empty instead.
             var name = MailFormat.displayName(raw)
             contactsPane.openFor(name === MailFormat.address(raw) ? "" : name,
                                  MailFormat.address(raw))
@@ -1104,7 +1104,7 @@ ApplicationWindow {
         sequence: "v"; enabled: win.readerKeys && !win.inScreener
         onActivated: win.openMovePicker()
     }
-    // Summarize the open Thread with the agent — the same machine that drafts
+    // Summarize the open Thread with the agent, the same machine that drafts
     // replies, asked to condense instead. Lives in the More menu too.
     Shortcut {
         sequence: "s"; enabled: win.readerKeys && !win.inScreener
@@ -1120,11 +1120,11 @@ ApplicationWindow {
         sequence: "b"; enabled: win.readerKeys && win.inScreener
         onActivated: win.routeCurrent("block", "Blocked")
     }
-    // The same triage keys on the highlighted row of a list bucket — the Feed
+    // The same triage keys on the highlighted row of a list bucket, the Feed
     // is a web view and has no row to act on. T = trash, A = set aside,
     // R = reply later, all on the whole Thread the row stands for.
     //
-    // T on a Drafts row deletes it outright — a draft is not routed, set aside
+    // T on a Drafts row deletes it outright, a draft is not routed, set aside
     // or trashed to Trash, so it does not go through _rowActionable.
     Shortcut {
         sequences: ["t", "Delete"]
@@ -1136,7 +1136,7 @@ ApplicationWindow {
         sequences: ["t", "Delete"]; enabled: win._rowActionable
         onActivated: Triage.dispatch(win, "trash", bucketView.currentRowId())
     }
-    // Same on the Feed's highlighted card — it is a web view with no row, so
+    // Same on the Feed's highlighted card, it is a web view with no row, so
     // the page turns the highlight into a feed:trash/<id> for win.trashId().
     Shortcut {
         sequences: ["t", "Delete"]; enabled: win.feedActive && win.navKeys
@@ -1151,7 +1151,7 @@ ApplicationWindow {
         onActivated: Triage.dispatch(win, "reply-later", bucketView.currentRowId())
     }
     // Screener decisions on the highlighted row: I = let the sender in,
-    // B = block them — the same two one-tap primaries the row menu carries.
+    // B = block them, the same two one-tap primaries the row menu carries.
     Shortcut {
         sequence: "i"; enabled: win._rowActionable && win.inScreener
         onActivated: Triage.dispatch(win, "inbox", bucketView.currentRowId())
@@ -1187,8 +1187,8 @@ ApplicationWindow {
 
     // Feed, reader and composer each sit behind a Loader that stays inactive
     // until win._{feed,reader,composer}Loaded latches true (see the note by
-    // those properties). Everything the outgoing instances carried — the
-    // opacity fades, the enabled gate, the composer's backdrop — moves onto the
+    // those properties). Everything the outgoing instances carried, the
+    // opacity fades, the enabled gate, the composer's backdrop, moves onto the
     // Loader so the view underneath still behaves the same once the Loader is
     // active. Access the instances through feed() / composer(); nothing outside
     // reaches for the reader.
@@ -1328,7 +1328,7 @@ ApplicationWindow {
     }
 
     // The HTML renderer warms up in the background once the Inbox has had the
-    // stage to itself — see WebWarmup for why it is not simply armed at boot.
+    // stage to itself, see WebWarmup for why it is not simply armed at boot.
     Timer {
         interval: 2500
         running: true

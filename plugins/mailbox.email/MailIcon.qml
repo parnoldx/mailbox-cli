@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Shapes
 import qs.Commons
 
-// MailIcon.qml — Smooth, high-precision vector envelope icon.
+// MailIcon.qml, Smooth, high-precision vector envelope icon.
 //
 // Drawn using GPU-accelerated vector shapes with rounded corners,
 // a curved flap fold, and 4x MSAA antialiasing for maximum sharpness.

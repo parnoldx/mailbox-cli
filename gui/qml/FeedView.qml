@@ -3,7 +3,7 @@ import QtQuick.Window
 import QtWebEngine
 import "MailFormat.js" as Fmt
 
-// The Feed as a feed — one chronological column of cards (sender, subject, a few
+// The Feed as a feed, one chronological column of cards (sender, subject, a few
 // lines of the body) with a "Read more" that expands the whole article in place,
 // and a rule marking where the reader got to last time. How far down you scroll
 // and anything you expand is remembered in Mailbox.stateGet/Set("feed.mark"),
@@ -12,8 +12,8 @@ import "MailFormat.js" as Fmt
 // The whole column is ONE HTML document in ONE WebEngineView (qml/vendor/feed.html).
 // The old design gave every card its own WebEngineView, and each one swallowed
 // the wheel so the surrounding QML Flickable never scrolled over article content.
-// Now there is a single scroll surface. This file keeps all the data work —
-// listModel -> rows, body prefetch, watermark persistence — and drives the page
+// Now there is a single scroll surface. This file keeps all the data work,
+// listModel -> rows, body prefetch, watermark persistence, and drives the page
 // through __set*()/__state(); the page sends discrete actions back as `feed:`
 // URLs caught in onNavigationRequested.
 Item {
@@ -28,7 +28,7 @@ Item {
     property string mark: ""         // the "yyyy-MM-dd HH:mm" watermark at load
     property string pendingMark: ""  // advanced as the reader scrolls / expands
     property int hi: -1              // keyboard highlight, kept in step with the page
-    property bool _anyOpen: false    // any card expanded — refreshed by the poll
+    property bool _anyOpen: false    // any card expanded, refreshed by the poll
     property bool _ready: false      // feed.html has loaded and __set*() exist
 
     // id -> { html, text } once `message view` has answered.
@@ -201,7 +201,7 @@ Item {
     // Same contract as ThreadMessage.doUnsubscribe(): the daemon either
     // finishes it itself or hands back a link only a browser can complete.
     // On success the body record loses its offer and is pushed back, so the
-    // pill flips to "unsubscribed" — and stays gone across a view rebuild.
+    // pill flips to "unsubscribed", and stays gone across a view rebuild.
     // (The pill only exists once the body has loaded, so rec is always here.)
     function unsubId(id) {
         win.unsubscribeId(id, function (ok, kind, url) {
@@ -231,7 +231,7 @@ Item {
 
     // The feed page. Wrapped in a Loader so a Wayland remap (a workspace switch
     // away and back) that leaves QtWebEngine painting a black surface can be
-    // shaken off by tearing the whole view down and rebuilding it — the only
+    // shaken off by tearing the whole view down and rebuilding it, the only
     // thing that reliably works. State is round-tripped through the page.
     Loader {
         id: webLoader
@@ -250,7 +250,7 @@ Item {
             // back to the app.
             onActiveFocusChanged: if (activeFocus) root.forceActiveFocus()
             // Arm the tracking-pixel blocker before the feed pulls any remote
-            // image — main.cpp leaves it unarmed to keep Chromium off the
+            // image, main.cpp leaves it unarmed to keep Chromium off the
             // Inbox's start-up path.
             Component.onCompleted: PixelBlock.arm()
 
@@ -314,7 +314,7 @@ Item {
 
     // --- QtWebEngine leaves a black GPU surface behind after its Wayland
     // surface is unmapped and remapped (a Hyprland workspace switch). Neither
-    // Window.visibility nor expose events move on a workspace switch — the only
+    // Window.visibility nor expose events move on a workspace switch, the only
     // hint is the window losing focus for more than a moment. On the way back,
     // snapshot the page, rebuild the WebEngineView and put the page back.
     property bool _reviving: false
@@ -334,7 +334,7 @@ Item {
     Timer { id: reviveTimer; interval: 60; onTriggered: root._reviving = false }
     Timer { id: uncoverTimer; interval: 200; onTriggered: root._covered = false }
 
-    // Window hidden/minimised, or a bare workspace switch (SurfaceWatcher) —
+    // Window hidden/minimised, or a bare workspace switch (SurfaceWatcher),
     // cover up, then snapshot + rebuild the page on the way back.
     WebRevive {
         window: Window.window

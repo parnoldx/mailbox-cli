@@ -25,7 +25,7 @@ type Contact struct {
 }
 
 // Parse projects one card. A card that will not parse still belongs in the
-// Mirror — the raw is the record — so callers store it either way.
+// Mirror, the raw is the record, so callers store it either way.
 func Parse(raw string) (Contact, error) {
 	card, err := vcard.NewDecoder(strings.NewReader(raw)).Decode()
 	if err != nil {
@@ -79,8 +79,8 @@ func New(uid, name string, emails, phones []string, organisation, note string) (
 	return encode(card)
 }
 
-// Edit changes fields on an existing card and leaves everything else — photos,
-// addresses, X- properties somebody else's client wrote — exactly as it was.
+// Edit changes fields on an existing card and leaves everything else, photos,
+// addresses, X- properties somebody else's client wrote, exactly as it was.
 func Edit(raw string, fn func(vcard.Card)) (string, error) {
 	card, err := vcard.NewDecoder(strings.NewReader(raw)).Decode()
 	if err != nil {
@@ -138,7 +138,7 @@ func nonEmpty(parts ...string) []string {
 }
 
 // givenOf and familyOf split a written name for the structured field. It is a
-// guess, and it is only ever a guess — which is why the formatted name is the
+// guess, and it is only ever a guess, which is why the formatted name is the
 // one that is displayed.
 func givenOf(name string) string {
 	fields := strings.Fields(name)
@@ -158,7 +158,7 @@ func familyOf(name string) string {
 
 // Update is the edit that changes what a contact already says rather than
 // adding to it: the name, the organisation, the note. An empty field is one the
-// caller did not name and is left as it was — a caller fixing a spelling should
+// caller did not name and is left as it was, a caller fixing a spelling should
 // not have to retype an address to keep it.
 func Update(raw, name, organisation, note string) (string, error) {
 	return Edit(raw, func(c vcard.Card) {

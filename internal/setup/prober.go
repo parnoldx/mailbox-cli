@@ -38,7 +38,7 @@ func (Servers) DAV(ctx context.Context, endpoint, user, password string) ([]davs
 }
 
 // Routing implements Prober. It creates the Boxes a fresh account has not got
-// and puts an empty Routing script up if there is none — the last thing here
+// and puts an empty Routing script up if there is none, the last thing here
 // that talks to a server, and the only one that changes anything on it.
 //
 // A script already called `logic` is never rewritten: it holds the decisions.

@@ -114,8 +114,8 @@ func (o *otherClient) recreate() {
 }
 
 // purge makes sure the scratch folder really is empty before a gate counts
-// anything in it. DELETE is best-effort — a dropped connection swallows it, and
-// this suite has seen that happen — and a folder that quietly kept its messages
+// anything in it. DELETE is best-effort, a dropped connection swallows it, and
+// this suite has seen that happen, and a folder that quietly kept its messages
 // makes every count in every gate wrong, which reads as a failure of the code
 // rather than of the fixture.
 func (o *otherClient) purge() {
@@ -162,7 +162,7 @@ func (o *otherClient) reconnect() {
 
 // do runs one command against the other client, reconnecting and retrying once.
 // This fixture deletes and recreates its folder constantly and the server drops
-// the connection that was looking at it — normal operation here, not a fault,
+// the connection that was looking at it, normal operation here, not a fault,
 // and a fixture that falls over on it fails tests for reasons that have nothing
 // to do with the code under test.
 func (o *otherClient) do(what string, fn func() error) {
@@ -374,7 +374,7 @@ func TestLiveGates(t *testing.T) {
 		}
 	}
 	// Selecting a folder clears \Recent on the messages in it, which is a real
-	// flag change and bumps HIGHESTMODSEQ — so the cycle after a cold start
+	// flag change and bumps HIGHESTMODSEQ, so the cycle after a cold start
 	// legitimately has something to do. What matters is that it reaches a fixed
 	// point rather than churning forever.
 	if !converges(t, r, 3) {
@@ -412,8 +412,8 @@ func TestLiveGates(t *testing.T) {
 		t.Fatalf("gate 4: %d rows, want 1", len(got))
 	}
 
-	// Gate 5: UIDVALIDITY change. DELETE+CREATE is the destructive variant —
-	// the folder really is empty afterwards — so the assertion here is that the
+	// Gate 5: UIDVALIDITY change. DELETE+CREATE is the destructive variant,
+	// the folder really is empty afterwards, so the assertion here is that the
 	// resync is clean, not that messages are remapped. The migration variant,
 	// where the messages survive under new uids, is only reachable in the fake.
 	before, err := m.Folder("primary", liveFolder)
@@ -432,7 +432,7 @@ func TestLiveGates(t *testing.T) {
 		t.Fatal(err)
 	}
 	if after.UIDValidity == before.UIDValidity {
-		t.Fatalf("gate 5: uidvalidity did not move (%d) — the server did not reset it",
+		t.Fatalf("gate 5: uidvalidity did not move (%d): the server did not reset it",
 			before.UIDValidity)
 	}
 	t.Logf("gate 5: uidvalidity %d -> %d", before.UIDValidity, after.UIDValidity)
@@ -606,6 +606,6 @@ func TestLiveAttachment(t *testing.T) {
 		t.Fatalf("fetch part: %v", err)
 	}
 	if !bytes.Equal(got, payload) {
-		t.Errorf("fetched %q, want %q — the transfer encoding was not undone", got, payload)
+		t.Errorf("fetched %q, want %q: the transfer encoding was not undone", got, payload)
 	}
 }

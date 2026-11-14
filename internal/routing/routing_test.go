@@ -261,7 +261,7 @@ func TestIncludesFindsTheOneThatRunsUs(t *testing.T) {
 }
 
 // A domain key (`@stripe.com`) matches every address at that domain, and a
-// specific address always wins — the two-pass order the generated script
+// specific address always wins, the two-pass order the generated script
 // encodes: every address rule, then every domain rule.
 func TestADomainKeyMatchesEveryAddressAtThatDomain(t *testing.T) {
 	l := New()

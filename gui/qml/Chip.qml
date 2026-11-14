@@ -5,7 +5,7 @@ import QtQuick
 // ~a dozen hand-rolled copies of the same Rectangle + Row + two Texts +
 // HoverHandler + TapHandler.
 //
-//   interactive: false  → a static badge (no hover, no tap) — the tracker count
+//   interactive: false  → a static badge (no hover, no tap), the tracker count
 //   danger: true        → hover turns the pill red with white text (Trash, Block)
 //   accentGlyph: true   → the glyph (only) goes accent on hover (Reply, Forward…)
 //   glyphColor          → a fixed glyph colour for a static badge (the green tick)

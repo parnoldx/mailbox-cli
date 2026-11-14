@@ -10,7 +10,7 @@ import (
 )
 
 // A pooled connection the server quietly drops must not fail a move. The
-// SELECT is what fails — nothing has moved yet — so redialling and running
+// SELECT is what fails, nothing has moved yet, so redialling and running
 // the move once on the fresh connection is safe (ADR-0017 only forbids
 // repeating an operation whose ack may have been lost). A MOVE that fails
 // after the select ran is the other case, and there the move must NOT be
@@ -65,8 +65,8 @@ func TestMoveSurvivesADroppedPooledConnection(t *testing.T) {
 
 // fakeIMAP speaks just enough IMAP for Dial and Move. The ctl connection is
 // dialled first and answered with login only; the second dial is the work
-// connection, which drops the socket on its dropOn command — the shape of a
-// server that closed an idle pooled connection — and every later dial is
+// connection, which drops the socket on its dropOn command, the shape of a
+// server that closed an idle pooled connection, and every later dial is
 // served fully. go-imap runs a move as UID COPY + UID STORE + UID EXPUNGE,
 // because the fake advertises no MOVE capability.
 type fakeIMAP struct {

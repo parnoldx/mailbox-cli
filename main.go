@@ -37,7 +37,7 @@ import (
 
 // main hands the CLI the two commands that cannot go through the socket: one
 // owns it, and the other writes the config that names it. Everything else about
-// them — where they appear in help, what flags they take — is in the registry
+// them, where they appear in help, what flags they take, is in the registry
 // with every other command (ADR-0020).
 func main() {
 	os.Exit(cli.RunWith(cli.Locals{
@@ -58,8 +58,8 @@ func main() {
 	}, os.Args[1:], os.Stdout, os.Stderr))
 }
 
-// runSetup runs the wizard. Everything it needs from this machine — where the
-// units go, which binary the service should run, where the skill lives — is
+// runSetup runs the wizard. Everything it needs from this machine, where the
+// units go, which binary the service should run, where the skill lives, is
 // worked out here and handed in, so the wizard itself writes into a directory
 // it was given and a test can give it a temporary one.
 func runSetup() error {
@@ -288,8 +288,11 @@ func setupDAV(d *daemon.Daemon, cfg *config.Config, m *mirror.Mirror, logger *lo
 		clients = append(clients, dav)
 		logger.Printf("account %s: calendars and contacts come from Microsoft 365", name)
 	}
+	// One set backs both halves: the reconciler reads through it and the writer
+	// writes through it, and a set is just the list of servers.
+	set := davdrv.NewSet(clients...)
 	d.DAV = &davsync.Reconciler{
-		Account: "primary", Mirror: m, Driver: davdrv.NewSet(clients...),
+		Account: "primary", Mirror: m, Driver: set,
 		Location: time.Local,
 		// Collections this machine does not mirror. Discovery skips them on the
 		// way in and drops them if they are already held (ADR-0013 is why the
@@ -306,7 +309,7 @@ func setupDAV(d *daemon.Daemon, cfg *config.Config, m *mirror.Mirror, logger *lo
 	}
 
 	d.DAVWriter = &davsync.Writer{
-		Account: "primary", Mirror: m, Driver: davdrv.NewSet(clients...), Reconciler: d.DAV,
+		Account: "primary", Mirror: m, Driver: set, Reconciler: d.DAV,
 	}
 	d.DAVHome = primaryDAV
 	if u, err := url.Parse(cfg.Account.DAVEndpoint); err == nil {
@@ -324,7 +327,7 @@ var watchable = []string{"INBOX", "INBOX/Screener"}
 
 // boxes asks the server what Boxes exist and splits them into what to mirror
 // and what to watch. Discovery rather than a hardcoded list, because a Box added
-// in webmail should just appear — and because a URL or name copied by hand is
+// in webmail should just appear, and because a URL or name copied by hand is
 // how the CardDAV collection ended up pointing at the wrong address book.
 func boxes(ctx context.Context, drv interface {
 	Folders(context.Context) ([]string, error)
@@ -350,7 +353,7 @@ func boxes(ctx context.Context, drv interface {
 		wanted = watchable
 	}
 	for _, b := range all {
-		// Trash is excluded from the Mirror entirely (ADR-0003) — the folder
+		// Trash is excluded from the Mirror entirely (ADR-0003), the folder
 		// itself and everything under it: a folder deleted in webmail lands
 		// inside Trash, and mirroring the subtree would keep listing what the
 		// user threw away.
@@ -537,7 +540,7 @@ func buildGraph(ctx context.Context, name string, sec config.Account,
 	acct.From = compose.Address{Name: sec.DisplayName, Addr: sec.Email}
 	acct.Color = sec.Color
 	acct.Graph = true
-	// The Routing is set up with the account — the Screener Box is what its
+	// The Routing is set up with the account, the Screener Box is what its
 	// catch-all files into, and the one a Graph account without the routing
 	// does not have. Wiring the driver on unconditionally would let one route
 	// command switch screening on for an account whose Boxes the daemon does
@@ -578,7 +581,7 @@ func applier(d *daemon.Daemon, was *config.Config, m *mirror.Mirror,
 }
 
 // stillInFlight counts what one account has left in the Outbox: queued, at the
-// server, or Held — without a row limit, because an account whose mail is older
+// server, or Held, without a row limit, because an account whose mail is older
 // than the newest few rows must not read as an empty outbox (ADR-0013).
 func stillInFlight(box *outbox.Outbox, account string) (int, error) {
 	if box == nil {

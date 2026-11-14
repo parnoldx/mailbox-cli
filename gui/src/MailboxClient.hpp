@@ -39,12 +39,12 @@ public:
     Q_INVOKABLE QString cacheDir() const;
 
     // A tiny string key/value store the UI uses to remember things the daemon
-    // does not track — currently only how far down The Feed the reader has got.
+    // does not track, currently only how far down The Feed the reader has got.
     // Persisted as JSON under $XDG_CONFIG_HOME/Mailbox/state.json.
     Q_INVOKABLE QString stateGet(const QString &key, const QString &fallback = {});
     Q_INVOKABLE void stateSet(const QString &key, const QString &value);
 
-    // Put text on the clipboard — used by click-to-copy recipient addresses.
+    // Put text on the clipboard, used by click-to-copy recipient addresses.
     Q_INVOKABLE void copyText(const QString &text);
 
     // Draft a reply with the default agent: runs `pi -p` non-interactively and
@@ -75,7 +75,7 @@ private:
     int m_seq{0};
     QHash<QString, QJSValue> m_pending;
 
-    // The one agent draft running, if any — one at a time, no queue.
+    // The one agent draft running, if any, one at a time, no queue.
     QProcess *m_agent{nullptr};
 
     QVariantMap m_state;

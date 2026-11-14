@@ -56,7 +56,7 @@ type Account struct {
 	// NoDAV skips the calendars, task lists and address books entirely: no
 	// discovery, no hand-configured collections, no periodic cycle. For the VPS
 	// Daemon (ADR-0025), which exists for mail routing and bubble timing and
-	// reads no calendar — leaving DAV configured there just fails it on every
+	// reads no calendar, leaving DAV configured there just fails it on every
 	// cycle once the app password is gone, since an empty DAVPassword falls
 	// back to the mail one and mailbox.org refuses that for CalDAV/CardDAV.
 	NoDAV bool `toml:"no_dav"`
@@ -114,7 +114,7 @@ func NextColor(used []string) string {
 
 // Calendar is a Collection on a server we cannot discover: another provider,
 // with its own credentials. Collections on the account's own DAV server need no
-// entry here — they are found by asking it.
+// entry here, they are found by asking it.
 type Calendar struct {
 	Name     string `toml:"name"`
 	URL      string `toml:"url"`
@@ -130,7 +130,7 @@ type Calendar struct {
 
 // Collections says which discovered Collections are not mirrored. The decision
 // lives here rather than on a row in the Mirror because the Mirror is deleted
-// and rebuilt on a schema change (ADR-0013) — a decision stored there has a
+// and rebuilt on a schema change (ADR-0013), a decision stored there has a
 // half-life, and the next discovery would put back what was excluded.
 type Collections struct {
 	// Exclude is matched against a Collection's display name, which is what
@@ -140,7 +140,7 @@ type Collections struct {
 
 // Bubble is the two hours `mailbox bubble` resolves its timing flags to. HEY's
 // "Later today" is the evening one; every other flag lands on the morning one.
-// There is no config default for the flag itself — one is always required, to
+// There is no config default for the flag itself, one is always required, to
 // match HEY exactly.
 type Bubble struct {
 	// Morning is the hour --tomorrow, --weekend, --next-week and a future --on
@@ -364,7 +364,7 @@ func OutboxPath() (string, error) {
 }
 
 // GraphTokenPath is where a Graph account's sign-in is kept. It is not derived
-// state — losing it means signing in again — so it sits beside the Outbox, and
+// state, losing it means signing in again, so it sits beside the Outbox, and
 // not in the config, because the Daemon writes it on every refresh and never
 // writes the config (ADR-0030).
 func GraphTokenPath(account string) (string, error) {

@@ -50,17 +50,17 @@ private:
         // A Bubble Up return brought this Thread back and it is still unread.
         bool bubbled = false;
         // When a scheduled Bubble Up returns this Thread to the Inbox,
-        // "YYYY-MM-DD HH:MM" — set only on a thread that carries a $bubble
+        // "YYYY-MM-DD HH:MM", set only on a thread that carries a $bubble
         // keyword, so the Aside listing can badge it.
         QString due;
         // How many Messages are in this row's Thread in all, wherever they
-        // sit — 0 for a Message on its own (the daemon already collapsed the
+        // sit, 0 for a Message on its own (the daemon already collapsed the
         // listing to one row per Thread; this is just its badge).
         int count = 0;
-        // The labels on this row's Thread — keywords somebody chose, already
+        // The labels on this row's Thread, keywords somebody chose, already
         // filtered of the server's own by the daemon.
         QStringList labels;
-        // The Secondary Account this row is on — empty for the Primary's, and
+        // The Secondary Account this row is on, empty for the Primary's, and
         // for every row when only one account is configured.
         QString account;
         // A row the Mirror does not hold (Trash): read from the server, so

@@ -69,7 +69,7 @@ func cardOf(uid string, g graphContact) (string, error) {
 }
 
 // contactFields is what a write sends. Phones keep the kind Outlook filed them
-// under — mobile stays mobile — and a new one is a business phone, Graph's
+// under, mobile stays mobile, and a new one is a business phone, Graph's
 // first kind. Like eventFields, what the server has now goes through the same
 // function, so only what changed is sent.
 func contactFields(raw string, now graphContact) (map[string]any, error) {

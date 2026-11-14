@@ -26,7 +26,7 @@ type Hit struct {
 
 // Search answers a query from the Mirror and never from the server (ADR-0009).
 // Trash is not searchable because it is not mirrored, and a Message whose last
-// Placement has gone — trashed after it was mirrored — falls out with it: the
+// Placement has gone, trashed after it was mirrored, falls out with it: the
 // join to placements is what makes deleted mail stop turning up.
 func (m *Mirror) Search(account string, q Query) ([]Hit, error) {
 	match, err := MatchExpr(q.Text)
@@ -52,7 +52,7 @@ func (m *Mirror) Search(account string, q Query) ([]Hit, error) {
 	args = append(args, limit*4+32)
 
 	// snippet() and bm25() may only be used where the FTS table is queried
-	// directly — not through a subquery or a window function — so the
+	// directly, not through a subquery or a window function, so the
 	// one-Hit-per-Message rule is applied here rather than in SQL. Ordering by
 	// rank and then by Box keeps a Message's Placements adjacent.
 	rows, err := m.db.Query(`

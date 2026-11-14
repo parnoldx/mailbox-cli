@@ -10,18 +10,18 @@
 //   - A body does not. Measured over 1445 real messages, every body-first
 //     approach drowned: a keyword net matched 116 (the German "einmal" is an
 //     ordinary word), a lone code-shaped line matched 61, digits-only 22, and
-//     an opaque-token URL 15 — between them one true positive. Order
+//     an opaque-token URL 15, between them one true positive. Order
 //     confirmations, booking references and BICs look exactly like one-time
 //     codes from the body down.
 //
 // The same subject gate over the same corpus matched one message, and it was
 // the right one. So the body is where the code is *extracted*, never where the
-// mail is *classified* — with one exception: a URL whose path names the act
+// mail is *classified*, with one exception: a URL whose path names the act
 // (…/verify/…, …/login?…) is a classification of its own. A sender rarely
 // points a tracking pixel-shaped URL at a page called verify, and the mail
 // that carries one is waiting on a click whatever its subject says. (Seen in
 // the field: a German "Login Bestätigung" subject over [Jetzt Login
-// bestätigen](…/user/verify/?dec=…) — the subject is noun over noun, no code
+// bestätigen](…/user/verify/?dec=…), the subject is noun over noun, no code
 // word, and the link is the whole errand.) Only the strong act words qualify
 // on their own; token and auth stay subject-gated, because an opaque token in
 // a query string is every unsubscribe link ever sent.
@@ -29,7 +29,7 @@
 // There is one body-first classification besides that link, and it is the
 // same two-word phrase the subject gate trusts, met in the body: an auth
 // adjective naming the code noun ("Your verification code is: 61296136").
-// Welcome mail puts it there — "Welcome to Acme!" names no code word up
+// Welcome mail puts it there, "Welcome to Acme!" names no code word up
 // front, yet the sender is plainly running a login form. This is not the
 // keyword net the corpus sank: that one keyed on "code" alone, this one
 // requires the adjective beside it, and "Buchungscode", "Bestellcode" and
@@ -47,7 +47,7 @@ import (
 
 // Keyword marks a Message the Daemon has taken a code out of. It is an IMAP
 // keyword rather than a Mirror column so it survives a Mirror rebuild and both
-// Daemons see it (the reasoning is ADR-0023's, applied again) — and so the
+// Daemons see it (the reasoning is ADR-0023's, applied again), and so the
 // Screener can skip it without a second source of truth.
 const Keyword = "$pickup"
 
@@ -62,7 +62,7 @@ var subject = regexp.MustCompile(`(?i)` +
 	// No \b in front: German glues the code word onto whatever came before it
 	// ("Kontoprüfcode", "Microsoft-Zugriffscode"), so requiring the stem to
 	// start a word missed every compound. The stem list is what keeps this
-	// narrow — "Rabattcode" and "Bestellcode" are not in it.
+	// narrow, "Rabattcode" and "Bestellcode" are not in it.
 	`|(bestätigungs|sicherheits|verifizierungs|verifikations|zugangs|zugriffs|anmelde|einmal|prüf|aktivierungs|authentifizierungs)(code|link|pin|passwort|kennwort)` +
 	`|\b(verify|confirm|validate|activate|complete|finish) (your |the |dein[er]? |deine )?(\S+ ){0,3}` +
 	`(e-?mail|account|identity|address|login|sign[- ]?in|sign[- ]?up|registration|subscription)\b` +
@@ -74,7 +74,7 @@ var subject = regexp.MustCompile(`(?i)` +
 	`|\b(e-?mail|adresse|anmeldung|registrierung|konto|zugang)[^\n]{0,24}` +
 	`\b(bestätigen|verifizieren|aktivieren|abschließen|freischalten)\b` +
 	// The German noun form: "Aktivierung Ihres Benutzerkontos". The account word
-	// is required, and "Bestätigung" is left out on purpose — it is half of
+	// is required, and "Bestätigung" is left out on purpose, it is half of
 	// German commerce, and the compounds that carry it (Buchungsbestätigung,
 	// Bestellbestätigung) have no word boundary in front of it anyway.
 	`|\b(aktivierung|freischaltung|verifizierung)\b[^\n]{0,24}` +
@@ -82,8 +82,8 @@ var subject = regexp.MustCompile(`(?i)` +
 	`|\b(is|ist) (your|dein|ihr) (\S+ ){0,2}code\b` +
 	`|^[0-9]{4,8}\b.*\b(code|verif|login|sign)` +
 	// "Ihre Anmeldung im Präferenz-Center": the consent-center login code. The
-	// bare noun "Anmeldung" is every registration confirmation — two in the
-	// corpus carry initial passwords that must never be binned — but a
+	// bare noun "Anmeldung" is every registration confirmation, two in the
+	// corpus carry initial passwords that must never be binned, but a
 	// preference center names itself, and its mail is always a code or a login
 	// link (OneTrust and its kin).
 	`|\b(preference|präferenz)[- ]?cent(er|re)\b` +
@@ -96,7 +96,7 @@ var subject = regexp.MustCompile(`(?i)` +
 	`|\b(bei (\S+ ){0,2}anmelden|anmelden bei \S+)\b`)
 
 // labelled is a code introduced by a word: "Your code is 123456", "PIN: 8842".
-// The label is case-insensitive but the code is not — a case-insensitive
+// The label is case-insensitive but the code is not, a case-insensitive
 // [A-Z0-9]{4,8} matches the word "yellow", which is how the first draft of this
 // reported a colour as somebody's login code.
 var labelled = regexp.MustCompile(
@@ -110,13 +110,13 @@ var trailing = regexp.MustCompile(
 // lone is a code sitting on a line of its own, which is how a rendered HTML
 // code block flattens to text. Only safe after the subject gate: on its own
 // this shape is an order number far more often than it is a code. Alphanumeric
-// codes (Basecamp's 5HT3KD) qualify too, but must carry a digit — an all-caps
+// codes (Basecamp's 5HT3KD) qualify too, but must carry a digit, an all-caps
 // word is a heading, and an eight-letter heading after an auth-looking subject
 // would otherwise be copied as somebody's login code.
 var lone = regexp.MustCompile(`(?m)^[^\p{L}\p{N}\n]{0,4}([0-9A-Z]{4,8})[^\p{L}\p{N}\n]{0,4}$`)
 
 // link is a URL that logs you in by being followed. The path or query has to
-// name the act — a bare opaque token is every tracking and unsubscribe link
+// name the act, a bare opaque token is every tracking and unsubscribe link
 // ever sent. token and auth are in the wide form only: the subject gate has
 // already classified the mail by then, so the token is a detail and not the
 // criterion.
@@ -128,7 +128,7 @@ var link = regexp.MustCompile(`(?i)https?://[^\s<>"'\]]*` +
 
 // linkAct is the narrow form, for when no subject has vouched for the mail:
 // the act named in the path is the classification, and token and auth are left
-// out of it — they name no act an unsubscribe link does not also carry. It is
+// out of it, they name no act an unsubscribe link does not also carry. It is
 // matched against the URL's path and nothing else (namesAct): a query is where
 // tracking lives, and "?login_modal=true" on a portal's front page is not a
 // magic link.
@@ -166,7 +166,7 @@ var ignore = regexp.MustCompile(`(?i)discount code|promo code|coupon code|barcod
 // correctly ignored rather than raised with nothing in it.
 //
 // Two ways in: a subject that reads like an auth mail (which unlocks code
-// extraction — the lone-code net is only safe after it), or a URL whose path
+// extraction, the lone-code net is only safe after it), or a URL whose path
 // names the act, which classifies the mail on its own and yields the link
 // only. A code-shaped line without a vouching subject stays prose.
 func Find(subject_, body string) (code, link_ string) {
@@ -176,7 +176,7 @@ func Find(subject_, body string) (code, link_ string) {
 	vouched := subject.MatchString(subject_) ||
 		// Welcome mail: no code word in the subject, but the body names the
 		// whole phrase. Extraction still goes through findCode, which needs
-		// the code near a label anyway — the vouch only unlocks the read.
+		// the code near a label anyway, the vouch only unlocks the read.
 		vouchedBody.MatchString(body)
 	if !vouched {
 		if link_ == "" || !namesAct(link_) {
@@ -194,7 +194,7 @@ func Find(subject_, body string) (code, link_ string) {
 // its https://…/meinewgv/?login_modal=true on the clipboard as a login link on
 // 2026-11-12, and a PayPal security notice did the same off a
 // "login-email-trusted-device" campaign parameter. A real magic link names the
-// act in the path — /verify/, /anmelden, /konto/aktivieren/.
+// act in the path, /verify/, /anmelden, /konto/aktivieren/.
 //
 // The cost is the other direction: an act named only in the query is missed
 // and the mail is read as ordinary post. That is the cheap mistake of the two.
@@ -210,7 +210,7 @@ func namesAct(u string) bool {
 // mail renders to Markdown as [Click here](https://…), and the match ends at
 // the closing paren of that wrapper, not the URL; prose adds sentence marks the
 // same way. A paren that is balanced inside the URL (a wiki-style "…_(2024)")
-// stays — only the unbalanced tail is the wrapper.
+// stays, only the unbalanced tail is the wrapper.
 func trimLink(u string) string {
 	for len(u) > 0 {
 		switch c := u[len(u)-1]; c {

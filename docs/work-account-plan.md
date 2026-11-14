@@ -10,8 +10,8 @@ that builds them.
 ## Context
 
 There is one mail account today (mailbox.org, the Primary) and one hand-added
-work calendar (`[caldav.work]`, SOGo at `sogo.example.org`). The work account —
-on M365 (mail since before 2026-09-26, calendar moving) — should join it with its **mail, calendar and
+work calendar (`[caldav.work]`, SOGo at `sogo.example.org`). The work account,
+on M365 (mail since before 2026-09-26, calendar moving), should join it with its **mail, calendar and
 contacts**.
 
 The plumbing for a second account already exists (ADR-0005): its own
@@ -23,7 +23,7 @@ and nothing anywhere says which account a row or a Send belongs to. That part is
 Part A, and it does not care what server the work account is on.
 
 Part B is the M365 backend. **M365 is spoken to over Microsoft Graph, for all
-three domains** — not IMAP with XOAUTH2 plus something else for the rest:
+three domains**, not IMAP with XOAUTH2 plus something else for the rest:
 
 - Exchange Online has **no CalDAV or CardDAV**, and EWS is retired for Exchange
   Online from October 2026. Calendar and contacts are Graph or nothing, so Graph
@@ -42,8 +42,8 @@ for M365, spoken to directly over HTTP, not a hosted third party holding the mai
 
 Decided:
 
-- Work gets the **piles** (Aside, Reply Later, Bubble) and — since 2026-09-29,
-  ADR-0032 — the full **Routing** (Screener, Feed, Paper Trail, Block) as
+- Work gets the **piles** (Aside, Reply Later, Bubble) and, since 2026-09-29,
+  ADR-0032, the full **Routing** (Screener, Feed, Paper Trail, Block) as
   Graph inbox rules. The plan first said "not now"; the decision to build it
   came later, and `mailbox route` decides per account.
 - **Reading merges, writing does not.** `mailbox box view inbox` shows both
@@ -56,20 +56,20 @@ Decided:
   `net/http` and `encoding/json` do it. `golang.org/x/oauth2` (device flow,
   token refresh) is the one new dependency.
 
-## Ask IT first — it blocks Part B
+## Ask IT first, it blocks Part B
 
 1. An **Entra app registration**: public client, browser sign-in with PKCE
    (`http://localhost` redirect, "allow public client flows"), delegated
    scopes `Mail.ReadWrite Mail.Send MailboxSettings.ReadWrite
    Calendars.ReadWrite Contacts.ReadWrite offline_access User.Read`.
-   MailboxSettings.ReadWrite was added with ADR-0032 — inbox rules are
+   MailboxSettings.ReadWrite was added with ADR-0032, inbox rules are
    mailbox settings on a work account, and the Routing is refused without it
    (measured: 403 ErrorAccessDenied on messageRules with the scope missing).
    The scope change needs a fresh sign-in; the token on disk carries the
    scopes it was granted and does not grow with the app registration.
 2. **Consent**: many tenants block user consent. If so, an admin grants it once.
 3. Conditional access or security defaults that would refuse the sign-in from
-   the VPS (ADR-0025's second Daemon) — there the browser is reached through
+   the VPS (ADR-0025's second Daemon), there the browser is reached through
    an SSH tunnel to the loopback port.
 
 The answer decides whether Part B can start. Part A does not wait for it.
@@ -78,11 +78,11 @@ Business Basic includes Exchange Online and Graph, so nothing above changes with
 the plan tier. Conditional access needs Entra ID P1, which Business Basic does
 not include, so item 3 only matters if the tenant bought P1. Security defaults
 (Microsoft-managed) DO block the device-code flow ("Block device code flow",
-AADSTS530035 — found live 2026-09-28, the plan above first said otherwise), so
+AADSTS530035, found live 2026-09-28, the plan above first said otherwise), so
 the sign-in is authorization code with PKCE against `http://localhost`, which
 those same defaults are built to allow.
 
-## Built 2026-09-26 (branch `m365-graph`) — not yet run against the tenant
+## Built 2026-09-26 (branch `m365-graph`), not yet run against the tenant
 
 B1–B5 are in; the decisions are ADR-0029 to ADR-0031 in DESIGN.md, and the cycle
 is "The Graph sync cycle" there. Everything is tested against a scripted Graph
@@ -99,12 +99,12 @@ registration. Where the build differs from the text below:
   −60/+540-day window restarted when 30 days stale; series are folded back into
   one object. The default contacts folder is found through any contact's
   `parentFolderId`: an empty default folder shows no default address book yet.
-- Invites: option (b), built 2026-09-29 — see "Meeting invites" below.
+- Invites: option (b), built 2026-09-29, see "Meeting invites" below.
 - `setup` has "a Microsoft 365 account": it signs in, checks the address, makes
   the piles, and removes a hand-added calendar with the same name or address.
   Repair signs in again when the sign-in is refused. `doctor` checks it.
 - Found on the way, in the shared reconciler: an expunge and an arrival in one
-  cycle left the count unchanged and hid the expunge — on the IMAP account too.
+  cycle left the count unchanged and hid the expunge, on the IMAP account too.
   Fixed in `mailsync.incremental`.
 
 To go live: IT's app registration → `mailbox setup` → a → Microsoft 365 → then
@@ -164,11 +164,11 @@ What step 2 needs:
   `-tags live` create → patch → read back that keeps a field we don't model
   (e.g. `isReminderOn`).
 
-**Meeting invites — (b) built 2026-09-29** on branch `graph-invite-rsvp`: the
+**Meeting invites, (b) built 2026-09-29** on branch `graph-invite-rsvp`: the
 card shows on work mail, `rsvp` calls `graphdrv.DAV.Respond` with
 `sendResponse: true` on the event found by UID (no iMIP, no Put), and the
 event's `responseStatus` comes into the Mirror as the account's ATTENDEE
-PARTSTAT, which the card carries as `response` — on CalDAV invites too, once
+PARTSTAT, which the card carries as `response`, on CalDAV invites too, once
 an RSVP stored one. Events already mirrored show their answer after their next
 change or a restarted window.
 
@@ -188,17 +188,17 @@ lookup.
 
 ---
 
-## Part A — a second account, server-independent
+## Part A, a second account, server-independent
 
 **A1–A4 built 2026-09-23** on branch `accounts-part-a`; the decision is ADR-0028 in
 DESIGN.md. Where the build differs from the text below:
 
-- The colour is written by the wizard, not asked for — one line to change in the
+- The colour is written by the wizard, not asked for, one line to change in the
   config. It is an Omarchy palette name or `#rrggbb`; anything else is refused.
 - No `--account` flag and no account column in the CLI table: the id prefix
   already names the account (`box view work`, `box view primary`, `work/1`).
 - The bubble guard reads the flags the STORE reports back instead of tracking
-  PERMANENTFLAGS at mirror time — no new state, same refusal. Missing Aside is
+  PERMANENTFLAGS at mirror time, no new state, same refusal. Missing Aside is
   now refused before anything is written.
 - The pile reclaim (a reply landing, or answering, pulls a thread out of Aside /
   Reply Later) now runs on every account too; without it the piles on a
@@ -208,7 +208,7 @@ DESIGN.md. Where the build differs from the text below:
   delimiter is not `/` would get a different folder; check on the first real
   Secondary.
 
-### Already there — no work needed
+### Already there, no work needed
 
 - `movePile` (`internal/daemon/routing.go`) is **already account-agnostic**: it
   resolves the account from the id, uses `acct.boxNamed`, threads within that
@@ -232,7 +232,7 @@ the theme accent.
 
 - `internal/setup/routingboot.go`: a `PileBoxes = {routing.BoxAside,
   routing.BoxReplyLater}` list beside `RoutingBoxes`, reusing the existing
-  `MissingBoxes` + `CreateFolder` loop — `EnsureRouting` already does boxes-only
+  `MissingBoxes` + `CreateFolder` loop, `EnsureRouting` already does boxes-only
   when handed a nil `SieveOps`.
 - `internal/setup/manage.go` (`addAccount`): after the probe, create the two
   missing Boxes and report them the way the Primary's bootstrap does. Also ask
@@ -246,14 +246,14 @@ the theme accent.
   `handleBubble`. A Graph account always has it (ADR-0031).
 - `internal/cli/doctor.go`: extend the Box check to a Secondary's two piles.
 
-### A3. Merged listings — "a listing spans accounts, an id names one"
+### A3. Merged listings, "a listing spans accounts, an id names one"
 
 - `box view` (`serve.go:209`): with no account prefix, run over every account
   that has the named Box, call the existing `viewRows(acct, ...)` per account,
   merge newest-first on `Message.Date`, truncate to `limit`, then apply the
   bubbled-float sort once over the merged result. Ask each account for `limit`
   rows before merging.
-- `row` (`serve.go:922`) gains `Account string \`json:"account,omitempty"\`` —
+- `row` (`serve.go:922`) gains `Account string \`json:"account,omitempty"\``,
   empty for the Primary, matching the id rule exactly. The CLI table prints it
   only when more than one account is configured.
 - `--account NAME` narrows. `box view work` already narrows via `splitAccount`.
@@ -285,12 +285,12 @@ single-account setup looks exactly as it does today.
 - `gui/src/MailModel.cpp` / `MailboxClient.cpp`: carry `account` per row; fetch
   the account list once at startup and hold the name→colour map.
 - `gui/qml/MailRow.qml`: the existing left bar, which today shows only for
-  fresh mail, becomes the account's colour on **every** row — solid when fresh,
+  fresh mail, becomes the account's colour on **every** row, solid when fresh,
   faded when seen, so it still carries the fresh signal. With the list showing
   both accounts, a Secondary's row also gets a small label chip with the account's
   name beside the time; the Primary's rows get none.
-- `gui/qml/Main.qml`: filter pills beside the bucket title — All / Personal /
-  Work, each outlined in its account's colour — on keys `0` / first letter
+- `gui/qml/Main.qml`: filter pills beside the bucket title, All / Personal /
+  Work, each outlined in its account's colour, on keys `0` / first letter
   of the account label. The bucket keys 1–7 are unchanged; check that
   the letter keys do not collide with existing shortcuts before binding them.
 - `gui/qml/ComposerView.qml`: the From field is a pill in the sending account's
@@ -312,7 +312,7 @@ not a real Secondary). Where it differs:
   label whose first letter is already a list or reader key gets no key.
 - The From pill switches on click only, and only for a new mail; `Tab` stays
   focus traversal. A reply, forward or draft is fixed to its id's account.
-- No agenda in the Qt app — the merged-agenda colour belongs to the calendar
+- No agenda in the Qt app, the merged-agenda colour belongs to the calendar
   widget.
 
 ### A6. Docs
@@ -326,7 +326,7 @@ not a real Secondary). Where it differs:
 
 ---
 
-## Part B — M365 over Graph
+## Part B, M365 over Graph
 
 ### B1. Sign-in and the token file (ADR-0030)
 
@@ -343,14 +343,14 @@ not a real Secondary). Where it differs:
 - `mailbox setup` opens the browser for a Graph account's sign-in (print the
   URL, wait for the loopback answer), then enumerates folders, calendars and
   address books
-  from Graph and offers them as a choice — it still never asks for a URL.
+  from Graph and offers them as a choice, it still never asks for a URL.
 - A refused refresh (revoked, expired after 90 idle days, password change)
-  becomes a `status` problem, "work: sign in again — `mailbox setup`", like
+  becomes a `status` problem, "work: sign in again, `mailbox setup`", like
   credentials a server refuses today.
 - **Each Daemon signs in on its own** (the home one and the VPS one, ADR-0025),
   so two processes never race to rotate one refresh token.
 
-### B2. Mail sync — `internal/sync/graphsync` (ADR-0029)
+### B2. Mail sync, `internal/sync/graphsync` (ADR-0029)
 
 The cycle is shaped like the DAV cycle, not the IMAP one: a delta link is a sync
 token.
@@ -379,15 +379,15 @@ token.
 - **No IDLE.** Graph change notifications need a public HTTPS webhook, which a
   laptop does not have. Watched folders are delta-polled every minute, the rest
   on the normal cycle. Pickups on the work account can therefore be up to a
-  minute late — accepted. Mind throttling (`429` + `Retry-After`, honoured, not
+  minute late, accepted. Mind throttling (`429` + `Retry-After`, honoured, not
   retried blind).
-- Tests: a scripted fake `graphsync.Driver`, as `mailsync` has — a delta that
+- Tests: a scripted fake `graphsync.Driver`, as `mailsync` has, a delta that
   pages, a `410`, an `@removed` for a message also added in the same answer, a
   move that arrives as remove-here/add-there.
 
 ### B3. Writes and Send
 
-- `daemon/account.go`: `Account.Writer` becomes an interface — the four methods
+- `daemon/account.go`: `Account.Writer` becomes an interface, the four methods
   the daemon calls (`SetSeen`, `StoreFlags`, `Move`, `SetLabel`), plus
   `FetchPart` and `Mirrored`. `mailsync.Writer` and a new `graphsync.Writer`
   implement it. This is the one new abstraction, and it has two implementations.
@@ -477,11 +477,11 @@ Part B:
 
 ## Draft decisions
 
-**ADR-0029 — An M365 account is spoken to over Microsoft Graph.** Mail, calendar
+**ADR-0029: An M365 account is spoken to over Microsoft Graph.** Mail, calendar
 and contacts, one protocol, one token. Exchange Online has no CalDAV or CardDAV and
 EWS is retired, so Graph is required for two of the three already; its IMAP lacks
 CONDSTORE (ADR-0006 would degrade to a full flag fetch per cycle) and SMTP AUTH is
-disabled in many tenants. The Graph sync is shaped like the DAV cycle — a delta
+disabled in many tenants. The Graph sync is shaped like the DAV cycle, a delta
 link is a sync token, committed with the changes it describes, so no journal.
 Messages keep `[account/]box:uid` ids through a local uid map, so nothing above the
 Mirror knows there are two backends. Events and contacts are translated to
@@ -494,7 +494,7 @@ account), and `msgraph-sdk-go` (a very large dependency for about eight endpoint
 No webhook push, because a laptop Daemon has no public endpoint; watched folders
 are delta-polled every minute and a Pickup on the work account may be that late.
 
-**ADR-0030 — OAuth tokens live in their own file, written by the Daemon.** A
+**ADR-0030: OAuth tokens live in their own file, written by the Daemon.** A
 refresh is a write, and the Daemon never writes `config.toml` (ADR-0021), so tokens
 go in `tokens.json` beside the Mirror: mode 0600 from creation, temp-file-and-rename
 on every refresh, never dropped on a Mirror rebuild. Same reasoning as ADR-0014 for
@@ -502,7 +502,7 @@ not using the Secret Service. Each Daemon signs in on its own through the device
 flow, so the home and the VPS Daemon never share, and never race to rotate, one
 refresh token (ADR-0025). A refused refresh is a `status` problem, not a crash.
 
-**ADR-0031 — Bubble Up on Graph is a category.** `bubble-YYYYMMDDTHHMM` as an
+**ADR-0031: Bubble Up on Graph is a category.** `bubble-YYYYMMDDTHHMM` as an
 Outlook category, and `bubbled` for the float, mapped to and from the
 `$bubble-*` / `$bubbled` keywords at the driver so ADR-0023's logic does not know
 the difference. A category moves with the message, syncs through delta and is a

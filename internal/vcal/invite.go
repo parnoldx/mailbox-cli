@@ -64,7 +64,7 @@ func ParseInvite(raw string, loc *time.Location) (Invite, error) {
 	}
 	// A missing UID is not a reason to refuse the card: booking systems in
 	// the wild send VEVENTs without one, and the reader only displays it.
-	// Answering one is what needs a UID — handleRSVP refuses that.
+	// Answering one is what needs a UID, handleRSVP refuses that.
 	return in, nil
 }
 
@@ -114,8 +114,8 @@ func Reply(in Invite, attendee, partstat string) (string, error) {
 }
 
 // ForCalendar is the VEVENT to store on a calendar after accepting or
-// tentatively accepting. METHOD is stripped — a calendar object is not an
-// iMIP message — and the attendee carries the PARTSTAT.
+// tentatively accepting. METHOD is stripped, a calendar object is not an
+// iMIP message, and the attendee carries the PARTSTAT.
 func ForCalendar(in Invite, attendee, partstat string) (string, error) {
 	ics, err := Reply(in, attendee, partstat)
 	if err != nil {

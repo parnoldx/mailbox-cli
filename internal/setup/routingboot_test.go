@@ -106,7 +106,7 @@ func TestAnActiveScriptThatDoesNotReachOursIsReportedNotFixed(t *testing.T) {
 	// Switching somebody's filtering off to switch ours on is not something a
 	// wizard does: activating a script deactivates the one that was running.
 	if f.active != "Theirs" {
-		t.Fatalf("active = %q — somebody else's script was switched off", f.active)
+		t.Fatalf("active = %q: somebody else's script was switched off", f.active)
 	}
 	if !b.Unreachable {
 		t.Fatal("a script that never runs was reported as running")

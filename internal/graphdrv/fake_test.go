@@ -261,7 +261,7 @@ func (f *fakeGraph) newFolder(w http.ResponseWriter, parent string, body []byte)
 }
 
 // messageRules is the inbox rules collection the Routing on a Graph account
-// is (ADR-0032). List, create, delete, patch — what SetRules and Rules use.
+// is (ADR-0032). List, create, delete, patch, what SetRules and Rules use.
 func (f *fakeGraph) messageRules(w http.ResponseWriter, r *http.Request, path string, body []byte) {
 	rest := strings.TrimPrefix(path, "/me/mailFolders/inbox/messageRules")
 	switch {

@@ -36,16 +36,16 @@ func (h *handedOver) arg(cmd string) []string {
 	return nil
 }
 
-// deliverScreener puts one mail in the Screener as it would arrive — with a
+// deliverScreener puts one mail in the Screener as it would arrive, with a
 // body, and dated now, since a Pickup is by definition mail that has just
-// landed — and runs the cycle over it.
+// landed, and runs the cycle over it.
 func deliverScreener(t *testing.T, d *Daemon, key, subject, from, body string) map[string]mailsync.Outcome {
 	t.Helper()
 	ctx := context.Background()
 	a := d.Primary
 	// One sync first, so the Boxes the seed wrote straight into the Mirror are
 	// settled. Without it the delivery below lands in the same pass that first
-	// reads every folder, and a resync reports no arrivals — which is exactly
+	// reads every folder, and a resync reports no arrivals, which is exactly
 	// what collectPickups relies on to not fire on a Mirror rebuild.
 	if _, err := a.Reconciler.SyncAll(ctx, d.Primary.Mirrored); err != nil {
 		t.Fatal(err)
@@ -106,7 +106,7 @@ func TestPickupCopiesTheCodeAndQuietensTheMail(t *testing.T) {
 }
 
 // An HTML-only mail has no plain part, so TextPlain is empty. Find must see
-// the rendered HTML — the same text the search index gets — or every
+// the rendered HTML, the same text the search index gets, or every
 // marketing-shaped code mail (which is most of them) goes uncollected.
 // Verbatim sender: Suresse Direkt Bank, "Ihre Anmeldung im Präferenz-Center".
 func TestPickupReadsAnHTMLOnlyBody(t *testing.T) {
@@ -291,8 +291,8 @@ func TestPickupCopiesARegistrationLink(t *testing.T) {
 
 // Gate 7. The alert has to arrive while Do Not Disturb is on: a code is
 // worthless once the screen has moved on. The desktop (omarchy's
-// shouldBypassDnd) lets through one shape only — urgency=critical sent by an
-// app that did NOT declare a name — so the alert must not name itself. Seen in
+// shouldBypassDnd) lets through one shape only, urgency=critical sent by an
+// app that did NOT declare a name, so the alert must not name itself. Seen in
 // the field: a branded one was delivered to the shell and written straight to
 // history without ever being shown, while the link sat on the clipboard.
 func TestPickupAlertIsTheShapeDoNotDisturbLetsThrough(t *testing.T) {
@@ -353,7 +353,7 @@ func TestADaemonWithNoClipboardLeavesThePickupForTheDesktop(t *testing.T) {
 }
 
 // Gate 8. A held Pickup is readable a second time. The clipboard is the one
-// place a code is put, and the next thing copied takes it away — so the bar
+// place a code is put, and the next thing copied takes it away, so the bar
 // icon and `mailbox pickup list` have to answer "what was it again?" from the
 // Mirror for as long as the mail is still there, and stop answering it exactly
 // when the expiry scan bins the mail.

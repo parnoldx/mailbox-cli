@@ -20,7 +20,7 @@ type Writer struct {
 	Mirror  *mirror.Mirror
 	Driver  Driver
 	// Mirrored is every Box the Mirror holds. A Message moved out of all of
-	// them — to Trash — leaves the Mirror rather than reappearing in a Box that
+	// them, to Trash, leaves the Mirror rather than reappearing in a Box that
 	// is never reconciled.
 	Mirrored []string
 }
@@ -42,7 +42,7 @@ type Result struct {
 }
 
 // SetSeen adds or removes \Seen. Flags are idempotent, so asking for what is
-// already true is not an error — it is the ordinary case for an agent that did
+// already true is not an error, it is the ordinary case for an agent that did
 // not read the flag first.
 func (w *Writer) SetSeen(ctx context.Context, refs []Ref, seen bool) ([]Result, error) {
 	add, remove := []string{`\Seen`}, []string(nil)
@@ -52,7 +52,7 @@ func (w *Writer) SetSeen(ctx context.Context, refs []Ref, seen bool) ([]Result, 
 	return w.setFlags(ctx, refs, add, remove)
 }
 
-// StoreFlags adds and removes keywords on a set of refs — one STORE per Box —
+// StoreFlags adds and removes keywords on a set of refs, one STORE per Box,
 // and stores what the server reports back rather than what was asked for
 // (ADR-0004, third slice). It is the primitive under SetSeen and SetLabel,
 // exported for the caller that has to add one keyword and strip another in the
@@ -128,7 +128,7 @@ func (w *Writer) Move(ctx context.Context, refs []Ref, dest string) ([]Result, e
 				return err
 			}
 			r := Result{Ref: Ref{Folder: folder, UID: uid}, NewFolder: dest, NewUID: moved[uid]}
-			// A destination the Mirror does not hold — Trash — takes the
+			// A destination the Mirror does not hold, Trash, takes the
 			// Message out of the Mirror, which is what deleting it means here.
 			if r.NewUID != 0 && w.mirrors(dest) {
 				p.Folder, p.UID = dest, r.NewUID

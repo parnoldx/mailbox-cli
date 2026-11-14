@@ -26,7 +26,7 @@ type Config struct {
 // Driver dials for each operation rather than holding a connection open. A
 // routing decision happens a few times a day and the script is re-read on a
 // ten-minute timer, so a connection held open all week would be idle for all of
-// it — unlike the IMAP ones, which exist to be idle (ADR-0016).
+// it, unlike the IMAP ones, which exist to be idle (ADR-0016).
 type Driver struct{ cfg Config }
 
 func New(cfg Config) *Driver {
@@ -111,7 +111,7 @@ func (d *Driver) Script(ctx context.Context, name string) (string, error) {
 // it.
 //
 // The server compiles what it is given and refuses what it cannot, which is the
-// check that matters — a Sieve script this program generated wrongly would
+// check that matters, a Sieve script this program generated wrongly would
 // otherwise misfile mail silently for as long as nobody looked.
 func (d *Driver) PutScript(ctx context.Context, name, content string, activate bool) error {
 	c, err := d.dial()

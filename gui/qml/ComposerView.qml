@@ -5,7 +5,7 @@ import "MailFormat.js" as Fmt
 
 // Full-screen compose, in the shape of the reading view: a fixed header, a fixed
 // action bar, and the form between them. Handles a fresh message, a reply, a
-// forward and re-opening an existing draft — a reply arrives with its recipient,
+// forward and re-opening an existing draft, a reply arrives with its recipient,
 // subject and thread id prefilled; a forward with just an `Fwd:` subject and the
 // id of the message being sent on; a draft with everything it last held.
 //
@@ -43,7 +43,7 @@ Item {
             return Qt.hsla(c.hslHue, c.hslSaturation, Math.max(0.25, c.hslLightness - 0.25), 1)
         return c
     }
-    // The next account after the one showing, by name — the accounts array is
+    // The next account after the one showing, by name, the accounts array is
     // C++-converted JSON, so every read hands out a fresh copy and indexOf by
     // object identity always misses.
     function cycleAccount() {
@@ -60,7 +60,7 @@ Item {
         root.account = ""
     }
     property string baseSubject: ""
-    // The parent's plain text and date, kept from openReply — the agent draft
+    // The parent's plain text and date, kept from openReply, the agent draft
     // reads them, and re-quotes them when it replaces the editor's text.
     property string replyQuote: ""
     property string replyDate: ""
@@ -82,7 +82,7 @@ Item {
             .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     }
 
-    // "On 3 Sep 2026 at 14:03, Jamie Roe <…> wrote:" — the line above the quote.
+    // "On 3 Sep 2026 at 14:03, Jamie Roe <…> wrote:", the line above the quote.
     function _attribution(from, iso) {
         var who = String(from || "").trim() || "the sender"
         var d = new Date(iso)
@@ -99,7 +99,7 @@ Item {
     // The reply's starting document: an empty line for the answer, then the
     // attribution and the parent's text in a real <blockquote>. Lexxy is
     // Lexical underneath and imports <blockquote> as a first-class node, so
-    // this is just editor content the user can trim — nothing is stitched on
+    // this is just editor content the user can trim, nothing is stitched on
     // at send time.
     function _replyDoc(quote, attribution) {
         var paras = root._parasHtml(quote)
@@ -154,7 +154,7 @@ Item {
     // on reveals Cc/Bcc and drops everyone else the parent reached in as pills,
     // so who the answer goes to is on screen and editable before it is sent.
     // Turning it off takes exactly those pills back out and leaves any
-    // hand-added Cc alone. The pills are what gets sent — collectArgs never
+    // hand-added Cc alone. The pills are what gets sent, collectArgs never
     // passes --all, or the daemon would put its own list back.
     function setReplyAll(on) {
         root.replyAll = on
@@ -172,7 +172,7 @@ Item {
         })
     }
 
-    // ctx: { id, subject } — a forward carries no recipient (forward needs
+    // ctx: { id, subject }, a forward carries no recipient (forward needs
     // --to) and no quote: the daemon appends the original whole, from its
     // text/plain, so the editor starts empty for the note.
     function openForward(ctx) {
@@ -187,7 +187,7 @@ Item {
     }
 
     // ctx: { to, cc, bcc, subject, body } decoded from a mailto: URI by
-    // Main.startMailto. All plain text — the body becomes one paragraph with
+    // Main.startMailto. All plain text, the body becomes one paragraph with
     // newlines as <br>. Caret lands in the To row when the link named no
     // recipient, otherwise in the editor.
     function openMailto(ctx) {
@@ -209,7 +209,7 @@ Item {
         Qt.callLater(function () { haveTo ? lexxy.focusStart() : toPills.focusInput() })
     }
 
-    // msg: a `message` object from `draft show` — id, to, subject, body_html,
+    // msg: a `message` object from `draft show`, id, to, subject, body_html,
     // body. Re-opens the draft with everything it last held; Save writes it
     // back in place (draft edit), Send takes it out of the pile (draft send).
     function openDraft(msg) {
@@ -260,7 +260,7 @@ Item {
     readonly property bool canSend: toPills.recipients.length > 0
 
     function _mentionsAttachment(html) {
-        // Only what the user actually wrote — the quoted parent may well say
+        // Only what the user actually wrote, the quoted parent may well say
         // "see attached" about a file that was never on this reply.
         var own = String(html || "").replace(/<blockquote[\s\S]*?<\/blockquote>/gi, " ")
         var re = /\b(attached|attachment|attachments|attaching|enclosed|anbei|angeh[aä]ngt|anliegend|beigef[uü]gt)\b/i
@@ -281,7 +281,7 @@ Item {
             a.positional = root.replyId
         } else if (root.mode === "forward" && !forDraft) {
             // forward quotes the original server-side from its text/plain and
-            // ignores body_html — send only the plain note.
+            // ignores body_html, send only the plain note.
             a.positional = root.forwardId
             a.body = root._stripTags(html).replace(/\s+/g, " ").trim()
             delete a.body_html
@@ -352,13 +352,13 @@ Item {
         })
     }
     // Send from the keyboard, matching every desktop composer: Ctrl+Return
-    // fires Send wherever focus sits in the form. Bound in Main.qml — a second
+    // fires Send wherever focus sits in the form. Bound in Main.qml, a second
     // Shortcut here would be an ambiguous duplicate and make Qt swallow the
     // key without firing either.
     // Same send, plus a "no reply by" reminder: the daemon writes the return
     // keyword onto the filed copy once it's out (see internal/daemon/bubble.go
     // replyWatch), so this only needs to merge the same timing shape
-    // SendWatchMenu hands back onto the args doSend() already builds —
+    // SendWatchMenu hands back onto the args doSend() already builds,
     // {tomorrow:true} | {weekend:true} | {next_week:true} | {on:"YYYY-MM-DD"}.
     function doSendWithWatch(timing) {
         if (!root.canSend) return
@@ -376,7 +376,7 @@ Item {
         })
     }
     // Same send, held in the outbox until sendAtIso instead of going out now
-    // (internal/daemon/send.go, sendAt) — the reply, forward and if-no-reply
+    // (internal/daemon/send.go, sendAt), the reply, forward and if-no-reply
     // shapes above all still apply, this only adds when.
     function doSendLater(sendAtIso) {
         if (!root.canSend) return
@@ -411,14 +411,14 @@ Item {
     // reply in the user's own voice from the mail-style skills it has
     // installed, and the text replaces the editor above the quoted parent.
     // The session id is the reply's message id, so pressing the button again
-    // continues the same conversation — a fresh attempt, not a blank one.
+    // continues the same conversation, a fresh attempt, not a blank one.
     function agentSessionId() {
         return "mail-reply-" + String(root.replyId).replace(/[^a-zA-Z0-9-]/g, "")
     }
     function agentPrompt() {
         var to = toPills.recipients.length > 0 ? root._addr(toPills.recipients[0]) : "(none yet)"
         return "Draft an email reply for me, in my own answering style.\n\n" +
-            "First read my style guide: pick the matching one and read the file —\n" +
+            "First read my style guide: pick the matching one and read the file,\n" +
             "~/.pi/agent/skills/mail-style-work/SKILL.md when the recipient is a work address,\n" +
             "~/.pi/agent/skills/mail-style-personal/SKILL.md otherwise.\n\n" +
             "The mail I am replying to:\n" +
@@ -426,7 +426,7 @@ Item {
             "To: " + to + "\n" +
             "Subject: " + root.baseSubject + "\n\n" +
             root.replyQuote + "\n\n" +
-            "Write only the text of my reply — no subject line, no attribution, no quote of the original, nothing else. Plain text."
+            "Write only the text of my reply, no subject line, no attribution, no quote of the original, nothing else. Plain text."
     }
     function doAgentDraft() {
         if (root.agentBusy || root.mode !== "reply") return
@@ -442,7 +442,7 @@ Item {
             root.setAgentDraft(String(r.data.text))
         })
     }
-    // The agent's text above the quoted parent — the same shape openReply
+    // The agent's text above the quoted parent, the same shape openReply
     // seeds, so the quote survives the replacement.
     function setAgentDraft(text) {
         var doc = root._parasHtml(text) +
@@ -489,7 +489,7 @@ Item {
         }
         Kbd { anchors.verticalCenter: parent.verticalCenter; text: "Esc" }
 
-        // Who this goes out as — only with more than one account. A new mail
+        // Who this goes out as, only with more than one account. A new mail
         // switches account on a click; anything else is fixed to its account.
         Rectangle {
             visible: win.multiAccount && !!root.sender
@@ -513,7 +513,7 @@ Item {
         }
     }
 
-    // Drafts on the pile — same pill as the Inbox's Compose button, top right.
+    // Drafts on the pile, same pill as the Inbox's Compose button, top right.
     // Click jumps straight to the Drafts bucket.
     AppButton {
         anchors { top: parent.top; right: parent.right }
@@ -596,13 +596,13 @@ Item {
                 onSendLater: function (sendAtIso) { root.doSendLater(sendAtIso) }
             }
             AppButton { kind: "ghost"; text: "Save draft"; onClicked: root.doSaveDraft() }
-            // Attach — a paperclip, right of Save draft.
+            // Attach, a paperclip, right of Save draft.
             AppButton {
                 kind: "ghost"; glyph: "\uf0c6"; text: ""
                 onClicked: attachDialog.open()
             }
             // AI draft progress lives here: the toolbar button starts the run,
-            // this counts it. Hidden while idle — the toolbar button is the
+            // this counts it. Hidden while idle, the toolbar button is the
             // entry point.
             AppButton {
                 kind: "ghost"; glyph: "\ued11"
@@ -615,7 +615,7 @@ Item {
                 onTriggered: root.agentSeconds += 1
             }
         }
-        // Discard — a trash can, far right. Only shown once there is a
+        // Discard, a trash can, far right. Only shown once there is a
         // persisted draft to delete; a fresh/reply/forward compose has nothing
         // saved yet, so Esc/the back arrow already covers closing it.
         AppButton {
@@ -708,7 +708,7 @@ Item {
                 + (replyAllToggle.visible ? replyAllToggle.width + 10 : 0)
 
             // Reply vs reply all is one decision made here, with the answer in
-            // front of you, rather than two chips in the reading view — see
+            // front of you, rather than two chips in the reading view, see
             // setReplyAll for what it does to the Cc row.
             Chip {
                 id: replyAllToggle
@@ -771,7 +771,7 @@ Item {
             tabNext: function () { subjectField.forceActiveFocus() }
         }
 
-        // Subject — just the field, its placeholder is label enough.
+        // Subject, just the field, its placeholder is label enough.
         TextField {
             id: subjectField
             width: parent.width
@@ -820,9 +820,9 @@ Item {
             // of doing nothing.
             onAiDraft: {
                 if (root.mode === "reply") root.doAgentDraft()
-                else win.flash("AI drafts replies — open a reply first")
+                else win.flash("AI drafts replies, open a reply first")
             }
-            // Ctrl+Enter inside the body editor — belt and braces alongside the
+            // Ctrl+Enter inside the body editor, belt and braces alongside the
             // window-level Ctrl+Return Shortcut in Main.qml.
             onSendRequested: root.doSend()
         }

@@ -1,4 +1,4 @@
-# mailbox-gui — build, run, test, install the Omarchy-styled Qt client.
+# mailbox-gui, build, run, test, install the Omarchy-styled Qt client.
 #
 # The build is CMake + Ninja (see README). This file just records the commands
 # that are easy to forget and pins where `install` puts the binary: the
@@ -33,7 +33,7 @@ run: build
 # over every QML file so a broken binding fails here instead of at launch.
 # The perl pass guards a QML trap that bit twice (2026-10-08, inline-image
 # zoom): adjacent string literals on consecutive lines. Standard JS would
-# concatenate them; QML's engine drops the extra ones instead — a script built
+# concatenate them; QML's engine drops the extra ones instead, a script built
 # that way is silently truncated mid-token, and the parse gate stays green.
 test: build
 	@for f in qml/*.qml; do \

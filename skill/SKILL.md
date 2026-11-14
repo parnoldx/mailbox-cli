@@ -34,13 +34,13 @@ and each help text carries the reason the command works the way it does.
 |---|---|
 | see what is waiting | `mailbox status` then `mailbox box list` |
 | read a box | `mailbox box view Screener --limit 20` |
-| read one account's inbox | `mailbox box view work` — a listing spans every account, `work/INBOX:412` ids are on that one |
+| read one account's inbox | `mailbox box view work`, a listing spans every account, `work/INBOX:412` ids are on that one |
 | read one message | `mailbox message view 36722` |
 | read the conversation | `mailbox thread 36722` |
 | find something | `mailbox search rechnung --in feed` |
 | answer one | `mailbox reply 36722 --body "..."` |
 | write a new one | `mailbox compose --to a@b.de --subject "..." --body "..."` |
-| write or answer from the work account | `mailbox compose --account work --to a@b.de ...` — a `reply` needs no flag, it answers on the account the thread lives on |
+| write or answer from the work account | `mailbox compose --account work --to a@b.de ...`, a `reply` needs no flag, it answers on the account the thread lives on |
 | decide about a sender | `mailbox screener`, then `mailbox route set ID --to feed` |
 | route a whole domain | `mailbox route set @stripe.com --to paper` |
 | accept a meeting | `mailbox rsvp ID --accept` |
@@ -61,14 +61,14 @@ and each help text carries the reason the command works the way it does.
 `route set` owns the Sieve script that sorts mail on the server, so it is how a
 sender is blocked or let through. A target `@example.com` is every address at
 that domain; a specific address always wins. `mailbox sieve` is raw access for
-the cases route does not cover. A **Pickup** — a login code or a magic link — is
+the cases route does not cover. A **Pickup**, a login code or a magic link, is
 never read but collected: the daemon puts it on the clipboard on arrival, so
 `mailbox pickup` is only how it is found again once the clipboard has moved on.
 `mailbox rsvp ID --accept` answers a meeting
 invite (iMIP to the organizer, and the event on the calendar). `mailbox meet
-TITLE` mints a Teams link with no calendar entry — it prints only the link, so
+TITLE` mints a Teams link with no calendar entry, it prints only the link, so
 it pipes. `event add --teams --invite anna@example.com` makes an event a Teams
-meeting and puts invitees on it — Microsoft 365 calendars only, where Exchange
+meeting and puts invitees on it, Microsoft 365 calendars only, where Exchange
 sends the invitations itself. A Teams meeting cannot be taken off an event
 again: Microsoft 365 ignores changes to it once set, same as Outlook.
 `attachment save`
@@ -76,7 +76,7 @@ writes into the working directory unless `--output` names somewhere else.
 
 `mailbox unsubscribe ID` leaves the list a message came from. When the sender
 declared RFC 8058 one-click or a `mailto:`, it is done and the answer says so;
-when the only way out is a page, the answer is `Open to finish: URL` — open that
+when the only way out is a page, the answer is `Open to finish: URL`, open that
 URL (or hand it to the user), because nothing was unsubscribed yet.
 
 ## Reading the answer
@@ -84,10 +84,10 @@ URL (or hand it to the user), because nothing was unsubscribed yet.
 Every reply carries the state of the Mirror it came out of, and that state is
 part of the answer:
 
-- **Behind** — `mailbox` prints `notice: mirror is behind` and `--json` carries
+- **Behind**, `mailbox` prints `notice: mirror is behind` and `--json` carries
   `"behind": true`. The Mirror still answers; report that it is Behind, and read
   an empty listing as "nothing has reached the Mirror", not as "you have no mail".
-- **Exit 2 is ordinary.** Nothing has that id — usually a message expunged since
+- **Exit 2 is ordinary.** Nothing has that id, usually a message expunged since
   the listing that named it. Say so and move on; a second attempt asks the same
   Mirror the same question.
 - **Search reads the Mirror only.** Trash is never mirrored, and no query reaches
@@ -103,7 +103,7 @@ Four writes reach further than the Mirror, so they get a decision from the user
 rather than from you:
 
 - **Sending.** Send exactly what the user asked, in the words they approved. When
-  you wrote the text, add `--draft` and hand back the id — `mailbox draft send 12`
+  you wrote the text, add `--draft` and hand back the id, `mailbox draft send 12`
   is theirs to run.
 - **Held mail.** A **Held** mail in the outbox was at the SMTP server when the
   daemon stopped and may already have been delivered. Report it and let the user
@@ -112,6 +112,6 @@ rather than from you:
   mail; what is already waiting is marked read and moved to Trash, where a block
   made by mistake can still be found. `--to screener` is the undo for the
   sender, but it does not bring binned mail back.
-- **Flags.** Reading a message leaves it unread, by design — the unread count
+- **Flags.** Reading a message leaves it unread, by design, the unread count
   belongs to whoever is looking at it in another client. Run `seen` and `unseen`
   when asked for them.

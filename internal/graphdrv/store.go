@@ -96,7 +96,7 @@ func (s *Store) folder(name string) (folderRow, bool, error) {
 	return f, err == nil, err
 }
 
-// folderName is the Box name a Graph folder id is known by here — the reverse
+// folderName is the Box name a Graph folder id is known by here, the reverse
 // of folder, for reading the Routing's rules back off the server.
 func (s *Store) folderName(id string) (string, bool, error) {
 	var name string
@@ -108,7 +108,7 @@ func (s *Store) folderName(id string) (string, bool, error) {
 }
 
 // setFolder records which Graph folder a name means. A name that now means a
-// different folder — deleted and made again, or renamed onto — starts over.
+// different folder, deleted and made again, or renamed onto, starts over.
 func (s *Store) setFolder(name, graphID string) error {
 	f, ok, err := s.folder(name)
 	if err != nil {
@@ -289,8 +289,8 @@ func (s *Store) setFlags(folder string, uid uint32, flags, cats []string) error 
 	return err
 }
 
-// place gives a message a uid in a folder — a move landing, or a message we
-// created — and returns it. A message the folder already has keeps its uid.
+// place gives a message a uid in a folder, a move landing, or a message we
+// created, and returns it. A message the folder already has keeps its uid.
 func (s *Store) place(folder, graphID string, flags, cats []string) (uint32, error) {
 	tx, err := s.db.Begin()
 	if err != nil {

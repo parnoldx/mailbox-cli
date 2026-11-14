@@ -1,7 +1,7 @@
 // Package imapdrv implements mailsync.Driver over emersion/go-imap v2.
 //
 // go-imap v2 has CONDSTORE but no QRESYNC and no NOTIFY, and cannot be extended
-// to add them — its command types are unexported. The reconciler is built
+// to add them, its command types are unexported. The reconciler is built
 // around that (ADR-0006); this package's job is only to speak the protocol.
 package imapdrv
 
@@ -47,7 +47,7 @@ type Config struct {
 // There are two, and the split is not an optimisation. RFC 3501 says STATUS
 // "SHOULD NOT be used on the currently selected mailbox", because a server may
 // answer from the connection's own view rather than the mailbox's current
-// state — and Dovecot does exactly that: a change made elsewhere stays
+// state, and Dovecot does exactly that: a change made elsewhere stays
 // invisible to LIST-STATUS on a connection that has the folder selected. So
 // detection gets a connection that never selects anything, and fetching gets
 // its own.
@@ -67,7 +67,7 @@ type Driver struct {
 
 // cmdCap bounds one batch of commands on a pooled connection. go-imap leaves
 // the socket untimed between responses and can park a Wait on a server that
-// went silent mid-command, forever — and the parked command holds the
+// went silent mid-command, forever, and the parked command holds the
 // connection and everything queued behind it: on 2026-09-15 one silent APPEND
 // froze a whole account's mail sync for six hours. A socket deadline cannot
 // fix this: the reader goroutine lifts it again after every response. What
@@ -75,7 +75,7 @@ type Driver struct {
 // a parked Wait; the caller then redials. The IDLE watchers dial their own
 // connections and never come through here, so nothing bounds them.
 //
-// ponytail: one wall-clock cap per batch, not per command — a cold start
+// ponytail: one wall-clock cap per batch, not per command, a cold start
 // fetching a huge folder in one FETCH must fit inside it; chunk the fetches
 // if a real account ever outgrows half an hour.
 var cmdCap = 30 * time.Minute
@@ -91,7 +91,7 @@ func runCapped(conn net.Conn, fn func() error) error {
 		return err
 	case <-time.After(cmdCap):
 		_ = conn.Close()
-		// Close is what unblocks fn — but only if fn is parked on this socket.
+		// Close is what unblocks fn, but only if fn is parked on this socket.
 		// Anything else it might be parked on gets one more cap to come back;
 		// past that the caller leaks the goroutine rather than its mutex, and
 		// the error says so.
@@ -121,7 +121,7 @@ func Dial(cfg Config) (*Driver, error) {
 	// CONDSTORE is not turned on with ENABLE: RFC 7162 says a server enables it
 	// implicitly the first time the client uses a CONDSTORE parameter, and
 	// go-imap refuses `ENABLE CONDSTORE` outright ("not supported"). Advertising
-	// the capability is the whole precondition — mailbox.org returns
+	// the capability is the whole precondition, mailbox.org returns
 	// HIGHESTMODSEQ from STATUS, LIST-STATUS and SELECT with no ENABLE at all.
 	d.condStore = ctl.Caps().Has(imap.CapCondStore)
 	return d, nil
@@ -190,8 +190,8 @@ func (d *Driver) tryWork(folder string, fn func(*imapclient.Client) error) error
 
 // onWorkOnce is onWork without repeating the operation itself (ADR-0017): a
 // MOVE whose ack was lost has still happened. A failure before the operation
-// runs is not that case — nothing has happened, and a pooled connection the
-// server quietly dropped is exactly that — so the select gets the same
+// runs is not that case, nothing has happened, and a pooled connection the
+// server quietly dropped is exactly that, so the select gets the same
 // redial-once the reads have and the operation runs on a fresh connection.
 func (d *Driver) onWorkOnce(folder string, fn func(*imapclient.Client) error) error {
 	d.workMu.Lock()
@@ -261,7 +261,7 @@ func (d *Driver) Close() error {
 		if c != nil {
 			// A Logout on a connection a runCapped already closed would park on
 			// its Wait forever: the answer is never coming. Bound it like any
-			// other command — the conn it would use is about to be closed here
+			// other command, the conn it would use is about to be closed here
 			// anyway, so the watchdog cap is just a formality on healthy conns.
 			logoutCapped(c)
 		}
@@ -451,7 +451,7 @@ func statusOf(name string, sd *imap.StatusData) mailsync.FolderStatus {
 // only advances when the server is allowed to send untagged updates, so `1:*`
 // in a UID FETCH silently excludes mail delivered since the last command. Worse,
 // once the mailbox has been deleted and recreated elsewhere, Dovecot answers
-// "Mailbox was deleted under us" — and a UID SEARCH in that state returns an
+// "Mailbox was deleted under us", and a UID SEARCH in that state returns an
 // empty set with no error at all, which reads exactly like an empty folder.
 //
 // A fresh SELECT costs one round trip on a warm connection and makes both
@@ -554,7 +554,7 @@ func (d *Driver) FetchBodies(ctx context.Context, folder string, uids []uint32) 
 		structs, err := c.Fetch(uidSet(uids), &imap.FetchOptions{
 			// Extended, which is BODYSTRUCTURE rather than BODY: the plain form
 			// carries no Content-Disposition at all, so every disposition test
-			// downstream — is this part an attachment or is it the body? —
+			// downstream, is this part an attachment or is it the body?,
 			// silently sees nothing.
 			UID: true, BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
 		}).Collect()
@@ -565,7 +565,7 @@ func (d *Driver) FetchBodies(ctx context.Context, folder string, uids []uint32) 
 		// Group messages by the shape of their text parts before asking for
 		// them. A FETCH lists sections once and applies them to every message
 		// in the set, so pooling every message's parts into one request asks
-		// the server for parts×messages sections — for a folder of 260 mails
+		// the server for parts×messages sections, for a folder of 260 mails
 		// that is a hundred thousand of them, and it does not come back.
 		// Messages share very few distinct shapes, so this is a handful of
 		// round trips whatever the folder size.
@@ -649,7 +649,7 @@ func (d *Driver) FetchBodies(ctx context.Context, folder string, uids []uint32) 
 }
 
 // FetchPart implements mailsync.Driver. It reads the BODYSTRUCTURE again to
-// learn the part's transfer encoding — the Mirror does not keep it, and
+// learn the part's transfer encoding, the Mirror does not keep it, and
 // decoding is not optional: a base64 PDF written to disk undecoded is not a
 // PDF. That is one extra round trip on a command that was always going to the
 // server anyway (ADR-0003).
@@ -659,7 +659,7 @@ func (d *Driver) FetchPart(ctx context.Context, folder string, uid uint32, path 
 		structs, err := c.Fetch(uidSet([]uint32{uid}), &imap.FetchOptions{
 			// Extended, which is BODYSTRUCTURE rather than BODY: the plain form
 			// carries no Content-Disposition at all, so every disposition test
-			// downstream — is this part an attachment or is it the body? —
+			// downstream, is this part an attachment or is it the body?,
 			// silently sees nothing.
 			UID: true, BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
 		}).Collect()
@@ -692,8 +692,8 @@ func (d *Driver) FetchPart(ctx context.Context, folder string, uid uint32, path 
 	return out, err
 }
 
-// Append implements mailsync.Driver. It files a message we composed — the copy
-// of a sent mail — and reports the uid UIDPLUS gave it, so the caller can name
+// Append implements mailsync.Driver. It files a message we composed, the copy
+// of a sent mail, and reports the uid UIDPLUS gave it, so the caller can name
 // the copy without waiting for a cycle (ADR-0004).
 //
 // APPEND needs no selected mailbox, and it is deliberately not retried on a
@@ -830,7 +830,7 @@ type part struct {
 
 // decode turns a raw body section into text. A text part arrives in its
 // transfer encoding and its own charset, so storing the bytes as they came off
-// the wire puts "w=C3=A4r" in the Mirror where "wär" belongs — and every reader
+// the wire puts "w=C3=A4r" in the Mirror where "wär" belongs, and every reader
 // of the Mirror would then have to undo it.
 func (p part) decode(raw []byte) string {
 	var r io.Reader = bytes.NewReader(raw)
@@ -932,7 +932,7 @@ func textParts(bs imap.BodyStructure) []part {
 }
 
 // AllUIDs implements mailsync.Driver. ESEARCH returns compressed ranges, so
-// even a large folder is a small reply — this is the expunge diff's cost.
+// even a large folder is a small reply, this is the expunge diff's cost.
 func (d *Driver) AllUIDs(ctx context.Context, folder string) ([]uint32, error) {
 	var out []uint32
 	err := d.onWork(folder, func(c *imapclient.Client) error {
@@ -950,8 +950,8 @@ func (d *Driver) AllUIDs(ctx context.Context, folder string) ([]uint32, error) {
 	return out, err
 }
 
-// StoreFlags implements mailsync.Driver. Adding and removing are two STOREs —
-// IMAP has no combined form — and the flags are then read back, because a
+// StoreFlags implements mailsync.Driver. Adding and removing are two STOREs,
+// IMAP has no combined form, and the flags are then read back, because a
 // server is not obliged to put the UID in the untagged FETCH a STORE provokes
 // and a flag written into the Mirror against the wrong uid is worse than a
 // round trip. Flags are idempotent, so this may take the retrying path.
@@ -1089,7 +1089,7 @@ func (d *Driver) Watch(ctx context.Context, folder string, events chan<- mailsyn
 	// fetch connections redial when a command fails, but a watcher sends no
 	// commands, so without this the goroutine parks on a dead socket forever
 	// and the Box silently drops back to the poll. Waiting is the goroutine's
-	// alone — a second Wait from the deferred close would race it.
+	// alone, a second Wait from the deferred close would race it.
 	ended := make(chan error, 1)
 	go func() { ended <- idle.Wait() }()
 
@@ -1129,7 +1129,7 @@ func uidSet(uids []uint32) imap.UIDSet {
 	return s
 }
 
-// headerField reads one header out of a raw HEADER.FIELDS section — net/mail
+// headerField reads one header out of a raw HEADER.FIELDS section, net/mail
 // unfolds the continuation lines so a long List-Unsubscribe is read whole. The
 // section is cloned first: mail.ReadMessage needs the blank line that ends a
 // header block, and appending it to the library's own buffer would write past
@@ -1151,7 +1151,7 @@ func headerField(section []byte, name string) string {
 func MessageIDs(value string) []string { return messageIDs(value) }
 
 // messageIDs pulls Message-IDs out of a header value. Real mail puts all sorts
-// of things in References — commas, folded lines, bare ids without brackets —
+// of things in References, commas, folded lines, bare ids without brackets,
 // so this takes what is inside angle brackets and, failing that, whitespace
 // separated words that look like an addr-spec.
 func messageIDs(value string) []string {

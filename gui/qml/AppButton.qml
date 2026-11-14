@@ -10,7 +10,7 @@ Rectangle {
     property string glyph: ""
     property string kind: "ghost"      // primary | ghost | soft | danger
     property bool active: true
-    // What a primary button is filled with — the composer paints Send in the
+    // What a primary button is filled with, the composer paints Send in the
     // sending account's colour.
     property color fill: Theme.accent
     signal clicked()

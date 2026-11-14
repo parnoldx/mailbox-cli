@@ -160,8 +160,8 @@ test("pickupItem survives a row with nothing readable in it", () => {
 })
 
 // The key on the bar is a "it is ready NOW" signal and nothing else: a minute
-// after the code landed it is gone, while the mail it came from — and so the
-// panel's list and `mailbox pickup list` — stay for the daemon's fifteen. An
+// after the code landed it is gone, while the mail it came from, and so the
+// panel's list and `mailbox pickup list`, stay for the daemon's fifteen. An
 // icon that sat there all afternoon would be a badge, and a badge on a login
 // code is the alarm this whole feature exists to avoid.
 test("pickupFresh is the bar's window, not the mail's", () => {

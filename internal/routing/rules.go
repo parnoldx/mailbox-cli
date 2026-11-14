@@ -1,5 +1,5 @@
 // Rules are the Routing as a Graph account carries it: inbox rules instead of a
-// Sieve script (ADR-0032). Same Lists, different serialization — the decisions
+// Sieve script (ADR-0032). Same Lists, different serialization, the decisions
 // and their order are exactly the ones Script writes, and ListsFromRules reads
 // them back the way Parse reads the script.
 package routing
@@ -10,7 +10,7 @@ package routing
 const RuleName = "mailbox:"
 
 // Rule is one server-side rule: a group of senders bound for one Destination.
-// CatchAll marks the screener's catch-all — no conditions, every sender nothing
+// CatchAll marks the screener's catch-all, no conditions, every sender nothing
 // has been decided about.
 type Rule struct {
 	Name    string      `json:"name"`
@@ -24,7 +24,7 @@ type Rule struct {
 
 // Rules renders the Routing as the rules a Graph account runs, in the order
 // they are to match: address rules for every Destination, then domain rules,
-// then the catch-all — the same order Script writes. A list with nobody on it
+// then the catch-all, the same order Script writes. A list with nobody on it
 // is no rule at all, as in the script.
 func (l *Lists) Rules() []Rule {
 	var out []Rule
@@ -59,7 +59,7 @@ func ruleName(d Destination, domains bool) string {
 
 // ListsFromRules reads the decisions back out of rules read from the server.
 // A rule whose sender lists are empty carries no decision, and one whose
-// Destination is not one of the four is somebody else's and skipped — the same
+// Destination is not one of the four is somebody else's and skipped, the same
 // forgiveness Parse reads the script with.
 func ListsFromRules(rules []Rule) *Lists {
 	l := New()
@@ -101,7 +101,7 @@ func HasCatchAll(rules []Rule) bool {
 	return false
 }
 
-// Unreadable says whether a rule was ours but could not be read back — its
+// Unreadable says whether a rule was ours but could not be read back, its
 // move target names a Box this program no longer knows. The rule is kept (the
 // server is the record), but no decision is made on an account whose Routing
 // cannot be read whole: a write would carry over only what it could read and

@@ -7,7 +7,7 @@ import "regexp"
 // catch-all) from Y … Click here to deactivate this alias", with a deactivate
 // link at app.unbox.at/deactivate/…. It is transport metadata from the
 // forwarder, not something the sender wrote, so it is stripped before the text
-// is stored — it must never reach classification (pickup), the search index,
+// is stored, it must never reach classification (pickup), the search index,
 // or the reader as if it were part of the mail.
 var forwarderHeader = regexp.MustCompile(`(?s)This email was sent to .*?unbox\.at.*?deactivate this alias`)
 

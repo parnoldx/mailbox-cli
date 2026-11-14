@@ -298,7 +298,7 @@ func TestAnExcludedCollectionIsNotMirroredAndIsDroppedIfItWas(t *testing.T) {
 	}
 
 	// The decision lives in the config, so it survives the Mirror being thrown
-	// away and rebuilt (ADR-0013) — and it has to be applied on the way in, or
+	// away and rebuilt (ADR-0013), and it has to be applied on the way in, or
 	// the next discovery puts back what was excluded.
 	r.SetExclude([]string{"gesammelte adressen"})
 	if _, err := r.Discover(context.Background()); err != nil {

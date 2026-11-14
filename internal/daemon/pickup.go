@@ -67,8 +67,8 @@ func (d *Daemon) collectPickups(ctx context.Context, a *Account, outcomes map[st
 			if code == "" && link == "" {
 				// A subject that read like a Pickup but carried nothing to
 				// collect. Logged rather than dropped: the phrase list was
-				// built on an archive with almost no true positives in it —
-				// they get deleted — so this line is how it gets tuned against
+				// built on an archive with almost no true positives in it,
+				// they get deleted, so this line is how it gets tuned against
 				// mail that actually arrives.
 				if pickup.Candidate(row.Message.Subject) {
 					d.logf("pickup: subject matched but nothing to collect: %q", row.Message.Subject)
@@ -96,7 +96,7 @@ func (d *Daemon) collectPickups(ctx context.Context, a *Account, outcomes map[st
 }
 
 // bodyOf is the text Find reads: the plain part when the mail carries one,
-// otherwise the HTML rendered down — the same text the search index uses, and
+// otherwise the HTML rendered down, the same text the search index uses, and
 // the only body an HTML-only code mail has (reconciler.go searchText).
 func bodyOf(row mirror.Row) string {
 	if strings.TrimSpace(row.Message.TextPlain) != "" {
@@ -127,7 +127,7 @@ func (d *Daemon) takePickup(ctx context.Context, a *Account, ref mailsync.Ref, r
 }
 
 // handOver puts the thing you are waiting for on the clipboard and says so.
-// A code if the mail carried one, otherwise the link — a registration or magic
+// A code if the mail carried one, otherwise the link, a registration or magic
 // link is the same errand as a code, and pasting a URL into the bar beats
 // opening a mail client to find it.
 //
@@ -164,7 +164,7 @@ func (d *Daemon) handOver(from, code, link string) bool {
 	// No -a, on purpose: Do Not Disturb lets an urgent bare-CLI alert through
 	// and silences anything that declares an app name (omarchy's
 	// shouldBypassDnd trusts app_name "notify-send" and nothing else at
-	// critical urgency — the rule exists to keep branded chat apps quiet).
+	// critical urgency, the rule exists to keep branded chat apps quiet).
 	// A Pickup is the one alert worth breaking DND for, since a login form is
 	// waiting, and naming the app here is what put it in the silenced class.
 	if err := run("notify-send", "-u", "critical", title, body); err != nil {
@@ -222,7 +222,7 @@ func (d *Daemon) pickupLoop(ctx context.Context) {
 
 // binExpiredPickups is one pickupLoop tick. The mail is already \Seen, so this
 // only moves it: to Trash, where a code you turned out to still need is
-// recoverable for as long as the server keeps it — the same bargain `block`
+// recoverable for as long as the server keeps it, the same bargain `block`
 // makes, and for the same reason.
 func (d *Daemon) binExpiredPickups(ctx context.Context, a *Account) {
 	held, err := d.Mirror.Pickups(a.Name)
@@ -234,8 +234,8 @@ func (d *Daemon) binExpiredPickups(ctx context.Context, a *Account) {
 	var refs []mailsync.Ref
 	boxes := map[string]bool{}
 	for _, p := range held {
-		// A Pickup with no instant at all — no internaldate and no Date:
-		// header — is binned rather than kept: it is already read and already
+		// A Pickup with no instant at all, no internaldate and no Date:
+		// header, is binned rather than kept: it is already read and already
 		// collected, and the one outcome to avoid here is a $pickup that lives
 		// forever because nothing can say how old it is.
 		if !p.InternalDate.IsZero() && p.InternalDate.After(cutoff) {
@@ -291,7 +291,7 @@ func arrivedAt(row mirror.Row) time.Time {
 // gone stale.
 //
 // It exists because a notification is not a reliable way to reach somebody who
-// has Do Not Disturb on — the toast is silenced and the code is already on the
+// has Do Not Disturb on, the toast is silenced and the code is already on the
 // clipboard, out of sight (see the regression test on the alert's shape). A
 // surface that stays on screen does not have that failure mode.
 func (d *Daemon) handlePickup(ctx context.Context, req Request, resp Response) Response {
@@ -322,7 +322,7 @@ func (d *Daemon) handlePickup(ctx context.Context, req Request, resp Response) R
 		if code == "" && link == "" {
 			return resp.api(id + " carries nothing to collect")
 		}
-		// Copied, never followed, exactly as on arrival — and the same refusal
+		// Copied, never followed, exactly as on arrival, and the same refusal
 		// when there is no clipboard to copy to.
 		if !d.handOver(row.Message.From, code, link) {
 			return resp.api("no clipboard to hand it to")

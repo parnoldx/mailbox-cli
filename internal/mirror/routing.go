@@ -7,7 +7,7 @@ import (
 )
 
 // Route is one decision the Routing carries: this sender's mail goes there.
-// Box is empty when the destination is not a Box at all — a blocked sender's
+// Box is empty when the destination is not a Box at all, a blocked sender's
 // mail is discarded before it lands anywhere.
 type Route struct {
 	Address string
@@ -82,7 +82,7 @@ func (m *Mirror) Routing(account string) ([]Route, error) {
 }
 
 // RoutingScript returns the script itself. ErrNotFound means the Mirror has
-// never read one — the daemon has not looked yet, or the account has no such
+// never read one, the daemon has not looked yet, or the account has no such
 // script.
 func (m *Mirror) RoutingScript(account string) (RoutingScript, error) {
 	var s RoutingScript
@@ -103,8 +103,8 @@ func (m *Mirror) RoutingScript(account string) (RoutingScript, error) {
 
 // RowsFrom returns a folder's rows whose From header contains address, newest
 // first. It is a filter and not an answer: a header is `Bob <bob@example.com>`
-// and a substring of it is not proof that it names that sender, so the caller —
-// which is the one that can parse a header — decides which of these really are
+// and a substring of it is not proof that it names that sender, so the caller,
+// which is the one that can parse a header, decides which of these really are
 // from them.
 func (m *Mirror) RowsFrom(account, folder, address string, limit int) ([]Row, error) {
 	rows, err := m.db.Query(rowColumns+`

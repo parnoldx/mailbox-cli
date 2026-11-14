@@ -38,7 +38,7 @@ func TestScreenerToInboxIsInferredAsADecision(t *testing.T) {
 	ctx := context.Background()
 	baseline(t, d)
 
-	// news@example.com wrote twice — Screener:10 and Screener:12.
+	// news@example.com wrote twice, Screener:10 and Screener:12.
 	dragOut(t, d, routing.BoxScreener, 10, routing.BoxInbox)
 	d.cycle(ctx, d.Primary, "after drag")
 
@@ -65,8 +65,8 @@ func TestScreenerToInboxIsInferredAsADecision(t *testing.T) {
 	}
 }
 
-// Gate 2. The destination folder names the destination — Feed, Paper Trail and
-// Screener/Block each write their own decision — and a drag anywhere else
+// Gate 2. The destination folder names the destination, Feed, Paper Trail and
+// Screener/Block each write their own decision, and a drag anywhere else
 // writes nothing.
 func TestScreenerDragDestinationNamesTheDecision(t *testing.T) {
 	cases := []struct {
@@ -122,7 +122,7 @@ func TestScreenerDragDestinationNamesTheDecision(t *testing.T) {
 }
 
 // Gate 3. A `mailbox route` decision followed by its move syncing does not
-// produce a second, redundant script write — the inference re-derives the same
+// produce a second, redundant script write, the inference re-derives the same
 // entry and Set reports no change.
 func TestACommandDecisionDoesNotEchoAsAnInference(t *testing.T) {
 	d, sieve := seedScreener(t)
@@ -142,7 +142,7 @@ func TestACommandDecisionDoesNotEchoAsAnInference(t *testing.T) {
 	d.cycle(ctx, d.Primary, "after route")
 	d.cycle(ctx, d.Primary, "and again")
 	if sieve.puts != puts {
-		t.Fatalf("the script was rewritten %d extra times — an echo loop", sieve.puts-puts)
+		t.Fatalf("the script was rewritten %d extra times: an echo loop", sieve.puts-puts)
 	}
 	if len(d.RecentInferred()) != 0 {
 		t.Errorf("the command decision was re-recorded as an inference: %+v", d.RecentInferred())
@@ -150,7 +150,7 @@ func TestACommandDecisionDoesNotEchoAsAnInference(t *testing.T) {
 }
 
 // Gate 4. A message moved into the Screener from a decision folder un-decides
-// that sender — their next mail is owed a decision again.
+// that sender, their next mail is owed a decision again.
 func TestMovingIntoTheScreenerUnDecidesTheSender(t *testing.T) {
 	d, sieve := seedScreener(t)
 	ctx := context.Background()

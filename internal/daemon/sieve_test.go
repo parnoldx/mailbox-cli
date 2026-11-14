@@ -36,7 +36,7 @@ func TestSieveListMarksTheActiveOneAndOurs(t *testing.T) {
 	}
 }
 
-// With no name, get answers about the script the server actually runs — which
+// With no name, get answers about the script the server actually runs, which
 // is the question, when the one this program wrote is not the active one.
 func TestSieveGetWithNoNameIsTheActiveScript(t *testing.T) {
 	d, _ := sieveDaemon(t)

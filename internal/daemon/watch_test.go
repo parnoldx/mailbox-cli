@@ -45,7 +45,7 @@ func watchOn(t *testing.T, d *Daemon, args map[string]any) chan Change {
 }
 
 // A delivery is new mail; reading it elsewhere is an update and not new; and a
-// move is a deleted and an added that is not new either — the mail was already
+// move is a deleted and an added that is not new either, the mail was already
 // here, it only changed Box.
 func TestWatchReportsNewMailAndTellsAMoveApartFromIt(t *testing.T) {
 	d := seed(t)

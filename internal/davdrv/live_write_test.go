@@ -68,7 +68,7 @@ func TestLiveWriteATodo(t *testing.T) {
 		t.Fatalf("projection = %+v", p)
 	}
 	if p.Summary != "mailbox selftest — Rechnung bezahlen" {
-		t.Fatalf("summary came back as %q — the encoding did not survive", p.Summary)
+		t.Fatalf("summary came back as %q: the encoding did not survive", p.Summary)
 	}
 	if p.Due.Format("2006-01-02") != due.Format("2006-01-02") {
 		t.Fatalf("due = %s, want %s", p.Due, due.Format("2006-01-02"))
@@ -98,7 +98,7 @@ func TestLiveWriteATodo(t *testing.T) {
 	// A write against the etag we already replaced must be refused: that is
 	// somebody else's change we would be stamping on.
 	if _, err := c.Put(ctx, href, done, stored.ETag); err == nil {
-		t.Error("a stale If-Match was accepted — two clients would silently overwrite each other")
+		t.Error("a stale If-Match was accepted: two clients would silently overwrite each other")
 	} else {
 		t.Logf("gate: a stale If-Match is refused (%v)", err)
 	}
@@ -167,7 +167,7 @@ func TestLiveHabitsObjectIsListed(t *testing.T) {
 		}
 	}
 	if !listed["selftest-habits-today"] {
-		t.Fatal("an object dated today is not listed — the habits record would be invisible")
+		t.Fatal("an object dated today is not listed: the habits record would be invisible")
 	}
 	// Not asserted, because it is the server's choice and it may change. Logged,
 	// because it is the whole reason the record is dated today.
@@ -176,7 +176,7 @@ func TestLiveHabitsObjectIsListed(t *testing.T) {
 
 	// And the second write of the same record has to work. This server keeps
 	// its own SEQUENCE and LAST-MODIFIED on what it stored, and a PUT of a
-	// freshly built object without them is refused as an outdated update —
+	// freshly built object without them is refused as an outdated update,
 	// `412`, with or without an If-Match. The record is therefore *edited*.
 	href := strings.TrimSuffix(col.URL, "/") + "/selftest-habits-today.ics"
 	stored, err := c.MultiGet(ctx, col.URL, []string{href})

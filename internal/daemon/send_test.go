@@ -176,8 +176,8 @@ func TestAnAttachmentPathMustBeAbsolute(t *testing.T) {
 	}
 }
 
-// A dry run builds the same reply the real send would — sender from the
-// account, recipients from the parent plus --to/--cc/--bcc — and stops there:
+// A dry run builds the same reply the real send would, sender from the
+// account, recipients from the parent plus --to/--cc/--bcc, and stops there:
 // nothing is enqueued and nothing goes to SMTP.
 func TestReplyDryRunShowsWhoWouldGetItAndSendsNothing(t *testing.T) {
 	d, tr := seedSend(t)
@@ -395,7 +395,7 @@ func TestASendSMTPRefusedIsQueuedNotLost(t *testing.T) {
 		t.Fatalf("outbox = %+v", rows)
 	}
 
-	// The next drain — every cycle runs one — takes it out.
+	// The next drain, every cycle runs one, takes it out.
 	tr.fail(nil)
 	d.drain(context.Background(), d.Primary)
 	list = d.handle(context.Background(), Request{ID: "1", Cmd: []string{"outbox", "list"}})

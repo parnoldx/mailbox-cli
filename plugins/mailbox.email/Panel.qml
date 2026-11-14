@@ -5,11 +5,11 @@ import qs.Commons
 import qs.Ui
 import "Model.js" as Model
 
-// Panel.qml — Dropdown popup panel for Mailbox email notifications and screening.
+// Panel.qml, Dropdown popup panel for Mailbox email notifications and screening.
 //
 // Features:
 // - One reverse-chron stream of unread inbox mail. Read mail is not shown, and
-//   neither is the Screener — both are the desktop client's job. This panel
+//   neither is the Screener, both are the desktop client's job. This panel
 //   only ever answers "did anything new arrive?"
 // - 1-click mail actions (mark read, set aside, trash) inline on the row
 // - Sender initials in deterministic colored avatars
@@ -47,7 +47,7 @@ Panel {
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
-  // The one list. Everything — cursor, keys, scrolling — walks this.
+  // The one list. Everything, cursor, keys, scrolling, walks this.
   readonly property var feed: Model.feedItems(service.messages, accountFilter)
 
   readonly property var avatarPalette: [
@@ -406,7 +406,7 @@ Panel {
               width: parent.width
               spacing: Style.space(8)
 
-              // 0. PICKUPS — collected codes and magic links, newest first.
+              // 0. PICKUPS, collected codes and magic links, newest first.
               // Not mail: it is already read, owes no decision, and the daemon
               // bins it in a quarter of an hour. What it is, is pasteable, and
               // the clipboard it was first put on has been overwritten since.
@@ -554,7 +554,7 @@ Panel {
                 }
               }
 
-              // 2. THE FEED — unread inbox mail, newest first.
+              // 2. THE FEED, unread inbox mail, newest first.
               Column {
                 id: feedView
                 visible: !root.settingsOpen

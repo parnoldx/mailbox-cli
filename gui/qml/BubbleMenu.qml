@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls.Basic
 
-// The four timing choices Bubble Up offers — HEY, matched (ADR-0023): three
+// The four timing choices Bubble Up offers, HEY, matched (ADR-0023): three
 // one-tap shortcuts and a date picker for anything else. Fires `chosen(timing)`
 // with the same shape the daemon's `bubble` and `send`/`reply`/`forward` RPCs
 // take ({tomorrow:true} | {weekend:true} | {next_week:true} | {on:"YYYY-MM-DD"})

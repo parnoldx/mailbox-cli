@@ -131,7 +131,7 @@ func TestBubbleReturnsOnTheFirstTickAfterTheInstant(t *testing.T) {
 }
 
 // A Thread that already bubbled and came back must not bounce out of Aside
-// again just because some other placement of it still shows up as due — a
+// again just because some other placement of it still shows up as due, a
 // stale record a second Daemon has not caught up on yet (ADR-0025), or a
 // leftover row a Mirror rebuild has not cleared. Filing the returned mail
 // aside afterwards, for reasons that have nothing to do with the bubble, must
@@ -185,11 +185,11 @@ func TestReturnDueLeavesAnUnrelatedAsideAlone(t *testing.T) {
 	}
 }
 
-// A second Daemon on the account (ADR-0025) — the VPS Daemon, with its own
-// Mirror — is caught up on every Box except Aside when a plain "aside", never
+// A second Daemon on the account (ADR-0025), the VPS Daemon, with its own
+// Mirror, is caught up on every Box except Aside when a plain "aside", never
 // bubbled at all, gets filed on the home machine. The VPS Daemon's next
 // ordinary incremental sync of Aside discovers that placement for the first
-// time and reports it as a "new" Thread — exactly what a genuine reply landing
+// time and reports it as a "new" Thread, exactly what a genuine reply landing
 // on a piled Thread looks like from where it sits. cycle's reclaimPiled call
 // must not confuse the two: a Thread with no bubble and no reply, freshly
 // filed aside, must survive the VPS Daemon's next cycle.
@@ -200,7 +200,7 @@ func TestASecondDaemonsFirstLookAtAsideDoesNotReclaimIt(t *testing.T) {
 		time.Date(2026, 9, 1, 9, 0, 0, 0, time.UTC))
 
 	// A second Daemon on the same account and the same server, with its own
-	// Mirror — already caught up on everything, before the aside happens.
+	// Mirror, already caught up on everything, before the aside happens.
 	m, err := mirror.Open(filepath.Join(t.TempDir(), "mirror.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -223,7 +223,7 @@ func TestASecondDaemonsFirstLookAtAsideDoesNotReclaimIt(t *testing.T) {
 		t.Fatal("the thread did not move to Aside")
 	}
 
-	// The VPS Daemon's next ordinary cycle: an incremental sync, not a resync —
+	// The VPS Daemon's next ordinary cycle: an incremental sync, not a resync,
 	// it already knew this account, it just had not looked at Aside since the
 	// move.
 	vps.cycle(ctx, vps.Primary, "next tick")
@@ -305,7 +305,7 @@ func TestBubbleNowOnAnInboxThreadDoesNotRoundTrip(t *testing.T) {
 }
 
 // Gate 3. A return scheduled by one Daemon fires from a second Daemon that
-// shares only the Mirror and the server — the keyword is the whole coordination.
+// shares only the Mirror and the server, the keyword is the whole coordination.
 func TestBubbleReturnFiresFromASecondDaemon(t *testing.T) {
 	d, _ := seedScreener(t)
 	ctx := context.Background()
@@ -397,7 +397,7 @@ func TestAReplyReturnsABubbledThreadEarly(t *testing.T) {
 }
 
 // Gate 8. A resync that rewrites every placement from the server repopulates
-// bubble_at from the keyword — the projection survives a Mirror rebuild
+// bubble_at from the keyword, the projection survives a Mirror rebuild
 // (ADR-0013), because it is derived wherever a placement's flags are written.
 func TestBubbleAtIsRederivedFromTheKeyword(t *testing.T) {
 	d, _ := seedScreener(t)
@@ -426,8 +426,8 @@ func TestBubbleAtIsRederivedFromTheKeyword(t *testing.T) {
 	}
 }
 
-// Gate 6. `--on <today>` resolves to 18:00 today — "Later today", this morning
-// having passed — and a future date to 08:00. The hours are configurable.
+// Gate 6. `--on <today>` resolves to 18:00 today, "Later today", this morning
+// having passed, and a future date to 08:00. The hours are configurable.
 func TestBubbleWhenResolvesTheTimingFlags(t *testing.T) {
 	d := &Daemon{BubbleMorning: 7, BubbleEvening: 20}
 	today := startOfDay(time.Now())
@@ -533,10 +533,10 @@ func TestBubbleListIsGroupedByThread(t *testing.T) {
 	}
 }
 
-// ---- "if no reply by" — HEY's Bubble Up applied on the way out ------------
+// ---- "if no reply by", HEY's Bubble Up applied on the way out ------------
 
 // send --if-no-reply writes the same $bubble-* keyword straight onto the
-// filed Sent copy. Unlike an ordinary bubble it does not move anywhere — it
+// filed Sent copy. Unlike an ordinary bubble it does not move anywhere, it
 // stays in Sent until either a reply cancels it or the deadline brings it
 // back.
 func TestIfNoReplyWatchesTheSentCopyWithoutMovingIt(t *testing.T) {
@@ -556,7 +556,7 @@ func TestIfNoReplyWatchesTheSentCopyWithoutMovingIt(t *testing.T) {
 }
 
 // --if-no-reply with no timing flag is a usage error, and fails before
-// anything is enqueued or sent — a bad flag must not cost the mail its send.
+// anything is enqueued or sent, a bad flag must not cost the mail its send.
 func TestIfNoReplyWithoutATimingFlagFailsBeforeSending(t *testing.T) {
 	d, tr := seedSend(t)
 	resp := d.handle(context.Background(), Request{ID: "1", Cmd: []string{"send"}, Args: map[string]any{
@@ -574,15 +574,15 @@ func TestIfNoReplyWithoutATimingFlagFailsBeforeSending(t *testing.T) {
 	}
 }
 
-// A reply landing in the thread cancels a pending watch — the same "any new
+// A reply landing in the thread cancels a pending watch, the same "any new
 // mail on the thread" signal reclaimPiled already acts on for Aside and Reply
-// Later — but only cancels it: the Sent copy is not moved, since the reply
+// Later, but only cancels it: the Sent copy is not moved, since the reply
 // itself is what shows up in the Inbox.
 func TestAReplyCancelsTheNoReplyWatch(t *testing.T) {
 	d, _ := seedSend(t)
 	a := d.Primary
 	ctx := context.Background()
-	// Past its first sync, so the reply below is a genuine incremental cycle —
+	// Past its first sync, so the reply below is a genuine incremental cycle,
 	// reclaimPiled only runs on ActionIncremental, never on a folder's first
 	// ever sync.
 	if _, err := a.Reconciler.SyncAll(ctx, a.Mirrored); err != nil {
@@ -610,7 +610,7 @@ func TestAReplyCancelsTheNoReplyWatch(t *testing.T) {
 }
 
 // A mail sent to yourself is delivered back as a second Placement of the very
-// Message that carries the watch — same Message-Id, same Thread, one copy in
+// Message that carries the watch, same Message-Id, same Thread, one copy in
 // Sent and one in the Inbox. The due scan must still bring the watched Sent
 // copy back: Mirror.Thread collapses a Message to one row and prefers its
 // Inbox Placement, which hid the Sent one that carries the keyword and made
@@ -683,7 +683,7 @@ func TestNoReplyWatchBringsTheSentCopyToTheInboxWhenDue(t *testing.T) {
 }
 
 // One returnDue tick picks up an Aside bubble and a Sent no-reply watch
-// together — the scan is account-wide, not folder-scoped, because bubble_at
+// together, the scan is account-wide, not folder-scoped, because bubble_at
 // is a projection of a flag and not a property of any one folder.
 func TestReturnDueSweepsAsideAndSentTogether(t *testing.T) {
 	d, _ := seedSend(t)
@@ -740,7 +740,7 @@ func TestReturnDueSweepsAsideAndSentTogether(t *testing.T) {
 // A Sent copy carrying a watch is new mail to every Daemon but the one that
 // sent it: the VPS Daemon (ADR-0025) mirrors the same account and sees the
 // copy appear in Sent a minute later. That is not a reply landing in the
-// thread — it is the very mail the watch was set on — and cancelling on it is
+// thread, it is the very mail the watch was set on, and cancelling on it is
 // what made every "if no reply by" reminder die within a minute of being set.
 func TestASentCopyArrivingFromAnotherDaemonKeepsItsWatch(t *testing.T) {
 	d, _ := seedSend(t)
@@ -767,7 +767,7 @@ func TestASentCopyArrivingFromAnotherDaemonKeepsItsWatch(t *testing.T) {
 	}
 }
 
-// Answering a Message reclaims its thread out of the piles — and that reclaim
+// Answering a Message reclaims its thread out of the piles, and that reclaim
 // runs in the same request that just filed the reply. When the reply carries
 // its own "if no reply by" watch, the copy it filed is the watched mail, not
 // an answer to it, so the reclaim must leave the keyword alone.

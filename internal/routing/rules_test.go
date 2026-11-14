@@ -25,7 +25,7 @@ func TestRulesRoundTrip(t *testing.T) {
 		}
 	}
 	rules := l.Rules()
-	// Address rules first, then domain rules, then the catch-all — the order
+	// Address rules first, then domain rules, then the catch-all, the order
 	// the script writes and the first match wins by.
 	var got []string
 	for _, r := range rules {
@@ -56,7 +56,7 @@ func TestRulesRoundTrip(t *testing.T) {
 }
 
 // A list with nobody on it is no rule, and a decision removed takes its rule
-// with it — the same shape the script has.
+// with it, the same shape the script has.
 func TestEmptyListsAreNoRules(t *testing.T) {
 	l := New()
 	if _, err := l.Set("news@example.com", Feed); err != nil {

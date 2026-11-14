@@ -15,7 +15,7 @@ import (
 // something and putting it somewhere.
 //
 // The list is derived from the mail that carries them. Only a label created and
-// not yet used has to be remembered, and the Mirror remembers it — so a rebuild
+// not yet used has to be remembered, and the Mirror remembers it, so a rebuild
 // brings back every label in use and forgets the empty ones, which is the right
 // way round.
 func (d *Daemon) handleLabel(ctx context.Context, req Request, resp Response) Response {
@@ -116,7 +116,7 @@ func (d *Daemon) applyLabel(ctx context.Context, name string, add bool, req Requ
 
 // labelSweep is how much mail a rename or a delete will take the keyword off in
 // one go.
-// ponytail: one pass, no paging — page the sweep if a label ever holds more.
+// ponytail: one pass, no paging, page the sweep if a label ever holds more.
 const labelSweep = 5000
 
 // sweepLabel renames a label onto `to`, or deletes it when `to` is empty. Both
@@ -124,7 +124,7 @@ const labelSweep = 5000
 // on the server, and then the remembered name brought in line.
 //
 // A label nobody has applied yet has no mail to walk, and is only the remembered
-// name — so that path writes nothing to the server and still holds.
+// name, so that path writes nothing to the server and still holds.
 func (d *Daemon) sweepLabel(ctx context.Context, name, to string, resp Response) Response {
 	rows, err := d.Mirror.Labelled(d.Primary.Name, name, labelSweep)
 	if err != nil {

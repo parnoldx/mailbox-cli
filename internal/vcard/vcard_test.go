@@ -43,7 +43,7 @@ func TestACardWithNoFormattedNameStillHasOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	if c.Name != "Hans Meier" {
-		t.Fatalf("name = %q — an export with no FN is not a nameless person", c.Name)
+		t.Fatalf("name = %q: an export with no FN is not a nameless person", c.Name)
 	}
 }
 

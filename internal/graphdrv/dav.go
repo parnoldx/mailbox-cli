@@ -20,9 +20,9 @@ import (
 // vcard and every command that edits an event or a contact do not know this is
 // not a DAV server (ADR-0029).
 //
-// An object is named by an href, as on DAV: the collection's path and a key —
+// An object is named by an href, as on DAV: the collection's path and a key,
 // the event's iCalUId, the UID we gave an event we made, or a hash of a
-// contact's id — and the Store maps it to the Graph id.
+// contact's id, and the Store maps it to the Graph id.
 type DAV struct {
 	c *Client
 	s *Store
@@ -133,7 +133,7 @@ func (d *DAV) Collections(ctx context.Context) ([]davsync.Collection, error) {
 	}
 
 	// Every Microsoft 365 group the account belongs to carries a calendar of
-	// its own — the workforce group's meetings, say — and it is never under
+	// its own, the workforce group's meetings, say, and it is never under
 	// /me/calendars: it is read and written under /groups. A mail-enabled
 	// security group has none, so only Unified groups are offered. Two groups
 	// with the same display name would collide on the name the Mirror keys by.
@@ -207,7 +207,7 @@ const (
 // cursor is not to be trusted with deletions: one observed from an OWA delete
 // never arrived on a cursor that reported everything else, and a cursor that
 // misses a change never reports it later. A token that starts over sweeps the
-// whole window from nothing, which is what heals what the delta dropped —
+// whole window from nothing, which is what heals what the delta dropped,
 // daily, since the alternative was a ghost event for the month and a half the
 // old expiry took to come round.
 const tokenLife = 24 * time.Hour
@@ -381,7 +381,7 @@ func (d *DAV) syncCalendar(ctx context.Context, api, token string) (davsync.Chan
 }
 
 // eventHref is the href an event is known by: the one it already has, or one
-// named after its iCalUId — the invite's UID, so an RSVP finds it — or, for an
+// named after its iCalUId, the invite's UID, so an RSVP finds it, or, for an
 // event with none, a hash of its id.
 func (d *DAV) eventHref(api string, g graphEvent) (string, error) {
 	if href, ok := d.s.objectHref(g.ID); ok {
@@ -525,7 +525,7 @@ func (d *DAV) putEvent(ctx context.Context, collection, href, id string, known b
 			return "", err
 		}
 		// No ETag back, so the Writer reads the event again: Exchange adds what
-		// we never sent — the Teams join link, attendees' names — and the Mirror
+		// we never sent, the Teams join link, attendees' names, and the Mirror
 		// should hold that, not the object as we wrote it.
 		return "", d.s.putObject(href, g.ID)
 	}
@@ -639,8 +639,8 @@ func (d *DAV) Delete(ctx context.Context, raw, ifMatch string) error {
 	path := kind + url.PathEscape(id)
 	if err := d.c.do(ctx, request{method: http.MethodDelete, path: path}, nil); err != nil && !notFound(err) {
 		// A Graph item deleted somewhere else sits unbound in the deletions
-		// folder and a delete of it comes back 400 ErrorInvalidRequest — "non
-		// calendar folder" — where another server would say 404. One read
+		// folder and a delete of it comes back 400 ErrorInvalidRequest, "non
+		// calendar folder", where another server would say 404. One read
 		// settles whether anything is left; if it is not, the delete is done.
 		if gerr := d.c.do(ctx, request{method: http.MethodGet, path: kind + url.PathEscape(id)}, nil); gerr != nil && notFound(gerr) {
 			return d.s.dropObject(id)

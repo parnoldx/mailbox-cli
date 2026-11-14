@@ -8,7 +8,7 @@ Instead of hitting IMAP, SMTP, CalDAV, CardDAV, and ManageSieve servers, or Micr
 
 ![The mailbox CLI: box view, agenda, todo list, and compose](cli.png)
 
-![Overview: the Qt desktop client, calendar and event bar widgets, and the mail notification panel — all backed by the same daemon](overview.png)
+![Overview: the Qt desktop client, calendar and event bar widgets, and the mail notification panel, all backed by the same daemon](overview.png)
 
 ```
 ┌────────────────────────────────────────────────────────┐
@@ -69,18 +69,18 @@ after it landed.
 
 A magic link or a registration/activation link is the same errand and is treated
 the same way: the URL itself goes on the clipboard, and the notification names
-the host rather than the token. Copied, never followed — opening it would log
+the host rather than the token. Copied, never followed, opening it would log
 you in, or confirm an address, from a notification you had not read yet.
 
 Nothing about a pickup asks for a decision. It never counts as unread, never
 appears in `mailbox screener`, and a watch is told `pickup` rather than
-`added`/`new` — the sender is a login form you used once, not somebody to route.
+`added`/`new`, the sender is a login form you used once, not somebody to route.
 
 A notification is not always a way to reach you: under Do Not Disturb it is
 silenced, and the code is already on the clipboard with nothing on screen
-saying so. So a collected pickup raises the mailbox bar icon — a key glyph for
+saying so. So a collected pickup raises the mailbox bar icon, a key glyph for
 a minute after the code landed, which is the window in which it is still worth
-something — and the panel under it lists what is ready to paste for the whole
+something, and the panel under it lists what is ready to paste for the whole
 fifteen minutes the mail is kept, clicking a row or its button to copy it
 again. Both read `mailbox pickup list`, which is the same $pickup mail the
 expiry scan bins, so nothing can outlive the code:
@@ -109,7 +109,7 @@ Expired pickups go to Trash, not oblivion, so a code you turn out to still need
 is recoverable for as long as the server holds it.
 
 Because the daemon takes the urgent mail out of the Screener before anything
-else sees it, the bar widget has no screener in it at all — not an icon, not a
+else sees it, the bar widget has no screener in it at all, not an icon, not a
 count, not a triage row. Screening is a decision owed whenever you next sit
 down, so it lives in the desktop client. The widget only says "new inbox mail
 arrived".
@@ -237,7 +237,7 @@ mailbox watch --events pickup                     # One line per code collected
 mailbox watch --events pickup --run-async 'echo "$MAILBOX_CODE"'
 ```
 
-To find one again after the clipboard has moved on — the bar icon does the same
+To find one again after the clipboard has moved on, the bar icon does the same
 thing when you click it:
 
 ```bash
@@ -263,7 +263,7 @@ mailbox contact add "Jane Doe" --email jane@example.com --phone "+1 555 0199"
 
 `--teams`, `--invite` and `--uninvite` (on `event edit`) work on Microsoft 365
 calendars only, where Exchange sends the invitations itself. A Teams meeting
-cannot be taken off an event again — Microsoft 365 ignores changes to it once
+cannot be taken off an event again, Microsoft 365 ignores changes to it once
 set, same as Outlook.
 
 On Microsoft 365, the group calendars of the groups the account is a member of
@@ -308,9 +308,9 @@ Every command supports `--json`, returning a structured envelope:
 
 ### Skills & Plugins
 - **Agent Skill**: [`skill/SKILL.md`](skill/SKILL.md) provides instruction mappings for AI coding assistants.
-- **Calendar Bar Widget**: [`plugins/mailbox.clock/`](plugins/mailbox.clock) — Omarchy / Quickshell calendar and reminder widget backed directly by the daemon socket.
-- **Mail Notification Widget**: [`plugins/mailbox.email/`](plugins/mailbox.email) — Omarchy bar widget and dropdown panel for new inbox mail alerts, also on the daemon socket.
-- **Desktop Client**: [`gui/`](gui) — a HEY-style Qt desktop mail client that follows the live Omarchy theme.
+- **Calendar Bar Widget**: [`plugins/mailbox.clock/`](plugins/mailbox.clock), Omarchy / Quickshell calendar and reminder widget backed directly by the daemon socket.
+- **Mail Notification Widget**: [`plugins/mailbox.email/`](plugins/mailbox.email), Omarchy bar widget and dropdown panel for new inbox mail alerts, also on the daemon socket.
+- **Desktop Client**: [`gui/`](gui), a HEY-style Qt desktop mail client that follows the live Omarchy theme.
 
 ---
 
@@ -348,4 +348,4 @@ Design notes and the numbered decisions (ADR-00xx, cited from the code) are in [
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
+MIT, see [`LICENSE`](LICENSE).

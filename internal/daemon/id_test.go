@@ -33,7 +33,7 @@ func TestEveryPrintedIDReadsBackToItsPlacement(t *testing.T) {
 }
 
 // A draft command says which account it is about, and a bare uid there is in
-// that account's Drafts — but an id naming another account still wins.
+// that account's Drafts, but an id naming another account still wins.
 func TestADraftIDIsReadAgainstItsOwnDefaults(t *testing.T) {
 	d := New("primary", nil, nil, []string{"INBOX", "INBOX/Drafts"}, nil, nil)
 	gmx := NewAccount("gmx", nil, nil, []string{"INBOX", "Drafts"}, nil)

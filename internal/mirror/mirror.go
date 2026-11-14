@@ -34,7 +34,7 @@ func dsn(path string) string {
 // Open opens the Mirror at path, creating it if absent. There is one schema and
 // no migrations: a file at any other version is deleted and built again,
 // because every byte in here is derived from a server that still holds the
-// original (ADR-0013). That is the whole of the version handling — nothing
+// original (ADR-0013). That is the whole of the version handling, nothing
 // reads an old shape and nothing translates one.
 func Open(path string) (*Mirror, error) {
 	db, err := sql.Open("sqlite", dsn(path))
@@ -74,7 +74,7 @@ func Open(path string) (*Mirror, error) {
 
 // readVersion is the version the file claims, and whether the file could be
 // read at all. A file with no schema_version row, no meta table, or no SQLite
-// header is 0 — that is the rebuild ADR-0013 describes. Every other failure is
+// header is 0, that is the rebuild ADR-0013 describes. Every other failure is
 // returned instead: dsn lets a sync and a command hold the Mirror at once, so a
 // lock or an I/O error is a Mirror that cannot be read right now, not an old
 // one, and Open must fail rather than delete the copy the server may not be
@@ -224,7 +224,7 @@ func (m *Mirror) Placements(account string, messageID int64) ([]Placement, error
 }
 
 // SenderOf returns a Message's From header by its id. It outlives the
-// Placements that point at it (ADR-0007), so it still answers after a move —
+// Placements that point at it (ADR-0007), so it still answers after a move,
 // which is when a Screener-decision inference needs it: the mail has already
 // left the Screener and the question is whose it was.
 func (m *Mirror) SenderOf(account string, messageID int64) (string, error) {
@@ -299,7 +299,7 @@ func (m *Mirror) Parts(messageID int64) ([]Part, error) {
 }
 
 // Thread returns every Message in a conversation, oldest first, each under one
-// Placement — the Inbox one where there is one. A Thread never crosses an
+// Placement, the Inbox one where there is one. A Thread never crosses an
 // Account (ADR-0008).
 func (m *Mirror) Thread(account string, threadID int64) ([]Row, error) {
 	rows, err := m.db.Query(`
@@ -332,7 +332,7 @@ func (m *Mirror) Thread(account string, threadID int64) ([]Row, error) {
 }
 
 // ThreadSizes counts each named Thread whole: every distinct Message that has a
-// Placement, wherever it sits — the number a reader shows, so a listing can
+// Placement, wherever it sits, the number a reader shows, so a listing can
 // badge a conversation with its real size and not just the part of it that is
 // in the Box being listed. Ids of 0 (a Message that is its own Thread) are
 // skipped, and a Thread with one Message is left out of the result.
@@ -432,7 +432,7 @@ func (m *Mirror) ForgetLabel(name string) error {
 
 // Labels is every label there is: the keywords actually on mail, and the ones
 // that have been created but not used yet. Keywords beginning with a backslash
-// are the server's own — \Seen, \Answered — and are not labels anybody chose.
+// are the server's own, \Seen, \Answered, and are not labels anybody chose.
 func (m *Mirror) Labels(account string) ([]string, error) {
 	seen := map[string]bool{}
 	add := func(name string) {
@@ -517,7 +517,7 @@ func LabelsOf(flags []string) []string {
 // LabelCounts is how much mail carries each label, in one query: the distinct
 // flag strings and how many Placements hold each, tallied per keyword here. A
 // count per label read by listing that label's mail would be a query per label
-// and a page-sized cap on the number — and "how many" is the one thing a
+// and a page-sized cap on the number, and "how many" is the one thing a
 // listing is for.
 func (m *Mirror) LabelCounts(account string) (map[string]int, error) {
 	rows, err := m.db.Query(
@@ -547,7 +547,7 @@ func (m *Mirror) LabelCounts(account string) (map[string]int, error) {
 //
 // The Placements are found first and read second, rather than in one join,
 // because a Row is assembled from a fixed column list that every other read
-// shares — and a listing of at most a page is not worth a second copy of it.
+// shares, and a listing of at most a page is not worth a second copy of it.
 func (m *Mirror) Labelled(account, label string, limit int) ([]Row, error) {
 	if limit <= 0 {
 		limit = 50

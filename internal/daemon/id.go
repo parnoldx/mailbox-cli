@@ -46,7 +46,7 @@ func (d *Daemon) resolveIDOn(value string, home *Account, bare func(*Account) (s
 
 // rowOf resolves id and reads the Row it names. The error carries its own
 // Code for resp.failed: a malformed id is usage, an id the Mirror no longer
-// holds is not_found — it was moved or expunged since the listing.
+// holds is not_found, it was moved or expunged since the listing.
 func (d *Daemon) rowOf(id string) (*Account, string, uint32, mirror.Row, error) {
 	acct, folder, uid, err := d.resolveID(id)
 	if err != nil {
@@ -77,7 +77,7 @@ func (d *Daemon) resolveAttachmentID(value string) (*Account, string, uint32, in
 }
 
 // splitAccount takes the account prefix off an id. A Box name can contain a
-// slash — `INBOX/Screener` — so only a prefix that names an account counts as
+// slash, `INBOX/Screener`, so only a prefix that names an account counts as
 // one, and everything else is part of the Box.
 func splitAccount(value string, names []string) (account, rest string) {
 	v := strings.TrimSpace(value)
@@ -138,7 +138,7 @@ func parseAttachmentID(value string, known []string) (folder string, uid uint32,
 }
 
 // parseMessageID reads the [box:]uid a listing printed back into a Placement.
-// A bare uid is in bare — the Inbox, which is the Box an agent is usually
+// A bare uid is in bare, the Inbox, which is the Box an agent is usually
 // looking at, for everything but a draft.
 func parseMessageID(value string, known []string, bare string) (string, uint32, error) {
 	v := strings.TrimSpace(value)
@@ -157,7 +157,7 @@ func parseMessageID(value string, known []string, bare string) (string, uint32, 
 }
 
 // resolveBox maps what a caller typed onto a mirrored folder name. A Box under
-// the Inbox answers to its short name — `Screener`, not `INBOX/Screener` —
+// the Inbox answers to its short name, `Screener`, not `INBOX/Screener`,
 // because that is the name its ids are printed with. A Box named outright wins
 // over one that only matches with the prefix put back, so a top-level folder is
 // never shadowed by a child of the Inbox with the same name.
@@ -176,7 +176,7 @@ func resolveBox(name string, known []string) string {
 		}
 	}
 	// The short vocabulary `mailbox route` uses for the boxes the routing files
-	// into — "paper", "trail", "feed", "block" — so a name that names a box there
+	// into, "paper", "trail", "feed", "block", so a name that names a box there
 	// names the same box here.
 	if d, err := routing.ParseDestination(name); err == nil {
 		if box := d.Box(); box != "" {
@@ -187,7 +187,7 @@ func resolveBox(name string, known []string) string {
 }
 
 // shortBox is the name a Box is printed with. Everything under the Inbox loses
-// the prefix, unless a Box of that name exists at the top level too — there the
+// the prefix, unless a Box of that name exists at the top level too, there the
 // short form would name two Boxes, so neither gets it.
 func shortBox(folder string, known []string) string {
 	short, ok := strings.CutPrefix(folder, "INBOX/")

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# suggest-address is allowed to fail — offline, slow, or asked nothing — but
+# suggest-address is allowed to fail, offline, slow, or asked nothing, but
 # it must always leave a well-formed answer behind, because the panel reads
 # the file it writes and an unreadable one would freeze the last list on
 # screen. No test here touches the network.

@@ -51,7 +51,7 @@ func (s Skill) Install() (changed bool, err error) {
 		return changed, nil
 	}
 	if info, lerr := os.Lstat(s.Link); lerr == nil && info.Mode()&os.ModeSymlink == 0 {
-		return changed, fmt.Errorf("%s is a directory, not a symlink — "+
+		return changed, fmt.Errorf("%s is a directory, not a symlink, "+
 			"remove it and run setup again", s.Link)
 	}
 	target, terr := filepath.Rel(filepath.Dir(s.Link), s.Dir)

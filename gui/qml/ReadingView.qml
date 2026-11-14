@@ -5,7 +5,7 @@ import "MailFormat.js" as Fmt
 import "Triage.js" as Triage
 
 // The reader: a fixed toolbar plus subject, then every Message of the open
-// Thread stacked in one scrolling accordion (ThreadMessage.qml) — collapsed
+// Thread stacked in one scrolling accordion (ThreadMessage.qml), collapsed
 // to a line by default, expanding in place. A Message on its own is a
 // one-element Thread, so this is the only shape the reader ever renders.
 Item {
@@ -139,7 +139,7 @@ Item {
             }
         }
 
-        // The Thread's subject, shown once — individual Messages below carry
+        // The Thread's subject, shown once, individual Messages below carry
         // their own sender and date, not another copy of this. The pill after
         // it is the message count, the way the Inbox row that opened this
         // badges the conversation (HEY's trick). Clicking the subject copies
@@ -171,7 +171,7 @@ Item {
                 }
             }
             // Expand / collapse the whole accordion. Was an "Expand all" chip in
-            // the toolbar; now a caret by the count — down opens all, up closes.
+            // the toolbar; now a caret by the count, down opens all, up closes.
             Rectangle {
                 id: expandCaret
                 visible: win.openThread.length > 1
@@ -210,7 +210,7 @@ Item {
             }
         }
 
-        // What the Thread is labelled — the same pills its row in the list
+        // What the Thread is labelled, the same pills its row in the list
         // carries, hidden entirely when it carries none.
         LabelPills {
             labels: win.labelsOn(win.openId)

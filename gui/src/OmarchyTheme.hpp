@@ -91,7 +91,7 @@ public:
     QColor hairline() const { return mix(m_background, m_foreground, 0.14); }
     QColor textPrimary() const { return m_foreground; }
     // Palette "dark foreground" is too faint on our card/selection fills for
-    // comfortable reading — lift it 40% toward the primary text colour. Still
+    // comfortable reading, lift it 40% toward the primary text colour. Still
     // clearly the secondary tier, just legible.
     QColor textDim() const { return mix(m_darkForeground, m_foreground, 0.40); }
     QColor onAccent() const;
@@ -123,7 +123,7 @@ private:
     QTimer *m_poll{nullptr};
     QDateTime m_lastMtime;
 
-    QString m_name{"—"};
+    QString m_name{","};
     bool m_dark{true};
     QColor m_background{"#1a1b26"};
     QColor m_darkBackground{"#13141c"};

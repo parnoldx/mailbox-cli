@@ -97,7 +97,7 @@ func (t *Tx) DeletePlacements(folder string, uids []uint32) error {
 }
 
 // UpsertMessage inserts a Message or finds the existing one with the same key.
-// hasBody reports whether the Mirror already holds its text — the caller uses
+// hasBody reports whether the Mirror already holds its text, the caller uses
 // that to avoid refetching bodies it has already paid for.
 func (t *Tx) UpsertMessage(m Message) (id int64, hasBody bool, err error) {
 	var state string
@@ -172,7 +172,7 @@ func (t *Tx) upsertCorrespondents(m Message) error {
 }
 
 // thread files a new Message into a conversation. It looks both ways: at the
-// Messages this one references, and at the Messages that reference it — a reply
+// Messages this one references, and at the Messages that reference it, a reply
 // is routinely mirrored before the mail it answers, and a Thread that only
 // grows forwards would leave the two apart forever.
 //
@@ -245,7 +245,7 @@ func (t *Tx) thread(id int64, m Message) error {
 	return err
 }
 
-// ThreadOf reports which Thread a Message was filed into — the id of the oldest
+// ThreadOf reports which Thread a Message was filed into, the id of the oldest
 // Message known to be in the conversation. Zero means the Mirror does not hold
 // the Message.
 func (t *Tx) ThreadOf(id int64) (int64, error) {
@@ -258,7 +258,7 @@ func (t *Tx) ThreadOf(id int64) (int64, error) {
 }
 
 // SetBody stores a Message's text and marks it mirrored. indexed is the text
-// Search should match on — the plain part, or the HTML rendered down to text.
+// Search should match on, the plain part, or the HTML rendered down to text.
 // It is passed in rather than derived here because the Mirror stores what it is
 // given; deriving it is the job of the layer that already decodes charsets.
 func (t *Tx) SetBody(id int64, plain, html, indexed string) error {
@@ -295,7 +295,7 @@ func (t *Tx) PutParts(messageID int64, parts []Part) error {
 
 // PutPlacement inserts or updates where a Message sits. bubble_at is derived
 // from the flags here rather than passed in, so it is a true projection of the
-// `$bubble-*` keyword — the one place a bubbled instant is written.
+// `$bubble-*` keyword, the one place a bubbled instant is written.
 func (t *Tx) PutPlacement(p Placement) error {
 	_, err := t.tx.Exec(`
 		INSERT INTO placements (account, folder, uid, message_id, flags, bubble_at, internaldate, size)

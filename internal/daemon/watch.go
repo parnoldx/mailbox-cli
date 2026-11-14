@@ -26,7 +26,7 @@ const (
 	// A code mail the Daemon collected: the code is already on the clipboard
 	// and the mail is already read, so this reports what was taken rather than
 	// that something arrived. It replaces the `added`+new line the same mail
-	// would otherwise have produced — a Pickup is never news.
+	// would otherwise have produced, a Pickup is never news.
 	eventPickup = "pickup"
 
 	eventObjectAdded       = "object_added"
@@ -284,7 +284,7 @@ func (d *Daemon) watchMail(a *Account, outcomes map[string]mailsync.Outcome, pic
 			c, row := d.mailChange(a, eventAdded, box, folder, delta.MessageID)
 			// New mail: unseen, in a Box where unread means something, and an
 			// arrival rather than a move landing. Feed and Paper Trail need no
-			// rule of their own — the Routing marks them read on arrival.
+			// rule of their own, the Routing marks them read on arrival.
 			c.New = !moved[delta.MessageID] && !row.Seen() && unreadMatters(box)
 			d.change(c)
 		}

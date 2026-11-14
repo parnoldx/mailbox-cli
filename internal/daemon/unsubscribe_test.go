@@ -69,7 +69,7 @@ func unsub(t *testing.T, d *Daemon, id string) map[string]any {
 }
 
 // RFC 8058: the sender declared one-click, so the daemon does the whole thing
-// and says it is done — no browser, no page visit.
+// and says it is done, no browser, no page visit.
 func TestUnsubscribeOneClickPOSTs(t *testing.T) {
 	d := seed(t)
 	var method, body string
@@ -91,7 +91,7 @@ func TestUnsubscribeOneClickPOSTs(t *testing.T) {
 }
 
 // A redirect is not an unsubscribe. Followed, it becomes a GET with the body
-// dropped and the landing page's 200 reads as success — so it has to come back
+// dropped and the landing page's 200 reads as success, so it has to come back
 // as a link for a browser instead, and the target must never be reached.
 func TestUnsubscribeRedirectFallsBackToTheLink(t *testing.T) {
 	d := seed(t)

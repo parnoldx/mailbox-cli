@@ -84,7 +84,7 @@ func TestMeetRefusesAccountsThatCannotMakeOne(t *testing.T) {
 }
 
 // A bare date is an all-day event's answer, and a join link has no place for
-// "somewhere on that day" — so it is refused, where an event would take it.
+// "somewhere on that day", so it is refused, where an event would take it.
 func TestMeetNeedsATimeNotADate(t *testing.T) {
 	d, _, _ := meetAccounts(t)
 	for _, key := range []string{"start", "end"} {
@@ -126,7 +126,7 @@ func TestMeetTakesTheTimesGiven(t *testing.T) {
 }
 
 // --copy hands the link over the way a Pickup is: on the clipboard, with a
-// notification saying so. Without it the desktop is left alone — piping is
+// notification saying so. Without it the desktop is left alone, piping is
 // still the CLI's own way.
 func TestMeetCopyHandsTheLinkOver(t *testing.T) {
 	d, _, _ := meetAccounts(t)

@@ -72,8 +72,8 @@ func TestAFileThatIsNotAMirrorIsReplaced(t *testing.T) {
 	}
 }
 
-// A Mirror that cannot be read right now — a lock held by a sync, a permission
-// problem, an I/O error — is not a Mirror at another version. Open has to fail
+// A Mirror that cannot be read right now, a lock held by a sync, a permission
+// problem, an I/O error, is not a Mirror at another version. Open has to fail
 // and leave the file alone: it is the copy the server may no longer be able to
 // hand back, and the dsn deliberately lets a sync and a command hold it at
 // once, so a transient lock is an expected condition rather than a rebuild.

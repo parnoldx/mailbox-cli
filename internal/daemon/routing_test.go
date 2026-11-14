@@ -77,7 +77,7 @@ var screenerBoxes = []string{
 }
 
 // seedScreener builds a Primary Account with mail from three senders waiting in
-// the Screener — one of whom wrote twice — and a Sieve server holding the
+// the Screener, one of whom wrote twice, and a Sieve server holding the
 // script the account was using before this program owned it.
 func seedScreener(t *testing.T) (*Daemon, *fakeSieve) {
 	t.Helper()
@@ -175,7 +175,7 @@ func TestScreenerIsOneLinePerSender(t *testing.T) {
 	if got[0].Address != "spam@example.net" {
 		t.Errorf("first sender is %q, want the newest", got[0].Address)
 	}
-	// Its stamp is the reader's wall clock, not the UTC the Mirror stored —
+	// Its stamp is the reader's wall clock, not the UTC the Mirror stored,
 	// the same hour the mail shows once it is opened.
 	newest, err := time.ParseInLocation("2006-01-02 15:04", got[0].Newest, time.Local)
 	if err != nil {
@@ -254,7 +254,7 @@ func TestDecidingRoutesAndMovesWhatIsWaiting(t *testing.T) {
 
 // Gate 2b. A decision made on mail read outside the Screener moves that mail
 // too: "this belongs in the Paper Trail", read in the Inbox, is a decision
-// about the sender — and the mail it was read on does not stay behind to
+// about the sender, and the mail it was read on does not stay behind to
 // contradict it.
 func TestDecidingFromTheInboxMovesTheMailRead(t *testing.T) {
 	d, sieve := seedScreener(t)
@@ -325,7 +325,7 @@ func TestBlockingDiscardsLaterAndBinsWhatIsHere(t *testing.T) {
 		t.Errorf("binned %d, moved %v: want the one waiting mail binned and nothing piled",
 			got[0].Binned, got[0].Moved)
 	}
-	// Out of the Screener, out of the Mirror — Trash is not Mirrored — and read
+	// Out of the Screener, out of the Mirror, Trash is not Mirrored, and read
 	// on the way, so a binned mail counts as unread for nobody.
 	if rows, _ := d.Mirror.Rows("primary", routing.BoxScreener, 50); len(rows) != 3 {
 		t.Errorf("%d mails left in the screener, want the 3 from other senders", len(rows))
@@ -692,7 +692,7 @@ func TestAsideMovesTheWholeThread(t *testing.T) {
 }
 
 // Setting a Message aside does not disturb the parts of its conversation that
-// live outside the Inbox — a copy in Sent stays in Sent.
+// live outside the Inbox, a copy in Sent stays in Sent.
 func TestAsideLeavesTheSentCopyAlone(t *testing.T) {
 	d, _ := seedScreener(t)
 	f := fakeOf(d)
@@ -727,7 +727,7 @@ func TestAsideLeavesTheSentCopyAlone(t *testing.T) {
 // updates the Mirror, and the next cycle re-observes those uids as new to the
 // folder. That re-observation is the daemon's own write coming back, not a
 // fresh reply, and must not trigger the reclaim that pulls a set-aside thread
-// to the Inbox — otherwise `aside` never sticks.
+// to the Inbox, otherwise `aside` never sticks.
 func TestAsideSurvivesTheNextSync(t *testing.T) {
 	d, _ := seedScreener(t)
 	f := fakeOf(d)
@@ -757,12 +757,12 @@ func TestAsideSurvivesTheNextSync(t *testing.T) {
 		t.Fatalf("Aside = %+v after a sync, want the mail left where it was set", rows)
 	}
 	if rows := boxView(t, d, "inbox"); len(rows) != 0 {
-		t.Fatalf("inbox = %+v after a sync, want it empty — the aside was undone", rows)
+		t.Fatalf("inbox = %+v after a sync, want it empty: the aside was undone", rows)
 	}
 }
 
 // A domain key files every sender at that domain, and a more specific address
-// already decided is left alone — the same two-pass the generated script uses.
+// already decided is left alone, the same two-pass the generated script uses.
 func TestADomainRouteMovesEveryoneAtThatDomain(t *testing.T) {
 	d, sieve := seedScreener(t)
 	mustAsk(t, d, []string{"route"}, map[string]any{

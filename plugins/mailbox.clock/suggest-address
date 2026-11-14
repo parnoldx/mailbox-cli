@@ -11,7 +11,7 @@ so Panel.qml can drop an answer that arrived after the word moved on.
 Photon (photon.komoot.io) rather than Nominatim on purpose: Nominatim's
 usage policy forbids typeahead queries, Photon is built for them.
 
-The query is never passed through a shell — Panel.qml hands it as a Process
+The query is never passed through a shell, Panel.qml hands it as a Process
 argv element and it is URL-encoded here. Failure is silent by design: no
 network, no suggestions, and the field stays plain free text.
 """

@@ -54,7 +54,7 @@ func TestSetSeenWritesTheAckIntoTheMirror(t *testing.T) {
 }
 
 // A move takes the Placement to the new Box under the uid the server gave it.
-// The Message — and the body already paid for — stays where it is.
+// The Message, and the body already paid for, stays where it is.
 func TestMoveRepointsThePlacementAndKeepsTheBody(t *testing.T) {
 	w, _, m := writeSetup(t)
 	before, _ := placement(t, m, box, 1)

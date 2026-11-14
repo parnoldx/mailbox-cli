@@ -1,5 +1,5 @@
 // `mailbox meet`: a Teams link with no calendar entry. A link somebody wants
-// right now is not an appointment, so nothing is written to any calendar —
+// right now is not an appointment, so nothing is written to any calendar,
 // which also means there is nothing to edit or delete afterwards; the meeting
 // lives on the Teams server alone.
 package daemon
@@ -13,7 +13,7 @@ import (
 
 // handleMeet mints a Teams meeting and reports its join link. Only a
 // Microsoft 365 account can make one, so the choice of account is the choice
-// of whose Teams the meeting lives on — and with several of them, guessing is
+// of whose Teams the meeting lives on, and with several of them, guessing is
 // refused rather than the meeting landing on whichever came first.
 func (d *Daemon) handleMeet(ctx context.Context, req Request, resp Response) Response {
 	title := strings.TrimSpace(req.Str("positional"))
@@ -70,13 +70,13 @@ func (d *Daemon) handleMeet(ctx context.Context, req Request, resp Response) Res
 		names = append(names, a.Name)
 	}
 	return resp.usage(fmt.Sprintf(
-		"several Microsoft 365 accounts: %s — name one with --account", strings.Join(names, ", ")))
+		"several Microsoft 365 accounts: %s, name one with --account", strings.Join(names, ", ")))
 }
 
 // meetOn calls the account's Meet and reports what came back. The link is the
 // whole point of the command, so it is the reply's first field and the only
 // one the plain printer shows. With copy it also hands the link over the way a
-// Pickup is handed over — on the clipboard, with a notification saying so —
+// Pickup is handed over, on the clipboard, with a notification saying so,
 // which is what a GUI's "meet link" button asks for: the hand-over is the
 // daemon's desktop plumbing, not every client's to reimplement.
 func (d *Daemon) meetOn(ctx context.Context, acct *Account, title string, start, end time.Time, copyIt bool, resp Response) Response {
@@ -87,7 +87,7 @@ func (d *Daemon) meetOn(ctx context.Context, acct *Account, title string, start,
 	if copyIt {
 		// A minted link must not be thrown away because the clipboard failed:
 		// the meeting exists now, and the url in the reply is the only record
-		// of it. So a failed copy is logged, not failed — the reply still
+		// of it. So a failed copy is logged, not failed, the reply still
 		// carries the link.
 		if err := run("wl-copy", url); err != nil {
 			d.logf("meet: no clipboard: %v", err)

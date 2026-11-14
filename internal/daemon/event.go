@@ -202,12 +202,12 @@ func addrIsOne(addr string) bool {
 
 // meetingReply is what an add or an edit that named Teams or invitees reports:
 // the ordinary view plus who this call invited. When Teams was asked for and
-// no join link came back, the calendar did not make one — worth saying now
+// no join link came back, the calendar did not make one, worth saying now
 // rather than when somebody looks for the link.
 func meetingReply(written mirror.Object, col mirror.Collection, teams bool, invite []string, before string) map[string]any {
 	out := viewEventObject(written, col, newlyInvited(before, invite))
 	if teams && out["url"] == "" {
-		out["notice"] = "Microsoft 365 made no Teams link — the calendar may not allow Teams meetings"
+		out["notice"] = "Microsoft 365 made no Teams link, the calendar may not allow Teams meetings"
 	}
 	return out
 }
@@ -301,7 +301,7 @@ func alarmMinutes(req Request) ([]int, error) {
 		n, err := strconv.Atoi(field)
 		if err != nil || n < 0 {
 			return nil, fmt.Errorf(
-				"--alarm takes minutes before the start, like 15 or 10,60, or none — got %q", raw)
+				"--alarm takes minutes before the start, like 15 or 10,60, or none, got %q", raw)
 		}
 		out = append(out, n)
 	}
@@ -309,8 +309,8 @@ func alarmMinutes(req Request) ([]int, error) {
 }
 
 // viewEventObject is what a write reports back: enough to see it landed, and
-// the id that reads it whole. The link is the event's own — on a Teams meeting
-// it is the join link the calendar made — and invited names who this call put
+// the id that reads it whole. The link is the event's own, on a Teams meeting
+// it is the join link the calendar made, and invited names who this call put
 // on, which is what a caller showing a toast wants without reading it back.
 func viewEventObject(o mirror.Object, col mirror.Collection, invited []string) map[string]any {
 	out := map[string]any{

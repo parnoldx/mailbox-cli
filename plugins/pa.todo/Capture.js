@@ -3,10 +3,10 @@
 // ("buy milk friday !", "einkaufen morgen /Arbeit"). Model.js here is the slice
 // of ../mailbox.clock/Model.js this capture path calls, and tests/capture.test.js
 // fails if a line of it is not the calendar widget's own. `Model` is passed in
-// so this file needs no import of its own — QML hands it the namespace, node
+// so this file needs no import of its own, QML hands it the namespace, node
 // hands it the require().
 //
-// ponytail: a subset copied in, not a shared module — Omarchy installs each
+// ponytail: a subset copied in, not a shared module, Omarchy installs each
 // plugin on its own, so an import across plugins would break one of them. The
 // drift test is the guard; extract a shared parse module if a third caller ever
 // needs it.

@@ -67,7 +67,7 @@ type Projection struct {
 }
 
 // Attendee is one person named on an event. Address is lower-cased with any
-// mailto: stripped, and Partstat is the raw PARTSTAT — whether they have
+// mailto: stripped, and Partstat is the raw PARTSTAT, whether they have
 // answered is the caller's word for it.
 type Attendee struct {
 	Address  string
@@ -86,7 +86,7 @@ func unescapeMarkdown(s string) string {
 }
 
 // Parse projects one raw object. A component we do not understand is still
-// stored — the raw is the record — so this reports what it can rather than
+// stored, the raw is the record, so this reports what it can rather than
 // failing.
 func Parse(raw string, loc *time.Location) (Projection, error) {
 	cal, err := decode(raw)
@@ -160,7 +160,7 @@ type Occurrence struct {
 	Summary  string
 	Location string
 	Status   string
-	// URL is the link on the entry — the call, the ticket, the page. It is on
+	// URL is the link on the entry, the call, the ticket, the page. It is on
 	// every instance because it belongs to the object the rule came from.
 	URL    string
 	Start  time.Time
@@ -399,7 +399,7 @@ func alarmMinutes(comp *ical.Component) []int {
 	return out
 }
 
-// timeOf reads a date-time property, and says whether it was a date — an
+// timeOf reads a date-time property, and says whether it was a date, an
 // all-day entry is a different thing from one that starts at midnight.
 func timeOf(comp *ical.Component, name string, loc *time.Location) (time.Time, bool) {
 	prop := comp.Props.Get(name)
@@ -410,8 +410,8 @@ func timeOf(comp *ical.Component, name string, loc *time.Location) (time.Time, b
 		(prop.ValueType() == ical.ValueDefault && len(prop.Value) == 8)
 	t, err := prop.DateTime(loc)
 	if err != nil {
-		// A TZID the system does not know — Outlook writes "W. Europe Standard
-		// Time" — is not a reason to lose the entry. Read it as local time.
+		// A TZID the system does not know, Outlook writes "W. Europe Standard
+		// Time", is not a reason to lose the entry. Read it as local time.
 		bare := *prop
 		bare.Params = ical.Params{}
 		if prop.ValueType() != ical.ValueDefault {

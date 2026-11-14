@@ -101,7 +101,7 @@ func TestLiveRoutingScriptCompiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A server is entitled to normalise what it is given, so the bytes are not
-	// asserted on — what has to survive is the decisions, because those are
+	// asserted on, what has to survive is the decisions, because those are
 	// what the next read projects into the Mirror.
 	got := routing.Parse(back)
 	for _, r := range l.All() {
@@ -159,7 +159,7 @@ func TestLiveEmptyRoutingCompiles(t *testing.T) {
 //
 // This is the gate the first live run of this slice failed. The active script
 // on this account is `Open-Xchange`, written by the webmail filter editor, and
-// it ends with `include "logic";` — so the Routing runs without being the
+// it ends with `include "logic";`, so the Routing runs without being the
 // active script. A first version refused every decision on that account, and
 // would have deactivated the webmail rules to enable ours.
 func TestLiveRoutingIsReachable(t *testing.T) {

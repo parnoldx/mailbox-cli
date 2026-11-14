@@ -1,5 +1,5 @@
 // Package unsubscribe decides how to leave a mailing list: from the headers
-// RFC 2369 and RFC 8058 define for exactly this, or — failing that — from a
+// RFC 2369 and RFC 8058 define for exactly this, or, failing that, from a
 // link the message's own body offers.
 package unsubscribe
 
@@ -22,7 +22,7 @@ const (
 	// Email means sending To (with Subject/Body, when the mailto: URI named
 	// them) unsubscribes.
 	Email Kind = "email"
-	// Link means opening URL in a browser is the best that can be done — the
+	// Link means opening URL in a browser is the best that can be done, the
 	// sender gave no one-click header, or this is only a guess at a link in
 	// the body, and either way a page may want a human on it.
 	Link Kind = "link"
@@ -39,7 +39,7 @@ type Target struct {
 
 // Of decides how to unsubscribe from a message: List-Unsubscribe first (the
 // sender's own word for it), and only when the message carries none, a guess
-// at an unsubscribe link in its HTML body. A plain-text body is not read — an
+// at an unsubscribe link in its HTML body. A plain-text body is not read, an
 // auth-shaped list mail that skips the header is HTML in practice, and a bare
 // URL in prose is not an unsubscribe link until something says so.
 func Of(listUnsubscribe, listUnsubscribePost, html string) Target {
@@ -91,7 +91,7 @@ func mailtoTarget(uri string) Target {
 }
 
 // unsubLink matches an <a href="...">text</a> whose href or text names the
-// act, in English or German — the two languages this mailbox reads mail in.
+// act, in English or German, the two languages this mailbox reads mail in.
 var unsubLink = regexp.MustCompile(`(?is)<a\b[^>]*href=["']([^"']+)["'][^>]*>(.*?)</a>`)
 var tag = regexp.MustCompile(`(?s)<[^>]*>`)
 
@@ -112,7 +112,7 @@ func mentionsUnsub(s string) bool {
 
 // fromBody is a best-effort guess at an unsubscribe link the message offers
 // itself, for the many senders that skip the header. It only ever proposes
-// opening the page — a body link was never declared safe to POST to blind.
+// opening the page, a body link was never declared safe to POST to blind.
 func fromBody(html string) Target {
 	for _, m := range unsubLink.FindAllStringSubmatch(html, -1) {
 		href, text := m[1], tag.ReplaceAllString(m[2], " ")

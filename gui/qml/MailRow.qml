@@ -13,7 +13,7 @@ Item {
     // Right-click triage. Off for search results (a hit is open-only) and for
     // Drafts rows (a draft is not routed / set aside / trashed to Trash).
     property bool menuEnabled: true
-    // A far-right trash icon for fast delete — the Drafts bucket uses it.
+    // A far-right trash icon for fast delete, the Drafts bucket uses it.
     property bool showDelete: false
     signal deleteClicked()
     height: 78
@@ -35,7 +35,7 @@ Item {
             anchors { left: parent.left; top: parent.top; bottom: parent.bottom
                       topMargin: 16; bottomMargin: 16 }
             // With more than one account the bar is the row's account colour on
-            // every row — solid when fresh, faded when seen, so it still
+            // every row, solid when fresh, faded when seen, so it still
             // carries the fresh signal. One account: the accent, fresh only.
             color: win.multiAccount ? win.accountColor(root.row.account || "") : Theme.accent
             opacity: root.fresh ? 1 : win.multiAccount ? 0.35 : 0
@@ -83,7 +83,7 @@ Item {
         LabelPills { labels: root.row.labels || [] }
     }
 
-    // How many Messages are in this conversation — pinned top-right, the way
+    // How many Messages are in this conversation, pinned top-right, the way
     // HEY badges a thread. The daemon already collapsed the listing to one
     // row per Thread and this is its whole size, wherever its Messages sit.
     Rectangle {
@@ -105,7 +105,7 @@ Item {
         }
     }
 
-    // A Bubble Up return brought this Thread back — HEY's bubble marker, the
+    // A Bubble Up return brought this Thread back, HEY's bubble marker, the
     // same glyph as the reader's Bubble up button. Beside the count badge when
     // there is one; the daemon drops it once the Thread is read.
     Text {
@@ -122,7 +122,7 @@ Item {
         Behavior on color { ColorAnimation { duration: Theme.anim } }
     }
 
-    // A Thread set to bubble up later — the same glyph as the returned marker,
+    // A Thread set to bubble up later, the same glyph as the returned marker,
     // with the return instant as a tooltip. A click bubbles it now and the
     // scheduled return is cancelled with it (`bubble --now` strips the
     // $bubble keyword and moves the thread back). Aside rows only: an Inbox
@@ -190,10 +190,10 @@ Item {
     HoverHandler { id: hover }
     TapHandler {
         // delBtn sits inside root's own bounds, so a tap on it also lands on
-        // this handler — without the guard, deleting a draft opened it first.
+        // this handler, without the guard, deleting a draft opened it first.
         onTapped: {
             // The dueBtn (and delBtn) sit inside root's own bounds, so a tap on
-            // them also lands on this handler — without the guard, bubbling or
+            // them also lands on this handler, without the guard, bubbling or
             // deleting a draft opened it first.
             if (root.showDelete && point.position.x >= delBtn.x) return
             if (dueBtn.visible && point.position.x >= dueBtn.x) return

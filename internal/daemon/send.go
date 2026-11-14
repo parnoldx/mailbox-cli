@@ -108,7 +108,7 @@ func (d *Daemon) handleReply(ctx context.Context, req Request, resp Response) Re
 	// Answering a Message is the end of owing it a reply, so its thread does
 	// not belong in a pile any more: pull the conversation's Reply Later and
 	// Aside Messages back to the Inbox, the same as an incoming reply would
-	// (CONTEXT.md). Only once the mail has actually gone — a queued send has
+	// (CONTEXT.md). Only once the mail has actually gone, a queued send has
 	// not been answered yet, and the cycle that drains it reclaims the thread
 	// when the Sent copy lands.
 	if resp.OK {
@@ -168,7 +168,7 @@ func (d *Daemon) answer(a *Account, draft *compose.Draft, parent mirror.Message,
 // addressed to, minus ourselves, minus the people already on `to`, and minus
 // whoever is on `have` already. Replying to all should not mean mailing
 // yourself a copy every time, nor anyone twice. An unparsable To:/Cc: header
-// is an error, not an empty list — silently mailing fewer people than the
+// is an error, not an empty list, silently mailing fewer people than the
 // parent was addressed to is not a decision to make on the caller's behalf.
 //
 // Read twice: `reply --all` builds the outgoing Cc from it, and a Message read
@@ -249,7 +249,7 @@ func (d *Daemon) draftOf(a *Account, req Request) (compose.Draft, error) {
 	draft.Body = req.Str("body")
 	// The body carries an HTML twin. A caller that has real HTML (a GUI
 	// composer) passes it as body_html and we send it verbatim; otherwise the
-	// body is Markdown — plain prose is valid Markdown too — and we render it.
+	// body is Markdown, plain prose is valid Markdown too, and we render it.
 	// Either way draft.Body stays the text/plain part, untouched.
 	if raw := req.Str("body_html"); raw != "" {
 		draft.BodyHTML = htmlmd.StyleCallouts(raw)
@@ -276,7 +276,7 @@ func (d *Daemon) draftOf(a *Account, req Request) (compose.Draft, error) {
 }
 
 // deliver builds the mail, queues it, and hands it over. A mail SMTP would not
-// take is an error the caller sees — and it is still in the Outbox, which is
+// take is an error the caller sees, and it is still in the Outbox, which is
 // what the error says.
 func (d *Daemon) deliver(ctx context.Context, a *Account, draft compose.Draft, resp Response, req Request) Response {
 	// Resolved before anything is enqueued: a bad --if-no-reply flag fails as a
@@ -336,13 +336,13 @@ func (d *Daemon) deliver(ctx context.Context, a *Account, draft compose.Draft, r
 		out.Box, out.UID = it.Box, it.UID
 		out.ID = a.messageID(it.Box, it.UID)
 		// The copy is a Message like any other, so the ordinary cycle mirrors
-		// it — no second write path for something the reconciler already knows
+		// it, no second write path for something the reconciler already knows
 		// how to read. Syncing the one Box it landed in makes the id above
 		// readable now rather than at the next poll.
 		d.mirrorSentCopy(ctx, a, it.Box)
 		if watch {
 			// The reminder is just the return-time keyword, written straight onto
-			// the filed copy — same record bubble uses (ADR-0023), no move: it
+			// the filed copy, same record bubble uses (ADR-0023), no move: it
 			// stays in Sent and bubbleLoop brings it to the Inbox if the thread is
 			// still quiet when it comes due.
 			ref := mailsync.Ref{Folder: it.Box, UID: it.UID}
@@ -353,7 +353,7 @@ func (d *Daemon) deliver(ctx context.Context, a *Account, draft compose.Draft, r
 	} else if it.State == outbox.Sent {
 		// Sent, but the copy is not filed. The mail has gone; the next drain
 		// tries the copy again. A requested watch is silently dropped rather
-		// than chased across drains — a narrow edge case.
+		// than chased across drains, a narrow edge case.
 		d.logf("outbox #%d: %s", it.ID, it.LastError)
 	}
 	return resp.ok(out)
@@ -519,7 +519,7 @@ func outboxID(req Request) (int64, error) {
 
 // handleForward sends a Message on to somebody else. It is a reply's mirror
 // image: a reply keeps the thread and changes the sender, a forward keeps the
-// text and changes the thread — so it carries no In-Reply-To and no References,
+// text and changes the thread, so it carries no In-Reply-To and no References,
 // because the people it is going to were never in that conversation.
 func (d *Daemon) handleForward(ctx context.Context, req Request, resp Response) Response {
 	id := req.Str("positional")
@@ -547,7 +547,7 @@ func (d *Daemon) handleForward(ctx context.Context, req Request, resp Response) 
 	draft.Body = forwardBody(draft.Body, original.Message)
 	draft.BodyHTML = ""
 	// The original's files go with it. A forward that drops them is not
-	// forwarding the mail — and the note may well say "see attached".
+	// forwarding the mail, and the note may well say "see attached".
 	if err := d.carryAttachments(ctx, acct, folder, uid, original.Message, &draft); err != nil {
 		return resp.failed(err)
 	}
@@ -646,13 +646,13 @@ func inlinePart(p mirror.Part) bool {
 	return p.ContentID != "" || strings.HasPrefix(strings.ToLower(p.MIMEType), "text/calendar")
 }
 
-// handleFileee mails one attachment straight to fileee's drop box — that
+// handleFileee mails one attachment straight to fileee's drop box, that
 // address is fileee's whole integration, so this is a send with no body, not a
 // forward: the recipient never sees the mail it came from, only the file. The
 // GUI's attachment chip is the caller; there is no CLI command for it.
 func (d *Daemon) handleFileee(ctx context.Context, req Request, resp Response) Response {
 	if d.FileeeAddress == "" {
-		return resp.usage("no fileee address configured — set fileee.address in the config")
+		return resp.usage("no fileee address configured: set fileee.address in the config")
 	}
 	id := req.Str("positional")
 	acct, folder, uid, index, err := d.resolveAttachmentID(id)

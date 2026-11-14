@@ -62,8 +62,8 @@ type Daemon struct {
 	// its timing flags to. Zero means the defaults, 8 and 18.
 	BubbleMorning int
 	BubbleEvening int
-	// PickupExpiry is how long a Pickup — mail the Daemon took a login code out
-	// of — waits before it is binned. Zero means DefaultPickupExpiry.
+	// PickupExpiry is how long a Pickup, mail the Daemon took a login code out
+	// of, waits before it is binned. Zero means DefaultPickupExpiry.
 	PickupExpiry time.Duration
 	// FileeeAddress is where an "attachment fileee" send goes: fileee's whole
 	// integration is a file mailed to this one address. Empty refuses the send.
@@ -72,7 +72,7 @@ type Daemon struct {
 	AddressBook string
 	// Sieve is the ManageSieve connection that holds the Routing: the script
 	// that decides where new mail lands on the Primary Account. Only the
-	// Primary has one — a Secondary Account has an Inbox and nothing to route.
+	// Primary has one, a Secondary Account has an Inbox and nothing to route.
 	Sieve Sieve
 	// RoutingEvery is how often the script is re-read, for the rule somebody
 	// added in webmail.
@@ -80,7 +80,7 @@ type Daemon struct {
 	// routingMu serialises the Routing's read-modify-write per process: a
 	// decision and a refresh must not interleave over the same account's
 	// script or rules, and a Graph write spans several round trips.
-	// ponytail: one lock for every account — decisions are rare and slow
+	// ponytail: one lock for every account, decisions are rare and slow
 	// anyway; per-account locks if that ever stops being true.
 	routingMu sync.Mutex
 	Log       *log.Logger
@@ -94,7 +94,7 @@ type Daemon struct {
 
 	// invites caches parsed calendar parts, keyed by Message Key. A calendar
 	// part never changes once it exists, so the first read pays the server
-	// round trip and every later one — thread view, rsvp — answers from
+	// round trip and every later one, thread view, rsvp, answers from
 	// memory. Only successes are cached: a part that cannot be fetched is
 	// retried, and a Mirror rebuild hands out fresh Keys anyway.
 	invites   map[string]vcal.Invite
@@ -103,7 +103,7 @@ type Daemon struct {
 	// davTrigger serialises DAV cycles the way Account.trigger serialises mail
 	// ones.
 	// The timer and a command's nudge both go through it, so two cycles can
-	// never run against the same collection — which would have both of them
+	// never run against the same collection, which would have both of them
 	// asking from the same sync token and one of them committing the older
 	// answer.
 	davTrigger chan davKick
@@ -151,7 +151,7 @@ func New(account string, m *mirror.Mirror, r *mailsync.Reconciler, mirrored, wat
 	return NewFor(NewAccount(account, r, w, mirrored, watched), m, logger)
 }
 
-// NewFor builds a Daemon around a Primary Account built elsewhere — by main,
+// NewFor builds a Daemon around a Primary Account built elsewhere, by main,
 // with the same code that builds a Secondary one.
 func NewFor(primary *Account, m *mirror.Mirror, logger *log.Logger) *Daemon {
 	primary.Primary = true
@@ -164,7 +164,7 @@ func NewFor(primary *Account, m *mirror.Mirror, logger *log.Logger) *Daemon {
 	}
 }
 
-// Serve serves until ctx is done, on a listener somebody else opened — systemd,
+// Serve serves until ctx is done, on a listener somebody else opened, systemd,
 // under socket activation (ADR-0012).
 func (d *Daemon) Serve(ctx context.Context, ln net.Listener) error {
 	defer ln.Close()
@@ -187,8 +187,8 @@ func (d *Daemon) Serve(ctx context.Context, ln net.Listener) error {
 	// race that sync and drop its per-folder logging.
 	for _, acct := range d.accounts() {
 		cctx := ctx
-		// An account added before Serve has no cancel — StartAccount only saw
-		// a runCtx after this — so its loops would survive a StopAccount. Give
+		// An account added before Serve has no cancel, StartAccount only saw
+		// a runCtx after this, so its loops would survive a StopAccount. Give
 		// it its own cancellable context and wire the cancel in.
 		if acct.cancel == nil && !acct.Primary {
 			cctx, acct.cancel = context.WithCancel(ctx)
@@ -351,7 +351,7 @@ func (d *Daemon) cycle(ctx context.Context, a *Account, reason string) {
 	}
 	if len(outcomes) == 0 && err != nil {
 		// Nothing succeeded: the server is unreachable, not one bad Box. A
-		// server that is up and refusing the password is a different thing —
+		// server that is up and refusing the password is a different thing,
 		// it does not resolve itself, and mail stops arriving until somebody
 		// changes something, so it is a problem and not a log line.
 		d.setConnected(a.Name, false)
@@ -395,7 +395,7 @@ func (d *Daemon) cycle(ctx context.Context, a *Account, reason string) {
 	// only the Primary.
 	for folder, out := range outcomes {
 		// Aside and Reply Later's own sync reports a Thread "new" the first
-		// time this Daemon ever sees it filed there — a cold start, a Mirror
+		// time this Daemon ever sees it filed there, a cold start, a Mirror
 		// rebuild (ADR-0013), or simply this Daemon's first look at the pile.
 		// That is not a reply landing, and reclaiming on it would drag a
 		// conversation right back out of the pile it was just filed into.
@@ -411,13 +411,13 @@ func (d *Daemon) cycle(ctx context.Context, a *Account, reason string) {
 // reclaimPiled moves every Aside and Reply Later Message of the named Threads
 // back to the Inbox, and cancels any "if no reply by" reminder those Threads
 // carry elsewhere (typically a Sent copy). It is called with the Threads a
-// cycle just added mail to, so an untouched pile — or an unanswered
-// reminder — is left alone.
+// cycle just added mail to, so an untouched pile, or an unanswered
+// reminder, is left alone.
 //
 // added is the placements that cycle wrote in the folder the Threads came
 // from. A watch is cancelled by mail that lands in the thread, and the watched
-// Sent copy is not that mail: to every Daemon but the one that sent it — the
-// VPS Daemon of ADR-0025 mirrors the same account — the copy shows up in Sent
+// Sent copy is not that mail: to every Daemon but the one that sent it, the
+// VPS Daemon of ADR-0025 mirrors the same account, the copy shows up in Sent
 // as a new Message a minute after the send, which used to cancel the reminder
 // before it could ever come due.
 func (d *Daemon) reclaimPiled(ctx context.Context, a *Account, threadIDs []int64, added []mailsync.PlacementDelta) {
@@ -449,7 +449,7 @@ func (d *Daemon) reclaimPiled(ctx context.Context, a *Account, threadIDs []int64
 				// Already home.
 			default:
 				// A reply landed, so a pending "if no reply by" reminder on this
-				// Thread's Sent copy is answered — cancel it, but leave the copy
+				// Thread's Sent copy is answered, cancel it, but leave the copy
 				// where it is: the reply itself is what shows up in the Inbox.
 				// Unless this placement is itself what just arrived, in which
 				// case the "reply" is the watched copy and nothing is answered.
@@ -570,8 +570,8 @@ const (
 	domainBoth
 )
 
-// state describes how fresh one domain is. Where a domain has several sources —
-// several accounts, or both loops at once — the answer is the worst of them:
+// state describes how fresh one domain is. Where a domain has several sources,
+// several accounts, or both loops at once, the answer is the worst of them:
 // "current" has to mean that everything the caller just read is current.
 func (d *Daemon) state(dom domain) *MirrorState {
 	d.mu.Lock()

@@ -298,7 +298,7 @@ func TestTrashOfAnUnknownIDIsNotFound(t *testing.T) {
 	if resp.OK || resp.Code != "not_found" {
 		t.Fatalf("resp = %+v", resp)
 	}
-	if resp.Error != "99999: no such message — moved or deleted since it was listed" {
+	if resp.Error != "99999: no such message: moved or deleted since it was listed" {
 		t.Fatalf("error = %q", resp.Error)
 	}
 }
@@ -308,7 +308,7 @@ func TestTrashOfAnUnknownIDIsNotFound(t *testing.T) {
 func TestSeenOfAnUnknownIDNamesThatID(t *testing.T) {
 	d := seed(t)
 	resp := d.handle(context.Background(), Request{ID: "1", Cmd: []string{"seen"}, Args: map[string]any{"positional": []any{"7", "99999"}}})
-	if resp.OK || resp.Code != "not_found" || resp.Error != "99999: no such message — moved or deleted since it was listed" {
+	if resp.OK || resp.Code != "not_found" || resp.Error != "99999: no such message: moved or deleted since it was listed" {
 		t.Fatalf("resp = %+v", resp)
 	}
 }
@@ -388,7 +388,7 @@ func threadOf(t *testing.T, d *Daemon, id string) []message {
 	return out
 }
 
-// The conversation reads the same from either end of it, and crosses Boxes —
+// The conversation reads the same from either end of it, and crosses Boxes,
 // which is the thing IMAP THREAD cannot do (ADR-0008).
 func TestThreadReadsFromEitherEnd(t *testing.T) {
 	d := seed(t)
@@ -594,7 +594,7 @@ func TestParseAttachmentID(t *testing.T) {
 }
 
 // A listing follows the way mail moves rather than the alphabet, and it is the
-// eight boxes mail moves through — not the fifty-odd archive folders behind
+// eight boxes mail moves through, not the fifty-odd archive folders behind
 // them, which is what an account actually looks like.
 func TestBoxListIsTheRoutingBoxesInTheOrderMailMovesThrough(t *testing.T) {
 	d := seed(t)

@@ -1,5 +1,5 @@
 // Package setup is the wizard: the only place in this program where a human is
-// asked anything, and the thing that makes a machine work — the config, the
+// asked anything, and the thing that makes a machine work, the config, the
 // systemd units, the agent skill, and the Routing Boxes on a fresh account.
 //
 // It writes files and nothing else. After the probes it opens no server
@@ -7,9 +7,9 @@
 // Daemon, and watches the first sync over the socket like any other client
 // (ADR-0021).
 //
-// It must not ask for a URL. It authenticates and then *enumerates* — IMAP LIST
-// for the Boxes and their special-use flags, DAV discovery for the Collections
-// — and shows what it found with names and counts. A URL copied by hand is how
+// It must not ask for a URL. It authenticates and then *enumerates*, IMAP LIST
+// for the Boxes and their special-use flags, DAV discovery for the Collections,
+// and it shows what it found with names and counts. A URL copied by hand is how
 // the old config came to point at a 2-entry scratch address book instead of
 // Kontakte, and it had been quietly wrong for years.
 package setup
@@ -261,7 +261,7 @@ func (w *Wizard) bootstrapRouting(ctx context.Context, a Answers, boxes []imapdr
 		return err
 	}
 	if !yes {
-		w.say("  left alone — `mailbox route` will refuse until they exist")
+		w.say("  left alone, `mailbox route` will refuse until they exist")
 		return nil
 	}
 	b, err := w.Prober.Routing(ctx, a, have)
@@ -300,7 +300,7 @@ func (w *Wizard) install() error {
 	}
 	switch {
 	case len(written) == 0:
-		w.sayf("systemd  %s — already current", w.Units.Dir)
+		w.sayf("systemd  %s, already current", w.Units.Dir)
 	default:
 		w.sayf("systemd  wrote %s in %s", strings.Join(written, " and "), w.Units.Dir)
 	}
@@ -308,7 +308,7 @@ func (w *Wizard) install() error {
 		if err := w.Ctl.EnableNow("mailbox.socket"); err != nil {
 			return fmt.Errorf("systemd: %w", err)
 		}
-		w.say("         mailbox.socket enabled — the first connection starts the daemon")
+		w.say("         mailbox.socket enabled, the first connection starts the daemon")
 	}
 
 	// A skill that cannot be installed is not a reason to stop: the mail works
@@ -320,7 +320,7 @@ func (w *Wizard) install() error {
 	case changed:
 		w.sayf("skill    %s", w.Skill.Dir)
 	default:
-		w.sayf("skill    %s — already current", w.Skill.Dir)
+		w.sayf("skill    %s, already current", w.Skill.Dir)
 	}
 	return nil
 }
@@ -329,7 +329,7 @@ func (w *Wizard) install() error {
 // they land rather than a spinner: a cold start is minutes, and a wizard that
 // ends in silence looks broken.
 //
-// The order — Inbox first, Archive last — is the Daemon's, not this program's.
+// The order, Inbox first, Archive last, is the Daemon's, not this program's.
 // Setup used to do this sync itself, in its own process, which made it a second
 // writer of the Mirror (ADR-0012).
 func (w *Wizard) follow(ctx context.Context) {
@@ -429,7 +429,7 @@ func Write(path string, a Answers) error {
 		return err
 	}
 	var b strings.Builder
-	b.WriteString("# mailbox configuration — written by `mailbox setup`.\n")
+	b.WriteString("# mailbox configuration, written by `mailbox setup`.\n")
 	b.WriteString("# It holds passwords, so it is mode 0600 and stays that way (ADR-0014).\n")
 	b.WriteString("# The daemon re-reads this file while it runs (ADR-0021): an edit here\n")
 	b.WriteString("# lands within a minute, and `mailbox setup` edits it a block at a time.\n\n")

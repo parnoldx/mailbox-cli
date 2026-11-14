@@ -3,11 +3,11 @@ import QtQuick.Window
 
 // The shared half of every WebEngine host's "QtWebEngine left a black GPU
 // surface behind after a Wayland unmap" workaround. It listens to the two
-// things that mean the surface went away and came back —
+// things that mean the surface went away and came back,
 //
 //   * the window being hidden or minimised (Window.visibility), and
 //   * SurfaceWatcher's expose events, the only hint a bare Hyprland / Sway
-//     workspace switch gives —
+//     workspace switch gives,
 //
 // and calls repaint() once, on the way back, if the surface was actually
 // gone in between. The host owns repaint() and everything downstream of it
@@ -30,9 +30,9 @@ Item {
     // view to rescue).
     property bool active: true
 
-    // The surface just went away — raise your cover now.
+    // The surface just went away, raise your cover now.
     signal obscured()
-    // The surface is back after being gone — rebuild the web view.
+    // The surface is back after being gone, rebuild the web view.
     signal needsRepaint()
 
     property bool _dirty: false

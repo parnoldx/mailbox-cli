@@ -1,7 +1,7 @@
 // The Routing on a Graph account is inbox rules (ADR-0032). This file speaks
 // /me/mailFolders/inbox/messageRules: our rules carry the `mailbox:` prefix,
 // are replaced whole on every write, and rules without the prefix are never
-// read and never written — a rule a human wrote in Outlook is theirs.
+// read and never written, a rule a human wrote in Outlook is theirs.
 package graphdrv
 
 import (
@@ -18,7 +18,7 @@ import (
 )
 
 // graphRule is one messageRule as Graph describes it. Graph v1.0's predicates
-// have no senderDomains test — that is Exchange PowerShell's — so a domain
+// have no senderDomains test, that is Exchange PowerShell's, so a domain
 // decision is written as senderContains "@example.com": a substring match,
 // which `x@example.com.evil.net` would also catch, as `address :domain :is`
 // never would.
@@ -41,7 +41,7 @@ type graphRule struct {
 
 // Rules reads the Routing back off the server: our rules only, with folder ids
 // resolved back to the Box names the rest of the program speaks, in sequence
-// order — the order the server runs them and the order first-match-wins reads
+// order, the order the server runs them and the order first-match-wins reads
 // them in.
 //
 // A rule of ours that cannot be read back whole is kept with its Destination
@@ -67,9 +67,9 @@ func (m *Mail) Rules(ctx context.Context) ([]routing.Rule, error) {
 }
 
 // ruleOf reads one of our rules into a routing.Rule, empty Destination when it
-// cannot be read whole — a rule switched off in Outlook, a move target this
+// cannot be read whole, a rule switched off in Outlook, a move target this
 // program does not know, or a domain condition it does not model. (Other edits
-// made outside this program — an extra condition, a forward — are not detected;
+// made outside this program, an extra condition, a forward, are not detected;
 // the rule is then rewritten without them, which is what "replaced whole"
 // means, and why rules are not edited outside it.)
 func (m *Mail) ruleOf(ctx context.Context, g graphRule) routing.Rule {
@@ -116,7 +116,7 @@ func (m *Mail) ruleOf(ctx context.Context, g graphRule) routing.Rule {
 }
 
 // boxOf is the Box name a Graph folder id is known by here, refreshing the
-// folder map once when the id is not in it — a folder made or renamed in
+// folder map once when the id is not in it, a folder made or renamed in
 // Outlook is not a Box that is gone.
 func (m *Mail) boxOf(ctx context.Context, id string) (string, bool, error) {
 	if name, ok, err := m.s.folderName(id); err != nil || ok {
@@ -140,14 +140,14 @@ func destOf(box string) (routing.Destination, bool) {
 }
 
 // SetRules replaces our rules with these. The new rules are created first and
-// the old ones deleted after — the reverse order would leave an outage halfway
+// the old ones deleted after, the reverse order would leave an outage halfway
 // through erasing the record, and a create that fails is rolled back out of
 // what it had managed to create. What is on the server is never fewer decisions
 // than before the call. Rules a human wrote are untouched.
 //
 // The move targets are resolved before anything is sent: a rule into a folder
 // that is not there files nowhere, and the Sieve path refuses for the same
-// reason (ADR-0019) — this path refuses too, and creates nothing.
+// reason (ADR-0019), this path refuses too, and creates nothing.
 func (m *Mail) SetRules(ctx context.Context, want []routing.Rule) error {
 	old, _, err := all[graphRule](ctx, m.c, "/me/mailFolders/inbox/messageRules")
 	if err != nil {
@@ -184,7 +184,7 @@ func (m *Mail) SetRules(ctx context.Context, want []routing.Rule) error {
 				g.Conditions.SenderContains = append(g.Conditions.SenderContains, "@"+d)
 			}
 			if r.Dest == routing.Block {
-				// A blocked sender's rule is the bin: read, then Deleted Items —
+				// A blocked sender's rule is the bin: read, then Deleted Items,
 				// what binBlocked does with the mail that was already here.
 				g.Actions.Delete = true
 				g.Actions.MarkAsRead = true
@@ -204,20 +204,20 @@ func (m *Mail) SetRules(ctx context.Context, want []routing.Rule) error {
 	}
 
 	// Create the new set. A rule that is refused aborts the write, and the
-	// rules created so far go again — the server keeps the old set, which is
+	// rules created so far go again, the server keeps the old set, which is
 	// the record the caller still holds.
 	var made []string
 	for _, g := range built {
 		var out graphRule
 		if err := m.c.do(ctx, request{method: http.MethodPost,
 			path: "/me/mailFolders/inbox/messageRules", body: jsonBody(g)}, &out); err != nil {
-			// The caller may be gone — a cancelled command — but the half-set
+			// The caller may be gone, a cancelled command, but the half-set
 			// it left behind is ours to remove regardless.
 			rollback := context.WithoutCancel(ctx)
 			rollback, cancel := context.WithTimeout(rollback, 30*time.Second)
 			defer cancel()
 			if rbErr := m.deleteRules(rollback, made); rbErr != nil {
-				return fmt.Errorf("create rule %s: %w (and rolling back the %d rules created failed: %v — delete them before deciding again)",
+				return fmt.Errorf("create rule %s: %w (and rolling back the %d rules created failed: %v, delete them before deciding again)",
 					g.DisplayName, err, len(made), rbErr)
 			}
 			return fmt.Errorf("create rule %s: %w", g.DisplayName, err)
@@ -225,11 +225,11 @@ func (m *Mail) SetRules(ctx context.Context, want []routing.Rule) error {
 		made = append(made, out.ID)
 	}
 
-	// The new set is whole. Now — and only now — the old one goes. A delete
+	// The new set is whole. Now, and only now, the old one goes. A delete
 	// that fails is an error, not a shrug: old and new sets running side by
 	// side is two Routings, and the caller must not be told the write won.
 	if err := m.deleteRules(ctx, ours(old)); err != nil {
-		return fmt.Errorf("the new rules are in, but deleting the old ones failed: %w — "+
+		return fmt.Errorf("the new rules are in, but deleting the old ones failed: %w, "+
 			"run the same decision again to clear the leftovers", err)
 	}
 	return nil
@@ -261,7 +261,7 @@ func (m *Mail) deleteRules(ctx context.Context, ids []string) error {
 	return failed
 }
 
-// ruleFolder is a Box's folder id, looked up — never created. A Routing
+// ruleFolder is a Box's folder id, looked up, never created. A Routing
 // decision does not make Boxes (ADR-0019); a missing one is refused with its
 // name, the way the Sieve path is.
 func (m *Mail) ruleFolder(ctx context.Context, name string) (string, error) {
@@ -278,7 +278,7 @@ func (m *Mail) ruleFolder(ctx context.Context, name string) (string, error) {
 		}
 	}
 	if !ok {
-		return "", fmt.Errorf("no folder %q — create it before routing mail there", name)
+		return "", fmt.Errorf("no folder %q: create it before routing mail there", name)
 	}
 	return row.GraphID, nil
 }

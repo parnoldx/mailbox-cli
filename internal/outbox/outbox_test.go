@@ -298,7 +298,7 @@ func TestAScheduledMailWaitsUntilItsTime(t *testing.T) {
 	}
 
 	// Once its instant has passed, the next drain finds it like any other
-	// queued mail — this is what a periodic drain tick does on its own.
+	// queued mail, this is what a periodic drain tick does on its own.
 	past := time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
 	if _, err := c.Box.db.Exec(`UPDATE outbox SET not_before = ? WHERE id = ?`, past, id); err != nil {
 		t.Fatal(err)

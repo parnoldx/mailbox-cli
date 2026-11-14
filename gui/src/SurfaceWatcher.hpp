@@ -7,7 +7,7 @@ class QEvent;
 
 // QtWebEngine leaves a stale black GPU surface behind after its Wayland surface
 // is unmapped and remapped. A Hyprland / Sway workspace switch does exactly that
-// — but without ever changing QWindow::visibility(), so the QML views that host
+//, but without ever changing QWindow::visibility(), so the QML views that host
 // a WebEngineView can't see it from `Window.visibility` / `Window.active` alone.
 //
 // The one reliable signal is the platform expose event. SurfaceWatcher filters

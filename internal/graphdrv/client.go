@@ -43,8 +43,8 @@ func NewClient(auth *Auth) *Client {
 	return &Client{Base: Base, HTTP: &http.Client{Timeout: 60 * time.Second}, Token: auth.Token, ForceRefresh: auth.Expire}
 }
 
-// APIError is Graph refusing a request, with its code — "ErrorItemNotFound",
-// "syncStateNotFound" — which is what a caller decides on.
+// APIError is Graph refusing a request, with its code, "ErrorItemNotFound",
+// "syncStateNotFound", which is what a caller decides on.
 type APIError struct {
 	Status  int
 	Code    string

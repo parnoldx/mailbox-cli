@@ -14,7 +14,7 @@ import (
 )
 
 // Fake is a Driver that can be driven through states no real server can be
-// asked for on demand — a UIDVALIDITY change that keeps its messages, a modseq
+// asked for on demand, a UIDVALIDITY change that keeps its messages, a modseq
 // that goes backwards, a count that disagrees with the uid set. The list it
 // covers is in docs/DESIGN.md.
 type Fake struct {
@@ -22,7 +22,7 @@ type Fake struct {
 	folders map[string]*FakeFolder
 
 	// Hook runs before each operation, named by method. A test uses it to
-	// mutate server state at an exact point in a cycle — "between detect and
+	// mutate server state at an exact point in a cycle, "between detect and
 	// fetch" is Hook checking for op == "FetchEnvelopes".
 	Hook func(op string)
 	// Fail makes the named operation return an error, once.
@@ -438,7 +438,7 @@ func hasFlag(flags []string, want string) bool {
 
 // Append implements Driver: it files a message we composed, the way a server
 // does. The bytes are parsed rather than taken on trust, because the point of
-// filing a sent mail is that the next cycle mirrors it like any other mail — if
+// filing a sent mail is that the next cycle mirrors it like any other mail, if
 // what we wrote is not a message, this is where that shows up.
 func (f *Fake) Append(ctx context.Context, folder string, flags []string, raw []byte) (uint32, error) {
 	if err := f.op("Append"); err != nil {

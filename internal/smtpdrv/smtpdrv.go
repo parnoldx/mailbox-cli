@@ -32,7 +32,7 @@ type Sender struct {
 func New(cfg Config) *Sender { return &Sender{cfg: cfg} }
 
 // Send delivers raw to the envelope recipients. It returns an error unless the
-// server accepted the whole transaction — an accepted mail is one the queue may
+// server accepted the whole transaction, an accepted mail is one the queue may
 // mark sent and never send again, so anything less than acceptance must read as
 // a failure here.
 func (s *Sender) Send(ctx context.Context, from string, to []string, raw []byte) error {

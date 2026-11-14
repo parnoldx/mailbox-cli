@@ -2,7 +2,7 @@
 
 // The fuzzy subsequence match the Command Launcher coined and the archive
 // picker shares: every character of the needle shows up in order in the
-// haystack — enough to pull "Archive/2021/receipts" out of a long tree by
+// haystack, enough to pull "Archive/2021/receipts" out of a long tree by
 // typing "a21rec". Case-blind.
 function fuzzy(needle, hay) {
     needle = needle.toLowerCase(); hay = hay.toLowerCase()
@@ -15,7 +15,7 @@ function fuzzy(needle, hay) {
 // The boxes mail moves into one at a time, off `box list --archive` rows
 // ({ box, account, count, ... }): the archive tree plus Feed and Paper Trail
 // (whose rows decide the sender's routing as well), minus the routing
-// Destinations the launcher picks contextually — these have rows of their own
+// Destinations the launcher picks contextually, these have rows of their own
 // in menus. Matches the server's routingOrder. `acct` narrows to one account
 // ("" is the Primary); undefined/null leaves them all in. The routing boxes
 // compare on the name's leaf, so a Secondary's prefixed copies ("work/Sent",…)
@@ -59,7 +59,7 @@ function recoverBoxes(list, acct) {
 // The archive view's picker is narrower still: Feed and Paper Trail have
 // their own buckets (keys 2 and 3) with their own views of that mail, so
 // listing them here only makes the same mail reachable two ways. The move
-// menu keeps them — moving into them also routes the sender.
+// menu keeps them, moving into them also routes the sender.
 function pickerBoxes(list, acct) {
     return moveBoxes(list, acct).filter(function (b) {
         return leaf(b.box) !== "Feed" && leaf(b.box) !== "Paper Trail"

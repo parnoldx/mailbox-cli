@@ -2,7 +2,7 @@ import QtQuick
 import QtWebEngine
 
 // Chromium costs a second or two to cold-start, and the first HTML mail of a
-// session used to pay that on click — the engine was deliberately kept off
+// session used to pay that on click, the engine was deliberately kept off
 // the start-up path (see main.cpp). This mounts a 1×1 invisible view a moment
 // after the Inbox is up instead: the first render stays exactly as it was,
 // and by the time a real mail opens, the engine is hot. It also arms the

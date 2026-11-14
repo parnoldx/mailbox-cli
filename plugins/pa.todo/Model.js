@@ -1,7 +1,7 @@
 // The slice of ../mailbox.clock/Model.js that this widget's capture path uses:
 // the phrase parser and the request builder behind Super+N. Locale- and Qt-free,
 // so node can run it. Every function here is the calendar widget's own, kept
-// byte for byte — tests/capture.test.js fails when one drifts.
+// byte for byte, tests/capture.test.js fails when one drifts.
 
 var MS_PER_DAY = 86400000
 
@@ -37,7 +37,7 @@ var HOUR_MS = 60 * MINUTE_MS
 var DAY_MS = MS_PER_DAY
 
 // A link is supplied by whoever sent the invitation, so treating it as
-// trusted input would be a mistake. http as well as https — the entry pane
+// trusted input would be a mistake. http as well as https, the entry pane
 // lets a link be typed by hand, and refusing to open what it just stored
 // would be the odder of the two. Every other scheme stays out: this string
 // is handed to a browser.
@@ -57,8 +57,8 @@ function safeLinkUrl(url) {
 // ---- Natural-language quick-add. Bilingual by table, not by setting: EN
 //      and DE keywords are matched simultaneously, so "lunch mit Ana morgen
 //      12:30" parses the same way either language wins a token. The start
-//      day is never parsed from the text — it comes from the day the user
-//      right-clicked — so the grammar only adds times, ends and flags on top
+//      day is never parsed from the text, it comes from the day the user
+//      right-clicked, so the grammar only adds times, ends and flags on top
 //      of it.
 var NL_WEEKDAYS = [
   { index: 0, names: ["sunday", "sonntag", "so."] },
@@ -90,8 +90,8 @@ function nlWeekdayIndex(word) {
   return -1
 }
 
-// Strict times need an anchor — a colon, an am/pm suffix, a following
-// "uhr", or the noon words — so a bare "15" stays part of the title.
+// Strict times need an anchor, a colon, an am/pm suffix, a following
+// "uhr", or the noon words, so a bare "15" stays part of the title.
 function nlParseStrictTime(tokens, i) {
   var token = String(tokens[i] || "").toLowerCase().replace(/[,.;]$/, "")
   if (token === "noon" || token === "mittag") return { minutes: 12 * 60, used: 1 }
@@ -125,7 +125,7 @@ function nlTimeLabel(minutesOfDay) {
 }
 
 // One side of a range: bare hour or hh:mm, minutes optional. Used for
-// "12-13", "12 to 13" and friends — deliberately looser than the strict
+// "12-13", "12 to 13" and friends, deliberately looser than the strict
 // time matcher, because the range dash or connector supplies the anchor.
 function nlRangeSide(text) {
   var match = /^(\d{1,2})(?:[:.](\d{2}))?$/.exec(String(text || "").toLowerCase())
@@ -151,8 +151,8 @@ function nlNextWeekday(base, weekday) {
   return d
 }
 
-// A single day word — "today", "morgen", a weekday name, "15.3." or an ISO
-// date — as a Date, or null when the word is not one of those. `next` pushes
+// A single day word, "today", "morgen", a weekday name, "15.3." or an ISO
+// date, as a Date, or null when the word is not one of those. `next` pushes
 // a named weekday or an explicit date a week on; "next today" is not a thing,
 // so the relative words ignore it.
 function nlDayFrom(word, base, next) {
@@ -340,7 +340,7 @@ function parseEventPhrase(text, dayKey, nowMs, knownCalendars) {
     // ---- Place keyword. An "at"/"bei" that no time followed (the block
     //      above would have taken it) names a location, and the word itself
     //      is consumed: "Essen at Garbe Biegarten" is titled "Essen", not
-    //      "Essen at". Only the marker is fixed here — what the place is
+    //      "Essen at". Only the marker is fixed here, what the place is
     //      settles below, so a date may still trail it ("bei Anna morgen").
     if (locFrom === -1 && nlIs(lower, "place") && p + 1 < rest.length) {
       locFrom = kept.length
@@ -469,7 +469,7 @@ function parseEventPhrase(text, dayKey, nowMs, knownCalendars) {
         p = q - 1
         continue
       }
-      // Nothing consumable after "till" — let the word fall into the title
+      // Nothing consumable after "till", let the word fall into the title
       // rather than silently eating it.
     }
 
@@ -565,7 +565,7 @@ function parseEventPhrase(text, dayKey, nowMs, knownCalendars) {
 }
 
 // Adjacent tokens playing the same role read as one coloured run, gaps
-// included — "next monday" is one date, not two words that happen to agree.
+// included, "next monday" is one date, not two words that happen to agree.
 function mergeSegments(spans) {
   var out = []
   for (var i = 0; i < spans.length; i++) {
@@ -624,7 +624,7 @@ function buildQuickAddRequest(draft, nowMs) {
     // A task's deadline is the day the pane shows; the hour too when one was
     // typed. "by Friday" and "by 17:00 on Friday" are different promises, so
     // dueHasTime records which was meant. The loose, dateless todo is what
-    // the week-bucket + makes (buildQuickTodoRequest) — the entry pane always
+    // the week-bucket + makes (buildQuickTodoRequest), the entry pane always
     // shows a date, so a phrase like "buy milk tomorrow" writes that date.
     var dueHasTime = draft.startTime !== null && draft.startTime !== undefined && draft.startTime !== ""
     var dueMs = nlMsFor(draft.dateKey, dueHasTime ? draft.startTime : null)
@@ -712,7 +712,7 @@ function requestToArgs(request) {
     if (request.id) {
       // An edit names every field the pane can hold: what the user left
       // blank is sent as the "none" the daemon reads as "take it off", so a
-      // cleared priority or link actually clears. Notes are the exception —
+      // cleared priority or link actually clears. Notes are the exception,
       // an empty box leaves whatever is there, matching event edits.
       var editArgs = { positional: String(request.id), title: String(request.title || "") }
       if (request.dueMs) editArgs.due = stampLocal(request.dueMs, !!request.dueHasTime)

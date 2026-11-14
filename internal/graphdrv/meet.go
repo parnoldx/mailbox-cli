@@ -16,7 +16,7 @@ import (
 // invited, and the link works whether or not anything ever references it.
 //
 // A 403 is the token being older than the OnlineMeetings.ReadWrite scope,
-// which only a fresh sign-in mints — so it is said out loud rather than left
+// which only a fresh sign-in mints, so it is said out loud rather than left
 // for the caller to decode out of an ErrorAccessDenied.
 func (c *Client) Meet(ctx context.Context, subject string, start, end time.Time) (string, error) {
 	var out struct {
@@ -30,7 +30,7 @@ func (c *Client) Meet(ctx context.Context, subject string, start, end time.Time)
 		})}, &out)
 	var ae *APIError
 	if errors.As(err, &ae) && ae.Status == http.StatusForbidden {
-		return "", fmt.Errorf("Microsoft 365 refused to make a Teams meeting — " +
+		return "", fmt.Errorf("Microsoft 365 refused to make a Teams meeting, " +
 			"sign in again so the token carries OnlineMeetings.ReadWrite: `mailbox setup` → repair")
 	}
 	if err != nil {

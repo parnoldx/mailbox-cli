@@ -165,7 +165,7 @@ func (f *Fake) MultiGet(ctx context.Context, url string, hrefs []string) ([]Chan
 }
 
 // Put implements WriteDriver. It checks If-Match, because a server that does
-// not is a server where two clients silently overwrite each other — and the
+// not is a server where two clients silently overwrite each other, and the
 // reason the write path carries an ETag at all.
 func (f *Fake) Put(ctx context.Context, href, data, ifMatch string) (string, error) {
 	f.mu.Lock()

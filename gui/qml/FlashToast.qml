@@ -1,7 +1,7 @@
 import QtQuick
 
-// The small transient confirmation ("Draft saved", "Set aside", …) — or a
-// longer daemon error — that drops in from the top edge and slides back out.
+// The small transient confirmation ("Draft saved", "Set aside", …), or a
+// longer daemon error, that drops in from the top edge and slides back out.
 // It lives at the top on purpose: the bottom is the Reply Later / Set Aside
 // stacks' turf on the Inbox. show(text) is the whole API.
 Item {

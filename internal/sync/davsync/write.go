@@ -30,7 +30,7 @@ type Writer struct {
 	Driver  WriteDriver
 	// Project turns raw text into the row to store. It is the Reconciler's, so
 	// an object written here and the same object arriving on the next sync
-	// project identically — a write that stored a different projection would
+	// project identically, a write that stored a different projection would
 	// make the Mirror disagree with itself until the next cycle.
 	Reconciler *Reconciler
 }
@@ -38,8 +38,8 @@ type Writer struct {
 // Put writes an object to the server and records what the server ended up with.
 //
 // The Mirror stores what came back rather than what was sent. A server is
-// entitled to rewrite what it is given — adding its own DTSTAMP, normalising a
-// timezone — and a Mirror holding the version we hoped for is a Mirror that
+// entitled to rewrite what it is given, adding its own DTSTAMP, normalising a
+// timezone, and a Mirror holding the version we hoped for is a Mirror that
 // disagrees with every other client (ADR-0004).
 func (w *Writer) Put(ctx context.Context, c mirror.Collection, href, raw, ifMatch string) (mirror.Object, error) {
 	// The request goes to the absolute URL, because that is what says which
@@ -89,7 +89,7 @@ func (w *Writer) Delete(ctx context.Context, c mirror.Collection, o mirror.Objec
 	return tx.Commit()
 }
 
-// Href names the file a new object goes in, as a path — the shape a server
+// Href names the file a new object goes in, as a path, the shape a server
 // reports its own objects in. The UID names the file, which is what every
 // client does and the only convention under which a second write to the same
 // object lands on the same URL.
@@ -101,7 +101,7 @@ func Href(c mirror.Collection, uid string) string {
 	return base + "/" + uid + ".ics"
 }
 
-// absolute resolves an href the server gave us — usually a path — against the
+// absolute resolves an href the server gave us, usually a path, against the
 // collection it came from.
 func (w *Writer) absolute(c mirror.Collection, href string) string {
 	if strings.HasPrefix(href, "http://") || strings.HasPrefix(href, "https://") {

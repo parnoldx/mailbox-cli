@@ -46,7 +46,7 @@ type Attachment struct {
 
 // LoadAttachment reads a file from disk. The Daemon does this rather than the
 // CLI: same user, same machine, and a 20 MB PDF has no business being base64
-// inside NDJSON — the same reason `attachment save` writes the file itself.
+// inside NDJSON, the same reason `attachment save` writes the file itself.
 func LoadAttachment(path string) (Attachment, error) {
 	body, err := os.ReadFile(path)
 	if err != nil {
@@ -90,7 +90,7 @@ type Draft struct {
 // Recipients is the SMTP envelope: everyone the mail goes to, deduplicated.
 //
 // Bcc appears here and nowhere else. A Bcc header written into the message is
-// how a blind copy stops being blind — the copy filed in Sent would carry it,
+// how a blind copy stops being blind, the copy filed in Sent would carry it,
 // and one careless forward exposes it. The Outbox row keeps the record instead.
 func (d Draft) Recipients() []string {
 	var out []string
@@ -109,7 +109,7 @@ func (d Draft) Recipients() []string {
 }
 
 // Build renders the mail. It returns the bytes that go to SMTP, to the Outbox
-// and to the Sent folder — all three the same, byte for byte.
+// and to the Sent folder, all three the same, byte for byte.
 func (d *Draft) Build() ([]byte, error) {
 	if d.From.Addr == "" {
 		return nil, fmt.Errorf("a mail needs a sender")
@@ -154,8 +154,8 @@ func (d *Draft) Build() ([]byte, error) {
 			// The charset goes on the message's own header, because there is no
 			// part header to put it on. Leaving it off does not mean
 			// "unspecified": a text part with no charset is us-ascii by
-			// definition, and every reader on the way — including our own
-			// mirror — then turns each byte of a UTF-8 character into a
+			// definition, and every reader on the way, including our own
+			// mirror, then turns each byte of a UTF-8 character into a
 			// replacement character. A one-attachment mail was fine and a
 			// plain reply was quietly mangled.
 			h.Set("Content-Type", "text/plain; charset=utf-8")
@@ -263,7 +263,7 @@ func (d Draft) html() string {
 // writeAlternative writes the text/plain part then the text/html part. Order is
 // the contract of multipart/alternative: least-preferred first, so a reader
 // that walks to the last part it can render lands on the HTML. The text/plain
-// part is Body verbatim — a caller who wrote plain prose sees it unchanged
+// part is Body verbatim, a caller who wrote plain prose sees it unchanged
 // whatever the HTML side was rendered from.
 func (d Draft) writeAlternative(iw *gomail.InlineWriter) error {
 	var th gomail.InlineHeader
@@ -291,8 +291,8 @@ func (d Draft) writeAlternative(iw *gomail.InlineWriter) error {
 	return hw.Close()
 }
 
-// crlf makes every line ending a CRLF. Both destinations require it — an IMAP
-// literal is defined in CRLF-terminated lines, and SMTP DATA the same — and the
+// crlf makes every line ending a CRLF. Both destinations require it, an IMAP
+// literal is defined in CRLF-terminated lines, and SMTP DATA the same, and the
 // encoders below us are not obliged to produce it for every part.
 func crlf(b []byte) []byte {
 	return bytes.ReplaceAll(bytes.ReplaceAll(b, []byte("\r\n"), []byte("\n")), []byte("\n"), []byte("\r\n"))

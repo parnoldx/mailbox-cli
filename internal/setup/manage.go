@@ -20,7 +20,7 @@ import (
 
 // A second run asks nothing. It shows what is here and offers to change it,
 // because a person coming back to this wizard wants to see the state before
-// choosing — the same reason the first run enumerates instead of asking.
+// choosing, the same reason the first run enumerates instead of asking.
 
 // snapshot is what this machine looks like right now. Live state comes from the
 // Daemon; with no Daemon the config and the filesystem still answer, which is
@@ -126,7 +126,7 @@ func (w *Wizard) repair(ctx context.Context, s *snapshot) error {
 }
 
 // repairGraph makes a Microsoft 365 account's missing piles, and signs in
-// again when the sign-in on disk is refused — which is what the Daemon's
+// again when the sign-in on disk is refused, which is what the Daemon's
 // problem for it tells a person to come here for.
 func (w *Wizard) repairGraph(ctx context.Context, name string, a config.Account) error {
 	login, err := graphLogin(name, a.Tenant, a.ClientID)
@@ -200,7 +200,7 @@ func (w *Wizard) manage(ctx context.Context) error {
 
 func (w *Wizard) show(s *snapshot) {
 	w.say("")
-	w.say("mailbox — this machine")
+	w.say("mailbox on this machine")
 	w.say("")
 	if s.cfgErr != nil {
 		w.sayf("  config     %v", s.cfgErr)
@@ -208,7 +208,7 @@ func (w *Wizard) show(s *snapshot) {
 		w.sayf("  config     %s", w.ConfigPath)
 	}
 	if !s.live() {
-		w.say("             the daemon is not answering — read from the config and the disk")
+		w.say("             the daemon is not answering, read from the config and the disk")
 	}
 
 	if s.cfg != nil {
@@ -249,7 +249,7 @@ func (w *Wizard) show(s *snapshot) {
 			w.sayf("    %-9s %-28s %s", fmt.Sprint(c["kind"]), name, where)
 		}
 		// A configured Collection with no row beside it is one the daemon is
-		// not holding — down, refused, or excluded — and that is worth seeing.
+		// not holding, down, refused, or excluded, and that is worth seeing.
 		for _, name := range sortedKeys(configured) {
 			w.sayf("    %-9s %-28s %s", "", name, configured[name]+", not mirrored")
 		}
@@ -281,7 +281,7 @@ func (w *Wizard) show(s *snapshot) {
 			skillState = "current"
 		}
 	}
-	w.sayf("  skill      %s — %s", w.Skill.Dir, skillState)
+	w.sayf("  skill      %s, %s", w.Skill.Dir, skillState)
 
 	if s.active != "" {
 		w.sayf("  routing    the server runs %q", s.active)
@@ -446,14 +446,14 @@ func (w *Wizard) addAccount(ctx context.Context, s *snapshot, name string) error
 	if err := AddAccount(w.ConfigPath, block); err != nil {
 		return err
 	}
-	w.sayf("  added as %q — its ids read %s/INBOX:412, its colour is %s", name, name, block.Color)
+	w.sayf("  added as %q, its ids read %s/INBOX:412, its colour is %s", name, name, block.Color)
 	w.reload(s)
 	return nil
 }
 
 // addGraphAccount adds a Microsoft 365 account: mail, calendars and contacts
 // over Graph, behind one sign-in and no password (ADR-0029). The sign-in is the
-// device-code flow, so any browser will do — the one on this machine, or a
+// device-code flow, so any browser will do, the one on this machine, or a
 // phone, when this is the VPS.
 func (w *Wizard) addGraphAccount(ctx context.Context, s *snapshot, name string) error {
 	email, err := w.ask("Email address", "")
@@ -489,7 +489,7 @@ func (w *Wizard) addGraphAccount(ctx context.Context, s *snapshot, name string) 
 		return fmt.Errorf("microsoft 365: %w", err)
 	}
 	if !strings.EqualFold(st.Email, strings.TrimSpace(email)) {
-		return fmt.Errorf("that sign-in is %s, not %s — run it again and sign in as %s", st.Email, email, email)
+		return fmt.Errorf("that sign-in is %s, not %s: run it again and sign in as %s", st.Email, email, email)
 	}
 	w.sayf("  signed in as %s, %d boxes", st.Email, st.Boxes)
 	if len(st.Created) > 0 {
@@ -535,7 +535,7 @@ func (w *Wizard) addGraphAccount(ctx context.Context, s *snapshot, name string) 
 	if err := AddAccount(w.ConfigPath, block); err != nil {
 		return err
 	}
-	w.sayf("  added as %q — its ids read %s/INBOX:412, its colour is %s", name, name, block.Color)
+	w.sayf("  added as %q, its ids read %s/INBOX:412, its colour is %s", name, name, block.Color)
 	w.sayf("  its calendars and contacts come with it: the default calendar is %q", name)
 
 	w.reload(s)
@@ -680,7 +680,7 @@ func (w *Wizard) remove(ctx context.Context, s *snapshot) error {
 	switch chosen.kind {
 	case "account":
 		// The Daemon is the only thing that knows what is in flight, so it is
-		// asked before the file is changed — otherwise the config says the
+		// asked before the file is changed, otherwise the config says the
 		// account is gone while a Held mail of its is still waiting for a
 		// person (ADR-0021).
 		if held, err := inFlight(s, chosen.name); err != nil {
@@ -716,7 +716,7 @@ func (w *Wizard) remove(ctx context.Context, s *snapshot) error {
 func inFlight(s *snapshot, account string) ([]string, error) {
 	if !s.live() {
 		return nil, fmt.Errorf("the daemon is not running, so nothing can say " +
-			"whether that account has mail in flight — start it and try again")
+			"whether that account has mail in flight: start it and try again")
 	}
 	resp, err := s.client.Do([]string{"outbox", "list"}, nil)
 	if err != nil {

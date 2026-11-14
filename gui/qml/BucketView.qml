@@ -30,7 +30,7 @@ Item {
     // hover had marked before the list narrowed.
     onPickFilterChanged: pickActive = 0
 
-    // Root owns only properties — pickQuery itself is inside the header
+    // Root owns only properties, pickQuery itself is inside the header
     // Component, unreachable from here. Setting archiveBoxOpen makes the
     // field's Row visible, whose onVisibleChanged focuses the field.
     function openPicker() {

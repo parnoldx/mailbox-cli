@@ -1,6 +1,6 @@
 import QtQuick
 
-// HEY's trick: the two hand-tended piles — Reply Later and Set Aside — ride
+// HEY's trick: the two hand-tended piles, Reply Later and Set Aside, ride
 // along the bottom of the Inbox as little fanned stacks, so mail you have
 // triaged for later stays in sight instead of behind a bucket switch. Tapping a
 // card opens it; tapping the pile's glyph jumps to that bucket in full.

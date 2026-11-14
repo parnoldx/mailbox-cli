@@ -23,7 +23,7 @@ type Filer interface {
 //
 // The two halves are not the same kind of operation and are not retried the
 // same way. SMTP is tried once per attempt and its outcome is recorded before
-// anything else happens (ADR-0017). Filing is idempotent enough to retry — the
+// anything else happens (ADR-0017). Filing is idempotent enough to retry, the
 // worst case is a second copy in Sent, and the state machine only lets it run
 // against a mail that has already been sent.
 type Courier struct {
@@ -82,8 +82,8 @@ func (c *Courier) file(ctx context.Context, id int64) (Item, error) {
 		return Item{}, err
 	}
 	if c.Filer == nil && c.Transport != nil {
-		// No Filer means the transport files the copy itself — Graph puts what
-		// it sends in Sent Items — so the mail is done, not waiting to be filed
+		// No Filer means the transport files the copy itself, Graph puts what
+		// it sends in Sent Items, so the mail is done, not waiting to be filed
 		// on every drain for ever.
 		if err := c.Box.MarkFiled(id, c.SentBox, 0); err != nil {
 			return it, err

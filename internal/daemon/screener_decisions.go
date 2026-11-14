@@ -16,7 +16,7 @@ import (
 // as a command rather than as a guess about a drag. For the Screener that
 // reasoning does not hold: reading a message never requires moving it, so a
 // message leaving the Screener is not ambiguous between "file this sender" and
-// "read this once" — the second reading does not exist, and the move is the
+// "read this once", the second reading does not exist, and the move is the
 // answer to the Screener's one question. And `mailbox route` does not work from
 // a phone; the folder move is the only signal an iPhone can send. This
 // supersedes ADR-0019 for the Screener alone (ADR-0024).
@@ -63,7 +63,7 @@ func (d *Daemon) inferScreenerDecisions(ctx context.Context, a *Account, outcome
 		}
 	}
 	// Reverse: a message moved into the Screener from a decision folder
-	// un-decides its sender — their next mail is owed a decision again.
+	// un-decides its sender, their next mail is owed a decision again.
 	for msgID, to := range added {
 		if !containsFold(to, screener) {
 			continue
@@ -85,7 +85,7 @@ func (d *Daemon) inferScreenerDecisions(ctx context.Context, a *Account, outcome
 
 // decisionFolder maps a folder a message landed in to the Destination its
 // arrival there decides. Only these four are read as decisions; a drag into
-// Archive or Trash — where an accidental swipe almost always lands — rewrites
+// Archive or Trash, where an accidental swipe almost always lands, rewrites
 // nothing.
 func decisionFolder(folder string) (routing.Destination, bool) {
 	switch {
@@ -126,7 +126,7 @@ func (d *Daemon) senderFor(a *Account, messageID int64) string {
 }
 
 // applyInferred writes the decisions into the script and sweeps each sender's
-// waiting Screener mail to the destination — or bins it, for a block — the same
+// waiting Screener mail to the destination, or bins it, for a block, the same
 // two halves `mailbox route` does, minus the human.
 //
 // It is idempotent instead of trying to tell its own `route`-driven move from
@@ -149,7 +149,7 @@ func (d *Daemon) applyInferred(ctx context.Context, a *Account, screener string,
 		// Same rule as `mailbox route`: never switch somebody else's active
 		// script off to switch ours on. A drag must not do what a command is
 		// refused.
-		d.logf("screener inference: %q is active and does not include %q — an inferred decision is not written",
+		d.logf("screener inference: %q is active and does not include %q, an inferred decision is not written",
 			st.active, routing.ScriptName)
 		return
 	}

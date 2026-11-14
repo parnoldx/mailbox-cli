@@ -244,7 +244,7 @@ func TestAConfigThatIsAlreadyThereIsNotAskedAboutAgain(t *testing.T) {
 	// A second run shows the machine and offers to change it. It asks for no
 	// address and no password, and it replaces nothing: there is no --force
 	// because there is no overwrite.
-	if got := out.String(); !strings.Contains(got, "mailbox — this machine") ||
+	if got := out.String(); !strings.Contains(got, "mailbox on this machine") ||
 		strings.Contains(got, "Email address") {
 		t.Fatalf("a second run should show state, not ask questions:\n%s", got)
 	}
@@ -359,7 +359,7 @@ func TestACalendarOnAnotherServerIsFoundRatherThanTyped(t *testing.T) {
 	}
 	got, _ := os.ReadFile(path)
 	// The URL written is the one the server gave for the collection that was
-	// picked by name — not the address that was typed to reach the server.
+	// picked by name, not the address that was typed to reach the server.
 	// `carddav_home` pointed at a 2-entry scratch book for years because
 	// somebody copied a URL by hand.
 	for _, want := range []string{

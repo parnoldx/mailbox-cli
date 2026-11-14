@@ -1,7 +1,7 @@
 //go:build live
 
 // Live check for the bubble slice: the return time is a custom IMAP keyword,
-// and this is the one thing a fake cannot answer — whether mailbox.org's
+// and this is the one thing a fake cannot answer, whether mailbox.org's
 // Dovecot keeps a `$bubble-*` keyword it has never seen before.
 //
 //	go test -tags live ./internal/imapdrv/ -run TestLiveBubbleKeyword -v
@@ -55,7 +55,7 @@ func TestLiveBubbleKeyword(t *testing.T) {
 	first := bubble.Keyword(time.Date(2026, 9, 10, 8, 0, 0, 0, time.Local))
 	storeKeyword(t, o, uid, first, imap.StoreFlagsAdd)
 
-	// Read it back on a fresh connection — the record has to survive the
+	// Read it back on a fresh connection, the record has to survive the
 	// connection that wrote it going away, which is how the two Daemons see it.
 	o.reconnect()
 	got := fetchKeywords(t, o, uid)

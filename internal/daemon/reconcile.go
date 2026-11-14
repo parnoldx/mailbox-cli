@@ -48,7 +48,7 @@ func (d *Daemon) Reconcile(was, now *config.Config, a Accounts) Applied {
 		return out
 	}
 	// Anything not applied below is an exit too. Listing what forces one meant
-	// every field nobody listed — an Account's colour, the bubble hours —
+	// every field nobody listed, an Account's colour, the bubble hours,
 	// changed in the file and nowhere else.
 	if !reflect.DeepEqual(notInPlace(*was), notInPlace(*now)) {
 		out.Restart, out.Reason = true, "the config changed"
@@ -94,13 +94,13 @@ func (d *Daemon) Reconcile(was, now *config.Config, a Accounts) Applied {
 				// account here is the one outcome this guard exists to prevent:
 				// the Outbox is the only copy of composed-but-unsent mail.
 				detail := fmt.Sprintf("%s was removed from the config, but its outbox could not "+
-					"be checked (%v) — it is kept", name, err)
+					"be checked (%v), it is kept", name, err)
 				d.SetProblem("account "+name, detail)
 				out.Changes = append(out.Changes, detail)
 				continue
 			case held > 0:
 				detail := fmt.Sprintf("%s was removed from the config, but %d of its mails "+
-					"are still in the outbox — it is kept until they are sent or cancelled",
+					"are still in the outbox, it is kept until they are sent or cancelled",
 					name, held)
 				d.SetProblem("account "+name, detail)
 				out.Changes = append(out.Changes, detail)

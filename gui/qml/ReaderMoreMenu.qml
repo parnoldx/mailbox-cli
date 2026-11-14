@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import "Triage.js" as Triage
 
-// The reader's overflow menu: Forward / Label / Move / Trash — the actions
+// The reader's overflow menu: Forward / Label / Move / Trash, the actions
 // that no longer fit as chips beside Reply. Opened by the "More" chip or the
 // M key (Main.qml). Same shell as ScreenerMoveMenu; each row also shows the
 // shortcut letter that fires it straight from the reader.

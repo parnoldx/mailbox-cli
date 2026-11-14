@@ -133,7 +133,7 @@ func TestLabelViewListsTheMailCarryingIt(t *testing.T) {
 }
 
 // A listing says what its mail carries, so a label is visible without opening
-// anything — and it is the Thread's label, not only the newest Message's.
+// anything, and it is the Thread's label, not only the newest Message's.
 func TestAListingCarriesTheLabels(t *testing.T) {
 	d := seed(t)
 	mustAsk(t, d, []string{"label", "add"},
@@ -189,7 +189,7 @@ func TestDeletingALabelTakesItOffEverything(t *testing.T) {
 			t.Errorf("%s:%d still carries it: %s", place.folder, place.uid, flags)
 		}
 	}
-	// The mail is still there — a label came off, nothing was thrown away.
+	// The mail is still there, a label came off, nothing was thrown away.
 	view(t, d, "7")
 }
 

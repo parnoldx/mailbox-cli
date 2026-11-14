@@ -186,7 +186,7 @@ func (o *Outbox) MarkFiled(id int64, box string, uid uint32) error {
 }
 
 // Requeue puts a mail SMTP refused back in the queue with the reason. An error
-// from SMTP means it was not accepted, so trying again is safe — that is what
+// from SMTP means it was not accepted, so trying again is safe, that is what
 // separates this from a process that died mid-send.
 func (o *Outbox) Requeue(id int64, cause error) error {
 	msg := ""
@@ -234,7 +234,7 @@ func (o *Outbox) HoldInterrupted() ([]Item, error) {
 }
 
 // PendingFor and UnfiledFor are the same, for one account. The Outbox is one
-// file for every account — a mail is a mail — but each account's own SMTP
+// file for every account, a mail is a mail, but each account's own SMTP
 // server is the only one that can send its mail.
 func (o *Outbox) PendingFor(account string) ([]Item, error) {
 	return o.byStateAndAccount(Queued, account)
@@ -267,7 +267,7 @@ func (o *Outbox) Cancel(id int64) error {
 		return err
 	}
 	if it.State == Sent || it.State == Filed {
-		return fmt.Errorf("#%d was already sent — it cannot be cancelled", id)
+		return fmt.Errorf("#%d was already sent: it cannot be cancelled", id)
 	}
 	_, err = o.db.Exec(`DELETE FROM outbox WHERE id = ?`, id)
 	return err

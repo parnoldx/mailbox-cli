@@ -386,7 +386,7 @@ func seedGraphInvite(t *testing.T) (*Daemon, *davsync.Fake, string, *[]string) {
 
 // A Microsoft 365 invite is already on the calendar when it arrives: the card
 // shows the answer that event holds, and an RSVP goes to Exchange through
-// Respond — no iMIP mail leaves and no second copy is written.
+// Respond, no iMIP mail leaves and no second copy is written.
 func TestRSVPOnMicrosoft365AnswersTheEventExchangeMade(t *testing.T) {
 	d, f, id, answered := seedGraphInvite(t)
 	ctx := context.Background()

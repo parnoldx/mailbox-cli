@@ -1,4 +1,4 @@
-# mailbox — build, test, install.
+# mailbox, build, test, install.
 #
 # There is no code generation and no vendoring here: `go build` is the build,
 # and this file only writes down the flags that are easy to forget.
@@ -18,7 +18,7 @@ OMARCHY_PLUGINS ?= $(HOME)/.config/omarchy/plugins
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo '(devel)')
 LDFLAGS := -X 'mailbox/internal/cli.Version=$(VERSION)'
 
-# Which live suite `make live` runs. It is one package on purpose — see below.
+# Which live suite `make live` runs. It is one package on purpose, see below.
 LIVE ?= ./internal/sievedrv/
 
 .DEFAULT_GOAL := build
@@ -65,7 +65,7 @@ fmt:
 # bin/ is earlier on PATH than that, so `make build` is what changes which
 # binary your shell runs here; install is for having it outside this directory.
 #
-# This is the CLI on its own — the common case, and the only part that is pure
+# This is the CLI on its own, the common case, and the only part that is pure
 # Go. The GUI (Qt 6 + WebEngine) and the Omarchy widgets are opt-in: see
 # `install-gui`, `install-plugins`, or `install-all` for the lot.
 install: build
@@ -74,15 +74,15 @@ install: build
 # The desktop client. Delegates to gui/'s own CMake build, which also drops the
 # .desktop entry and the hicolor icon so `mailbox-gui` shows up in the launcher
 # and the mailbox.email widget can shell out to it by name. Needs Qt 6 with
-# WebEngineQuick, PdfQuick and QuickDialogs2 — that is why it is not in
+# WebEngineQuick, PdfQuick and QuickDialogs2, that is why it is not in
 # `install`.
 install-gui:
 	$(MAKE) -C gui install PREFIX=$(PREFIX)
 
 # The Quickshell bar widgets (calendar + mail notifications). Omarchy reads
 # them straight from $(OMARCHY_PLUGINS). `cp -rT` writes the tree at exactly
-# that path — overwriting an earlier copy in place rather than nesting a
-# second one inside it the way a plain `cp -r` would on the second run — and
+# that path, overwriting an earlier copy in place rather than nesting a
+# second one inside it the way a plain `cp -r` would on the second run, and
 # it never touches sibling plugins. Enable them afterwards with
 # `omarchy plugin enable mailbox.clock mailbox.email pa.todo`.
 install-plugins:
@@ -103,16 +103,16 @@ update-daemon: update-daemon-local update-daemon-vps
 # The home machine's own Daemon, under systemd --user. install rebuilds the
 # binary; the restart is what actually swaps it in, since the running process
 # does not notice a new file under it (mailbox.socket owns the unit's
-# lifecycle across this, per ADR-0012 — only the process behind it cycles).
+# lifecycle across this, per ADR-0012, only the process behind it cycles).
 update-daemon-local: install
 	systemctl --user restart mailbox.service
 
 # The VPS Daemon: no user session and no `make install` path there (ADR-0025),
-# so it is a manual deploy — cross-compiled here, shipped over ssh, swapped in
+# so it is a manual deploy, cross-compiled here, shipped over ssh, swapped in
 # stopped rather than live so nothing runs half-updated. $(VPS) is an ssh host
 # alias, not a hostname: the address, user and key live in ~/.ssh/config, not
 # in this repo. Restarting a remote service is the kind of action worth
-# running by hand rather than unattended — see ADR-0025 in docs/DESIGN.md
+# running by hand rather than unattended, see ADR-0025 in docs/DESIGN.md
 # before changing how this deploys.
 VPS ?= misc
 update-daemon-vps:
@@ -124,7 +124,7 @@ update-daemon-vps:
 # of install-gui on purpose: that is a desktop-wide preference, not something
 # an install should seize. The .desktop already declares the capability
 # (MimeType=x-scheme-handler/mailto), so without this the client still shows
-# up as a choice — this just makes it the default. Needs install-gui first.
+# up as a choice, this just makes it the default. Needs install-gui first.
 register-mailto:
 	xdg-mime default mailbox-gui.desktop x-scheme-handler/mailto
 
@@ -134,7 +134,7 @@ register-mailto:
 # regenerate. The last skill drifted because it copied the surface out.
 #
 # Its home is ~/.agents/skills, where every other skill on this machine lives,
-# and ~/.claude/skills/mailbox is the symlink Claude Code reads it through —
+# and ~/.claude/skills/mailbox is the symlink Claude Code reads it through,
 # which is how the rest of them are wired. The last skill was two real copies in
 # those two places, and they were free to disagree. This target refuses to
 # delete anything: a directory where the symlink belongs is a decision for a

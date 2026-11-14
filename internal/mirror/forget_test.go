@@ -125,8 +125,8 @@ func TestForgettingACollectionTakesItsObjects(t *testing.T) {
 	}
 }
 
-// A folder the server no longer offers — deleted in webmail, or sitting inside
-// Trash — leaves the Mirror: its mail stops showing up in search and listings,
+// A folder the server no longer offers, deleted in webmail, or sitting inside
+// Trash, leaves the Mirror: its mail stops showing up in search and listings,
 // and a message it alone held goes with it. A message another Box still holds
 // stays, minus the one placement.
 func TestKeepFoldersForgetsWhatDiscoveryDropped(t *testing.T) {

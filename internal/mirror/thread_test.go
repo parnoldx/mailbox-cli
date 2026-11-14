@@ -7,7 +7,7 @@ import (
 )
 
 // threadFixture inserts Messages one at a time, each in its own transaction, so
-// the tests can control the order they arrive in — which is the whole question
+// the tests can control the order they arrive in, which is the whole question
 // threading has to answer.
 type threadFixture struct {
 	t *testing.T
@@ -78,7 +78,7 @@ func TestThreadLinksAReplyToItsParent(t *testing.T) {
 	}
 }
 
-// A reply is routinely mirrored before the mail it answers — the reply is in
+// A reply is routinely mirrored before the mail it answers, the reply is in
 // the Inbox and the parent is filed in Sent, and the Boxes sync in whatever
 // order LIST returns them.
 func TestThreadLinksAParentThatArrivesLater(t *testing.T) {

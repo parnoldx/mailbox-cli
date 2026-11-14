@@ -122,7 +122,7 @@ func (a *Auth) load() (*Token, error) {
 
 // Expire makes the next Token call refresh regardless of what the local clock
 // thinks. After a resume the clock can be behind until the first NTP sync, and
-// then a token that Graph has already expired still looks good locally — the
+// then a token that Graph has already expired still looks good locally, the
 // client keeps presenting it and gets 401 InvalidAuthenticationToken forever.
 // This is what a refused request does to escape that.
 func (a *Auth) Expire() {
@@ -163,7 +163,7 @@ func (a *Auth) save(tok *Token) error {
 // it replaces is refused by the security defaults most tenants now run
 // (Microsoft-managed "Block device code flow", AADSTS530035); a browser
 // sign-in is exactly what those defaults are built to allow. A browser on any
-// reachable machine will do — on the VPS, the URL is reached through an SSH
+// reachable machine will do, on the VPS, the URL is reached through an SSH
 // tunnel and lands back on the tunnelled port.
 func (a *Auth) BrowserLogin(ctx context.Context, out io.Writer) error {
 	verifier, err := pkceVerifier()

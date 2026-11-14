@@ -18,7 +18,7 @@ type Request struct {
 }
 
 // Reading one request's arguments. They arrive over the socket as JSON, so a
-// number is a float64 and a repeatable flag may be a list of anys — the four
+// number is a float64 and a repeatable flag may be a list of anys, the four
 // accessors below are the only place that has to know it, and a handler that
 // wants a limit asks for a limit.
 
@@ -48,7 +48,7 @@ func (r Request) Int(key string, fallback int) int {
 // Text is one argument as the caller wrote it, whatever JSON shape it arrived
 // in. An id sent as the number 12 and the same id sent as "12" are the same id,
 // and a handler reading one should not have to know which spelling a client
-// chose — the CLI sends strings, a GUI over the socket sends numbers.
+// chose, the CLI sends strings, a GUI over the socket sends numbers.
 func (r Request) Text(key string) string {
 	switch v := r.Args[key].(type) {
 	case string:
@@ -89,7 +89,7 @@ func (r Request) Strings(key string) []string {
 }
 
 // Verb is the subcommand, or fallback when the caller named only the group.
-// Every group has a default — `todo` is `todo list`, `event` is `event view` —
+// Every group has a default, `todo` is `todo list`, `event` is `event view`,
 // because the bare noun is what somebody types when they want to see the thing
 // (ADR-0020).
 func (r Request) Verb(fallback string) string {
@@ -100,7 +100,7 @@ func (r Request) Verb(fallback string) string {
 }
 
 // MirrorState says how fresh the answer is. It rides on every reply, because a
-// caller has to be able to reason about staleness on every call — and a Behind
+// caller has to be able to reason about staleness on every call, and a Behind
 // Mirror is not an error, it is a Mirror that says so (ADR-0001).
 //
 // It describes the data this reply answered from, not the Mirror in general.
@@ -138,7 +138,7 @@ type Response struct {
 }
 
 // The four ways a handler ends. Every one of them takes the Response it was
-// given — which already carries the id and the MirrorState — and returns it
+// given, which already carries the id and the MirrorState, and returns it
 // finished, so a handler's last line is the whole of its answer.
 //
 // The Codes are the ones the CLI turns into exit codes: `usage` is a mistake in

@@ -70,7 +70,7 @@ func TestGate1_ColdStart(t *testing.T) {
 }
 
 // Gate 2: a message delivered while watching appears on the next cycle. The
-// watch only says "something changed" — pushes carry no data (ADR-0011) — so
+// watch only says "something changed", pushes carry no data (ADR-0011), so
 // the assertion is that the cycle it triggers picks the message up.
 func TestGate2_NewMessageArrives(t *testing.T) {
 	r, f, m := setup(t)
@@ -132,7 +132,7 @@ func TestGate3_FlagConverges(t *testing.T) {
 
 // Gate 4: a message expunged while the Daemon was stopped is gone after
 // restart. The fake's Expunge deliberately does not bump the modseq, so only
-// the count reveals it — which is the whole reason the diff path exists.
+// the count reveals it, which is the whole reason the diff path exists.
 func TestGate4_ExpungeWhileStopped(t *testing.T) {
 	r, f, m := setup(t)
 	f.Deliver(box, "a@x", "first", "hello")
@@ -155,8 +155,8 @@ func TestGate4_ExpungeWhileStopped(t *testing.T) {
 }
 
 // Gate 5: a UIDVALIDITY change forces a clean resync. This is the migration
-// case the real server cannot be asked for — the uids change but the messages
-// are still there — so the Mirror must re-map them by Message-ID and must not
+// case the real server cannot be asked for, the uids change but the messages
+// are still there, so the Mirror must re-map them by Message-ID and must not
 // refetch bodies it already holds (ADR-0006).
 func TestGate5_UIDValidityChange(t *testing.T) {
 	r, f, m := setup(t)
@@ -172,7 +172,7 @@ func TestGate5_UIDValidityChange(t *testing.T) {
 		t.Fatalf("action = %v, want resync", out.Action)
 	}
 	if out.Remapped != 2 {
-		t.Errorf("remapped = %d, want 2 — messages were not recognised", out.Remapped)
+		t.Errorf("remapped = %d, want 2: messages were not recognised", out.Remapped)
 	}
 	if got := f.CallCount("FetchBodies"); got != bodiesBefore {
 		t.Errorf("refetched bodies across a UIDVALIDITY change (%d -> %d)", bodiesBefore, got)
@@ -272,7 +272,7 @@ func TestCountDisagreesWithUIDSet(t *testing.T) {
 		t.Fatalf("sync: %v", err)
 	}
 	if got := rows(t, m); len(got) != 2 {
-		t.Errorf("got %d rows, want 2 — the diff trusted the count over the uid set", len(got))
+		t.Errorf("got %d rows, want 2: the diff trusted the count over the uid set", len(got))
 	}
 }
 
@@ -288,7 +288,7 @@ func TestMissingAndDuplicateMessageIDs(t *testing.T) {
 	runSync(t, r)
 	got := rows(t, m)
 	if len(got) != 4 {
-		t.Fatalf("got %d rows, want 4 — messages collided", len(got))
+		t.Fatalf("got %d rows, want 4: messages collided", len(got))
 	}
 	seen := map[string]bool{}
 	for _, row := range got {
@@ -300,7 +300,7 @@ func TestMissingAndDuplicateMessageIDs(t *testing.T) {
 }
 
 // SyncAll must detect every folder in one pass. Looping Sync would work, and
-// would quietly cost one LIST-STATUS round trip per folder — turning the
+// would quietly cost one LIST-STATUS round trip per folder, turning the
 // O(folders) design into O(folders) round trips, which is the thing ADR-0006
 // exists to avoid.
 func TestSyncAllUsesOneDetectionPass(t *testing.T) {
@@ -333,7 +333,7 @@ func TestSyncAllUsesOneDetectionPass(t *testing.T) {
 		t.Errorf("INBOX: %d rows, want 1", len(rows))
 	}
 	if rows, _ := m.Rows("primary", "INBOX/Feed", 10); len(rows) != 1 {
-		t.Errorf("INBOX/Feed: %d rows, want 1 — an unwatched box was not mirrored", len(rows))
+		t.Errorf("INBOX/Feed: %d rows, want 1: an unwatched box was not mirrored", len(rows))
 	}
 }
 
@@ -362,7 +362,7 @@ func TestSyncAllSurvivesOneBadFolder(t *testing.T) {
 		total += len(rows)
 	}
 	if total != 1 {
-		t.Errorf("mirrored %d messages, want 1 — the good folder did not survive", total)
+		t.Errorf("mirrored %d messages, want 1: the good folder did not survive", total)
 	}
 }
 

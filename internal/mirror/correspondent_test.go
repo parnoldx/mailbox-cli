@@ -29,7 +29,7 @@ func seedCorrespondents(t *testing.T) *Mirror {
 
 	add("older@x", `"Jamie Roe" <jamie@example.com>`, "me@example.com", "",
 		time.Date(2026, 8, 1, 9, 0, 0, 0, time.UTC))
-	// A later mail from the same address, with a name for the first time —
+	// A later mail from the same address, with a name for the first time,
 	// the name should stick, and last_seen should move to this one.
 	add("newer@x", "jamie@example.com", "me@example.com", `"Ana Silva" <ana@example.com>`,
 		time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC))

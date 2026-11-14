@@ -32,8 +32,8 @@ type kindOf struct {
 // appointment on the wrong calendar and "add milk" on the work list are both
 // worse than being asked which.
 //
-// Every error here is a usage error — the caller named a collection that is not
-// there, or did not name one when they had to — so they carry their own Code
+// Every error here is a usage error, the caller named a collection that is not
+// there, or did not name one when they had to, so they carry their own Code
 // and a handler can hand them straight to Response.failed.
 func (d *Daemon) pick(k kindOf, name string) (mirror.Collection, error) {
 	all, err := d.Mirror.Collections(d.Primary.Name, k.kind)
@@ -68,7 +68,7 @@ func (d *Daemon) pick(k kindOf, name string) (mirror.Collection, error) {
 	for _, c := range open {
 		names = append(names, c.Name)
 	}
-	return mirror.Collection{}, usageErr("there are %d %ss — name one with %s: %s",
+	return mirror.Collection{}, usageErr("there are %d %ss, name one with %s: %s",
 		len(open), k.noun, k.flag, strings.Join(names, ", "))
 }
 
@@ -93,8 +93,8 @@ func (d *Daemon) collectionOf(o mirror.Object) (mirror.Collection, error) {
 // against the Mirror before anything is sent, so a stale id fails as the
 // not_found it is rather than as a server error about a href.
 //
-// noun is what the thing is called when the id names nothing — "todo", "event",
-// "contact" — which is the message a caller sees most often, an id from a
+// noun is what the thing is called when the id names nothing, "todo", "event",
+// "contact", which is the message a caller sees most often, an id from a
 // listing that has since been synced away.
 func (d *Daemon) load(req Request, noun string) (mirror.Object, mirror.Collection, error) {
 	if d.DAVWriter == nil {
@@ -116,7 +116,7 @@ func (d *Daemon) load(req Request, noun string) (mirror.Object, mirror.Collectio
 }
 
 // objectID reads the Mirror id a command was given. noun is what the thing is
-// called in the error — "event", "todo", "contact" — because the same reader
+// called in the error, "event", "todo", "contact", because the same reader
 // serves all three and being told an event id is wanted for a `todo done` is
 // the sort of small lie that costs somebody a minute.
 func objectID(req Request, noun string) (int64, error) {

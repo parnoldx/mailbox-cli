@@ -51,7 +51,7 @@ func TestTheDaemonTakesTheSocketSystemdGivesIt(t *testing.T) {
 
 // A socket anyone can open is a mailbox anyone can read. It is bound under a
 // private name and only given the real one once it is already 0600, so there is
-// no window to connect through — this pins the 0600 and the real path down, and
+// no window to connect through, this pins the 0600 and the real path down, and
 // Listen's own code is what keeps the window shut.
 func TestTheSocketIsPrivateAndAtItsOwnPath(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "mailbox.sock")

@@ -25,8 +25,8 @@ type PickupRef struct {
 // ponytail: a LIKE over the flags column, no index. A Pickup lives about
 // fifteen minutes and there are a handful a day, so this scans a few rows out
 // of a few thousand once a minute. If it ever needs to be a real query it wants
-// the bubble_at treatment — a projected column written wherever flags are
-// (ADR-0023) — but a column would be four times the code for no measurable
+// the bubble_at treatment, a projected column written wherever flags are
+// (ADR-0023), but a column would be four times the code for no measurable
 // difference at this size.
 func (m *Mirror) Pickups(account string) ([]PickupRef, error) {
 	rows, err := m.db.Query(`

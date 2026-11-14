@@ -2,8 +2,8 @@ package mirror
 
 // Removing an Account or a Collection is a prune, not a rebuild. Deleting the
 // whole Mirror file would also work and is the wrong tool: ADR-0013 is about a
-// schema change, and using it here would cold-start every other account —
-// minutes of refetching — to forget one.
+// schema change, and using it here would cold-start every other account,
+// minutes of refetching, to forget one.
 
 // ForgetCollection drops a Collection and everything on it.
 //
@@ -34,7 +34,7 @@ func (m *Mirror) ForgetCollection(account, url string) error {
 // mail in it may already have gone out.
 // ForgetFolder drops one Box and everything in it: its placements, the
 // messages only it held, and its sync state. The prune that goes with
-// discovery — a Box the server no longer offers (deleted in webmail, or thrown
+// discovery, a Box the server no longer offers (deleted in webmail, or thrown
 // into Trash with its folder) leaves the Mirror here instead of haunting
 // search as a ghost.
 func (m *Mirror) ForgetFolder(account, folder string) error {
@@ -88,7 +88,7 @@ func (m *Mirror) FolderNames(account string) ([]string, error) {
 }
 
 // KeepFolders prunes the Mirror down to the Boxes discovery still offers. A
-// folder that left the server — deleted in webmail, or inside Trash — is
+// folder that left the server, deleted in webmail, or inside Trash, is
 // forgotten here, so no listing or search keeps seeing it.
 func (m *Mirror) KeepFolders(account string, keep []string) error {
 	held, err := m.FolderNames(account)

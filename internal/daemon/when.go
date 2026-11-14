@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-// Reading the dates a caller types. Every command that takes one — --due,
-// --start, --end, --date — accepts the same spellings, so they are read in one
+// Reading the dates a caller types. Every command that takes one, --due,
+// --start, --end, --date, accepts the same spellings, so they are read in one
 // place: a date that works on `todo add` and not on `event add` is a difference
 // nobody would guess at.
 
@@ -53,7 +53,7 @@ func dueDate(req Request) (time.Time, bool, error) {
 }
 
 func dueError(raw string) error {
-	return fmt.Errorf("--due takes 2026-09-01, 2026-09-01 17:00, today, or tomorrow — got %q", raw)
+	return fmt.Errorf("--due takes 2026-09-01, 2026-09-01 17:00, today, or tomorrow, got %q", raw)
 }
 
 // eventTime reads one of --start or --end. Which spelling was given decides
@@ -82,7 +82,7 @@ func habitDate(req Request) (time.Time, error) {
 	}
 	t, err := time.ParseInLocation("2006-01-02", raw, time.Local)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("--date takes a date like 2026-08-29, or today, or yesterday — got %q", raw)
+		return time.Time{}, fmt.Errorf("--date takes a date like 2026-08-29, or today, or yesterday, got %q", raw)
 	}
 	return t, nil
 }
@@ -112,7 +112,7 @@ func atHour(day time.Time, hour int) time.Time {
 }
 
 // comingWeekday is the next target weekday on or after from. strict pushes a
-// match on from itself to the following week — "next Monday" said on a Monday
+// match on from itself to the following week, "next Monday" said on a Monday
 // is not today.
 func comingWeekday(from time.Time, target time.Weekday, strict bool) time.Time {
 	delta := (int(target) - int(from.Weekday()) + 7) % 7

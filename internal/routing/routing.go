@@ -4,7 +4,7 @@
 // decision to change it is in the daemon.
 //
 // The script is the record. There is no local list of senders that the server
-// is brought into line with — there is one script on the server, and what the
+// is brought into line with, there is one script on the server, and what the
 // Mirror holds beside it is a projection of what that script says (the same
 // rule as ADR-0010).
 package routing
@@ -61,7 +61,7 @@ type spec struct {
 	// lands is where mail already sitting in the Screener is moved to. It is
 	// the same Box as files, and empty for Block: a blocked sender's mail is
 	// not filed anywhere, it is marked read and binned. The Block Box outlives
-	// that as the drop target a phone drags into — what is emptied out of it is
+	// that as the drop target a phone drags into, what is emptied out of it is
 	// the record that the drag was processed.
 	lands string
 	// seen marks the mail read on arrival. Paper Trail and Feed are piles to
@@ -172,7 +172,7 @@ func ParseDestination(word string) (Destination, error) {
 }
 
 // Lists is the Routing: which sender goes where. One address has at most one
-// Destination, because the script cannot express two — the first matching rule
+// Destination, because the script cannot express two, the first matching rule
 // wins and the second is text nothing reaches.
 type Lists struct {
 	by map[string]Destination
@@ -320,7 +320,7 @@ func ValidDomain(key string) bool {
 }
 
 // AddressOf pulls the address out of a From header. The Mirror stores the
-// header as it was written — `Bob <bob@example.com>`, or several of those — and
+// header as it was written, `Bob <bob@example.com>`, or several of those, and
 // a decision is about the address, never about the name in front of it.
 func AddressOf(header string) string {
 	h := strings.TrimSpace(header)
@@ -455,7 +455,7 @@ var fileintoRe = regexp.MustCompile(`(?i)fileinto\s+"([^"]*)"`)
 
 // Parse reads the lists back out of a script. It is deliberately forgiving: the
 // script it has to read first is the one that is already on the account, and a
-// rule it cannot make sense of is skipped rather than failing the whole read —
+// rule it cannot make sense of is skipped rather than failing the whole read,
 // a Routing that cannot be read is a Routing that cannot be changed.
 //
 // A rule is identified by what it does, not by where it sits: the addresses in
@@ -492,7 +492,7 @@ func Parse(script string) *Lists {
 
 // actionAfter reads the block following a rule's address list and says which
 // list it is. The window stops at the end of the block, so that a rule with no
-// action of its own cannot borrow the next rule's — including the comment above
+// action of its own cannot borrow the next rule's, including the comment above
 // it, which is prose and says whatever it likes.
 func actionAfter(rest string) (Destination, bool) {
 	for _, end := range []string{"\n}", "\nif "} {
@@ -520,7 +520,7 @@ func actionAfter(rest string) (Destination, bool) {
 	}
 	// The catch-all rule at the end of the script files into the Screener. It
 	// carries no addresses, so it is only ever reached here by a rule that
-	// files somewhere this program does not route to — somebody else's rule,
+	// files somewhere this program does not route to, somebody else's rule,
 	// left alone.
 	return "", false
 }

@@ -33,8 +33,8 @@ type Outcome struct {
 	// of the folder and therefore did not refetch the body of.
 	Remapped int
 	// NewThreads is the Thread id of every conversation this cycle added a
-	// Message to. It is only filled on an incremental cycle — a resync places
-	// the whole folder and every Thread would look new — and it is what lets
+	// Message to. It is only filled on an incremental cycle, a resync places
+	// the whole folder and every Thread would look new, and it is what lets
 	// the Daemon pull a set-aside conversation back to the Inbox when a reply
 	// lands in it.
 	NewThreads []int64
@@ -46,7 +46,7 @@ type Outcome struct {
 	// decision (ADR-0024, which supersedes ADR-0019 for the Screener).
 	Added []PlacementDelta
 	Gone  []PlacementDelta
-	// Flagged is the placements whose flags this cycle changed — a mail read,
+	// Flagged is the placements whose flags this cycle changed, a mail read,
 	// starred or labelled in another client. It is Added and Gone's third: a
 	// watcher reports it as an update, and nothing else here needs it.
 	Flagged []PlacementDelta
@@ -219,7 +219,7 @@ func (r *Reconciler) resync(ctx context.Context, folder string, remote FolderSta
 }
 
 // incremental applies what changed since our modseq: flags, then new messages,
-// then — only if the count disagrees — the uid diff that finds expunges.
+// then, only if the count disagrees, the uid diff that finds expunges.
 func (r *Reconciler) incremental(ctx context.Context, folder string, local mirror.FolderState, remote FolderStatus, plan Plan) (Outcome, error) {
 	out := Outcome{Action: ActionIncremental}
 
@@ -366,7 +366,7 @@ func (r *Reconciler) incremental(ctx context.Context, folder string, local mirro
 
 // place writes each envelope as a Message plus a Placement, and reports which
 // uids still need their text fetched. A Message whose body the Mirror already
-// holds is counted as remapped and not refetched — that is what makes a
+// holds is counted as remapped and not refetched, that is what makes a
 // UIDVALIDITY change cost an envelope pass rather than a body pass.
 func (r *Reconciler) place(tx *mirror.Tx, folder string, envs []Envelope, out *Outcome) ([]uint32, map[uint32]int64, error) {
 	var wantBodies []uint32

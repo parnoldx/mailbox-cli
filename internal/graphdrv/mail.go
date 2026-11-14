@@ -38,7 +38,7 @@ type Mail struct {
 func NewMail(c *Client, s *Store) *Mail { return &Mail{c: c, s: s} }
 
 // wellKnown are the folders Graph names the same in every language. A folder's
-// display name is localised — "Posteingang" — so these are recognised by id and
+// display name is localised, "Posteingang", so these are recognised by id and
 // given the names the rest of the program uses for them. An empty name is a
 // folder that is not mail anybody reads.
 var wellKnown = []struct{ graph, name string }{
@@ -207,7 +207,7 @@ func (g graphMessage) header(name string) string {
 }
 
 // flags is what a message looks like as IMAP flags. A category is a keyword
-// when it could be one — `$bubbled`, `bubble-20260927T0800` — and is otherwise
+// when it could be one, `$bubbled`, `bubble-20260927T0800`, and is otherwise
 // Outlook's own ("Red category") and kept out of the Mirror.
 func (g graphMessage) flags() []string {
 	var out []string
@@ -562,7 +562,7 @@ func imapPath(path []int) string {
 }
 
 // StoreFlags implements mailsync.Driver. \Seen is isRead, \Flagged is the
-// follow-up flag, and any other keyword is an Outlook category — which is how
+// follow-up flag, and any other keyword is an Outlook category, which is how
 // a bubble's timer lives on the server where both Daemons can see it
 // (ADR-0031). The categories Outlook put there are kept.
 func (m *Mail) StoreFlags(ctx context.Context, folder string, uids []uint32, add, remove []string) ([]mailsync.FlagUpdate, error) {
@@ -656,7 +656,7 @@ func (m *Mail) Move(ctx context.Context, folder string, uids []uint32, dest stri
 
 // Append implements mailsync.Driver: Graph takes a message as base64 MIME and
 // makes it a draft, which is then moved where it was meant to go. Nothing here
-// files a sent copy — Graph does that itself — so this is how a draft is saved.
+// files a sent copy, Graph does that itself, so this is how a draft is saved.
 func (m *Mail) Append(ctx context.Context, folder string, flags []string, raw []byte) (uint32, error) {
 	var g graphMessage
 	if err := m.c.do(ctx, request{method: http.MethodPost, path: "/me/messages",

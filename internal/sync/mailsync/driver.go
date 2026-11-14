@@ -36,7 +36,7 @@ type Envelope struct {
 	InternalDate time.Time
 	Size         int64
 	// ListUnsubscribe and ListUnsubscribePost are RFC 2369 / RFC 8058, raw and
-	// unparsed — what the unsubscribe package turns into a Target. Fetched
+	// unparsed, what the unsubscribe package turns into a Target. Fetched
 	// alongside References on the same header section (ADR-0008's reasoning
 	// applies here too: one more field costs nothing on a FETCH already open).
 	ListUnsubscribe     string
@@ -83,7 +83,7 @@ const (
 	// neither does this.
 	EventChanged EventKind = iota
 	// EventExpunge is a message leaving the folder, reported by the driver as a
-	// uid — it resolves the sequence number go-imap hands it using the seq->uid
+	// uid, it resolves the sequence number go-imap hands it using the seq->uid
 	// map it keeps for the selected folder.
 	EventExpunge
 )
@@ -126,7 +126,7 @@ type Driver interface {
 	// (ADR-0003).
 	FetchPart(ctx context.Context, folder string, uid uint32, path string) ([]byte, error)
 	// Append files a message we composed into a Box and returns the uid the
-	// server gave it — 0 from a server without UIDPLUS, which leaves the copy
+	// server gave it, 0 from a server without UIDPLUS, which leaves the copy
 	// to the next cycle to find (ADR-0004).
 	//
 	// Like Move, this is not retried on a dropped connection. An APPEND whose

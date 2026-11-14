@@ -152,7 +152,7 @@ func TestLiveScratchFolderWrites(t *testing.T) {
 
 // TestLiveRoutingRules writes a Routing as inbox rules, reads it back and
 // puts whatever ours was before back in place. The Routing Boxes are made for
-// the run and deleted after — the same contract as the scratch folder: the
+// the run and deleted after, the same contract as the scratch folder: the
 // account is left with nothing the test made. Rules without the mailbox:
 // prefix are never touched (ADR-0032).
 func TestLiveRoutingRules(t *testing.T) {
@@ -163,7 +163,7 @@ func TestLiveRoutingRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Rules back first, boxes last — LIFO cleanup puts the record back before
+	// Rules back first, boxes last, LIFO cleanup puts the record back before
 	// the folders a rule still names go away.
 	boxes := []string{
 		routing.BoxScreener, routing.BoxFeed, routing.BoxPaperTrail, routing.BoxBlock,
@@ -195,7 +195,7 @@ func TestLiveRoutingRules(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := mail.SetRules(ctx, l.Rules()); err != nil {
-		t.Fatalf("SetRules: %v — the rules engine refused a rule this program writes", err)
+		t.Fatalf("SetRules: %v, the rules engine refused a rule this program writes", err)
 	}
 	got, err := mail.Rules(ctx)
 	if err != nil {

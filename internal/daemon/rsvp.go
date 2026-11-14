@@ -141,7 +141,7 @@ func (d *Daemon) inviteCardOf(ctx context.Context, acct *Account, folder string,
 }
 
 // inviteDay is the invite's calendar day. The invite is one block, at the
-// time the mail names, even when the calendar already has that UID — a moved
+// time the mail names, even when the calendar already has that UID, a moved
 // copy on the calendar is not what this mail is asking about. Declined and
 // cancelled entries are not on the day: they do not take the time.
 func (d *Daemon) inviteDay(in vcal.Invite, acct *Account) []dayBlock {
@@ -270,7 +270,7 @@ func (d *Daemon) inviteAnswer(uid string, acct *Account) string {
 // account's own address goes on that account's CalDAV; an invite to a mapped
 // work address goes on that calendar; anything else returns no name and the
 // list a chooser offers. A calendar list that cannot be read is an error,
-// not an empty list — an empty list reads as "no calendars", which is a lie
+// not an empty list, an empty list reads as "no calendars", which is a lie
 // about the account.
 func (d *Daemon) inviteTarget(in vcal.Invite, msgTo string, acct *Account) (string, []string, error) {
 	open, err := d.eventCalendars()
@@ -379,8 +379,8 @@ func (d *Daemon) lookupCalendarEmail(addr string) (string, bool) {
 }
 
 // emailsFromHeader is every address a To line names. Real mail sometimes
-// breaks RFC 5322 — Exchange writes display names like "Surname, Given"
-// unquoted, and the commas make the whole list unparseable — so a list that
+// breaks RFC 5322, Exchange writes display names like "Surname, Given"
+// unquoted, and the commas make the whole list unparseable, so a list that
 // will not parse still gives up the addresses a scan can see. Without that,
 // an invite to a broken To line loses the one address that would have said
 // which calendar it belongs on.

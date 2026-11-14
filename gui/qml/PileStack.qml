@@ -3,7 +3,7 @@ import QtQuick
 // One hand-tended pile as a card stack: a glyph that jumps to the pile's
 // bucket in full, then up to three cards stacked newest-on-top, each older
 // one peeking out just a few pixels behind. Used twice along the bottom of
-// the Inbox — Reply Later and Set Aside — by BottomStacks.qml.
+// the Inbox, Reply Later and Set Aside, by BottomStacks.qml.
 Row {
     id: cl
     property var model
@@ -42,7 +42,7 @@ Row {
     // only one actually readable; each older one behind it peeks out by just
     // `peek` pixels, bottom-right, like a real stack of cards rather than a
     // row of them. You cannot tell which message a sliver belongs to, so
-    // tapping one jumps to the pile's bucket instead of guessing — same as
+    // tapping one jumps to the pile's bucket instead of guessing, same as
     // tapping the glyph. Only the front card opens its own message.
     readonly property int peek: 9
     Item {
@@ -53,7 +53,7 @@ Row {
             model: cl.cards
             Rectangle {
                 // cl.cards is built oldest-of-the-shown first, newest last, so
-                // the Repeater paints later indices on top — backness 0 is
+                // the Repeater paints later indices on top, backness 0 is
                 // the newest, drawn last, flush at the front.
                 readonly property int backness: cl.cards.length - 1 - index
                 readonly property bool front: backness === 0

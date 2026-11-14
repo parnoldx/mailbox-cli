@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// A server that greets, accepts LOGIN and then goes silent — the shape that
+// A server that greets, accepts LOGIN and then goes silent, the shape that
 // froze a real account for six hours on 2026-09-15: one APPEND answered by
 // nothing, its Wait parked on a socket that never speaks again. cmdCap must
 // make the Driver give up instead.
@@ -48,8 +48,8 @@ func TestAppendGivesUpWhenServerGoesSilent(t *testing.T) {
 	}
 }
 
-// serveSilent speaks just enough IMAP for Dial to get through — greeting,
-// LOGIN, CAPABILITY — and then goes silent on APPEND: no continuation, no
+// serveSilent speaks just enough IMAP for Dial to get through, greeting,
+// LOGIN, CAPABILITY, and then goes silent on APPEND: no continuation, no
 // tagged response, nothing. That silence is the whole point of this server.
 func serveSilent(ln net.Listener, t *testing.T) {
 	cert := selfSigned(t)
@@ -80,7 +80,7 @@ func serveSilent(ln net.Listener, t *testing.T) {
 					tc.Write([]byte(fields[0] + " OK logged in\r\n"))
 				case "CAPABILITY":
 					tc.Write([]byte("* CAPABILITY IMAP4rev1\r\n" + fields[0] + " OK done\r\n"))
-					// APPEND gets silence — no continuation, no reply.
+					// APPEND gets silence, no continuation, no reply.
 				}
 			}
 		}()

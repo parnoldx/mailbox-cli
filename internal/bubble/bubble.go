@@ -3,11 +3,11 @@
 //
 // The keyword is the whole coordination mechanism. It is attached to the
 // message, moves with it, and syncs like any other flag (labels are IMAP
-// keywords too — see mailsync.Writer.SetLabel). The home Daemon and the
+// keywords too, see mailsync.Writer.SetLabel). The home Daemon and the
 // always-on VPS Daemon both act on it without talking to each other: whichever
 // one gets there first returns the thread, and the other syncs the result and
 // finds nothing to do. This is ADR-0010's "raw is the record, the columns
-// beside it are a projection" applied once more — the projection is
+// beside it are a projection" applied once more, the projection is
 // placements.bubble_at (ADR-0010, ADR-0023).
 package bubble
 

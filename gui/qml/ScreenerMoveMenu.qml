@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import "Triage.js" as Triage
 
-// The "Move" step of a Screener decision — the destinations that are not
+// The "Move" step of a Screener decision, the destinations that are not
 // one-tap primaries. Block and "let into the Inbox" are the two things you do
 // most, so they stay on the surface; Feed, Paper Trail and Set aside live
 // behind this. Shared by the row menu (RowActions) and the reading-view
@@ -11,7 +11,7 @@ Menu {
     id: menu
 
     // The Screener message the decision acts on. Feed/Paper Trail are routes
-    // (the sender), Set aside is a pile move (this thread) — see win.routeId /
+    // (the sender), Set aside is a pile move (this thread), see win.routeId /
     // win.pileId.
     property string targetId: ""
 

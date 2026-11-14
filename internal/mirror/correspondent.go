@@ -2,7 +2,7 @@ package mirror
 
 import "strings"
 
-// Correspondent is one address the mailbox has actually exchanged mail with —
+// Correspondent is one address the mailbox has actually exchanged mail with,
 // the "seen in mail" layer of recipient autocomplete, behind the address book.
 type Correspondent struct {
 	Name  string

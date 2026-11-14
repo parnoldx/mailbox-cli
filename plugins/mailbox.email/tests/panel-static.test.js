@@ -43,7 +43,7 @@ test("Mail actions are wired in Panel.qml", () => {
 
 // The widget is a notification for new inbox mail and nothing else. Screening
 // is a decision owed when you next sit down, so it belongs to the desktop
-// client — a notification panel that also asks you to triage is two jobs.
+// client, a notification panel that also asks you to triage is two jobs.
 test("Panel.qml carries no screener UI at all", () => {
   // Only the header comment may still say the word, explaining the absence.
   const code = panelSrc.split("\n").filter(l => l.trim().indexOf("//") !== 0).join("\n")
@@ -69,7 +69,7 @@ test("Dynamic visibility is implemented in BarWidget.qml", () => {
 })
 
 // Unread inbox mail raises the icon, and so does a Pickup the daemon is still
-// holding — for a minute, and then only the panel's list is left. A Pickup can
+// holding, for a minute, and then only the panel's list is left. A Pickup can
 // never be counted as unread (the daemon marks it read when it takes the code
 // out), so without its own term the one thing that stops being useful in
 // minutes would be the one thing the bar never showed; and without the shorter

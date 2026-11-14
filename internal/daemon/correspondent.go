@@ -3,7 +3,7 @@ package daemon
 import "fmt"
 
 // correspondentHit is one address the mailbox has actually exchanged mail
-// with — the recipient autocomplete's fallback behind the address book.
+// with, the recipient autocomplete's fallback behind the address book.
 type correspondentHit struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`

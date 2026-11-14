@@ -12,7 +12,7 @@ import "Fuzzy.js" as Fuzzy
 //
 // In the Screener it is a different menu: a decision about the *sender*, not a
 // read about a mail. Two one-tap primaries (let in / block), a "Move to…" that
-// opens the rest (Feed, Paper Trail, Set aside), and Trash. No reply — you
+// opens the rest (Feed, Paper Trail, Set aside), and Trash. No reply, you
 // screen someone in before you answer them.
 Menu {
     id: menu
@@ -66,7 +66,7 @@ Menu {
     }
 
     // The row that opens a submenu is created by Controls itself, from this
-    // delegate — not by us — so without it the Bubble Up submenu below lands as
+    // delegate, not by us, so without it the Bubble Up submenu below lands as
     // an unstyled, empty item with a stray arrow floating under "Bubble up".
     // Same look as Action, with the arrow that says it opens onto something.
     delegate: MenuItem {
@@ -188,7 +188,7 @@ Menu {
         onTriggered: win.openLabelPicker(menu.row.id)
     }
 
-    // Move to an archive Box — the same move the Command Launcher's "Move to"
+    // Move to an archive Box, the same move the Command Launcher's "Move to"
     // pane does (win.moveId on the whole Thread), as a sideways submenu of the
     // row's own account's boxes. Fuzzy.moveBoxes drops the routing
     // Destinations (they have rows of their own above, and Screener/Aside
@@ -252,7 +252,7 @@ Menu {
             onObjectRemoved: (idx, item) => moveMenu.removeItem(item)
         }
     }
-    // Bubble Up is the one move that asks a second question — when. It opens
+    // Bubble Up is the one move that asks a second question, when. It opens
     // sideways as a submenu (the delegate above styles the row that opens it)
     // rather than popping a second menu over this one.
     BubbleMenu {

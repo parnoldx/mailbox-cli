@@ -147,7 +147,7 @@ func PriorityNumber(word string) (int, error) {
 	if n, err := strconv.Atoi(word); err == nil && n >= 0 && n <= 9 {
 		return n, nil
 	}
-	return -1, fmt.Errorf("--priority takes high, medium, low or none — got %q", word)
+	return -1, fmt.Errorf("--priority takes high, medium, low or none, got %q", word)
 }
 
 func setDue(c *ical.Component, due time.Time, isDate bool) {
@@ -212,7 +212,7 @@ func encode(cal *ical.Calendar) (string, error) {
 // calendar server that only understands VEVENT will hold it (ADR-0018).
 //
 // It is dated `on`, and that matters more than it looks. This server exposes
-// only a window of its calendars over CalDAV — roughly a year back — and an
+// only a window of its calendars over CalDAV, roughly a year back, and an
 // event outside it is stored, fetchable by URL, and reported by no listing at
 // all. An object anchored in 1990, which is what the program before this one
 // used, is invisible to every sync the moment it is written.
@@ -242,8 +242,8 @@ func NewEventObject(uid, summary, description string, on time.Time) (string, err
 //
 // Editing rather than rebuilding matters against a server that tracks changes
 // itself. Open-Xchange keeps SEQUENCE and LAST-MODIFIED on what it stored, and a
-// PUT of a freshly built object without them is refused as an outdated update —
-// `412`, with or without an If-Match — because from its side that is what it
+// PUT of a freshly built object without them is refused as an outdated update,
+// `412`, with or without an If-Match, because from its side that is what it
 // looks like.
 func SetDescription(raw, description string, on time.Time) (string, error) {
 	if on.IsZero() {
@@ -275,8 +275,8 @@ func Description(raw string) (string, error) {
 	return text, nil
 }
 
-// NewEvent builds an appointment. Unlike NewEventObject above — which is
-// storage that happens to be shaped like an event — this is something somebody
+// NewEvent builds an appointment. Unlike NewEventObject above, which is
+// storage that happens to be shaped like an event, this is something somebody
 // actually has on, so it is opaque and it keeps whatever times it was given.
 //
 // An all-day event is a DATE with an exclusive end, which is what every
@@ -323,7 +323,7 @@ type EventEdit struct {
 	// already there; RepeatNone takes it off.
 	Repeat string
 	// Alarms is the reminders, each so many minutes before the start. Nil
-	// leaves the ones that are there — they may be somebody else's client's —
+	// leaves the ones that are there, they may be somebody else's client's,
 	// and a non-nil empty slice takes every one of them off.
 	Alarms []int
 	// Teams makes the event a Microsoft 365 online meeting. There is no off:
@@ -412,7 +412,7 @@ func applyEvent(c *ical.Component, e EventEdit) error {
 }
 
 // SetOccurrence edits one instance of a repeating event and leaves the rule
-// and every other instance alone. named is the day — or the day and time — of
+// and every other instance alone. named is the day, or the day and time, of
 // the instance to change, matched against the instances the rule really
 // produces, so a day with nothing on it is an error rather than a silent
 // nothing. The change is written the way every calendar reads "this one
@@ -461,7 +461,7 @@ func setOccurrence(raw string, named time.Time, namedIsDay bool, e EventEdit, ex
 		setRecurrenceID(child, at, allDay)
 		// An override starts at its own slot. The master's DTSTART is the
 		// first instance's, and copying it would move this instance to the
-		// head of the series — so it is set here, and left to the edit when
+		// head of the series, so it is set here, and left to the edit when
 		// the edit names a start of its own.
 		if e.Start.IsZero() {
 			end := at.Add(duration)
@@ -490,7 +490,7 @@ func setOccurrence(raw string, named time.Time, namedIsDay bool, e EventEdit, ex
 
 // occurrenceSlot finds the start of the instance the caller named. The
 // candidates are the starts the rule produces around that day and the slots
-// of overrides already written — an instance moved once is named by the slot
+// of overrides already written, an instance moved once is named by the slot
 // it came from, not the day it now sits on. A bare date is enough when the
 // day holds one instance; with several, a clock is required.
 func occurrenceSlot(master *ical.Component, cal *ical.Calendar, named time.Time, namedIsDay bool) (time.Time, bool, error) {
@@ -577,7 +577,7 @@ func overrideOf(cal *ical.Calendar, at time.Time, allDay bool) *ical.Component {
 // everything the rule gave it and carries only what the edit changed. The
 // schedule and its exceptions belong to the master alone: an override
 // carrying DTSTART, DTEND, DURATION, the rule or an exception is not an
-// override. Multi-valued properties keep every value — a single ATTENDEE or
+// override. Multi-valued properties keep every value, a single ATTENDEE or
 // CATEGORY on the copy would silently drop the rest.
 func copyMaster(master *ical.Component) *ical.Component {
 	child := ical.NewComponent(ical.CompEvent)
@@ -599,7 +599,7 @@ func copyMaster(master *ical.Component) *ical.Component {
 
 // setRecurrenceID names the instance an override replaces, in the form the
 // master's start is written in: a DATE for an all-day event, and for a timed
-// one the same form the master's DTSTART has — the master's TZID, or floating
+// one the same form the master's DTSTART has, the master's TZID, or floating
 // when the master is floating. RFC 5545 expects the two to match, and other
 // clients match them as written rather than as instants.
 func setRecurrenceID(c *ical.Component, at time.Time, allDay bool) {
@@ -671,7 +671,7 @@ func Rule(spec string) (string, error) {
 	}
 	rule := strings.TrimSpace(strings.TrimPrefix(strings.ToUpper(spec), "RRULE:"))
 	if _, err := rrule.StrToROption(rule); err != nil {
-		return "", fmt.Errorf("--repeat takes %s, none, or a rule like FREQ=WEEKLY;BYDAY=MO — %q is neither (%v)",
+		return "", fmt.Errorf("--repeat takes %s, none, or a rule like FREQ=WEEKLY;BYDAY=MO, %q is neither (%v)",
 			strings.Join(repeatWords(), ", "), spec, err)
 	}
 	return rule, nil

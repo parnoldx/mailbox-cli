@@ -99,12 +99,12 @@ CREATE TABLE parts (
 
 -- Search is answered here and nowhere else: there is no fall-through to IMAP
 -- SEARCH (ADR-0009). The rowid is the message id, and the body column holds the
--- text a reader would see — the plain part, or the HTML rendered down to it, so
+-- text a reader would see, the plain part, or the HTML rendered down to it, so
 -- a query does not match on markup.
 CREATE VIRTUAL TABLE messages_fts USING fts5(subject, addresses, body);
 
 -- One CalDAV or CardDAV collection: one calendar, one task list, one address
--- book. Found by enumerating the server, never by a URL written down by hand —
+-- book. Found by enumerating the server, never by a URL written down by hand,
 -- that is how the address book ended up pointing at a 2-entry scratch list.
 CREATE TABLE dav_collections (
   id         INTEGER PRIMARY KEY,

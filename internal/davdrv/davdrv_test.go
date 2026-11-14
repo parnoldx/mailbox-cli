@@ -101,7 +101,7 @@ func TestCollectionsAreDiscoveredNotConfigured(t *testing.T) {
 }
 
 func TestAnUnknownHostIsRefusedRatherThanSentThePrimaryCredentials(t *testing.T) {
-	// A live host that no client was configured for — a Mirror row left over
+	// A live host that no client was configured for, a Mirror row left over
 	// after the calendar URL was edited in the config. It must not be dialled at
 	// all: the old fallback would have sent the primary account's Basic
 	// credentials there.
