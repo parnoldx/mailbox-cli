@@ -53,6 +53,23 @@ func TestSearchCorrespondentsMatchesEmailPrefix(t *testing.T) {
 	}
 }
 
+// A surname is typed as its own word, so the match cannot stop at the start of
+// the name: "roe" has to find "Jamie Roe", which is how the invite field is
+// used.
+func TestSearchCorrespondentsMatchesNameAnywhere(t *testing.T) {
+	m := seedCorrespondents(t)
+	hits, err := m.SearchCorrespondents("primary", "roe", 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 1 || hits[0].Email != "jamie@example.com" {
+		t.Fatalf("hits = %+v, want one jamie@example.com", hits)
+	}
+	if hits, err = m.SearchCorrespondents("primary", "example.com", 6); err != nil || len(hits) != 3 {
+		t.Errorf("domain match: %v, %+v", err, hits)
+	}
+}
+
 func TestSearchCorrespondentsMatchesNamePrefix(t *testing.T) {
 	m := seedCorrespondents(t)
 	hits, err := m.SearchCorrespondents("primary", "ana", 6)

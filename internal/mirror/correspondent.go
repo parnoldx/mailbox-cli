@@ -9,20 +9,22 @@ type Correspondent struct {
 	Email string
 }
 
-// SearchCorrespondents answers a prefix typed into the To/Cc/Bcc field with
+// SearchCorrespondents answers words typed into a recipient field with
 // addresses the mailbox has sent to or heard from, most recently corresponded
-// with first. It reads the correspondents cache kept warm by
-// Tx.upsertCorrespondents rather than parsing message headers here, so a
-// keystroke never pays for that.
-func (m *Mirror) SearchCorrespondents(account, prefix string, limit int) ([]Correspondent, error) {
-	prefix = strings.TrimSpace(prefix)
-	if prefix == "" {
+// with first. A word matches anywhere in the address or the name, not only at
+// the start: "roe" is how somebody looking for a surname types it, and a
+// prefix match on "roe@" alone would not find "Jamie Roe". It reads the
+// correspondents cache kept warm by Tx.upsertCorrespondents rather than
+// parsing message headers here, so a keystroke never pays for that.
+func (m *Mirror) SearchCorrespondents(account, query string, limit int) ([]Correspondent, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
 		return nil, nil
 	}
 	if limit <= 0 {
 		limit = 6
 	}
-	like := strings.ToLower(prefix) + "%"
+	like := "%" + strings.ToLower(query) + "%"
 	rows, err := m.db.Query(`
 		SELECT name, email FROM correspondents
 		WHERE account = ? AND (email LIKE ? OR name LIKE ? COLLATE NOCASE)
