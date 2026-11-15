@@ -65,6 +65,10 @@ type Daemon struct {
 	// PickupExpiry is how long a Pickup, mail the Daemon took a login code out
 	// of, waits before it is binned. Zero means DefaultPickupExpiry.
 	PickupExpiry time.Duration
+	// DirectoryEvery is how long a Microsoft 365 account's staff directory is
+	// kept before Graph is asked again. Zero means an hour: a new colleague
+	// should show up the same morning, and a keystroke never waits.
+	DirectoryEvery time.Duration
 	// FileeeAddress is where an "attachment fileee" send goes: fileee's whole
 	// integration is a file mailed to this one address. Empty refuses the send.
 	FileeeAddress string

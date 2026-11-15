@@ -29,8 +29,11 @@ import (
 // Group.ReadWrite.All is in it for the group calendars a Microsoft 365 account
 // is a member of, which live in the group's own mailbox and are refused without
 // it (measured: AADSTS65001 without the scope, and the tenant consented to
-// ReadWrite rather than Read, which is the superset).
-const Scopes = "offline_access User.Read Mail.ReadWrite Mail.Send MailboxSettings.ReadWrite Calendars.ReadWrite Contacts.ReadWrite OnlineMeetings.ReadWrite Group.ReadWrite.All"
+// ReadWrite rather than Read, which is the superset). User.ReadBasic.All is in
+// it for the org directory behind the calendar's invite picker: names and mail
+// of every colleague, and nothing else (measured: /users without it is
+// Authorization_RequestDenied, and /me/people needs People.Read instead).
+const Scopes = "offline_access User.Read Mail.ReadWrite Mail.Send MailboxSettings.ReadWrite Calendars.ReadWrite Contacts.ReadWrite OnlineMeetings.ReadWrite Group.ReadWrite.All User.ReadBasic.All"
 
 // Login is where the device-code flow is spoken; a test points it at a fake.
 var Login = "https://login.microsoftonline.com"

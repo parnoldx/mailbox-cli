@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	compose "mailbox/internal/message"
@@ -32,6 +33,16 @@ type Account struct {
 	// with no calendar entry. Nil on a non-Graph account: only Microsoft 365
 	// makes them, through the Teams server it fronts.
 	Meet func(ctx context.Context, subject string, start, end time.Time) (string, error)
+	// Directory lists the colleagues in the account's tenant, the org-wide
+	// people list an invite picker searches. Nil on a non-Graph account:
+	// there is no directory to read.
+	Directory func(ctx context.Context) ([]Colleague, error)
+	// directory is the last answer Directory gave, kept so a keystroke never
+	// waits on Graph. Guarded by directoryMu because two panels can search at
+	// once while the six-hour refresh is in flight.
+	directory   []Colleague
+	directoryAt time.Time
+	directoryMu sync.Mutex
 
 	Reconciler *mailsync.Reconciler
 	Writer     *mailsync.Writer

@@ -553,6 +553,20 @@ func buildGraph(ctx context.Context, name string, sec config.Account,
 	}
 	acct.Respond = graphdrv.NewDAV(g.client, g.store, name).Respond
 	acct.Meet = g.client.Meet
+	// The org directory is the driver's, adapted to the daemon's own row
+	// shape: the daemon does not import a driver, for the same reason Meet
+	// is a plain function there.
+	acct.Directory = func(ctx context.Context) ([]daemon.Colleague, error) {
+		people, err := g.client.Directory(ctx)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]daemon.Colleague, 0, len(people))
+		for _, p := range people {
+			out = append(out, daemon.Colleague{Name: p.Name, Email: p.Email})
+		}
+		return out, nil
+	}
 	acct.Courier = &outbox.Courier{Box: box, Account: name, Transport: drv, Log: logger}
 	logger.Printf("account %s: Microsoft 365, %d boxes", name, len(mirrored))
 	return acct, nil

@@ -41,6 +41,9 @@ type fakeGraph struct {
 	// groups are the groups the account belongs to, by id. A Unified one
 	// carries a calendar of its own, served under /groups/{id}.
 	groups map[string]map[string]any
+	// members is each group's user members, by group id: the colleagues the
+	// directory picker reads.
+	members map[string][]map[string]any
 	// softDeleted marks an event deleted in another client that Graph still
 	// knows about: a GET says 404 but a DELETE says 400, the item sitting
 	// unbound in the deletions folder.
@@ -83,6 +86,7 @@ func newFakeGraph(t *testing.T) (*fakeGraph, *Client) {
 		t: t, messages: map[string]*fakeMessage{}, events: map[string]map[string]any{},
 		instances: map[string][]map[string]any{}, contacts: map[string]map[string]any{},
 		gone: map[string]bool{}, softDeleted: map[string]bool{}, pageSize: 2,
+		members: map[string][]map[string]any{},
 		groups: map[string]map[string]any{
 			"g-team": {"displayName": "Team", "groupTypes": []any{"Unified"}},
 			"g-list": {"displayName": "Verteiler", "groupTypes": []any{}},
@@ -580,6 +584,8 @@ func (f *fakeGraph) groupRoutes(w http.ResponseWriter, r *http.Request, parts []
 		return
 	}
 	switch {
+	case len(parts) == 4 && parts[2] == "members" && parts[3] == "microsoft.graph.user":
+		f.writeJSON(w, map[string]any{"value": f.members[gid]})
 	case len(parts) == 5 && parts[2] == "calendar" && parts[3] == "calendarView" && parts[4] == "delta":
 		f.page(w, "g-"+gid, f.initial("g-"+gid), 0)
 	case len(parts) == 3 && parts[2] == "events" && r.Method == http.MethodPost:
