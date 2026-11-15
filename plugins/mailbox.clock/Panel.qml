@@ -6,11 +6,11 @@ import qs.Ui
 import "Model.js" as Model
 
 // The clock's calendar popup: a month grid with ISO week numbers, built to
-// sit beside the weather panel — same hero-over-detail composition, same
+// sit beside the weather panel, same hero-over-detail composition, same
 // spacing scale, same small-caps labels.
 //
 // The grid is a read-out rather than a picker: today is the only marked
-// day, and the only thing that moves is which month is on screen —
+// day, and the only thing that moves is which month is on screen,
 // chevrons, the scroll wheel, and the arrow keys all step it.
 //
 // BarWidget.qml owns the bar label and hands this panel the button to
@@ -30,7 +30,7 @@ Panel {
   property bool shiftHeld: false
   onOpenedChanged: if (!opened) shiftHeld = false
 
-  // The bar tracks the widget mounted in its slot — BarWidget.qml — not this
+  // The bar tracks the widget mounted in its slot, BarWidget.qml, not this
   // nested panel. Everything the bar identifies a panel by has to be that
   // widget: the popout coordinator (and with it the open-panel dot under the
   // pill) compares against `slot.activeItem`, and switchPanelFrom looks the
@@ -51,7 +51,7 @@ Panel {
   readonly property date viewDate: new Date(viewYear, viewMonth, 1)
   readonly property bool viewingCurrentMonth: viewYear === today.getFullYear() && viewMonth === today.getMonth()
 
-  // Pinned to today, not to the month being browsed — stepping through the
+  // Pinned to today, not to the month being browsed, stepping through the
   // calendar does not change how much of the year is gone.
   readonly property real yearDone: Model.yearProgress(today.getFullYear(), today.getMonth(), today.getDate())
   readonly property int yearDonePercent: Model.yearProgressPercent(today.getFullYear(), today.getMonth(), today.getDate())
@@ -90,7 +90,7 @@ Panel {
   //      this week" row per week, and it does not need one: a task with no
   //      due date, and a task whose due date has gone by, both belong to the
   //      work in front of you now. So there is one bucket, always the current
-  //      week's — the week holding the selected day, when that is this week.
+  //      week's, the week holding the selected day, when that is this week.
   //      Click into next week and the bucket is empty, because nothing has
   //      been carried into it yet. Tasks that do have a day ahead of them sit
   //      on that day instead, as a hollow ring in the cell.
@@ -146,7 +146,7 @@ Panel {
   readonly property bool editingEntry: root.editingEventId !== null || root.editingTaskId !== null
   property bool deleteConfirming: false
 
-  // The colour Omarchy's fastfetch logo is painted in — ANSI "green",
+  // The colour Omarchy's fastfetch logo is painted in, ANSI "green",
   // which is `green` in a named colors.toml and `color2` in an indexed
   // one. Today's cell is filled and ringed in it so the one date you look
   // for first carries the theme's signature highlight instead of the grey
@@ -185,8 +185,8 @@ Panel {
   // ---- Teams and invitees. The toggle and the pills only exist on a
   //      Microsoft 365 calendar (the roster's teams flag), because the
   //      daemon refuses the args anywhere else. teamsLocked is the event
-  //      already being a Teams meeting: there is no off for that — a
-  //      Microsoft 365 rule Outlook shares — so the switch shows on and
+  //      already being a Teams meeting: there is no off for that, a
+  //      Microsoft 365 rule Outlook shares, so the switch shows on and
   //      stops answering instead of offering a change that cannot happen.
   property bool formTeams: false
   property bool formTeamsLocked: false
@@ -206,12 +206,12 @@ Panel {
   // open because it has a value, so it never needs to be listed here.
   property var openRows: []
   // What the last parse put into each part. The phrase owns what it says;
-  // this is how the pane can tell a value the phrase put there — and has
-  // since dropped — from one typed into a row by hand, which another word in
+  // this is how the pane can tell a value the phrase put there, and has
+  // since dropped, from one typed into a row by hand, which another word in
   // the phrase must not wipe.
   property var nlApplied: ({})
 
-  // One value in the entry summary — the title, or a day or a time in the
+  // One value in the entry summary, the title, or a day or a time in the
   // when-card. Display mode is the value over a hairline; a click swaps it
   // for an inline field that takes the same words the phrase does.
   component SlotEdit: Item {
@@ -307,7 +307,7 @@ Panel {
   // The phrase field. A plain TextEdit does the editing but paints nothing;
   // a styled Text with identical font, width and wrapping sits exactly on
   // top of it and paints each parsed part in its own colour. Both run the
-  // same layout, so the two stay glyph-for-glyph aligned — which is why the
+  // same layout, so the two stay glyph-for-glyph aligned, which is why the
   // editor's own text and cursor are transparent and drawn by us instead.
   component PhraseField: Item {
     id: field
@@ -423,7 +423,7 @@ Panel {
 
   // Notes are the one part that runs past a line, so they get a box rather
   // than a field: five lines tall, scrolling once it is full. Enter puts in
-  // a newline here — Ctrl+Enter is what creates, since Enter everywhere else
+  // a newline here, Ctrl+Enter is what creates, since Enter everywhere else
   // in the pane means "create".
   component NotesField: Item {
     id: notes
@@ -571,7 +571,7 @@ Panel {
 
   // ---- One task, as a chip rather than a row: box, title, and a note only
   //      when there is one to make. Chips flow, so a week's worth of small
-  //      things takes one line instead of five — a to-do list is mostly two
+  //      things takes one line instead of five, a to-do list is mostly two
   //      and three word titles, and a full-width row each throws away the
   //      width the panel already has. Only a title too long for what is left
   //      of the line takes a line of its own.
@@ -581,7 +581,7 @@ Panel {
     // In the bucket a task has no day of its own, so the note says how late
     // it is instead of what time it is due.
     property bool bucket: false
-    // The widest the chip may be — the Flow's width, so one long title elides
+    // The widest the chip may be, the Flow's width, so one long title elides
     // on its own line instead of pushing the panel wider than the grid.
     property real maxWidth: parent ? parent.width : 0
 
@@ -589,7 +589,7 @@ Panel {
     readonly property color tint: (task && Model.safeColor(task.color)) || Color.accent
 
     // Measured off the texts' implicit widths, which do not depend on the
-    // widths handed back to them — so the chip sizes itself to its content
+    // widths handed back to them, so the chip sizes itself to its content
     // without the binding chasing its own tail.
     readonly property real noteReserve: taskNote.visible ? taskNote.implicitWidth + chip.spacing : 0
     readonly property real naturalWidth: taskBox.width + chip.spacing + taskTitle.implicitWidth + noteReserve
@@ -617,7 +617,7 @@ Panel {
         radius: Style.space(4)
         // Never drawn checked: ticking one takes it off the panel, so the
         // only box that exists is an empty one. The box is where the calendar
-        // colour lives — the same colour the todo's ring takes in the grid
+        // colour lives, the same colour the todo's ring takes in the grid
         // above. It is why the chips do not name their list: "Aufgaben" on
         // every one is a word you stop reading, and the colour says it
         // without taking the room to say it.
@@ -657,7 +657,7 @@ Panel {
         font.bold: !!(taskRow.task && taskRow.task.priority === "high")
         elide: Text.ElideRight
 
-        // Clicking the text opens the todo in the entry pane — the box next
+        // Clicking the text opens the todo in the entry pane, the box next
         // to it still just ticks it off.
         MouseArea {
           id: taskTitleMouse
@@ -774,7 +774,7 @@ Panel {
     }
   }
 
-  // One optional part of the entry — location, notes, alert, repeat,
+  // One optional part of the entry, location, notes, alert, repeat,
   // priority. The pill above opens it, the phrase opens it by mentioning it,
   // and the × takes the part back off the entry.
   component EntryRow: Item {
@@ -830,8 +830,8 @@ Panel {
   readonly property var calendarChoices: Model.calendarOptions(tbCalendars, entryKind)
   readonly property var calendarColorMap: Model.calendarColors(visibleEventList)
   // The roster row behind the calendar the pane has picked. The Teams gate
-  // reads off it — a Microsoft 365 events calendar is the only place the
-  // daemon takes the teams and invite args — and so does the owner domain
+  // reads off it, a Microsoft 365 events calendar is the only place the
+  // daemon takes the teams and invite args, and so does the owner domain
   // the invitee suggestions rank by.
   readonly property var pickedCalendar: {
     for (var i = 0; i < root.tbCalendars.length; i++)
@@ -839,7 +839,7 @@ Panel {
     return null
   }
   readonly property bool pickedCalendarTeams: !!(root.pickedCalendar && root.pickedCalendar.teams)
-  // Whether any calendar at all comes off Microsoft 365 — the gate for the
+  // Whether any calendar at all comes off Microsoft 365, the gate for the
   // standing meet-link button, so the icon is absent rather than an error
   // waiting to be clicked.
   readonly property bool hasTeamsCalendar: root.tbCalendars.some(function (c) { return !!c.teams })
@@ -847,7 +847,7 @@ Panel {
   readonly property string pickedCalendarOwner: root.pickedCalendar ? String(root.pickedCalendar.owner || "") : ""
 
   // ---- Phrase colours. Omarchy themes are near-monochrome, so the parts of
-  //      a phrase get hues of their own rather than shades of the accent —
+  //      a phrase get hues of their own rather than shades of the accent,
   //      the whole point is telling a date from a time from a calendar at a
   //      glance. Lightness follows the popup surface so both dark and light
   //      themes stay readable, and the calendar part borrows the colour
@@ -937,7 +937,7 @@ Panel {
 
   // ---- Address assist. Typing waits out a short pause before asking, so a
   //      word costs one request rather than one per keystroke, and only the
-  //      location row ever asks — the phrase is never sent anywhere.
+  //      location row ever asks, the phrase is never sent anywhere.
   function requestAddressSuggestions(text) {
     var query = String(text || "")
     if (!Model.shouldSuggestAddress(query)) { root.closeAddressSuggestions(); return }
@@ -974,8 +974,8 @@ Panel {
   }
 
   // ---- Invitee suggestions. Both searches go out at once per keystroke,
-  //      the way the mail composer's recipient field does — both are
-  //      Mirror reads, microseconds — and the second's answer is the one
+  //      the way the mail composer's recipient field does, both are
+  //      Mirror reads, microseconds, and the second's answer is the one
   //      shown, since it already contains the first's.
   function requestInviteeSuggestions(text) {
     var query = String(text || "").trim()
@@ -1047,8 +1047,8 @@ Panel {
   }
 
   // Keys in the invitee field. The list owns Up/Down, Enter and Esc while
-  // it is up, Enter adds a typed full address as-is, and anything else —
-  // including Enter on an empty field — falls through to the pane, where
+  // it is up, Enter adds a typed full address as-is, and anything else,
+  // including Enter on an empty field, falls through to the pane, where
   // Enter still means Create.
   function handleInviteeKey(event) {
     if (root.inviteeSuggestOpen) {
@@ -1075,15 +1075,15 @@ Panel {
     root.locationSuggestIndex = (root.locationSuggestIndex + delta + count) % count
   }
 
-  // A pick is the whole address as one line — street, number, postcode,
-  // city — which is what the calendar stores and what the travel-time lookup
+  // A pick is the whole address as one line, street, number, postcode,
+  // city, which is what the calendar stores and what the travel-time lookup
   // can geocode later.
   function takeAddressSuggestion(index) {
     var row = root.locationSuggestions[index === undefined ? root.locationSuggestIndex : index]
     if (!row) return false
     root.formLocation = row.value
     // Typing broke the field's binding to formLocation, as editing a
-    // TextField always does — so the pick is written to the field itself,
+    // TextField always does, so the pick is written to the field itself,
     // with the caret left after it rather than mid-address.
     if (locationField) {
       locationField.text = row.value
@@ -1094,7 +1094,7 @@ Panel {
   }
 
   // Keys in the location field. While the list is up it owns Up/Down, Enter
-  // and Esc — Enter picks an address rather than creating the entry, and Esc
+  // and Esc, Enter picks an address rather than creating the entry, and Esc
   // closes the list before it closes the pane.
   function handleLocationKey(event) {
     if (root.locationSuggestOpen) {
@@ -1108,7 +1108,7 @@ Panel {
     root.handleEntryKey(event)
   }
 
-  // Clicking a pill that already holds a value takes the part off again —
+  // Clicking a pill that already holds a value takes the part off again,
   // one switch, both directions.
   function toggleRow(name) {
     if (root.segmentValue(name) !== "") root.clearRow(name)
@@ -1118,8 +1118,8 @@ Panel {
 
   // ---- Calendars. The event roster and the task roster are different lists
   //      even where the server lets one collection hold both, so every path
-  //      that can set a calendar — the chooser, the phrase, a kind switch,
-  //      reopening the pane — runs the choice past the current kind.
+  //      that can set a calendar, the chooser, the phrase, a kind switch,
+  //      reopening the pane, runs the choice past the current kind.
   function calendarValidForKind(name) {
     if (!root.calendarChoices.length) return true
     for (var i = 0; i < root.calendarChoices.length; i++)
@@ -1190,7 +1190,7 @@ Panel {
   }
 
   function commitEndTime(text) {
-    // The first time typed into either chip is the start — an end on its own
+    // The first time typed into either chip is the start, an end on its own
     // has nothing to end.
     if (root.formStart === "") {
       root.commitStartTime(text)
@@ -1219,7 +1219,7 @@ Panel {
   // Tick a task off, or put it back. The box flips under the cursor before
   // the server has heard about it: a write round trip is a second or two,
   // and a checkbox that waits that long feels broken. The sync a moment later
-  // is what makes it true — and if the write failed, the task comes back
+  // is what makes it true, and if the write failed, the task comes back
   // unticked, which is the honest outcome rather than a lie that sticks.
   // The + on the bucket header becomes the field itself. Enter files the
   // todo and clears the field without closing it, because things you add
@@ -1227,7 +1227,7 @@ Panel {
   function openQuickTodo() {
     root.quickTodoOpen = true
     // The field is still invisible this frame, and an invisible item cannot
-    // take focus — same reason the life-expectancy fields defer it.
+    // take focus, same reason the life-expectancy fields defer it.
     Qt.callLater(function() {
       quickTodoField.text = ""
       quickTodoField.forceActiveFocus()
@@ -1310,7 +1310,7 @@ Panel {
     root.nlApplied = ({})
     // mergeEntryDraft falls back to whatever this already holds whenever
     // neither a typed phrase nor the draft names a date explicitly via a
-    // segment (fallbackDraft and draftFromAgendaEvent never do) — left
+    // segment (fallbackDraft and draftFromAgendaEvent never do), left
     // unset, a pane opened on one day would keep showing whatever day the
     // last pane was on.
     root.formDate = ""
@@ -1373,7 +1373,7 @@ Panel {
       // Teams and the invite list are detail-only too. They are written
       // straight on rather than through applyDraft, whose merge would read
       // an absent teams flag from an agenda-only draft as the phrase
-      // clearing them — the same reason notes and the link are patched in
+      // clearing them, the same reason notes and the link are patched in
       // above instead of merged.
       root.formTeams = !!detail.teams
       root.formTeamsLocked = !!detail.teamsLocked
@@ -1418,7 +1418,7 @@ Panel {
   }
 
   // The parse merged into what is on screen. Model.mergeEntryDraft owns the
-  // rules — the phrase wins where it speaks, hand edits stand where it is
+  // rules, the phrase wins where it speaks, hand edits stand where it is
   // silent, and everything derived counts as the phrase's so the next parse
   // can move it. The calendar is settled here rather than there, because only
   // the pane knows which collections the mirror offered.
@@ -1505,7 +1505,7 @@ Panel {
     }
   }
 
-  // What Create would write, or why it cannot — one build for the error line
+  // What Create would write, or why it cannot, one build for the error line
   // and the button, since two calls are two Date.now()s and twice the work.
   readonly property var entryCheck: Model.buildQuickAddRequest(root.assembleDraft(), Date.now(), root.pickedCalendar)
 
@@ -1533,7 +1533,7 @@ Panel {
         return
       }
       root.askCalendar()
-      // The daemon's notice — a Teams link that never came back, say — is
+      // The daemon's notice, a Teams link that never came back, say, is
       // the thing worth reading here, so it takes the status row and keeps
       // the pane open: the ✓ summary closes it on its timer, and a missing
       // join link should not be waved away with the pane.
@@ -1547,7 +1547,7 @@ Panel {
   }
 
   // The meet-link errand: mint a Teams link with no calendar entry and let
-  // the daemon put it on the clipboard and say so — the notification is the
+  // the daemon put it on the clipboard and say so, the notification is the
   // whole feedback, and it survives the panel closing. The status line below
   // the header exists for one case only: the daemon refused or was not
   // reachable, which must be visible somewhere, and outside the entry pane
@@ -1568,7 +1568,7 @@ Panel {
     onTriggered: root.meetStatus = ""
   }
 
-  // The delete button is a two-click confirm rather than a native dialog —
+  // The delete button is a two-click confirm rather than a native dialog,
   // Escape or clicking anywhere else in the pane backs out of it the same
   // way it backs out of everything else here.
   function deleteEditingEntry() {
@@ -1601,7 +1601,7 @@ Panel {
       else root.closeEntry()
       event.accepted = true
     } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-      // Enter anywhere in the entry pane means Create — the form always
+      // Enter anywhere in the entry pane means Create, the form always
       // mirrors exactly what would be written.
       root.commitEntry()
       event.accepted = true
@@ -1927,8 +1927,8 @@ Panel {
     return String(Qt.locale().dayName(weekday, Locale.ShortFormat)).replace(/\.$/, "").toUpperCase()
   }
 
-  // The daemon, as one object. Reads answer from the Mirror — instantly,
-  // offline — and every write is one request on the socket that already
+  // The daemon, as one object. Reads answer from the Mirror, instantly,
+  // offline, and every write is one request on the socket that already
   // holds the CalDAV session. The daemon pushes on change; the handler
   // below re-asks, so a calendar that moved anywhere is redrawn without
   // anybody clicking refresh.
@@ -2075,7 +2075,7 @@ Panel {
           spacing: Style.space(8)
 
           // ---- Hero: today, centered. Once the view has stepped back
-          //      it is also the way home — clicking the date you are
+          //      it is also the way home, clicking the date you are
           //      looking for beats hunting for a reset button.
           Item {
             width: parent.width
@@ -2453,7 +2453,7 @@ Panel {
                         // One mark per calendar with something on that day.
                         // Three is what fits under a day number, so a fourth
                         // calendar goes without one rather than crowding the
-                        // cell — the day list below still names everything.
+                        // cell, the day list below still names everything.
                         Row {
                           anchors.horizontalCenter: parent.horizontalCenter
                           anchors.bottom: parent.bottom
@@ -2599,7 +2599,7 @@ Panel {
                 )
 
                 // Opens the event for editing. Stops short of the join
-                // button's own area so the two clicks stay separate — one
+                // button's own area so the two clicks stay separate, one
                 // joins the meeting, the other edits the appointment.
                 MouseArea {
                   anchors.fill: parent
@@ -2677,7 +2677,7 @@ Panel {
                       : "󰌹"
                     // Recording is the default, so the label wears the
                     // theme's red until shift says this click will not
-                    // record — then it looks like every other day. A plain
+                    // record, then it looks like every other day. A plain
                     // link never records, so it always looks like a day.
                     color: !eventRow.isMeeting || root.shiftHeld
                       ? (joinMouse.containsMouse ? Color.background : Qt.darker(root.contentForeground, 1.2))
@@ -2717,7 +2717,7 @@ Panel {
               }
             }
 
-            // ---- "Sometime this week": everything with no day of its own —
+            // ---- "Sometime this week": everything with no day of its own,
             //      never given one, or given one that has gone by. Always the
             //      current week's, whatever month the grid is showing, because
             //      this is the list you opened the panel to see. It does not
@@ -2826,7 +2826,7 @@ Panel {
                     // Bare text on the panel, not a boxed input: the field
                     // stands where the chips do, and a filled control there
                     // would read as a different kind of thing from the list
-                    // it is adding to. Padding goes with the background —
+                    // it is adding to. Padding goes with the background,
                     // the component derives it from the border it is no
                     // longer drawing.
                     background: null
@@ -2855,8 +2855,8 @@ Panel {
               }
 
               // The one surface a meet-link failure has outside the entry
-              // pane. Success usually rides past unread — the daemon's
-              // notification is the real say-so — but an error that vanishes
+              // pane. Success usually rides past unread, the daemon's
+              // notification is the real say-so, but an error that vanishes
               // with the clipboard still empty is worse than none.
               Text {
                 visible: root.meetStatus !== ""
@@ -2909,7 +2909,7 @@ Panel {
         Keys.onPressed: function(event) { root.handleEntryKey(event) }
 
         // Keys are owned by the entry pane only when no dropdown popup is
-        // open — inside those, j/k/Enter belong to the option list.
+        // open, inside those, j/k/Enter belong to the option list.
         readonly property bool keysIdle:
           root.entryOpen && !calDropdown.popupOpen && !alertDropdown.popupOpen && !repeatDropdown.popupOpen && !priorityDropdown.popupOpen
 
@@ -2946,8 +2946,8 @@ Panel {
             spacing: Style.space(10)
 
             // Every row lines up on this. The entry pane runs wider than the
-            // month grid it slid in over — the pills only sit on one line if
-            // they get the pane's own width — so it takes the width back off
+            // month grid it slid in over, the pills only sit on one line if
+            // they get the pane's own width, so it takes the width back off
             // the pane rather than off the grid.
             readonly property real rowWidth: width - 2 * Style.space(40)
 
@@ -3005,7 +3005,7 @@ Panel {
               }
 
               // The calendar the entry lands in, in the colour the server
-              // gives it — the same dot the month grid paints on a day.
+              // gives it, the same dot the month grid paints on a day.
               Rectangle {
                 visible: calDropdown.visible
                 anchors.right: calDropdown.left
@@ -3020,8 +3020,8 @@ Panel {
               Dropdown {
                 id: calDropdown
                 visible: root.calendarChoices.length > 0
-                // An edit cannot move an entry to another calendar or list —
-                // the daemon has no verb for that — so the chooser goes
+                // An edit cannot move an entry to another calendar or list,
+                // the daemon has no verb for that, so the chooser goes
                 // read-only rather than offering a change that would be
                 // silently dropped.
                 enabled: !root.editingEntry
@@ -3119,7 +3119,11 @@ Panel {
                       "flight 15.3. 7:00-9:30          (date + range)\n" +
                       "party today 21:00 till 2:00     (past midnight)\n" +
                       "retreat till 25.8.              (multi-day)\n" +
+                      "trip friday to sunday           (a span)\n" +
+                      "standup every monday 9am        (repeat)\n" +
+                      "call in 20 min  /  friday evening\n" +
                       "workshop for 90m  /  -120       (duration)\n" +
+                      "call at half past three         (words)\n" +
                       "call https://zoom.us/j/9421     (meeting link)\n" +
                       "in Work  or  /Name              (calendar)"
                   fontFamily: root.contentFontFamily
@@ -3133,7 +3137,7 @@ Panel {
               visible: root.nlCalendarName !== "" && !root.calendarValidForKind(root.nlCalendarName)
               text: root.nlCalendarName
                 + (root.entryKind === "task" ? " takes events only" : " takes todos only")
-                + (root.formCalendar !== "" ? " — using " + root.formCalendar : "")
+                + (root.formCalendar !== "" ? ", using " + root.formCalendar : "")
               color: Qt.darker(root.contentForeground, 1.3)
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.bodySmall
@@ -3557,8 +3561,8 @@ Panel {
               anchors.horizontalCenter: parent.horizontalCenter
               spacing: Style.space(6)
 
-              // A Teams meeting stays one — there is no off, a Microsoft
-              // 365 rule Outlook behaves the same about — so the locked
+              // A Teams meeting stays one, there is no off, a Microsoft
+              // 365 rule Outlook behaves the same about, so the locked
               // pill says why it no longer answers.
               Text {
                 id: teamsHint
@@ -3588,8 +3592,8 @@ Panel {
                     Repeater {
                       model: root.formInvitees
 
-                      // One pill per invitee: the answer mark — ✓ accepted,
-                      // ? tentative, ✗ declined, · no answer — then the
+                      // One pill per invitee: the answer mark, ✓ accepted,
+                      // ? tentative, ✗ declined, · no answer, then the
                       // name or the address, and a ✕ that takes them off.
                       // The answer came with `event view`; it is a reading,
                       // not an editing, so the pill only removes.
@@ -3763,7 +3767,7 @@ Panel {
             }
 
             // Deleting is a click that arms it and a second click that
-            // does it — no native dialog, same as everything else here,
+            // does it, no native dialog, same as everything else here,
             // but a mistaken single click must not be the whole story.
             Button {
               visible: root.editingEntry

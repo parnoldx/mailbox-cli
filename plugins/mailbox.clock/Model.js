@@ -35,8 +35,8 @@ var CLOCK_FORMATS = [
 // ring stays short. AM/PM costs a fourth line, which is why only the plain
 // time carries it here.
 var VERTICAL_CLOCK_FORMATS = [
-  "HH\n—\nmm",
-  "h\n—\nmm\nAP",
+  "HH\n,\nmm",
+  "h\n,\nmm\nAP",
   "dd\nMMM\n'W'ww\n''yy",
   "HH\nmm"
 ]
@@ -192,7 +192,7 @@ function ageFromBirthYear(birthYear, currentYear) {
   return Math.round(Number(currentYear)) - born
 }
 
-// 0 means "not set" — the life bar simply stays hidden.
+// 0 means "not set", the life bar simply stays hidden.
 function parseAge(value) {
   return parseWholeNumber(value, 1, 120, 0)
 }
@@ -306,10 +306,10 @@ function dateFromKey(dateKey, fallback) {
 //      a month grid cannot place them the way it places events. Every task is
 //      sorted into one of three places instead:
 //
-//        "day"  — due today or later: it sits on its due date, like an event
-//        "week" — no due date, or due before today: it belongs to the loose
+//        "day" , due today or later: it sits on its due date, like an event
+//        "week", no due date, or due before today: it belongs to the loose
 //                 pile of work for the current week
-//        "done" — finished: it is drawn nowhere. Ticking a todo takes it off
+//        "done", finished: it is drawn nowhere. Ticking a todo takes it off
 //                 the panel, which is the whole reward for doing it; a struck
 //                 line hanging around is just the list refusing to shrink.
 //
@@ -392,7 +392,7 @@ function weekStartKeyOf(key, weekStart) {
 // later of its own week and this one. And that is always this one: a task
 // with a week of its own still ahead of it has a due date, which makes it a
 // task with a day, drawn on that day. So the bucket has content on the
-// current week and on no other — clicking into next week shows what is
+// current week and on no other, clicking into next week shows what is
 // actually planned for it, not this week's leftovers showing up again under
 // every row of the month.
 function weekTasksFor(tasks, weekKey, todayKey, weekStart) {
@@ -670,7 +670,7 @@ function eventDisplayTime(event) {
 }
 
 // A link is supplied by whoever sent the invitation, so treating it as
-// trusted input would be a mistake. http as well as https — the entry pane
+// trusted input would be a mistake. http as well as https, the entry pane
 // lets a link be typed by hand, and refusing to open what it just stored
 // would be the odder of the two. Every other scheme stays out: this string
 // is handed to a browser.
@@ -738,8 +738,8 @@ function meetingUrlFor(event) {
 }
 
 // A room to join rather than a page to read. Same host rule meetingUrlIn
-// applies: a link on an unknown host — the pool's homepage sitting in the
-// URL field — is a document, and gets a Link button, never a Join.
+// applies: a link on an unknown host, the pool's homepage sitting in the
+// URL field, is a document, and gets a Link button, never a Join.
 function isMeetingUrl(url) {
   var text = safeUrl(url)
   if (!text || isCalendarFileUrl(text)) return false
@@ -747,93 +747,419 @@ function isMeetingUrl(url) {
   return MAILBOX_MEETING_HOST.test(host)
 }
 
-// ---- Natural-language quick-add. Bilingual by table, not by setting: EN
-//      and DE keywords are matched simultaneously, so "lunch mit Ana morgen
-//      12:30" parses the same way either language wins a token. The start
-//      day is never parsed from the text — it comes from the day the user
-//      right-clicked — so the grammar only adds times, ends and flags on top
-//      of it.
+// ---- Natural-language quick-add -------------------------------------------
+//
+// One line of typing becomes a draft. The reading is a scanner over a folded
+// copy of the text (lower case, umlauts flattened, same length), so a pattern
+// matches the same phrase whatever the spelling, and every offset it finds is
+// still an offset into what the user typed. What a pattern accepts is blanked
+// out of both copies: the blanks are the runs the entry field paints in their
+// role colour, and what no read took is the title, in the user's own spelling.
+// `nlTake` walks every match of a pattern until the reader accepts one, and
+// `nlSnapshot`/`nlRestore` let a read put back what it took when the rest of
+// its phrase does not hold. `nlTakeAdjacent` is the same for a phrase that has
+// to sit right after the word that introduced it ("till morgen", not "till"
+// plus a date three words later).
+//
+// The reading order is the grammar: flags, calendar, repeat, relative, time
+// ranges, till, days, day part, times, durations, place. An earlier read owns
+// the words it needs, which is why "15.3." is a date before "15.3" could be a
+// time, and why "every monday" hands the weekday to the day read and only
+// takes the "every".
+//
+// The scanner shape (a folded copy of the same length, blanks, take with
+// snapshot/restore) is the one in tmn73/omarchy-calendar's QuickAddParser
+// (MIT); the vocabulary, the draft and the colours are this widget's own.
+var NL_FOLDED_LETTERS = {
+  "ä": "a", "á": "a", "à": "a", "â": "a", "ã": "a", "å": "a",
+  "é": "e", "è": "e", "ê": "e", "ë": "e",
+  "í": "i", "ì": "i", "î": "i", "ï": "i",
+  "ó": "o", "ò": "o", "ô": "o", "õ": "o", "ö": "o", "ø": "o",
+  "ú": "u", "ù": "u", "û": "u", "ü": "u",
+  "ç": "c", "ñ": "n"
+}
+
+// Full names always count as a day. A two or three letter one ("so", "mi",
+// "fr") is also an ordinary word, so it only counts with a day word in front
+// of it ("next fr", "bis fr") or a time right after it ("fr 9:00").
 var NL_WEEKDAYS = [
-  { index: 0, names: ["sunday", "sonntag", "so."] },
-  { index: 1, names: ["monday", "montag", "mo."] },
-  { index: 2, names: ["tuesday", "dienstag", "di."] },
-  { index: 3, names: ["wednesday", "mittwoch", "mi."] },
-  { index: 4, names: ["thursday", "donnerstag", "do."] },
-  { index: 5, names: ["friday", "freitag", "fr."] },
-  { index: 6, names: ["saturday", "samstag", "sonnabend", "sa."] }
+  { index: 0, names: ["sunday", "sonntag"], shorts: ["sun", "so"] },
+  { index: 1, names: ["monday", "montag"], shorts: ["mon", "mo"] },
+  { index: 2, names: ["tuesday", "dienstag"], shorts: ["tue", "tues", "di"] },
+  { index: 3, names: ["wednesday", "mittwoch"], shorts: ["wed", "mi"] },
+  { index: 4, names: ["thursday", "donnerstag"], shorts: ["thu", "thur", "thurs", "do"] },
+  { index: 5, names: ["friday", "freitag"], shorts: ["fri", "fr"] },
+  { index: 6, names: ["saturday", "samstag", "sonnabend"], shorts: ["sat", "sa"] }
+]
+
+// Folded spellings: "März" arrives as "marz", "Mär." as "mar".
+var NL_MONTHS = [
+  ["january", "januar", "jan"],
+  ["february", "februar", "feb"],
+  ["march", "marz", "mar"],
+  ["april", "apr"],
+  ["may", "mai"],
+  ["june", "juni", "jun"],
+  ["july", "juli", "jul"],
+  ["august", "aug"],
+  ["september", "sept", "sep"],
+  ["october", "oktober", "oct", "okt"],
+  ["november", "nov"],
+  ["december", "dezember", "dec", "dez"]
 ]
 
 var NL_WORDS = {
   today: ["today", "heute"],
   tomorrow: ["tomorrow", "morgen"],
-  next: ["next", "nächste", "nächsten", "nächster", "kommende", "kommenden", "kommender"],
-  till: ["till", "until", "bis"],
-  for: ["for", "für"],
+  next: ["next", "nachste", "nachsten", "nachster", "kommende", "kommenden", "kommender",
+    "nächste", "nächsten", "nächster"],
+  nextWeek: ["next week", "nachste woche", "nachsten woche", "kommende woche"],
+  till: ["till", "until", "bis", "through", "thru", "to"],
   place: ["at", "bei", "beim"]
+}
+
+// Words that introduce the day they sit in front of. Only these let a short
+// weekday name through on their own.
+var NL_DAY_LEAD_WORDS = ["on", "am", "by", "bis", "till", "until", "to", "through",
+  "von", "from", "the", "den", "dem"]
+
+// Repeats by our own presets, folded. "every monday" is not here: it is an
+// "every" plus a day, and the day read owns the weekday.
+var NL_REPEAT_PHRASES = {
+  daily: ["every day", "everyday", "each day", "daily", "jeden tag", "taglich"],
+  weekly: ["every week", "each week", "weekly", "jede woche", "jeden woche", "wochentlich"],
+  monthly: ["every month", "each month", "monthly", "jeden monat", "jedes monat", "monatlich"],
+  yearly: ["every year", "each year", "yearly", "annually", "jedes jahr", "jeden jahr", "jahrlich"]
+}
+// As the first word these name the event ("Weekly review"), not a repeat.
+var NL_REPEAT_TITLE_WORDS = ["daily", "weekly", "monthly", "yearly"]
+var NL_EVERY_WORDS = ["every", "each", "jeden", "jede", "jedes", "jeder", "alle"]
+
+// Where a day part starts, in minutes after midnight. A phrase in
+// NL_DAY_PART_PHRASES always counts; a bare word only right after the day it
+// belongs to ("friday evening"), so "Morning run" keeps its title.
+var NL_DAY_PART_START = { morning: 9 * 60, afternoon: 14 * 60, evening: 19 * 60 }
+var NL_DAY_PART_PHRASES = {
+  morning: ["this morning", "in the morning", "morgens", "vormittags", "in der fruh"],
+  afternoon: ["this afternoon", "in the afternoon", "nachmittags", "am nachmittag"],
+  evening: ["this evening", "tonight", "tonite", "at night", "abends", "am abend", "heute nacht"]
+}
+var NL_DAY_PART_WORDS = {
+  morning: ["morning", "vormittag", "fruh"],
+  afternoon: ["afternoon", "nachmittag"],
+  evening: ["evening", "night", "abend", "nacht"]
+}
+
+// A time as written: "9:30", "9.30", "9am", "9 Uhr", "9uhr". A bare "9" is
+// only a time with a preposition in front of it, or inside a till phrase.
+var NL_CLOCK = "\\d{1,2}:\\d{2}|\\d{1,2}\\.\\d{2}|\\d{1,2}\\s?(?:am|pm)|\\d{1,2}\\s?uhr"
+var NL_CLOCK_SIDE = "\\d{1,2}(?::\\d{2})?\\s?(?:am|pm)?"
+var NL_AMOUNT = "(?:\\d+\\s?(?:m|min|mins|minuten?|h|hr|hrs|std|stunden?|stunde)"
+  + "|half an hour|eine halbe stunde|halbe stunde|an hour|eine stunde|one hour)"
+var NL_RELATIVE_UNIT = "min|mins|minute|minuten|m|h|std|stunde|stunden|hr|hrs|hour|hours"
+  + "|tag|tage|tagen|day|days"
+
+// Hours written out, for "half past three" and "drei Uhr". Folded spellings.
+var NL_HOUR_WORDS = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  eleven: 11, twelve: 12,
+  ein: 1, eins: 1, eine: 1, zwei: 2, drei: 3, vier: 4, funf: 5, sechs: 6, sieben: 7, acht: 8,
+  neun: 9, zehn: 10, elf: 11, zwolf: 12
+}
+var NL_HOUR_ALT = nlAlternation(Object.keys(NL_HOUR_WORDS))
+
+function nlAlternation(list) {
+  var words = list.slice().sort(function (a, b) { return b.length - a.length })
+  return "(?:" + words.join("|") + ")"
+}
+
+function nlWeekdayWords(kind) {
+  var words = []
+  for (var i = 0; i < NL_WEEKDAYS.length; i++)
+    words = words.concat(NL_WEEKDAYS[i][kind])
+  return words
+}
+
+function nlMonthWords() {
+  var words = []
+  for (var i = 0; i < NL_MONTHS.length; i++) words = words.concat(NL_MONTHS[i])
+  return words
+}
+
+var NL_WEEKDAY_ALT = nlAlternation(nlWeekdayWords("names").concat(nlWeekdayWords("shorts")))
+var NL_WEEKDAY_FULL_ALT = nlAlternation(nlWeekdayWords("names"))
+var NL_WEEKDAY_SHORT = nlWeekdayWords("shorts")
+var NL_MONTH_ALT = nlAlternation(nlMonthWords())
+var NL_DAY_LEAD_ALT = nlAlternation(NL_DAY_LEAD_WORDS.concat(NL_WORDS.next))
+
+var NL_PATTERNS = {
+  // Flags, in the order they can be confused with one another.
+  calendarFlag: /\s(\/[^\s]+)(?=\s)/,
+  alertFlag: /\s(-a\d+[mhd])(?=\s)/,
+  repeatFlag: /\s(-r\d+[dwmy])(?=\s)/,
+  durationFlag: /\s-(\d+)(m|min|h|std)?(?=\s)/,
+  priorityFlag: /\s(!{1,3})(?=\s)/,
+  link: /\s(https?:\/\/[^\s]+)(?=\s)/,
+
+  // A calendar by the name the mirror gave it, after "in"/"im" only, so
+  // "12:30 in Café Central" stays a location.
+  calendarName: /\s(?:in|im)\s([^\s]+)(?=\s)/,
+
+  repeatPhrase: new RegExp("\\s(" + nlAlternation(nlWordsOf(NL_REPEAT_PHRASES)) + ")(?=\\s)"),
+  every: new RegExp("\\s" + nlAlternation(NL_EVERY_WORDS) + "(?=\\s)"),
+  weekdayAfter: new RegExp("^\\s(?:(?:" + NL_DAY_LEAD_ALT + ")\\s+)?(" + NL_WEEKDAY_ALT + ")(?=\\s)"),
+
+  relative: new RegExp("\\s(?:in)\\s(\\d{1,2})\\s?(" + NL_RELATIVE_UNIT + ")(?=\\s)"),
+  now: /\s(?:now|jetzt)(?=\s)/,
+
+  clockRange: new RegExp("\\s(?:(?:" + NL_DAY_LEAD_ALT + "|um|at|von|from|das|ab|entre|@)\\s)?("
+    + NL_CLOCK_SIDE + ")\\s?(?:to|bis|till|until|[-\u2013])\\s?(" + NL_CLOCK_SIDE + ")(?:\\s?uhr)?(?=\\s)"),
+
+  till: new RegExp("\\s" + nlAlternation(NL_WORDS.till) + "(?=\\s)"),
+  clock: new RegExp("\\s(" + NL_CLOCK + ")(?=\\s)"),
+  clockPrefixed: new RegExp("\\s(?:(?:um|at|von|from|@)\\s)?(" + NL_CLOCK + ")(?=\\s)"),
+  bareHour: /\s(\d{1,2})(?=\s)/,
+  bareHourPrefixed: /\s(?:um|at|von|from|@)\s(\d{1,2})(?=\s)/,
+  // "half past three", "quarter to four", "halb vier", "drei Uhr". The hour
+  // word needs the phrase around it: a bare "four" is a title word.
+  wordClock: new RegExp("\\s(?:(?:um|at|@)\\s)?(?:(half past|quarter past|quarter to|halb|viertel nach|viertel vor)\\s("
+    + NL_HOUR_ALT + ")|(\\d{1,2}|" + NL_HOUR_ALT + ")\\s?(?:o'clock|oclock|uhr))(?=\\s)"),
+  noon: /\s(noon|mittag)(?=\s)/,
+
+  isoDate: /\s(?:(?:am|on|den)\s)?(\d{4})-(\d{1,2})-(\d{1,2})(?=\s)/,
+  dayMonth: /\s(?:(?:am|on|den)\s)?(\d{1,2})\.(\d{1,2})\.?(?:\s?(20\d{2}))?(?=\s)/,
+  dayMonthName: new RegExp("\\s(\\d{1,2})\\.?\\s*(" + NL_MONTH_ALT + ")(?:\\s(\\d{4}))?(?=\\s)"),
+  monthDay: new RegExp("\\s(" + NL_MONTH_ALT + ")\\s(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s(\\d{4}))?(?=\\s)"),
+  dayAfterTomorrow: /\s(?:day after tomorrow|ubermorgen)(?=\s)/,
+  tomorrow: /\s(?:tomorrow|morgen)(?=\s)/,
+  today: /\s(?:today|heute)(?=\s)/,
+  yesterday: /\s(?:yesterday|gestern)(?=\s)/,
+  nextWeek: new RegExp("\\s" + nlAlternation(NL_WORDS.nextWeek) + "(?=\\s)"),
+  weekday: new RegExp("\\s(?:(?:" + NL_DAY_LEAD_ALT + ")\\s+)?(" + NL_WEEKDAY_ALT + ")(?=\\s)"),
+  // The same, with the day word in front of the name kept apart: "next
+  // friday" is a week on, "on friday" is not.
+  weekdayLead: new RegExp("\\s((?:" + NL_DAY_LEAD_ALT + "))\\s+(" + NL_WEEKDAY_ALT + ")(?=\\s)"),
+  // "mondays", "freitags": the adverbial form is a weekly repeat on that day.
+  weekdayPlural: new RegExp("\\s(?:(?:on|am|an)\\s)?(" + NL_WEEKDAY_FULL_ALT + ")s(?=\\s)"),
+  monthDayOnly: /\s(?:am|on the|den)\s(\d{1,2})(?:st|nd|rd|th)?\.?(?=\s)/,
+  weekend: /\s(?:this|next|am|dieses|kommendes)\s(?:weekend|wochenende)(?=\s)/,
+
+  dayPartPhrase: new RegExp("\\s(" + nlAlternation(nlWordsOf(NL_DAY_PART_PHRASES)) + ")(?=\\s)"),
+  dayPartWord: new RegExp("\\s(" + nlAlternation(nlWordsOf(NL_DAY_PART_WORDS)) + ")(?=\\s)"),
+
+  durationPrefixed: new RegExp("\\s(?:for|fur)\\s(" + NL_AMOUNT + ")(?=\\s)"),
+  durationPlain: /\s(\d+)\s?(m|min|mins|minuten?|h|hr|hrs|std|stunden?|stunde)(?=\s)/
+}
+
+// Every word of a { key: [words] } table, in one list.
+function nlWordsOf(table) {
+  var words = []
+  for (var key in table) words = words.concat(table[key])
+  return words
+}
+
+// The key of `table` whose list holds `phrase`.
+function nlKeyOf(phrase, table) {
+  for (var key in table)
+    if (table[key].indexOf(phrase) !== -1) return key
+  return null
+}
+
+// Lower case, umlauts flattened, sentence punctuation turned into word
+// breaks. Same length as the input, always: "1,5h" and "14:30" keep their
+// comma and colon, "morgen," loses its.
+function nlFold(text) {
+  var lower = text.toLowerCase()
+  if (lower.length !== text.length) lower = text
+  return lower.replace(/[^\x00-\x7f]/g, function (c) { return NL_FOLDED_LETTERS[c] || c })
+    .replace(/[;?()\[\]"]/g, " ")
+    .replace(/[.,:](?=\s|$)/g, " ")
+}
+
+function nlScanner(text) {
+  var padded = " " + text + " "
+  var roles = []
+  for (var i = 0; i < padded.length; i++) roles.push(null)
+  return {
+    original: padded,
+    folded: " " + nlFold(text) + " ",
+    roles: roles,
+    lastFrom: -1,
+    lastTo: -1,
+    // Set by a day read that is also a rule ("freitags").
+    weekdayRepeat: false
+  }
+}
+
+function nlSnapshot(scanner) {
+  return { original: scanner.original, folded: scanner.folded, lastFrom: scanner.lastFrom, lastTo: scanner.lastTo }
+}
+
+function nlRestore(scanner, saved) {
+  scanner.original = saved.original
+  scanner.folded = saved.folded
+  scanner.lastFrom = saved.lastFrom
+  scanner.lastTo = saved.lastTo
+}
+
+function nlBlank(scanner, from, to) {
+  var spaces = new Array(to - from + 1).join(" ")
+  scanner.original = scanner.original.substring(0, from) + spaces + scanner.original.substring(to)
+  scanner.folded = scanner.folded.substring(0, from) + spaces + scanner.folded.substring(to)
+}
+
+// Marks a stretch of the folded text as playing `role`. Coordinates are the
+// padded ones the scanner works in.
+function nlNoteRange(scanner, from, to, role) {
+  for (var i = Math.max(0, from); i < Math.min(to, scanner.roles.length); i++) scanner.roles[i] = role
+}
+
+// The phrase `take` or `peek` accepted last.
+function nlNote(scanner, role) {
+  nlNoteRange(scanner, scanner.lastFrom, scanner.lastTo, role)
+}
+
+// Where a phrase ends in what was typed. The fold turns a sentence full stop
+// into a space, so a match can stop one character short of the dot that closed
+// it ("15.3."); the dot belongs to the phrase, not to the title.
+function nlPhraseEnd(scanner, index) {
+  var end = index
+  while (end < scanner.original.length && /[.,;:]/.test(scanner.original.charAt(end))) end += 1
+  return end
+}
+
+// Finds `pattern` (which starts with a whitespace character) anywhere in the
+// folded text and hands each match, and where it starts, to `read` until one
+// is accepted (anything but null); only that one is blanked out.
+function nlTake(scanner, pattern, read) {
+  for (var offset = 0; ; ) {
+    var match = scanner.folded.substring(offset).match(pattern)
+    if (!match) return null
+    var at = offset + match.index
+    var value = read(match, at)
+    if (value !== null && value !== undefined) {
+      var end = nlPhraseEnd(scanner, at + match[0].length)
+      scanner.lastFrom = at + 1
+      scanner.lastTo = end
+      nlBlank(scanner, at + 1, end)
+      return value
+    }
+    offset = at + 1
+  }
+}
+
+// The same, but only where the phrase actually starts at `from`: the word
+// the previous take ended in front of. "till" takes what follows it, never a
+// date three words down the line.
+function nlTakeAdjacent(scanner, from, pattern, read) {
+  if (from < 0 || from >= scanner.folded.length) return null
+  var match = scanner.folded.substring(from).match(pattern)
+  if (!match || match.index !== 0) return null
+  var value = read(match, from)
+  if (value === null || value === undefined) return null
+  var end = nlPhraseEnd(scanner, from + match[0].length)
+  scanner.lastFrom = from + 1
+  scanner.lastTo = end
+  nlBlank(scanner, from + 1, end)
+  return value
+}
+
+// Reads a phrase without blanking it: the word plays a role but stays in the
+// title, because it is also an ordinary word ("mittag" is both lunch and noon).
+function nlPeek(scanner, pattern, read) {
+  var match = scanner.folded.match(pattern)
+  if (!match) return null
+  var value = read(match, match.index)
+  if (value === null || value === undefined) return null
+  scanner.lastFrom = match.index + 1
+  scanner.lastTo = match.index + match[0].length
+  return value
+}
+
+// The text no read took, as tokens with their offsets in what was typed. A
+// token that is nothing but punctuation is what a blanked phrase left behind
+// ("Flight to Berlin [15.3]."), so it goes with the phrase.
+function nlLeftover(scanner) {
+  var all = []
+  var out = []
+  var scan = /\S+/g
+  var found
+  while ((found = scan.exec(scanner.original)) !== null) {
+    var token = { text: found[0], from: found.index - 1, to: found.index + found[0].length - 1 }
+    all.push(token)
+    if (!/^[.,;:!?]+$/.test(token.text)) out.push(token)
+  }
+  return out.length ? out : all
+}
+
+// The colours, one run per role, whitespace between two runs of the same role
+// included, "next monday" is one date, not two words that happen to agree.
+function nlSegments(scanner) {
+  var out = []
+  var last = null
+  for (var i = 0; i < scanner.roles.length; i++) {
+    var role = scanner.roles[i]
+    if (role === null) continue
+    if (last && last.role === role) last.end = i
+    else {
+      last = { start: i - 1, end: i, role: role }
+      out.push(last)
+    }
+  }
+  return mergeSegments(out)
+}
+
+function nlWeekdayIndex(word) {
+  var text = String(word || "").toLowerCase()
+  for (var i = 0; i < NL_WEEKDAYS.length; i++)
+    if (NL_WEEKDAYS[i].names.indexOf(text) !== -1 || NL_WEEKDAYS[i].shorts.indexOf(text) !== -1)
+      return NL_WEEKDAYS[i].index
+  return -1
+}
+
+function nlMonthIndex(word) {
+  var text = String(word || "").toLowerCase()
+  for (var i = 0; i < NL_MONTHS.length; i++)
+    if (NL_MONTHS[i].indexOf(text) !== -1) return i
+  return -1
 }
 
 function nlIs(word, group) {
   return NL_WORDS[group].indexOf(String(word || "").toLowerCase()) !== -1
 }
 
-function nlWeekdayIndex(word) {
-  var text = String(word || "").toLowerCase()
-  for (var i = 0; i < NL_WEEKDAYS.length; i++)
-    if (NL_WEEKDAYS[i].names.indexOf(text) !== -1) return NL_WEEKDAYS[i].index
-  return -1
-}
-
-// Strict times need an anchor — a colon, an am/pm suffix, a following
-// "uhr", or the noon words — so a bare "15" stays part of the title.
-function nlParseStrictTime(tokens, i) {
-  var token = String(tokens[i] || "").toLowerCase().replace(/[,.;]$/, "")
-  if (token === "noon" || token === "mittag") return { minutes: 12 * 60, used: 1 }
-
-  var match = /^(\d{1,2})(?:[:.](\d{2}))?(am|pm)?$/.exec(token)
-  if (!match) return null
-  var hours = parseInt(match[1], 10)
-  var minutes = match[2] ? parseInt(match[2], 10) : 0
-  var meridiem = match[3] || ""
-  var anchored = !!match[2] || !!meridiem
-
-  var used = 1
-  if (!anchored && i + 1 < tokens.length && String(tokens[i + 1]).toLowerCase() === "uhr") {
-    anchored = true
-    used = 2
-  } else if (!anchored && !meridiem && token.indexOf("uhr") === token.length - 3 && /\d+uhr/.test(token)) {
-    // "10uhr" written as one word.
-    anchored = true
-    hours = parseInt(/^(\d+)/.exec(token)[1], 10)
-  }
-  if (!anchored) return null
-
-  if (meridiem === "pm" && hours < 12) hours += 12
-  if (meridiem === "am" && hours === 12) hours = 0
-  if (hours > 24 || minutes > 59) return null
-  return { minutes: hours * 60 + minutes, used: used }
-}
-
 function nlTimeLabel(minutesOfDay) {
   return pad2(Math.floor(minutesOfDay / 60)) + ":" + pad2(minutesOfDay % 60)
 }
 
-// One side of a range: bare hour or hh:mm, minutes optional. Used for
-// "12-13", "12 to 13" and friends — deliberately looser than the strict
-// time matcher, because the range dash or connector supplies the anchor.
-function nlRangeSide(text) {
-  var match = /^(\d{1,2})(?:[:.](\d{2}))?$/.exec(String(text || "").toLowerCase())
-  if (!match) return null
-  var hours = parseInt(match[1], 10)
-  var minutes = match[2] ? parseInt(match[2], 10) : 0
-  if (hours > 23 || minutes > 59) return null
-  return hours * 60 + minutes
+function nlValidDay(year, month, day) {
+  var date = new Date(year, month, day)
+  return date.getFullYear() === year && date.getMonth() === month && date.getDate() === day ? date : null
 }
 
-// Words that join two times into a range: "to", plus the till family,
-// which doubles as an end marker when no start time precedes it.
-function nlConnector(text) {
-  var token = String(text || "").toLowerCase().replace(/[,.;]$/, "")
-  return token === "to" || nlIs(token, "till") ? token : null
+function nlOffset(date, days) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days)
+}
+
+// A date given without a year means the next time it comes round.
+function nlUpcoming(today, month, day, year) {
+  if (year !== undefined && year !== null && year !== "") {
+    var y = parseInt(year, 10)
+    return nlValidDay(y < 100 ? 2000 + y : y, month, day)
+  }
+  var date = nlValidDay(today.getFullYear(), month, day)
+  if (date && date < today) date = nlValidDay(today.getFullYear() + 1, month, day)
+  return date
+}
+
+// "am 15.": this month, or the next month that has that day once it has gone.
+function nlNextMonthDay(today, day) {
+  for (var ahead = 0; ahead <= 12 && day >= 1 && day <= 31; ahead++) {
+    var month = new Date(today.getFullYear(), today.getMonth() + ahead, 1)
+    var candidate = nlValidDay(month.getFullYear(), month.getMonth(), day)
+    if (candidate && candidate >= today) return candidate
+  }
+  return null
 }
 
 // Next occurrence of a weekday on or after the base day (same day counts:
@@ -844,8 +1170,8 @@ function nlNextWeekday(base, weekday) {
   return d
 }
 
-// A single day word — "today", "morgen", a weekday name, "15.3." or an ISO
-// date — as a Date, or null when the word is not one of those. `next` pushes
+// A single day word, "today", "morgen", a weekday name, "15.3." or an ISO
+// date, as a Date, or null when the word is not one of those. `next` pushes
 // a named weekday or an explicit date a week on; "next today" is not a thing,
 // so the relative words ignore it.
 function nlDayFrom(word, base, next) {
@@ -888,6 +1214,43 @@ function nlExplicitDate(text, baseYear) {
   return null
 }
 
+// A clock as written ("9:30", "9.30", "9am", "9 Uhr", "9uhr"), in minutes
+// after midnight, or null. A bare hour is no clock: it needs a preposition,
+// a range or a till phrase to say it is one.
+function nlClockMinutes(phrase) {
+  var text = String(phrase === undefined || phrase === null ? "" : phrase)
+    .toLowerCase().replace(/\s+/g, "").replace(/uhr$/, "")
+  var match = /^(\d{1,2})(?:[:.](\d{2}))?(am|pm)?$/.exec(text)
+  if (!match) return null
+  var hours = parseInt(match[1], 10)
+  var minutes = match[2] ? parseInt(match[2], 10) : 0
+  if (match[3] === "pm" && hours < 12) hours += 12
+  if (match[3] === "am" && hours === 12) hours = 0
+  if (hours > 24 || minutes > 59) return null
+  return hours * 60 + minutes
+}
+
+// "45m", "2h", "2 h", "half an hour", "eine halbe stunde": minutes, or null.
+function nlDurationMinutes(phrase) {
+  var text = String(phrase || "").trim()
+  if (/^(?:half an hour|halbe stunde|eine halbe stunde)$/.test(text)) return 30
+  if (/^(?:an hour|eine stunde|one hour)$/.test(text)) return 60
+  var match = /^(\d+)\s?(.*)$/.exec(text)
+  if (!match) return null
+  var unit = match[2]
+  return parseInt(match[1], 10) * (/^(?:h|hr|hrs|std|stunde|stunden)$/.test(unit) ? 60 : 1)
+}
+
+// "20 min", "2 hours", "3 days": minutes from now, or null.
+function nlRelativeMinutes(number, unit) {
+  var count = parseInt(number, 10)
+  if (!(count > 0)) return null
+  if (/^(?:min|mins|minute|minuten|m)$/.test(unit)) return count
+  if (/^(?:h|std|stunde|stunden|hr|hrs|hour|hours)$/.test(unit)) return count * 60
+  if (/^(?:tag|tage|tagen|day|days)$/.test(unit)) return count * 24 * 60
+  return null
+}
+
 function emptyDraft(kind, dayKey) {
   return {
     kind: kind,
@@ -907,7 +1270,7 @@ function emptyDraft(kind, dayKey) {
     priority: null,
     link: null,
     // Teams and invites only mean something on a Microsoft 365 calendar, so
-    // they stay empty until one is picked — buildQuickAddRequest gates them
+    // they stay empty until one is picked, buildQuickAddRequest gates them
     // on the roster row, and requestToArgs sends only what is there.
     teams: false,
     // An event that is already a Teams meeting stays one: there is no off
@@ -919,9 +1282,298 @@ function emptyDraft(kind, dayKey) {
   }
 }
 
-// Everything the natural-language path can express, in one flat object the
-// form reads and edits. `knownCalendars` (from the mirror's own list) lets
-// bare "in Work" resolve without the slash-flag syntax.
+
+// ---- The reads. Each takes what it understands out of the scanner and hands
+//      back the value the draft wants; the caller paints the role.
+
+function nlReadFlags(scanner, draft) {
+  var name = nlTake(scanner, NL_PATTERNS.calendarFlag, function (m, at) {
+    return scanner.original.substring(at + 1, at + m[0].length).replace(/^\//, "").replace(/[,.;]$/, "")
+  })
+  if (name !== null) {
+    draft.calendarName = name
+    nlNote(scanner, "calendar")
+  }
+
+  var alert = nlTake(scanner, NL_PATTERNS.alertFlag, function (m, at) {
+    return scanner.original.substring(at + 1, at + m[0].length).toLowerCase()
+  })
+  if (alert !== null) {
+    var alertUnit = alert.charAt(alert.length - 1)
+    draft.alertMinutes = parseInt(alert.replace(/[^\d]/g, ""), 10)
+      * (alertUnit === "d" ? 1440 : alertUnit === "h" ? 60 : 1)
+    nlNote(scanner, "alert")
+  }
+
+  var repeat = nlTake(scanner, NL_PATTERNS.repeatFlag, function (m, at) {
+    return scanner.original.substring(at + 1, at + m[0].length).toLowerCase()
+  })
+  if (repeat !== null) {
+    var repeatUnit = repeat.charAt(repeat.length - 1)
+    draft.recurrence = {
+      freq: repeatUnit === "d" ? "daily" : repeatUnit === "w" ? "weekly" : repeatUnit === "m" ? "monthly" : "yearly",
+      interval: parseInt(repeat.replace(/[^\d]/g, ""), 10)
+    }
+    nlNote(scanner, "repeat")
+  }
+
+  var length = nlTake(scanner, NL_PATTERNS.durationFlag, function (m, at) {
+    return scanner.original.substring(at + 1, at + m[0].length).toLowerCase()
+  })
+  if (length !== null) {
+    var lengthUnit = (length.replace(/^-\d+/, "").charAt(0) || "m")
+    draft.durationMinutes = parseInt(length.replace(/[^\d]/g, ""), 10) * (lengthUnit === "h" ? 60 : 1)
+    nlNote(scanner, "duration")
+  }
+
+  var priority = nlTake(scanner, NL_PATTERNS.priorityFlag, function (m) { return m[1].length })
+  if (priority !== null) {
+    draft.priority = priority === 1 ? "low" : priority === 2 ? "medium" : "high"
+    nlNote(scanner, "priority")
+  }
+
+  // A pasted meeting link is a part of its own: it never belongs in the
+  // title, and the bar's join button reads it back off the created event.
+  var link = nlTake(scanner, NL_PATTERNS.link, function (m, at) {
+    return safeLinkUrl(scanner.original.substring(at + 1, at + m[0].length).replace(/[),.;]+$/, ""))
+  })
+  if (link !== null) {
+    draft.link = link
+    nlNote(scanner, "link")
+  }
+}
+
+// A calendar named after "in"/"im", but only one the mirror actually has, so
+// "12:30 in Café Central" stays a location. A prefix of a real name counts.
+function nlReadCalendarName(scanner, draft, knownCalendars) {
+  if (!knownCalendars || !knownCalendars.length) return
+  var name = nlTake(scanner, NL_PATTERNS.calendarName, function (m) {
+    var probe = m[1]
+    for (var i = 0; i < knownCalendars.length; i++) {
+      var folded = String(knownCalendars[i] || "").toLowerCase()
+      if (!folded) continue
+      if (folded === probe || (probe.length >= 2 && folded.indexOf(probe) === 0)) return knownCalendars[i]
+    }
+    return null
+  })
+  if (name !== null) {
+    draft.calendarName = name
+    nlNote(scanner, "calendar")
+  }
+}
+
+// "every monday" takes only the "every" and returns true, so the day read can
+// still see the weekday and the event lands on the right day. A preset phrase
+// ("every day", "weekly") sets the rule itself and returns false.
+function nlReadRepeat(scanner, draft) {
+  var preset = nlTake(scanner, NL_PATTERNS.repeatPhrase, function (m, at) {
+    var phrase = m[1]
+    if (at === 0 && NL_REPEAT_TITLE_WORDS.indexOf(phrase) !== -1) return null
+    return nlKeyOf(phrase, NL_REPEAT_PHRASES)
+  })
+  if (preset !== null) {
+    draft.recurrence = { freq: preset, interval: 1 }
+    nlNote(scanner, "repeat")
+    return false
+  }
+  var every = nlTake(scanner, NL_PATTERNS.every, function (m, at) {
+    return NL_PATTERNS.weekdayAfter.test(scanner.folded.substring(at + m[0].length)) ? true : null
+  })
+  if (every === null) return false
+  nlNote(scanner, "repeat")
+  return true
+}
+
+// "in 20 min", "in 2 hours", "in 3 days", "now": { at } for a start, { date }
+// for a day, or null.
+function nlReadRelative(scanner, now, base) {
+  var found = nlTake(scanner, NL_PATTERNS.relative, function (m) {
+    var minutes = nlRelativeMinutes(m[1], m[2])
+    if (minutes === null) return null
+    if (minutes < 1440) return { at: new Date(now.getTime() + minutes * 60000) }
+    return { date: nlOffset(new Date(base.getFullYear(), base.getMonth(), base.getDate()), Math.round(minutes / 1440)) }
+  })
+  if (found !== null) return found
+  return nlTake(scanner, NL_PATTERNS.now, function () { return { at: now } })
+}
+
+// "9am to 5pm", "12 bis 13 Uhr", "21-2", "von 12 bis 13": both sides in one
+// phrase, so a range can never be read as a start plus a stray end.
+function nlReadClockRange(scanner) {
+  return nlTake(scanner, NL_PATTERNS.clockRange, function (m) {
+    var from = nlClockMinutes(m[1])
+    var to = nlClockMinutes(m[2])
+    if (from === null || to === null) return null
+    return { start: from, end: to }
+  })
+}
+
+// The end of a till phrase: a clock as written, or the bare hour "till 11"
+// that only a till phrase may read as a time.
+function nlReadEndClock(scanner, from) {
+  var strict = nlTakeAdjacent(scanner, from, NL_PATTERNS.clock, function (m) { return nlClockMinutes(m[1]) })
+  if (strict !== null) return strict
+  return nlTakeAdjacent(scanner, from, NL_PATTERNS.bareHour, function (m) { return nlClockMinutes(m[1]) })
+}
+
+// One day phrase, in the order that keeps "15.3." a date. `from` makes it
+// adjacent to a word already taken; `role` paints it, or null when the caller
+// paints the whole phrase itself.
+function nlReadDay(scanner, base, role, from) {
+  var today = new Date(base.getFullYear(), base.getMonth(), base.getDate())
+  var steps = [
+    [NL_PATTERNS.isoDate, function (m) {
+      return nlValidDay(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10))
+    }],
+    [NL_PATTERNS.dayMonth, function (m) {
+      return nlUpcoming(today, parseInt(m[2], 10) - 1, parseInt(m[1], 10), m[3])
+    }],
+    [NL_PATTERNS.dayMonthName, function (m) {
+      return nlUpcoming(today, nlMonthIndex(m[2]), parseInt(m[1], 10), m[3])
+    }],
+    [NL_PATTERNS.monthDay, function (m) {
+      return nlUpcoming(today, nlMonthIndex(m[1]), parseInt(m[2], 10), m[3])
+    }],
+    [NL_PATTERNS.dayAfterTomorrow, function () { return nlOffset(today, 2) }],
+    [NL_PATTERNS.tomorrow, function () { return nlOffset(today, 1) }],
+    [NL_PATTERNS.today, function () { return today }],
+    [NL_PATTERNS.yesterday, function () { return nlOffset(today, -1) }],
+    // Next week starts on the coming Monday, never today.
+    [NL_PATTERNS.nextWeek, function () { return nlOffset(today, (1 - today.getDay() + 7) % 7 || 7) }],
+    // "mondays", "freitags", "on fridays": a weekly repeat on that day, so
+    // the day read names both the rule and the first occurrence.
+    [NL_PATTERNS.weekdayPlural, function (m) {
+      var plural = nlWeekdayIndex(m[1])
+      if (plural === -1) return null
+      scanner.weekdayRepeat = true
+      return nlNextWeekday(today, plural)
+    }],
+    // A weekday is the next one coming, today included; "next friday" skips
+    // today, so on a Friday it means a week from now.
+    [NL_PATTERNS.weekdayLead, function (m, at) {
+      return nlWeekdayAt(scanner, m[2], m[1], at + m[0].length, today)
+    }],
+    [NL_PATTERNS.weekday, function (m, at) {
+      return nlWeekdayAt(scanner, m[1], "", at + m[0].length, today)
+    }],
+    [NL_PATTERNS.monthDayOnly, function (m) { return nlNextMonthDay(today, parseInt(m[1], 10)) }]
+  ]
+  for (var i = 0; i < steps.length; i++) {
+    var day = from === undefined
+      ? nlTake(scanner, steps[i][0], steps[i][1])
+      : nlTakeAdjacent(scanner, from, steps[i][0], steps[i][1])
+    if (day) {
+      if (role) nlNote(scanner, role)
+      return day
+    }
+  }
+  return null
+}
+
+// One weekday name as the day it next falls on. A short name is also an
+// ordinary word, so it only counts with a day word in front of it or a number
+// right after it.
+function nlWeekdayAt(scanner, name, prefix, after, today) {
+  var word = String(name || "").toLowerCase()
+  var lead = String(prefix || "").toLowerCase()
+  var index = nlWeekdayIndex(word)
+  if (index === -1) return null
+  if (NL_WEEKDAY_SHORT.indexOf(word) !== -1) {
+    var said = NL_DAY_LEAD_WORDS.indexOf(lead) !== -1 || nlIs(lead, "next")
+    if (!said && !/^\s\d/.test(scanner.folded.substring(after))) return null
+  }
+  var day = nlNextWeekday(today, index)
+  if (nlIs(lead, "next")) day.setDate(day.getDate() + 7)
+  return day
+}
+
+// "this weekend": the coming Saturday and Sunday, or what is left of it.
+function nlReadWeekend(scanner, base) {
+  var today = new Date(base.getFullYear(), base.getMonth(), base.getDate())
+  return nlTake(scanner, NL_PATTERNS.weekend, function () {
+    var weekday = today.getDay()
+    if (weekday === 0) return { start: today, end: today }
+    if (weekday === 6) return { start: today, end: nlOffset(today, 1) }
+    var start = nlOffset(today, 6 - weekday)
+    return { start: start, end: nlOffset(start, 1) }
+  })
+}
+
+// "till 25.8.", "bis morgen 11 Uhr", "trip friday to sunday", "until 3pm".
+// The day and the clock after the word both have to sit right behind it.
+function nlReadTill(scanner, base, draft) {
+  return nlTake(scanner, NL_PATTERNS.till, function (m, at) {
+    var from = at + m[0].length
+    var saved = nlSnapshot(scanner)
+    var endDay = nlReadDay(scanner, base, null, from)
+    var endClock = endDay ? nlReadEndClock(scanner, scanner.lastTo) : nlReadEndClock(scanner, from)
+    if (!endDay && endClock === null) {
+      nlRestore(scanner, saved)
+      return null
+    }
+    nlNoteRange(scanner, at + 1, scanner.lastTo, endClock === null ? "date" : "time")
+    if (endClock !== null) {
+      draft.endTime = nlTimeLabel(endClock)
+      draft.allDay = false
+    }
+    if (endDay) draft.endDateKey = keyForDate(endDay)
+    return true
+  })
+}
+
+// "morning", "tonight", "am abend": a NL_DAY_PART_START key, or null. A bare
+// word only counts right after the day, which ended at `dateEnd`.
+function nlReadDayPart(scanner, dateEnd) {
+  var part = nlTake(scanner, NL_PATTERNS.dayPartPhrase, function (m) {
+    return nlKeyOf(m[1], NL_DAY_PART_PHRASES)
+  })
+  if (part !== null) return part
+  if (dateEnd < 0) return null
+  return nlTake(scanner, NL_PATTERNS.dayPartWord, function (m, at) {
+    if (at < dateEnd || scanner.folded.substring(dateEnd, at).trim() !== "") return null
+    return nlKeyOf(m[1], NL_DAY_PART_WORDS)
+  })
+}
+
+// One clock: a time as written, else an hour said in words, else a bare hour
+// a preposition anchors ("um 8", "at 9").
+function nlReadTime(scanner) {
+  var words = nlReadWordClock(scanner)
+  if (words !== null) return words
+  var strict = nlTake(scanner, NL_PATTERNS.clockPrefixed, function (m) { return nlClockMinutes(m[1]) })
+  if (strict !== null) return strict
+  return nlTake(scanner, NL_PATTERNS.bareHourPrefixed, function (m) { return nlClockMinutes(m[1]) })
+}
+
+// "half past three" (3:30), "quarter to four" (3:45), "halb vier" (3:30, the
+// German way round: half an hour before four), "drei Uhr" (3:00).
+function nlReadWordClock(scanner) {
+  return nlTake(scanner, NL_PATTERNS.wordClock, function (m) {
+    var said = String(m[2] || m[3] || "").toLowerCase()
+    var hour = /^\d+$/.test(said) ? parseInt(said, 10) : NL_HOUR_WORDS[said]
+    if (!hour) return null
+    if (!m[1]) return hour * 60
+    if (m[1] === "half past") return hour * 60 + 30
+    if (m[1] === "quarter past" || m[1] === "viertel nach") return hour * 60 + 15
+    if (m[1] === "halb") return (hour - 1) * 60 + 30
+    return (hour - 1) * 60 + 45
+  })
+}
+
+// A length: "for 90m", "für 2 h", "for half an hour", "45m", "2h".
+function nlReadDuration(scanner) {
+  var length = nlTake(scanner, NL_PATTERNS.durationPrefixed, function (m) {
+    return nlDurationMinutes(m[1])
+  })
+  if (length !== null) return length
+  return nlTake(scanner, NL_PATTERNS.durationPlain, function (m) {
+    return nlDurationMinutes(m[1] + m[2])
+  })
+}
+
+// The whole line as a draft. The clicked day anchors everything the phrase
+// does not name itself: a time with no day is that day, a day with no time is
+// all day, and a length never moves either.
 function parseEventPhrase(text, dayKey, nowMs, knownCalendars) {
   var raw = String(text === undefined || text === null ? "" : text).trim()
   if (!raw) return null
@@ -931,343 +1583,180 @@ function parseEventPhrase(text, dayKey, nowMs, knownCalendars) {
   var draft = emptyDraft("event", keyForDate(base))
   var known = []
   for (var k = 0; knownCalendars && k < knownCalendars.length; k++)
-    known.push(String(knownCalendars[k] || "").toLowerCase())
+    known.push(String(knownCalendars[k] || ""))
 
-  // Every token keeps its offset in `raw` and the role it ends up playing,
-  // so the entry field can paint the phrase in the colours of the parts it
-  // understood while it is being typed. `mark` takes positions in `rest`
-  // (the post-flag token list) and writes the role back to the offsets.
-  var spans = []
-  var scan = /\S+/g
-  var found
-  while ((found = scan.exec(raw)) !== null)
-    spans.push({ start: found.index, end: found.index + found[0].length, role: null })
+  var scanner = nlScanner(raw)
 
-  var rest = []
-  var restIndex = []
+  // ---- Flags first: /calendar, -aN[mhd], -rN[dwmy], -Nm, !, a pasted link.
+  nlReadFlags(scanner, draft)
 
-  function mark(restFrom, restTo, role) {
-    for (var s = restFrom; s <= restTo && s < restIndex.length; s++)
-      if (s >= 0) spans[restIndex[s]].role = role
-  }
+  // ---- A calendar named in words, only one the mirror has.
+  nlReadCalendarName(scanner, draft, known)
 
-  // ---- Flags first: /calendar, -aN[mhd], -rN[dwmy], trailing !{1,3}.
-  var tokens = raw.split(/\s+/)
-  for (var t = 0; t < tokens.length; t++) {
-    var token = tokens[t]
-    var flag
-    if ((flag = /^\/(.+)$/.exec(token))) {
-      draft.calendarName = flag[1].replace(/[,.;]$/, "")
-      spans[t].role = "calendar"
-      continue
-    }
-    if ((flag = /^-a(\d+)([mhd])$/i.exec(token))) {
-      var factor = flag[2].toLowerCase() === "d" ? 1440 : flag[2].toLowerCase() === "h" ? 60 : 1
-      draft.alertMinutes = parseInt(flag[1], 10) * factor
-      spans[t].role = "alert"
-      continue
-    }
-    if ((flag = /^-r(\d+)([dwmy])$/i.exec(token))) {
-      var unit = flag[2].toLowerCase()
-      draft.recurrence = {
-        freq: unit === "d" ? "daily" : unit === "w" ? "weekly" : unit === "m" ? "monthly" : "yearly",
-        interval: parseInt(flag[1], 10)
-      }
-      spans[t].role = "repeat"
-      continue
-    }
-    // A pasted meeting link is a part of its own: it never belongs in the
-    // title, and the bar's join button reads it back off the created event.
-    if (/^https?:\/\//i.test(token)) {
-      var link = safeLinkUrl(token.replace(/[),.;]+$/, ""))
-      if (link) {
-        draft.link = link
-        spans[t].role = "link"
-        continue
-      }
-    }
-    // Duration flag from the reference quick-add: "-120" is two hours,
-    // "-90m" and "-2h" say the same thing with the unit spelled out.
-    if ((flag = /^-(\d+)(m|min|h|std)?$/i.exec(token))) {
-      var durationUnit = (flag[2] || "m").toLowerCase().charAt(0)
-      draft.durationMinutes = parseInt(flag[1], 10) * (durationUnit === "h" ? 60 : 1)
-      spans[t].role = "duration"
-      continue
-    }
-    if (/^!{1,3}$/.test(token)) {
-      draft.priority = token.length === 1 ? "low" : token.length === 2 ? "medium" : "high"
-      spans[t].role = "priority"
-      continue
-    }
-    rest.push(token)
-    restIndex.push(t)
-  }
+  // ---- Repeats in words. "every monday" leaves the weekday to the day read.
+  var weeklyOnDay = nlReadRepeat(scanner, draft)
 
-  // ---- Walk the remainder for temporal expressions. Anything recognized
-  //      is consumed; what survives becomes title/location.
-  var kept = []
-  var keptIndex = []
-  var pendingNext = false
-  var pendingIn = false
-  var sawTime = false
-  var locFrom = -1
-  var locWord = ""
-  var locWordIndex = -1
-  for (var p = 0; p < rest.length; p++) {
-    var word = rest[p]
-    var lower = word.toLowerCase().replace(/[,.;]$/, "")
-
-    // Stray "uhr" left behind by a consumed range ("12 bis 13 Uhr").
-    if (lower === "uhr" && sawTime) { mark(p, p, "time"); continue }
-
-    // Prepositions lean on the time that follows them: before a real time
-    // or range ("um 15 Uhr", "um 12-13") they simply step aside; before a
-    // bare hour ("um 8", "von 12") they anchor it, since a lone "8" would
-    // otherwise stay part of the title.
-    if ((lower === "um" || lower === "at" || lower === "von" || lower === "from") &&
-        p + 1 < rest.length) {
-      var nxt = String(rest[p + 1]).toLowerCase().replace(/[,.;]$/, "")
-      if (/\d[-–]\d/.test(nxt) || nlParseStrictTime(rest, p + 1) !== null) { mark(p, p, "time"); continue }
-      var bareHour = nlRangeSide(nxt)
-      if (bareHour !== null) {
-        draft.startTime = nlTimeLabel(bareHour)
-        draft.allDay = false
-        sawTime = true
-        mark(p, p + 1, "time")
-        p += 1
-        continue
-      }
-    }
-
-    // ---- Place keyword. An "at"/"bei" that no time followed (the block
-    //      above would have taken it) names a location, and the word itself
-    //      is consumed: "Essen at Garbe Biegarten" is titled "Essen", not
-    //      "Essen at". Only the marker is fixed here — what the place is
-    //      settles below, so a date may still trail it ("bei Anna morgen").
-    if (locFrom === -1 && nlIs(lower, "place") && p + 1 < rest.length) {
-      locFrom = kept.length
-      locWord = word
-      locWordIndex = restIndex[p]
-      continue
-    }
-
-    // Calendar by bare name after "in": only fires on names the mirror
-    // actually has, so "12:30 in Café Central" stays a location.
-    if ((pendingIn || lower === "in" || lower === "im") && known.length > 0) {
-      var candidate = lower === "in" || lower === "im" ? (rest[p + 1] || "") : word
-      var probe = String(candidate).toLowerCase()
-      var hit = -1
-      for (var n = 0; n < known.length; n++) {
-        if (known[n] === probe || (probe.length >= 2 && known[n].indexOf(probe) === 0)) { hit = n; break }
-      }
-      if (hit !== -1) {
-        draft.calendarName = knownCalendars[hit]
-        mark(p, lower === "in" || lower === "im" ? p + 1 : p, "calendar")
-        if (lower === "in" || lower === "im") p += 1
-        pendingIn = false
-        continue
-      }
-      if (lower === "in" || lower === "im") pendingIn = true
-    } else if (lower === "in" || lower === "im") {
-      pendingIn = true
-    }
-
-    if (nlIs(lower, "next")) { pendingNext = true; mark(p, p, "date"); continue }
-
-    var said = nlDayFrom(lower, base, pendingNext)
-    if (said) {
-      draft.dateKey = keyForDate(said)
-      pendingNext = false
-      mark(p, p, "date")
-      continue
-    }
-
-    // Ranges. Connector form first: "12 to 13" / "12 bis 13 Uhr" with the
-    // start side on this token, and "… 9am to 5pm" when the start was
-    // consumed earlier and only the connector remains.
-    var conn = nlConnector(lower)
-    if (conn && sawTime && p + 1 < rest.length) {
-      var toMin = nlRangeSide(String(rest[p + 1]).toLowerCase())
-      if (toMin === null) {
-        var toTime = nlParseStrictTime(rest, p + 1)
-        if (toTime) toMin = toTime.minutes
-      }
-      if (toMin !== null) {
-        draft.endTime = nlTimeLabel(toMin)
-        draft.endNextDay = toMin <= (nlRangeSide(draft.startTime) || 0)
-        draft.allDay = false
-        mark(p, p + 1, "time")
-        p += 1
-        continue
-      }
-    }
-    var fromMin = nlRangeSide(lower)
-    if (fromMin !== null && p + 2 < rest.length && nlConnector(rest[p + 1])) {
-      var otherMin = nlRangeSide(String(rest[p + 2]).toLowerCase().replace(/[,.;]$/, ""))
-      if (otherMin === null) {
-        var otherTime = nlParseStrictTime(rest, p + 2)
-        if (otherTime) otherMin = otherTime.minutes
-      }
-      if (otherMin !== null) {
-        draft.startTime = nlTimeLabel(fromMin)
-        draft.endTime = nlTimeLabel(otherMin)
-        draft.endNextDay = otherMin <= fromMin
-        draft.allDay = false
-        sawTime = true
-        mark(p, p + 2, "time")
-        p += 2
-        continue
-      }
-    }
-    // Dash shorthand "22:00-02:00" (also tolerates "22.00-02.00" and bare
-    // hours: "12-13"); same midnight-wrap rule as the connector form.
-    var dashParts = lower.split(/[-–]/)
-    if (dashParts.length === 2) {
-      var dFrom = nlRangeSide(dashParts[0])
-      var dTo = nlRangeSide(dashParts[1])
-      if (dFrom !== null && dTo !== null) {
-        draft.startTime = nlTimeLabel(dFrom)
-        draft.endTime = nlTimeLabel(dTo)
-        draft.endNextDay = dTo <= dFrom
-        draft.allDay = false
-        sawTime = true
-        mark(p, p, "time")
-        continue
-      }
-    }
-
-    if (nlIs(lower, "till")) {
-      var q = p + 1
-      var endDate = null
-      if (q < rest.length) {
-        endDate = nlDayFrom(rest[q], base, false)
-        if (endDate) q += 1
-      }
-      var tillTime = q < rest.length ? nlParseStrictTime(rest, q) : null
-      if (!tillTime && q < rest.length && /^\d{1,2}$/.test(String(rest[q]).replace(/[,.;]$/, ""))) {
-        // Relaxed just here: "bis 11" / "till 18" name an end hour without
-        // needing "uhr", where a bare number anywhere else stays title.
-        var tillHour = parseInt(rest[q], 10)
-        if (tillHour >= 0 && tillHour <= 24) tillTime = { minutes: (tillHour % 24) * 60, used: 1 }
-      }
-      if (tillTime) {
-        draft.endTime = nlTimeLabel(tillTime.minutes)
-        q += tillTime.used
-        if (endDate) {
-          draft.endDateKey = keyForDate(endDate)
-          draft.endNextDay = false
-        } else {
-          draft.endDateKey = null
-          draft.endNextDay = !sawTime || draft.endTime <= (draft.startTime || "")
-        }
-        draft.allDay = false
-        mark(p, q - 1, "time")
-        p = q - 1
-        continue
-      }
-      if (endDate) {
-        draft.endDateKey = keyForDate(endDate)
-        mark(p, q - 1, "date")
-        p = q - 1
-        continue
-      }
-      // Nothing consumable after "till" — let the word fall into the title
-      // rather than silently eating it.
-    }
-
-    if (nlIs(lower, "for") && p + 1 < rest.length) {
-      var durTok = String(rest[p + 1]).toLowerCase()
-      var dur = /^(\d+)(h|m|min|hrs?|std)?$/.exec(durTok)
-      var durUnit = dur && dur[2] ? dur[2] : ""
-      var durUsed = 1
-      if (dur && !durUnit && p + 2 < rest.length && /^(h|m|min|hrs?|std)$/i.test(String(rest[p + 2]))) {
-        durUnit = String(rest[p + 2]).toLowerCase()
-        durUsed = 2
-      }
-      if (dur && durUnit) {
-        var unitChar = durUnit.charAt(0)
-        draft.durationMinutes = parseInt(dur[1], 10) * (unitChar === "h" ? 60 : 1)
-        if (draft.startTime || sawTime) draft.allDay = false
-        mark(p, p + durUsed, "duration")
-        p += durUsed
-        continue
-      }
-    }
-
-    var time = nlParseStrictTime(rest, p)
-    if (time) {
-      // A noon word reads as a sensible title word too ("mittag", "lunch"):
-      // take its time, but let the word survive into the title.
-      if (/^(noon|mittag)[,.;]?$/.test(String(rest[p]).toLowerCase())) {
-        kept.push(word)
-        keptIndex.push(restIndex[p])
-      }
-      draft.startTime = nlTimeLabel(time.minutes)
+  // ---- "in 20 min", "now": a start that names its own day.
+  var relative = nlReadRelative(scanner, now, base)
+  if (relative !== null) {
+    if (relative.at) {
+      var landed = keyForDate(relative.at)
+      draft.dateKey = landed
+      draft.startTime = nlTimeLabel(relative.at.getHours() * 60 + relative.at.getMinutes())
       draft.allDay = false
-      sawTime = true
-      mark(p, p + time.used - 1, "time")
-      p += time.used - 1
-      continue
+      // "in 20 min" typed at 23:50 lands tomorrow, so the phrase did name a
+      // day and the form's date chip has to follow it.
+      nlNote(scanner, landed === keyForDate(base) ? "time" : "date")
+    } else {
+      draft.dateKey = keyForDate(relative.date)
+      nlNote(scanner, "date")
     }
-
-    kept.push(word)
-    keptIndex.push(restIndex[p])
-    if (pendingNext) pendingNext = false
   }
 
-  // A place keyword only holds if words survived after it; otherwise the
-  // word goes back where it stood and the tail heuristic decides as usual.
-  if (locFrom !== -1 && kept.length > locFrom) {
-    draft.location = kept.slice(locFrom).join(" ").replace(/[,.;]$/, "")
-    spans[locWordIndex].role = "location"
-    for (var lk = locFrom; lk < keptIndex.length; lk++) spans[keptIndex[lk]].role = "location"
-    kept = kept.slice(0, locFrom)
-    keptIndex = keptIndex.slice(0, locFrom)
-  } else if (locFrom !== -1) {
-    kept.splice(locFrom, 0, locWord)
-    keptIndex.splice(locFrom, 0, locWordIndex)
+  // ---- A range before anything can read one of its sides as a lone time.
+  var range = nlReadClockRange(scanner)
+  if (range !== null) {
+    draft.startTime = nlTimeLabel(range.start)
+    draft.endTime = nlTimeLabel(range.end)
+    draft.allDay = false
+    nlNote(scanner, "time")
   }
 
-  // ---- Title vs. location. Names travel with their preposition ("lunch
-  //      with Ana" is a title), longer capitalized tails are places
-  //      ("12:30 Café Central"). A lone capitalized word only counts as a
-  //      location when something stands before it.
-  // Only the name sitting on a preposition is protected ("with Sarah").
-  // A later capitalized tail is the location ("Café Central").
-  var PROTECT = { with: 1, mit: 1, to: 1, zu: 1, nach: 1, von: 1, from: 1 }
-  var guarded = []
-  for (var g = 0; g < kept.length; g++) {
-    var gl = String(kept[g]).toLowerCase().replace(/[,.;]$/, "")
-    var prevPrep = g > 0 && PROTECT[String(kept[g - 1]).toLowerCase().replace(/[,.;]$/, "")]
-    guarded.push(PROTECT[gl] ? 1 : (prevPrep && /^[A-ZÄÖÜ]/.test(kept[g]) ? 1 : 0))
-  }
-  var locStart = -1
-  var cursor = kept.length - 1
-  while (cursor >= 0 && /^[A-ZÄÖÜ]/.test(kept[cursor]) && !guarded[cursor]) {
-    locStart = cursor
-    cursor -= 1
-  }
-  if (!draft.location && locStart !== -1 && (cursor + 1 < locStart || locStart > 0)) {
-    draft.location = kept.slice(locStart).join(" ").replace(/[,.;]$/, "")
-    for (var lm = locStart; lm < keptIndex.length; lm++) spans[keptIndex[lm]].role = "location"
-    kept = kept.slice(0, locStart)
-    keptIndex = keptIndex.slice(0, locStart)
-  }
-  for (var km = 0; km < keptIndex.length; km++)
-    if (!spans[keptIndex[km]].role) spans[keptIndex[km]].role = "title"
+  // ---- Till: an end day, an end time, or both.
+  nlReadTill(scanner, base, draft)
 
-  draft.title = kept.join(" ").trim()
+  // ---- The day, or the weekend.
+  var day = null
+  var weekend = nlReadWeekend(scanner, base)
+  if (weekend !== null) {
+    day = weekend.start
+    draft.endDateKey = keyForDate(weekend.end)
+    nlNote(scanner, "date")
+  } else {
+    day = nlReadDay(scanner, base, "date")
+  }
+  if (day) {
+    draft.dateKey = keyForDate(day)
+    if (weeklyOnDay || scanner.weekdayRepeat) draft.recurrence = { freq: "weekly", interval: 1 }
+  }
+  var dateEnd = day ? scanner.lastTo : -1
+
+  // ---- "friday evening": the day part, then the clock it may replace.
+  var part = nlReadDayPart(scanner, dateEnd)
+  if (part !== null) nlNote(scanner, "time")
+
+  if (draft.startTime === null) {
+    var start = nlReadTime(scanner)
+    if (start !== null) {
+      draft.startTime = nlTimeLabel(start)
+      draft.allDay = false
+      nlNote(scanner, "time")
+    }
+  }
+
+  // A noon word reads as a sensible title word too ("mittag", "lunch"): take
+  // its time, but let the word survive into the title.
+  var noon = nlPeek(scanner, NL_PATTERNS.noon, function () { return true })
+  if (noon !== null) {
+    nlNote(scanner, "time")
+    if (draft.startTime === null) {
+      draft.startTime = "12:00"
+      draft.allDay = false
+    }
+  }
+
+  if (part !== null && draft.startTime === null) {
+    draft.startTime = nlTimeLabel(NL_DAY_PART_START[part])
+    draft.allDay = false
+  }
+
+  // ---- A length, with or without the word in front of it.
+  var length = nlReadDuration(scanner)
+  if (length !== null) {
+    draft.durationMinutes = length
+    nlNote(scanner, "duration")
+  }
+
+  // ---- Title and place. A place keyword ("at", "bei") owns everything after
+  //      it; without one, a capitalized tail is the place ("12:30 Café
+  //      Central"), protected where a name travels with its preposition
+  //      ("lunch with Ana" is a title).
+  var tokens = nlLeftover(scanner)
+  var titleTokens = tokens
+  var placeAt = -1
+  for (var t = 0; t + 1 < tokens.length; t++) {
+    if (nlIs(nlFold(tokens[t].text), "place")) {
+      placeAt = t
+      break
+    }
+  }
+  if (placeAt !== -1) {
+    draft.location = nlJoinTokens(tokens.slice(placeAt + 1), true)
+    for (var l = placeAt; l < tokens.length; l++)
+      nlNoteRange(scanner, tokens[l].from + 1, tokens[l].to + 1, "location")
+    titleTokens = tokens.slice(0, placeAt)
+  } else {
+    var PROTECT = { with: 1, mit: 1, to: 1, zu: 1, nach: 1, von: 1, from: 1 }
+    var guarded = []
+    for (var g = 0; g < tokens.length; g++) {
+      var word = nlFold(tokens[g].text)
+      var before = g > 0 ? nlFold(tokens[g - 1].text) : ""
+      guarded.push(PROTECT[word] ? 1
+        : (PROTECT[before] && /^[A-ZÄÖÜ]/.test(tokens[g].text) ? 1 : 0))
+    }
+    var locStart = -1
+    var cursor = tokens.length - 1
+    while (cursor >= 0 && /^[A-ZÄÖÜ]/.test(tokens[cursor].text) && !guarded[cursor]) {
+      locStart = cursor
+      cursor -= 1
+    }
+    if (locStart !== -1 && (cursor + 1 < locStart || locStart > 0)) {
+      draft.location = nlJoinTokens(tokens.slice(locStart), true)
+      for (var p = locStart; p < tokens.length; p++)
+        nlNoteRange(scanner, tokens[p].from + 1, tokens[p].to + 1, "location")
+      titleTokens = tokens.slice(0, locStart)
+    }
+  }
+
+  for (var rest = 0; rest < titleTokens.length; rest++)
+    if (scanner.roles[titleTokens[rest].from + 1] === null)
+      nlNoteRange(scanner, titleTokens[rest].from + 1, titleTokens[rest].to + 1, "title")
+
+  draft.title = nlJoinTokens(titleTokens)
   if (!draft.title) {
     // Never dead-end: whatever could not be parsed becomes the title whole.
     draft.title = raw.replace(/\s*\/[^ ]+|\s*-a\d+[mhd]|\s*-r\d+[dwmy]/gi, "").trim()
   }
   if (!draft.title) draft.title = raw
-  draft.segments = mergeSegments(spans)
+
+  // "trip friday to sunday" read on a Sunday: the Sunday that ends it is the
+  // one after the Friday, not the one the phrase was typed on.
+  if (draft.endDateKey && draft.endDateKey < draft.dateKey) {
+    var endDay = dateFromKey(draft.endDateKey, null)
+    for (var week = 0; endDay && week < 53 && keyForDate(endDay) < draft.dateKey; week++)
+      endDay = nlOffset(endDay, 7)
+    if (endDay) draft.endDateKey = keyForDate(endDay)
+  }
+
+  // An end before its start wraps into the next morning, unless the phrase
+  // named the day it ends on.
+  if (draft.endDateKey) draft.endNextDay = false
+  else if (draft.endTime && draft.startTime) draft.endNextDay = draft.endTime <= draft.startTime
+  else if (draft.endTime) draft.endNextDay = true
+
+  draft.segments = nlSegments(scanner)
   return draft
 }
 
+function nlJoinTokens(tokens, strip) {
+  var words = []
+  for (var i = 0; i < tokens.length; i++) words.push(tokens[i].text)
+  var text = words.join(" ")
+  return strip ? text.replace(/[,.;]$/, "") : text
+}
+
 // Adjacent tokens playing the same role read as one coloured run, gaps
-// included — "next monday" is one date, not two words that happen to agree.
+// included, "next monday" is one date, not two words that happen to agree.
 function mergeSegments(spans) {
   var out = []
   for (var i = 0; i < spans.length; i++) {
@@ -1278,7 +1767,6 @@ function mergeSegments(spans) {
   }
   return out
 }
-
 // A draft for text the parser cannot improve on: raw text as title, clicked
 // day as date, everything else default. Quick-add must never dead-end.
 function fallbackDraft(text, dayKey, kind) {
@@ -1338,7 +1826,7 @@ function draftFromEventDetail(detail, dayKey) {
     if (rule) draft.recurrence = rule
   }
   // Teams and the invite list never made it onto an agenda row, so they
-  // arrive here — and teams arrives already locked, because an event that
+  // arrive here, and teams arrives already locked, because an event that
   // is a Teams meeting cannot be turned back.
   draft.teams = !!detail.teams
   draft.teamsLocked = !!detail.teams
@@ -1389,7 +1877,7 @@ function draftFromTaskDetail(detail) {
 // The same two searches and the same order as the mail composer's
 // recipient field: the address book first, then the addresses mail has
 // actually been exchanged with. Addresses on the calendar owner's domain
-// float up — on the work calendar those are the colleagues — each group
+// float up, on the work calendar those are the colleagues, each group
 // keeping the order the searches returned them in. The domain comes from
 // the roster's `owner`, never a constant.
 function inviteeDomain(address) {
@@ -1558,7 +2046,7 @@ function pendingTodo(title, calendarName, nowMs, tasks) {
 }
 
 // Drop the placeholders the sync has caught up with, and the ones that have
-// been waiting long enough that the write plainly did not land — better a
+// been waiting long enough that the write plainly did not land, better a
 // chip that quietly goes away than one that lies about being filed.
 function prunePendingTodos(pending, tasks, nowMs, ttlMs) {
   var ttl = isFinite(ttlMs) ? ttlMs : PENDING_TODO_TTL_MS
@@ -1602,7 +2090,7 @@ function buildQuickAddRequest(draft, nowMs, calendar) {
     // A task's deadline is the day the pane shows; the hour too when one was
     // typed. "by Friday" and "by 17:00 on Friday" are different promises, so
     // dueHasTime records which was meant. The loose, dateless todo is what
-    // the week-bucket + makes (buildQuickTodoRequest) — the entry pane always
+    // the week-bucket + makes (buildQuickTodoRequest), the entry pane always
     // shows a date, so a phrase like "buy milk tomorrow" writes that date.
     var dueHasTime = draft.startTime !== null && draft.startTime !== undefined && draft.startTime !== ""
     var dueMs = nlMsFor(draft.dateKey, dueHasTime ? draft.startTime : null)
@@ -1666,7 +2154,7 @@ function buildQuickAddRequest(draft, nowMs, calendar) {
   // server, not making a new one -- requestToArgs reads it to send `event
   // edit` instead of `event add`.
   if (draft.editingId) request.id = draft.editingId
-  // Teams and invites ride only on a Microsoft 365 calendar — the daemon
+  // Teams and invites ride only on a Microsoft 365 calendar, the daemon
   // refuses the args on anything else, and a request that carried them
   // anyway would turn a mis-picked calendar into a failed write. The
   // caller passes the picked calendar's roster row.
@@ -1802,7 +2290,7 @@ function mailboxRoster(rows) {
       color: normalizeColor(row.color),
       events: kind === "events",
       tasks: kind === "tasks",
-      // A Microsoft 365 events calendar, and the address it belongs to —
+      // A Microsoft 365 events calendar, and the address it belongs to,
       // the gate for the Teams row, and the domain invitee suggestions
       // rank by (colleagues first on the work calendar).
       teams: !!row.teams,
@@ -1826,7 +2314,7 @@ function eventsFromAgenda(rows, colors) {
     var event = {
       id: String(row.uid || row.id || row.summary || ""),
       // The mirror's numeric id, which is what `event edit`/`event delete`
-      // take — the uid above is for de-duplicating recurring instances, not
+      // take, the uid above is for de-duplicating recurring instances, not
       // for addressing the object on the server.
       objectId: row.id !== undefined && row.id !== null ? Number(row.id) : null,
       recurring: !!row.recurring,
@@ -1927,7 +2415,7 @@ function requestToArgs(request) {
     if (request.id) {
       // An edit names every field the pane can hold: what the user left
       // blank is sent as the "none" the daemon reads as "take it off", so a
-      // cleared priority or link actually clears. Notes are the exception —
+      // cleared priority or link actually clears. Notes are the exception,
       // an empty box leaves whatever is there, matching event edits.
       var editArgs = { positional: String(request.id), title: String(request.title || "") }
       if (request.dueMs) editArgs.due = stampLocal(request.dueMs, !!request.dueHasTime)
@@ -1968,7 +2456,7 @@ function requestToArgs(request) {
   if (rule) args.repeat = rule
   if (request.allDay) args.all_day = true
   // Teams and invites ride only when the request carries them, which
-  // buildQuickAddRequest arranges by calendar — on any other calendar the
+  // buildQuickAddRequest arranges by calendar, on any other calendar the
   // fields are absent and nothing goes out that the daemon would refuse.
   // Teams cannot be taken off once set (a Microsoft 365 rule), so an edit
   // that leaves it on sends nothing; only the switch from off to on is
@@ -1985,7 +2473,7 @@ function requestToArgs(request) {
   return { cmd: ["event", editing ? "edit" : "add"], args: args }
 }
 
-// The addresses off invitee pills, whatever shape arrived — the pane keeps
+// The addresses off invitee pills, whatever shape arrived, the pane keeps
 // {address, name, answer}, and nothing past the address survives the trip.
 function inviteeAddresses(invitees) {
   var out = []
@@ -2033,7 +2521,7 @@ function repeatRule(recurrence) {
 // ---- Entry-field rendering -------------------------------------------------
 
 // StyledText escaping. Runs of spaces collapse in styled text the way they do
-// in HTML, so every space but the last in a run becomes a hard one — the
+// in HTML, so every space but the last in a run becomes a hard one, the
 // painted overlay then sits glyph-for-glyph on the plain text underneath it,
 // with the last space left soft so the line can still wrap there.
 function escapePhrase(text) {
@@ -2080,7 +2568,7 @@ function phraseHtml(text, segments, colors) {
 }
 
 // How a day reads against today. The words are put together in QML, where
-// Qt's own date formatting lives — JavaScript's toLocaleDateString options
+// Qt's own date formatting lives, JavaScript's toLocaleDateString options
 // are ignored by the QML engine, so a month name has to come from Qt.
 function relativeDayKind(dateKey, todayKey) {
   var d = dateFromKey(dateKey, null)
@@ -2097,7 +2585,7 @@ function relativeDayKind(dateKey, todayKey) {
 }
 
 // A day typed into the date chip. Deliberately the same vocabulary as the
-// phrase parser — "tomorrow", "next friday", "15.3.", "2026-03-15" — so the
+// phrase parser, "tomorrow", "next friday", "15.3.", "2026-03-15", so the
 // two entry paths never disagree about what a word means.
 function parseDateInput(text, baseKey, nowMs) {
   var t = String(text === undefined || text === null ? "" : text).trim().toLowerCase().replace(/[,;]$/, "")
@@ -2200,11 +2688,11 @@ function repeatOptions(value) {
 // Photon (photon.komoot.io) answers a half-typed name with OSM places; the
 // script hands the raw reply over and everything the panel shows is built
 // here, so the shapes stay tested. What a pick writes into the field is a
-// postal address and nothing else — "Garbe Biergarten, Garbenstraße,
-// 70599 Stuttgart" — never coordinates.
+// postal address and nothing else, "Garbe Biergarten, Garbenstraße,
+// 70599 Stuttgart", never coordinates.
 
 // A query is worth sending once it is a word rather than a keystroke, and
-// only the panel's own field ever asks — the phrase never goes to the net.
+// only the panel's own field ever asks, the phrase never goes to the net.
 function shouldSuggestAddress(text) {
   return String(text || "").trim().length >= 3
 }
@@ -2224,7 +2712,7 @@ function addressLines(props) {
   var line = street ? (number ? street + " " + number : street) : ""
   var town = postcode && city ? postcode + " " + city : (city || postcode)
   // A place named the same as its street would read twice ("Garbenstraße,
-  // Garbenstraße 5") — the street line already says it.
+  // Garbenstraße 5"), the street line already says it.
   var head = name && name !== line ? name : ""
   var parts = []
   if (head) parts.push(head)
@@ -2306,7 +2794,7 @@ function defaultEndTime(startTime, durationMinutes) {
 }
 
 // The phrase owns what it says; the pane owns the rest. `current` is what is
-// on screen, `applied` is what the previous parse put there — the difference
+// on screen, `applied` is what the previous parse put there, the difference
 // between the two is what somebody typed into a chip or a row by hand, and
 // that has to survive another word being typed in the phrase.
 //
@@ -2328,8 +2816,8 @@ function mergeEntryDraft(parsed, current, applied, kind) {
     return current[name] === undefined ? blank : current[name]
   }
 
-  // The parser hands back a day either way — the clicked one when nothing was
-  // said — so only a labelled date segment counts as the phrase speaking.
+  // The parser hands back a day either way, the clicked one when nothing was
+  // said, so only a labelled date segment counts as the phrase speaking.
   var saidDate = phraseHasRole(parsed.segments, "date") ? (parsed.dateKey || "") : ""
   out.date = take("date", saidDate, "") || parsed.dateKey || current.date || ""
   out.start = take("start", parsed.startTime || "", "")
@@ -2358,7 +2846,7 @@ function mergeEntryDraft(parsed, current, applied, kind) {
     out.end = ""
     now.end = ""
   } else if (!isTask && !out.end) {
-    // An open-ended start still means an hour — or the duration the phrase
+    // An open-ended start still means an hour, or the duration the phrase
     // gave ("für 2 h", "-120").
     out.end = defaultEndTime(out.start, parsed.durationMinutes)
     now.end = out.end

@@ -132,8 +132,8 @@ test("joinButtonLabel names the meeting service", () => {
 })
 
 // A homepage in the URL field is a page to read, not a room to join: the
-// same host rule meetingUrlIn applies. It still gets a button — the link
-// glyph — but the label is no longer a promise to join anything.
+// same host rule meetingUrlIn applies. It still gets a button, the link
+// glyph, but the label is no longer a promise to join anything.
 test("isMeetingUrl only says yes to meeting hosts", () => {
   assert.equal(Model.isMeetingUrl("https://meet.google.com/abc-defg-hij"), true)
   assert.equal(Model.isMeetingUrl("https://us02web.zoom.us/j/1"), true)
@@ -405,11 +405,159 @@ test("'at'/'bei' name a location and leave the title", () => {
   assert.equal(timed.location, null)
   assert.equal(timed.startTime, "09:00")
 
-  // Nothing after it — the word stays in the title.
+  // Nothing after it, the word stays in the title.
   const dangling = parse("dinner at")
   assert.equal(dangling.title, "dinner at")
   assert.equal(dangling.location, null)
 })
+
+// ---- What the scanner reads beyond the flags ------------------------------
+//
+// Same phrase, same draft: these are the words the folded scanner added on
+// top of the flag syntax the entry field already had.
+
+const pad2 = (n) => String(n).padStart(2, "0")
+
+test("a phrase can name its own start: in 20 min, in 3 days, now", () => {
+  const soon = new Date(nlNow + 20 * 60 * 1000)
+  const call = parse("call in 20 min")
+  assert.equal(call.title, "call")
+  assert.equal(call.dateKey, nlDay)
+  assert.equal(call.startTime, pad2(soon.getHours()) + ":" + pad2(soon.getMinutes()))
+  assert.equal(call.allDay, false)
+
+  const later = parse("call in 3 days")
+  assert.equal(later.dateKey, "2026-08-26")
+  assert.equal(later.startTime, null)
+  assert.equal(later.allDay, true)
+
+  // Typed at 23:50, "in 20 min" lands tomorrow: the phrase named a day, so
+  // the date chip follows it.
+  const late = Date.parse("2026-08-23T23:50:00+02:00")
+  const across = Model.parseEventPhrase("call in 20 min", "2026-08-23", late, [])
+  assert.equal(across.dateKey, "2026-08-24")
+  assert.equal(across.startTime, "00:10")
+  assert.ok(across.segments.some((s) => s.role === "date"))
+
+  const at = new Date(nlNow)
+  const now = parse("standup now")
+  assert.equal(now.dateKey, nlDay)
+  assert.equal(now.startTime, pad2(at.getHours()) + ":" + pad2(at.getMinutes()))
+})
+
+test("a day part names the hour when no clock does", () => {
+  const morning = parse("standup friday morning")
+  assert.equal(morning.dateKey, "2026-08-28")
+  assert.equal(morning.startTime, "09:00")
+  assert.equal(morning.title, "standup")
+
+  assert.equal(parse("dinner tomorrow evening").startTime, "19:00")
+  // A phrase form needs no day in front of it.
+  assert.equal(parse("call tonight").startTime, "19:00")
+
+  // A bare word with no day before it stays a title word.
+  const run = parse("morning run")
+  assert.equal(run.title, "morning run")
+  assert.equal(run.startTime, null)
+
+  // A clock the phrase typed beats the day part.
+  assert.equal(parse("standup friday evening 7:30").startTime, "07:30")
+})
+
+test("weekends and day ranges span more than one day", () => {
+  const weekend = Model.parseEventPhrase("trip this weekend", "2026-08-26", nlNow, [])
+  assert.equal(weekend.dateKey, "2026-08-29")
+  assert.equal(weekend.endDateKey, "2026-08-30")
+  assert.equal(weekend.allDay, true)
+
+  // On the Sunday itself, what is left of the weekend is today.
+  const sunday = parse("trip this weekend")
+  assert.equal(sunday.dateKey, nlDay)
+  assert.equal(sunday.endDateKey, nlDay)
+
+  const span = parse("trip friday to sunday")
+  assert.equal(span.dateKey, "2026-08-28")
+  assert.equal(span.endDateKey, "2026-08-30")
+  assert.equal(span.title, "trip")
+
+  // "to" only opens a range when a day follows it.
+  const flight = parse("Flight to Berlin 15.3.")
+  assert.equal(flight.title, "Flight to Berlin")
+  assert.equal(flight.endDateKey, null)
+})
+
+test("months by name, the day after tomorrow and next week", () => {
+  assert.equal(parse("Lunch 15. März").dateKey, "2027-03-15")
+  assert.equal(parse("Lunch March 15").dateKey, "2027-03-15")
+  assert.equal(parse("Lunch 15 March 2027").dateKey, "2027-03-15")
+  assert.equal(parse("call day after tomorrow").dateKey, "2026-08-25")
+  assert.equal(parse("call übermorgen").dateKey, "2026-08-25")
+  // Next week starts on the coming Monday, never today.
+  assert.equal(parse("call next week").dateKey, "2026-08-24")
+  assert.equal(parse("call gestern").dateKey, "2026-08-22")
+  // A bare day of the month is the next month that has it.
+  assert.equal(parse("call am 15.").dateKey, "2026-09-15")
+})
+
+test("repeats in words, and the day they land on", () => {
+  const standup = parse("standup every monday 9:00")
+  assert.equal(standup.recurrence.freq, "weekly")
+  assert.equal(standup.recurrence.interval, 1)
+  assert.equal(standup.dateKey, "2026-08-24")
+  assert.equal(standup.title, "standup")
+
+  assert.equal(parse("team sync every day").recurrence.freq, "daily")
+  assert.equal(parse("gym jeden tag").recurrence.freq, "daily")
+  assert.equal(parse("retro wöchentlich").recurrence.freq, "weekly")
+  assert.equal(parse("Miete monatlich").recurrence.freq, "monthly")
+
+  // The adverbial form is a rule on its own: "freitags" is every Friday.
+  const fridays = parse("Teamrunde freitags 10 Uhr")
+  assert.equal(fridays.recurrence.freq, "weekly")
+  assert.equal(fridays.dateKey, "2026-08-28")
+  assert.equal(fridays.title, "Teamrunde")
+  assert.equal(parse("gym on fridays 6pm").recurrence.freq, "weekly")
+
+  // "Weekly review" is a title, not a rule.
+  const title = parse("weekly review")
+  assert.equal(title.recurrence, null)
+  assert.equal(title.title, "weekly review")
+})
+
+test("lengths and clocks in words", () => {
+  assert.equal(parse("workshop for half an hour").durationMinutes, 30)
+  assert.equal(parse("workshop für eine halbe stunde").durationMinutes, 30)
+  assert.equal(parse("workshop 9:00 for an hour").durationMinutes, 60)
+  assert.equal(parse("workshop 2h").durationMinutes, 120)
+
+  assert.equal(parse("call at half past three").startTime, "03:30")
+  assert.equal(parse("call at quarter to four").startTime, "03:45")
+  assert.equal(parse("call at quarter past four").startTime, "04:15")
+  assert.equal(parse("call drei Uhr").startTime, "03:00")
+  // "halb vier" is half an hour before four, the German way round.
+  assert.equal(parse("call halb vier").startTime, "03:30")
+  assert.equal(parse("call at 3 oclock").startTime, "03:00")
+
+  // A bare hour word is a title word.
+  const three = parse("call three")
+  assert.equal(three.startTime, null)
+  assert.equal(three.title, "call three")
+})
+
+test("the scanner colours what it read", () => {
+  assert.deepEqual(segmentRoles("trip friday to sunday"),
+    [["trip", "title"], ["friday to sunday", "date"]])
+
+  assert.deepEqual(segmentRoles("standup every monday 9:00"),
+    [["standup", "title"], ["every", "repeat"], ["monday", "date"], ["9:00", "time"]])
+
+  assert.deepEqual(segmentRoles("workshop for half an hour"),
+    [["workshop", "title"], ["for half an hour", "duration"]])
+
+  assert.deepEqual(segmentRoles("call at half past three"),
+    [["call", "title"], ["at half past three", "time"]])
+})
+
 
 // ---- Address suggestions -------------------------------------------------
 //
@@ -490,7 +638,7 @@ test("home comes first when the world answers", () => {
 
   const reply = Model.parseAddressSuggestions(mixed)
   assert.deepEqual(reply.items.map((i) => i.countryCode), ["DE", "DE", "US", "ES"])
-  // Neither group is reshuffled inside itself — Photon's own ranking stands.
+  // Neither group is reshuffled inside itself, Photon's own ranking stands.
   assert.deepEqual(reply.items.map((i) => i.primary), ["Garbe", "Garbek", "Garber", "Garbe"])
 
   // The cut to list length happens after the sort, so a home row three
@@ -599,7 +747,7 @@ test("buildQuickAddRequest builds tasks with iCalendar priorities", () => {
   assert.equal(high.dueMs, Date.parse("2026-08-24T17:00:00+02:00"))
   assert.equal(Model.formatEntrySummary(high).indexOf("!!!") > 0, true)
 
-  // A task with a day but no hour is due on that day, date-only — the pane
+  // A task with a day but no hour is due on that day, date-only, the pane
   // always shows a date, so "buy milk tomorrow" must not lose it on write.
   const dateOnly = Model.buildQuickAddRequest(
     Model.fallbackDraft("Someday", "2026-08-24", "task"), nlNow)
@@ -728,7 +876,7 @@ test("phraseHtml paints roles and escapes the rest", () => {
     '<font color="#ff5555">/Work</font>')
 
   assert.equal(Model.phraseHtml("a < b & c", [], {}), "a &lt; b &amp; c")
-  // Runs of spaces keep their width — all but the last space go hard.
+  // Runs of spaces keep their width, all but the last space go hard.
   assert.equal(Model.escapePhrase("a   b"), "a&#160;&#160; b")
   assert.equal(Model.phraseHtml("", null, {}), "")
 })
@@ -853,7 +1001,7 @@ const emptyForm = {
 }
 
 // One keystroke: parse the phrase, merge it into what is on screen, and hand
-// back the pane's new state — the same round the entry pane makes.
+// back the pane's new state, the same round the entry pane makes.
 function type(text, form, applied, kind) {
   const parsed = Model.parseEventPhrase(text, nlDay, nlNow, ["Work", "Kalender"])
     || Model.fallbackDraft(text, nlDay, kind || "event")
@@ -909,7 +1057,7 @@ test("a fresh draft's date only wins if the caller clears the stale one first", 
   // the phrase "said" (no date segment), so mergeEntryDraft falls back to
   // whatever `current.date` already holds. Opening the entry pane on one
   // day, then a second day, without resetting formDate in between, would
-  // silently keep showing the first day — this is the contract Panel.qml's
+  // silently keep showing the first day, this is the contract Panel.qml's
   // resetEntryState relies on to avoid that.
   const draft = Model.fallbackDraft("", "2026-09-09", "event")
 
@@ -1009,7 +1157,7 @@ test("dated todos land on their day, by time; ticked ones are gone", () => {
 
 test("ticking a todo takes it out of the view entirely", () => {
   // The optimistic flip in the panel is exactly this: set done, and the todo
-  // is placed nowhere — not in its day, not in the bucket.
+  // is placed nowhere, not in its day, not in the bucket.
   const dated = task({ id: "d", dueKey: "2026-08-30" })
   const loose = task({ id: "l", dueKey: "" })
   assert.equal(Object.keys(Model.indexTasksByDate([dated], TODAY)).length, 1)
@@ -1097,7 +1245,7 @@ test("the bucket belongs to this week and to no other week", () => {
     ["late", "loose"]
   )
   // Next week is empty: nothing has been carried into it yet. This is the
-  // whole point of scoping — an unfinished task showed up under every week
+  // whole point of scoping, an unfinished task showed up under every week
   // of the month before.
   assert.deepEqual(Model.weekTasksFor(tasks, "2026-08-31", TODAY, 1), [])
   assert.deepEqual(Model.weekTasksFor(tasks, "2026-08-17", TODAY, 1), [])
@@ -1112,7 +1260,7 @@ test("the bucket follows the week-start setting, not a fixed Monday", () => {
 })
 
 test("come next week, the same unfinished task is in that week's bucket", () => {
-  // Nothing about the task changes — only what day it is.
+  // Nothing about the task changes, only what day it is.
   const tasks = [task({ id: "loose", dueKey: "" })]
   const nextFriday = "2026-09-04"
   assert.equal(Model.weekTasksFor(tasks, "2026-08-24", nextFriday, 1).length, 0)
@@ -1281,7 +1429,7 @@ test("requestToArgs on an edit sends only the difference, case-insensitively", (
       { address: "bob@example.com", name: "Bob", answer: "none" }
     ]
   }
-  // Ana stays (spelt differently), Cara arrives, Bob leaves — and the
+  // Ana stays (spelt differently), Cara arrives, Bob leaves, and the
   // locked Teams flag goes out as nothing, because there is no off to send.
   const edit = Model.requestToArgs(Object.assign({}, base, {
     invitees: [
