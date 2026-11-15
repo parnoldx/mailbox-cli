@@ -29,6 +29,7 @@ from. Writes are the same:
 | create an event         | `["event","add"]`                    |
 | add a todo              | `["todo","add"]`                     |
 | tick a task             | `["todo","done"]` / `["todo","undone"]` |
+| search colleagues       | `["people","search"]`                |
 
 Writes carry the daemon's arg names (`positional`, `start`, `calendar`,
 `all_day`, …), which are the CLI's flags with their dashes off.
@@ -65,6 +66,20 @@ is dropped on write:
   `event edit` take `teams`, `invite` and `uninvite`; an edit sends only the
   difference. Teams has no off, an event that is one stays one, so the
   switch locks and says so.
+- **Shift-click the meet button.** A plain click on the camera mints a link
+  and copies it (`["meet"]`), inviting nobody. Shift-clicking asks who the
+  meeting is with instead: the picker searches `people search`, the people
+  in the Microsoft 365 groups the sign-in belongs to. That is the staff at
+  the account's own domain, not every account in the tenant: rooms,
+  printers, bug-tracker addresses and other service mailboxes are not group
+  members and stay out. Picking a person writes an event with `teams` and
+  `invite` on the work calendar, the next quarter hour and half an hour
+  long, and opens the join link the write answers with. Exchange sends the
+  invitation; the event is the price of that, because a lone online meeting
+  cannot invite anyone. The directory needs delegated `User.ReadBasic.All`
+  on the Microsoft 365 sign-in, which the daemon's `Scopes` requests and a
+  fresh `mailbox setup` mints.
+
 The request-to-arg mapping lives in one place (`Model.requestToArgs`); when a
 verb grows a field, that is the only file that changes.
 

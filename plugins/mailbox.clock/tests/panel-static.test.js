@@ -134,6 +134,35 @@ test("the meet button mints and lets the daemon copy", () => {
   assert.ok(!src.includes('"✓  link copied"'), "the copied label is back")
 })
 
+// Shift-clicking the meet button asks who the meeting is with: the org
+// directory is searched beside the address books and the correspondents, a
+// pick writes a Teams event that invites that person, and the join link the
+// write answers with is what opens. A plain click keeps minting a bare link.
+test("the meet button shift-click invites a colleague", () => {
+  for (const needle of [
+    "MeetButton",                     // the modifier-aware button
+    "onMinted: root.mintMeetLink()",  // plain click unchanged
+    "onInvited: root.openColleaguePicker()",
+    "Qt.ShiftModifier",               // read off the mouse, not the keyboard
+    "colleaguePickerOpen",
+    "meetCalendar",                   // the Microsoft 365 calendar it writes to
+    '["people", "search"]',           // the org directory search
+    "requestColleagueSuggestions",
+    "takeColleagueSuggestion",
+    "handleColleagueKey",
+    "inviteColleague",
+    "durationMinutes: 30",            // next quarter hour, half an hour
+    "NEW MEETING WITH",
+    "Enter invites and opens the Teams link"
+  ]) {
+    assert.ok(src.indexOf(needle) !== -1, "missing " + needle)
+  }
+  // The invitation is one event add with teams and the invite, and it is the
+  // daemon's answer that carries the join link.
+  assert.ok(src.includes("teams: true"), "the pick does not ask for a Teams meeting")
+  assert.ok(src.includes("data.url"), "the join link is not opened")
+})
+
 if (require.main === module || process.argv[1] && process.argv[1].endsWith("panel-static.test.js")) {
   // node --test prints its own summary; this token is for the gate.
 }

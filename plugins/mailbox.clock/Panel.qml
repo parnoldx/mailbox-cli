@@ -28,7 +28,10 @@ Panel {
   // they bubble from the focused key catcher up through the popup's
   // contentItem instead, which is where this watches.
   property bool shiftHeld: false
-  onOpenedChanged: if (!opened) shiftHeld = false
+  onOpenedChanged: if (!opened) {
+    shiftHeld = false
+    if (colleaguePickerOpen) closeColleaguePicker()
+  }
 
   // The bar tracks the widget mounted in its slot, BarWidget.qml, not this
   // nested panel. Everything the bar identifies a panel by has to be that
@@ -179,6 +182,20 @@ Panel {
   property int inviteeSuggestIndex: -1
   property string inviteeSuggestQuery: ""
   readonly property bool inviteeSuggestOpen: root.inviteeSuggestions.length > 0
+  // ---- The colleague picker. Shift-clicking the meet button asks who the
+  //      meeting is with: the colleagues in the Microsoft 365 groups the
+  //      sign-in belongs to, which is the staff at the account's own domain
+  //      and not the tenant's rooms and service accounts. Picking somebody
+  //      makes the Teams meeting with them invited and opens the join link.
+  //      A plain click cannot do that: a lone online meeting invites nobody.
+  property bool colleaguePickerOpen: false
+  property var colleagueSuggestions: []
+  property int colleagueSuggestIndex: -1
+  property string colleagueSuggestQuery: ""
+  property bool colleagueSearching: false
+  property bool colleagueInviting: false
+  property string colleagueStatus: ""
+  readonly property bool colleagueSuggestOpen: root.colleagueSuggestions.length > 0
   property string formDescription: ""
   property string formCalendar: ""
   property string formLink: ""
@@ -774,6 +791,57 @@ Panel {
     }
   }
 
+  // The meet button, with the mouse in hand. PanelActionButton hands on a
+  // bare clicked(), and this one needs the modifier: a plain click mints a
+  // link, shift-click asks who the meeting is with. Same look and size as the
+  // kit's button, so it sits in the row beside the bucket label unchanged.
+  component MeetButton: BorderSurface {
+    id: meet
+    property string iconText: ""
+    property string tooltipText: ""
+    property color foreground: root.contentForeground
+    property string fontFamily: root.contentFontFamily
+    property real fontSize: Style.font.icon
+    property real size: Math.round(Math.max(Style.space(22), fontSize + Style.spacing.sm * 2)) | 1
+    signal minted()
+    signal invited()
+
+    implicitWidth: size
+    implicitHeight: size
+    radius: Style.cornerRadius
+    color: mouse.containsMouse ? Style.hoverFillFor(foreground, foreground) : "transparent"
+    borderSpec: mouse.containsMouse
+      ? Border.controlSpec("hover-cursor", foreground, foreground)
+      : Border.none()
+
+    Text {
+      textFormat: Text.PlainText
+      x: Math.round((meet.width - width) / 2)
+      y: Math.round((meet.height - height) / 2)
+      text: meet.iconText
+      color: meet.foreground
+      font.family: meet.fontFamily
+      font.pixelSize: meet.fontSize
+    }
+
+    MouseArea {
+      id: mouse
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: function(m) {
+        if (m.modifiers & Qt.ShiftModifier) meet.invited()
+        else meet.minted()
+      }
+    }
+
+    PanelToolTip {
+      visible: meet.tooltipText !== "" && mouse.containsMouse
+      text: meet.tooltipText
+      fontFamily: meet.fontFamily
+    }
+  }
+
   // One optional part of the entry, location, notes, alert, repeat,
   // priority. The pill above opens it, the phrase opens it by mentioning it,
   // and the × takes the part back off the entry.
@@ -843,6 +911,15 @@ Panel {
   // standing meet-link button, so the icon is absent rather than an error
   // waiting to be clicked.
   readonly property bool hasTeamsCalendar: root.tbCalendars.some(function (c) { return !!c.teams })
+  // Where a shift-click meeting goes: the first Microsoft 365 events calendar
+  // in the roster, the one the entry pane would pick for a Teams meeting.
+  readonly property var meetCalendar: {
+    for (var i = 0; i < root.tbCalendars.length; i++) {
+      var c = root.tbCalendars[i]
+      if (c && c.teams && c.events !== false) return c
+    }
+    return null
+  }
   property bool inviteOpen: false
   readonly property string pickedCalendarOwner: root.pickedCalendar ? String(root.pickedCalendar.owner || "") : ""
 
@@ -1067,6 +1144,150 @@ Panel {
       return
     }
     root.handleEntryKey(event)
+  }
+
+  // ---- The colleague picker. One search: the staff directory, which is the
+  //      people in the account's Microsoft 365 groups. The address books and
+  //      the correspondents stay in the entry pane's Invite field, where an
+  //      outside partner is a sensible person to ask for; this picker is for
+  //      the colleagues a Teams meeting is made with. Only the answer to the
+  //      word still in the box is shown.
+  function openColleaguePicker() {
+    root.colleaguePickerOpen = true
+    root.colleagueSuggestions = []
+    root.colleagueSuggestIndex = -1
+    root.colleagueSuggestQuery = ""
+    root.colleagueSearching = false
+    root.colleagueInviting = false
+    root.colleagueStatus = ""
+    colleagueField.text = ""
+    Qt.callLater(function () { colleagueField.forceActiveFocus() })
+  }
+
+  function closeColleaguePicker() {
+    root.colleaguePickerOpen = false
+    root.colleagueSuggestions = []
+    root.colleagueSuggestIndex = -1
+    root.colleagueSuggestQuery = ""
+    root.colleagueSearching = false
+    root.colleagueInviting = false
+    root.colleagueStatus = ""
+    // The calendar's own keys (j/k, arrows, t) belong to the panel again, and
+    // focus has to come back to where they are heard.
+    Qt.callLater(function () { keyCatcher.forceActiveFocus() })
+  }
+
+  function requestColleagueSuggestions(text) {
+    var query = String(text || "").trim()
+    if (query.length < 2) {
+      root.colleagueSuggestions = []
+      root.colleagueSuggestIndex = -1
+      root.colleagueSuggestQuery = ""
+      root.colleagueSearching = false
+      return
+    }
+    root.colleagueSuggestQuery = query
+    root.colleagueSearching = true
+    mailbox.call(["people", "search"], { positional: query, limit: 20 }, function (error, people) {
+      if (!root.colleaguePickerOpen || root.colleagueSuggestQuery !== query) return
+      root.colleagueSearching = false
+      var rows = []
+      var found = error ? [] : (people || [])
+      for (var i = 0; i < found.length; i++) {
+        var person = found[i]
+        if (!person) continue
+        rows.push({ name: String(person.name || ""), address: String(person.email || "") })
+      }
+      root.colleagueSuggestions = rows
+      root.colleagueSuggestIndex = rows.length ? 0 : -1
+    })
+  }
+
+  function moveColleagueSuggestion(delta) {
+    if (!root.colleagueSuggestOpen) return
+    var count = root.colleagueSuggestions.length
+    root.colleagueSuggestIndex = (root.colleagueSuggestIndex + delta + count) % count
+  }
+
+  function takeColleagueSuggestion(index) {
+    var row = root.colleagueSuggestions[index === undefined ? root.colleagueSuggestIndex : index]
+    if (row) root.inviteColleague(row)
+  }
+
+  function handleColleagueKey(event) {
+    if (event.key === Qt.Key_Down) { root.moveColleagueSuggestion(1); event.accepted = true; return }
+    if (event.key === Qt.Key_Up) { root.moveColleagueSuggestion(-1); event.accepted = true; return }
+    if (event.key === Qt.Key_Escape) { root.closeColleaguePicker(); event.accepted = true; return }
+    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+      event.accepted = true
+      if (root.colleagueInviting) return
+      if (root.colleagueSuggestOpen) { root.takeColleagueSuggestion(); return }
+      var typed = colleagueField.text.trim()
+      if (typed.indexOf("@") !== -1) root.inviteColleague({ name: "", address: typed })
+    }
+  }
+
+  function clockText(hour, minute) {
+    return (hour < 10 ? "0" : "") + hour + ":" + (minute < 10 ? "0" : "") + minute
+  }
+
+  // The meeting a pick makes: the next quarter hour, half an hour long, on
+  // the Microsoft 365 calendar. Exchange sends the invitation when the event
+  // is written, and the write's answer carries the join link Teams made.
+  function inviteColleague(row) {
+    var address = String(row && row.address || "").trim()
+    if (!address || root.colleagueInviting) return
+    var calendar = root.meetCalendar
+    if (!calendar) {
+      root.colleagueStatus = "no Microsoft 365 calendar to put the meeting on"
+      return
+    }
+    var step = 15 * 60 * 1000
+    var start = new Date(Math.ceil(Date.now() / step) * step)
+    var draft = {
+      kind: "event",
+      title: row.name ? "Meeting with " + row.name : "Teams meeting",
+      dateKey: Model.keyForDate(start),
+      startTime: root.clockText(start.getHours(), start.getMinutes()),
+      durationMinutes: 30,
+      allDay: false,
+      calendarName: calendar.name,
+      teams: true,
+      invitees: [{ address: address, name: String(row.name || ""), answer: "none" }],
+      originalInvitees: []
+    }
+    var built = Model.buildQuickAddRequest(draft, Date.now(), calendar)
+    if (!built.ok) {
+      root.colleagueStatus = built.error || "could not invite"
+      return
+    }
+    var sent = Model.requestToArgs(built.request)
+    if (!sent) {
+      root.colleagueStatus = "could not invite"
+      return
+    }
+    root.colleagueInviting = true
+    root.colleagueStatus = "Inviting " + (row.name || address) + "…"
+    mailbox.call(sent.cmd, sent.args, function (error, data) {
+      root.colleagueInviting = false
+      if (error) {
+        root.colleagueStatus = error
+        return
+      }
+      root.askCalendar()
+      if (data && data.url) {
+        root.closeColleaguePicker()
+        root.openExternally(data.url)
+        return
+      }
+      // The event and the invitation went out, but Exchange made no join
+      // link. Say it on the surface the plain meet button already uses, and
+      // close the picker rather than leave Enter able to write a second
+      // meeting for the same person.
+      root.closeColleaguePicker()
+      root.meetStatus = (data && data.notice) || "invited, but no Teams link came back"
+      meetStatusTimer.restart()
+    })
   }
 
   function moveAddressSuggestion(delta) {
@@ -2028,7 +2249,7 @@ Panel {
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
-      blocked: root.editingLife || root.entryOpen
+      blocked: root.editingLife || root.entryOpen || root.colleaguePickerOpen
       onMoveRequested: function(dx, dy) {
         if (dx !== 0) root.moveMonth(dx)
         if (dy !== 0) root.moveYear(dy)
@@ -2738,17 +2959,18 @@ Panel {
 
                 // The meet-link errand button (see root.mintMeetLink). A
                 // plain video camera, not the Teams logo: the logo's detail
-                // turns to a smear at PanelActionButton's 22px.
-                PanelActionButton {
+                // turns to a smear at this size. A plain click mints a link
+                // and copies it; shift-click asks who the meeting is with
+                // and makes an event that invites them.
+                MeetButton {
                   id: meetButton
                   anchors.left: parent.left
                   anchors.verticalCenter: parent.verticalCenter
                   visible: root.hasTeamsCalendar
                   iconText: "󰕧"
-                  tooltipText: "New Teams meeting link"
-                  foreground: root.contentForeground
-                  fontFamily: root.contentFontFamily
-                  onClicked: root.mintMeetLink()
+                  tooltipText: "New Teams meeting link · shift-click to invite somebody"
+                  onMinted: root.mintMeetLink()
+                  onInvited: root.openColleaguePicker()
                 }
 
                 Text {
@@ -2897,6 +3119,146 @@ Panel {
           }
         }
       }
+      }
+
+      // ---- The colleague picker. A card over the calendar, not another pane:
+      //      it is a question, and Esc puts the month back exactly as it was.
+      //      The names are Graph's and the addresses come from mail, so the
+      //      text is plain: nothing in a colleague's name is markup.
+      Item {
+        id: colleaguePicker
+        anchors.fill: parent
+        visible: root.colleaguePickerOpen && !root.entryOpen
+        z: 20
+
+        // Clicking the calendar behind backs out, the way every other
+        // one-shot surface in this panel does.
+        MouseArea {
+          anchors.fill: parent
+          onClicked: root.closeColleaguePicker()
+        }
+
+        BorderSurface {
+          id: colleagueCard
+          width: Math.min(parent.width - 2 * Style.space(12), Style.space(440))
+          anchors.horizontalCenter: parent.horizontalCenter
+          anchors.top: parent.top
+          anchors.topMargin: Style.space(8)
+          height: colleagueColumn.implicitHeight + 2 * Style.space(8)
+          color: Color.popups.background
+          borderSpec: Border.localOrSurfaceSpec("popups", "border", Color.popups.border, Color.popups.border, Style.normalBorderWidth)
+          radius: Style.cornerRadius
+
+          Column {
+            id: colleagueColumn
+            x: Style.space(8)
+            y: Style.space(8)
+            width: parent.width - 2 * Style.space(8)
+            spacing: Style.space(6)
+
+            Text {
+              textFormat: Text.PlainText
+              text: "NEW MEETING WITH"
+              color: Qt.darker(root.contentForeground, 1.6)
+              font.family: root.contentFontFamily
+              font.pixelSize: Style.font.caption
+              font.letterSpacing: 1
+              font.bold: true
+            }
+
+            TextField {
+              id: colleagueField
+              width: parent.width
+              placeholderText: "Name or address"
+              foreground: root.contentForeground
+              font.family: root.contentFontFamily
+              onTextEdited: root.requestColleagueSuggestions(text)
+              Keys.onPressed: function(event) { root.handleColleagueKey(event) }
+            }
+
+            Text {
+              visible: root.colleagueStatus !== ""
+              width: parent.width
+              textFormat: Text.PlainText
+              text: root.colleagueStatus
+              color: Color.accent
+              font.family: root.contentFontFamily
+              font.pixelSize: Style.font.bodySmall
+              wrapMode: Text.Wrap
+            }
+
+            Column {
+              width: parent.width
+              spacing: 0
+
+              Repeater {
+                model: root.colleagueSuggestions
+
+                Rectangle {
+                  required property int index
+                  required property var modelData
+
+                  width: colleagueColumn.width
+                  height: colleagueRowText.height + 2 * Style.space(4)
+                  radius: Style.cornerRadius
+                  color: index === root.colleagueSuggestIndex
+                    ? Style.controlFill(true, false, root.contentForeground, Color.accent)
+                    : "transparent"
+
+                  Text {
+                    id: colleagueRowText
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: Style.space(8)
+                    anchors.rightMargin: Style.space(8)
+                    anchors.verticalCenter: parent.verticalCenter
+                    textFormat: Text.PlainText
+                    // The name, then the address where it says something the
+                    // name does not. One line, elided: a picker is scanned.
+                    text: {
+                      var name = String(modelData.name || "")
+                      var address = String(modelData.address || "")
+                      return name && name.toLowerCase() !== address.toLowerCase()
+                        ? name + "  ·  " + address : address
+                    }
+                    color: root.contentForeground
+                    font.family: root.contentFontFamily
+                    font.pixelSize: Style.font.body
+                    elide: Text.ElideRight
+                  }
+
+                  MouseArea {
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onEntered: root.colleagueSuggestIndex = index
+                    onClicked: root.takeColleagueSuggestion(index)
+                  }
+                }
+              }
+            }
+
+            Text {
+              visible: root.colleagueSuggestQuery !== "" && !root.colleagueSearching
+                && !root.colleagueSuggestOpen && !root.colleagueInviting
+              textFormat: Text.PlainText
+              text: "No colleague by that name"
+              color: Qt.darker(root.contentForeground, 1.6)
+              font.family: root.contentFontFamily
+              font.pixelSize: Style.font.bodySmall
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              text: root.colleagueInviting
+                ? "Inviting…"
+                : "Enter invites and opens the Teams link · Esc cancels"
+              color: Qt.darker(root.contentForeground, 1.9)
+              font.family: root.contentFontFamily
+              font.pixelSize: Style.font.caption
+            }
+          }
+        }
       }
 
       Item {
