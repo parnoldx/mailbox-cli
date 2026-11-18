@@ -462,7 +462,12 @@ func (d *Daemon) handleRSVP(ctx context.Context, req Request, resp Response) Res
 		return resp
 	}
 
-	if partstat != vcal.PartstatDeclined && d.DAVWriter != nil {
+	// The stored copy carries the answer, declined included: a decline after
+	// an accept has to overwrite the ACCEPTED copy, or the day view keeps
+	// showing a meeting that was turned down and a re-read of the invite
+	// reports an answer that was replaced. The agenda filters declined
+	// copies out again, so storing one costs the day view nothing.
+	if d.DAVWriter != nil {
 		if err := d.storeInvite(ctx, req, in, acct, row.To, acct.From.Addr, partstat); err != nil && d.Log != nil {
 			d.Log.Printf("rsvp: calendar: %v", err)
 		}

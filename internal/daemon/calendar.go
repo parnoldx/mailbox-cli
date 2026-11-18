@@ -194,7 +194,7 @@ func (d *Daemon) handleAgenda(req Request, resp Response) Response {
 	if err != nil {
 		return resp.api(err.Error())
 	}
-	out, err := expand(objects, from, to)
+	out, err := expand(objects, from, to, d.ourAddrs(nil)...)
 	if err != nil {
 		return resp.api(err.Error())
 	}
@@ -260,7 +260,7 @@ func (d *Daemon) handleEvent(ctx context.Context, req Request, resp Response) Re
 }
 
 // expand turns objects into the instances that fall in the window, in order.
-func expand(objects []mirror.Object, from, to time.Time) ([]occurrence, error) {
+func expand(objects []mirror.Object, from, to time.Time, addrs ...string) ([]occurrence, error) {
 	// Built empty rather than nil: a nil slice is dropped by `omitempty` and
 	// reaches the caller as null, which is not an empty agenda, it is a
 	// listing that failed to say it found nothing.
@@ -269,6 +269,12 @@ func expand(objects []mirror.Object, from, to time.Time) ([]occurrence, error) {
 		if o.UID == habit.UID {
 			// The habits record is storage that happens to be shaped like an
 			// event. It is not something anybody has on that day (ADR-0018).
+			continue
+		}
+		// An event this account declined is not something it has on that day.
+		// The stored copy says DECLINED whether the RSVP was ours or a
+		// colleague's on a shared calendar.
+		if len(addrs) > 0 && vcal.AnswerOf(o.Raw, addrs...) == vcal.PartstatDeclined {
 			continue
 		}
 		instances, err := vcal.Occurrences(o.Raw, from, to, time.Local)

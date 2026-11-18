@@ -158,6 +158,43 @@ func TestRSVPAcceptPutsTheEventOnTheHomeCalendar(t *testing.T) {
 	}
 }
 
+// A decline after an accept has to overwrite the stored copy: the day view
+// keeps showing a meeting that was turned down otherwise, and a re-read of
+// the invite reports an answer that was replaced. The agenda drops the
+// declined copy from the listing again.
+func TestRSVPDeclineOverwritesTheAcceptedCopy(t *testing.T) {
+	d, f, id := seedInviteDAV(t)
+	mustAsk(t, d, []string{"rsvp"}, map[string]any{"positional": id, "accept": true})
+	if raw := eventNamed(t, f, "Design review"); !strings.Contains(raw, "PARTSTAT=ACCEPTED") {
+		t.Fatalf("the accept never landed:\n%s", raw)
+	}
+	// The accepted event is on the agenda for its day.
+	agenda := mustAsk(t, d, []string{"agenda"},
+		map[string]any{"from": "2026-09-10", "days": 1}).Data.([]occurrence)
+	if len(agenda) == 0 || agenda[0].Summary != "Design review" {
+		t.Fatalf("agenda before the decline = %+v", agenda)
+	}
+
+	mustAsk(t, d, []string{"rsvp"}, map[string]any{"positional": id, "decline": true})
+	raw := eventNamed(t, f, "Design review")
+	if !strings.Contains(raw, "PARTSTAT=DECLINED") {
+		t.Errorf("the declined event must say so on the calendar:\n%s", raw)
+	}
+	card := mustAsk(t, d, []string{"invite", "show"}, map[string]any{"positional": id}).Data.(*inviteCard)
+	if card.Response != vcal.PartstatDeclined {
+		t.Errorf("card response = %q, want the answer that replaced the accept", card.Response)
+	}
+	// And the agenda no longer lists it: a declined event is not something
+	// this account has on that day.
+	agenda = mustAsk(t, d, []string{"agenda"},
+		map[string]any{"from": "2026-09-10", "days": 1}).Data.([]occurrence)
+	for _, o := range agenda {
+		if o.Summary == "Design review" {
+			t.Errorf("the declined event still fills the agenda: %+v", agenda)
+		}
+	}
+}
+
 func TestThreadViewMarksAnInviteWithoutFetchingIt(t *testing.T) {
 	d, _, id := seedInvite(t)
 	resp := mustAsk(t, d, []string{"thread", "view"}, map[string]any{"positional": id})
