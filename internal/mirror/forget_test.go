@@ -165,6 +165,9 @@ func TestKeepFoldersForgetsWhatDiscoveryDropped(t *testing.T) {
 	seed("INBOX", "stays")
 	seed("Trash/Archiv_0", "gone alone")
 	seed("Alt", "gone but held") // also in INBOX
+	if err := m.WriteIntent("primary", "Trash/Archiv_0", "resync"); err != nil {
+		t.Fatal(err)
+	}
 
 	tx, err := m.Begin("primary")
 	if err != nil {
@@ -199,6 +202,19 @@ func TestKeepFoldersForgetsWhatDiscoveryDropped(t *testing.T) {
 		t.Fatal(err)
 	} else if len(hits) != 0 {
 		t.Fatalf("%d hits survived the forgotten folders", len(hits))
+	}
+	// The dropped folders are gone from discovery's view and from the sync
+	// journal, so the prune converges and a resume does not chase them.
+	if names, err := m.FolderNames("primary"); err != nil {
+		t.Fatal(err)
+	} else if len(names) != 1 || names[0] != "INBOX" {
+		t.Fatalf("folders left: %v, want only INBOX", names)
+	}
+	var journals int
+	if err := m.db.QueryRow(`SELECT count(*) FROM sync_journal WHERE account = 'primary'`).Scan(&journals); err != nil {
+		t.Fatal(err)
+	} else if journals != 0 {
+		t.Fatalf("%d journal rows survived the forgotten folders", journals)
 	}
 	// The untouched account rows and the still-held message are intact.
 	if rows, err := m.Rows("primary", "INBOX", 10); err != nil {

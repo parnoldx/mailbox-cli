@@ -58,10 +58,18 @@ func (m *Mirror) ForgetFolder(account, folder string) error {
 		   WHERE account = ? AND id NOT IN (SELECT message_id FROM placements WHERE account = ?))`,
 		`DELETE FROM messages WHERE account = ? AND id NOT IN
 		   (SELECT message_id FROM placements WHERE account = ?)`,
+	} {
+		if _, err := tx.Exec(stmt, account, account); err != nil {
+			return err
+		}
+	}
+	// The folder's own rows. The statements above prune by account, these
+	// two name the folder itself.
+	for _, stmt := range []string{
 		`DELETE FROM sync_journal WHERE account = ? AND folder = ?`,
 		`DELETE FROM folders WHERE account = ? AND name = ?`,
 	} {
-		if _, err := tx.Exec(stmt, account, account); err != nil {
+		if _, err := tx.Exec(stmt, account, folder); err != nil {
 			return err
 		}
 	}
