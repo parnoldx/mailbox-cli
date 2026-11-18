@@ -175,6 +175,30 @@ test("voxtype is launched with an argv list, never a shell string", () => {
   )
 })
 
+// A Process starts only when `running` says so, and the join button hangs off
+// one: a probe that never ran left teamBrowserFound false, so every meeting
+// opened in the default browser, which has no Teams session, and the join
+// landed in the lobby as a guest.
+test("every Process that reads stdout is actually started", () => {
+  var at = src.indexOf("Process {")
+  var blocks = 0
+  while (at !== -1) {
+    var depth = 0
+    var end = at + "Process {".length - 1
+    for (var i = end; i < src.length; i++) {
+      if (src[i] === "{") depth++
+      else if (src[i] === "}" && --depth === 0) { end = i; break }
+    }
+    var block = src.slice(at, end)
+    if (block.indexOf("StdioCollector") !== -1) {
+      blocks++
+      assert.match(block, /running: true/, "a collector nobody starts never fires")
+    }
+    at = src.indexOf("Process {", end)
+  }
+  assert.ok(blocks > 0, "no Process with a collector found to check")
+})
+
 if (require.main === module || process.argv[1] && process.argv[1].endsWith("panel-static.test.js")) {
   // node --test prints its own summary; this token is for the gate.
 }

@@ -1941,6 +1941,9 @@ Panel {
   property bool teamBrowserFound: false
 
   Process {
+    // Without this the probe never starts and every join falls back to the
+    // default browser, which has no Teams session: a guest in the lobby.
+    running: true
     command: ["sh", "-c", "command -v brave-origin"]
     stdout: StdioCollector {
       waitForEnd: true
