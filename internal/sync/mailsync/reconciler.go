@@ -234,11 +234,29 @@ func (r *Reconciler) incremental(ctx context.Context, folder string, local mirro
 
 	// Anything at or above the uidnext we last saw is new to us. Flag updates
 	// for those uids are redundant: the envelope fetch carries current flags.
-	var newUIDs []uint32
+	//
+	// A server without CONDSTORE reports no modseq, so there are no flag
+	// updates to read the new uids out of: the uid list is the only thing
+	// that says what arrived, and the same list answers the expunge diff
+	// below (MakePlan always checks the count there).
+	var newUIDs, remoteUIDs []uint32
 	if plan.NewFrom > 0 {
-		for _, u := range changed {
-			if u.UID >= plan.NewFrom {
-				newUIDs = append(newUIDs, u.UID)
+		if plan.FlagsSince > 0 {
+			for _, u := range changed {
+				if u.UID >= plan.NewFrom {
+					newUIDs = append(newUIDs, u.UID)
+				}
+			}
+		} else {
+			var err error
+			remoteUIDs, err = r.Driver.AllUIDs(ctx, folder)
+			if err != nil {
+				return out, fmt.Errorf("all uids: %w", err)
+			}
+			for _, u := range remoteUIDs {
+				if u >= plan.NewFrom {
+					newUIDs = append(newUIDs, u)
+				}
 			}
 		}
 		sort.Slice(newUIDs, func(i, j int) bool { return newUIDs[i] < newUIDs[j] })
@@ -261,8 +279,7 @@ func (r *Reconciler) incremental(ctx context.Context, folder string, local mirro
 		}
 	}
 
-	var remoteUIDs []uint32
-	if plan.ExpungeDiff {
+	if plan.ExpungeDiff && remoteUIDs == nil {
 		var err error
 		remoteUIDs, err = r.Driver.AllUIDs(ctx, folder)
 		if err != nil {
@@ -415,6 +432,15 @@ func (r *Reconciler) fetchBodies(ctx context.Context, tx *mirror.Tx, folder stri
 	for _, b := range bodies {
 		id, ok := ids[b.UID]
 		if !ok {
+			continue
+		}
+		// A body too large to mirror stays unmirrored on purpose: its parts
+		// are recorded, its text is not, and the reader says what happened
+		// rather than showing an empty body that reads as the whole message.
+		if b.Oversize {
+			if err := tx.PutParts(id, partsOf(b)); err != nil {
+				return err
+			}
 			continue
 		}
 		b.Plain = StripForwarderHeader(b.Plain)

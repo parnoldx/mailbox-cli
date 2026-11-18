@@ -90,6 +90,60 @@ func TestGate2_NewMessageArrives(t *testing.T) {
 	}
 }
 
+// A server without CONDSTORE reports no modseq at all: there are no flag
+// updates to read the new uids out of, so the uid list is the only thing
+// that says what arrived. New mail used to be silently never fetched on
+// such a server (mailbox.org always has CONDSTORE; a lesser server does not).
+func TestNewMailArrivesOnAServerWithoutCondstore(t *testing.T) {
+	r, f, m := setup(t)
+	f.Deliver(box, "a@x", "first", "hello")
+	f.Folder(box).HighestModSeq = 0
+	runSync(t, r) // the cold start mirrors everything with the modseq at zero
+
+	f.Deliver(box, "b@x", "second", "world") // bumps the counter
+	f.Folder(box).HighestModSeq = 0          // a CONDSTORE-less server never reports one
+	out := runSync(t, r)
+	if out.Action != ActionIncremental {
+		t.Errorf("action = %v, want incremental", out.Action)
+	}
+	if out.NewMessages != 1 {
+		t.Errorf("new messages = %d, want 1", out.NewMessages)
+	}
+	if got := rows(t, m); len(got) != 2 {
+		t.Fatalf("got %d rows, want 2", len(got))
+	}
+}
+
+// A body too large to mirror is not shown as an empty message that reads as
+// mirrored: the parts are recorded, the text stays on the server, and the
+// body_state says pending so the reader says what happened.
+func TestAnOversizeBodyStaysUnmirroredButKeepsItsParts(t *testing.T) {
+	r, f, m := setup(t)
+	msg := f.Deliver(box, "big@x", "huge newsletter", "")
+	msg.Oversize = true
+	msg.Parts = []FakePart{{PartInfo: PartInfo{
+		Path: "2", MIMEType: "image/png", Disposition: "inline", Size: 6000000,
+	}}}
+
+	out := runSync(t, r)
+	if out.NewMessages != 1 {
+		t.Errorf("new messages = %d, want 1", out.NewMessages)
+	}
+	if out.BodiesFetched != 0 {
+		t.Errorf("bodies fetched = %d, an oversize body is not mirrored", out.BodiesFetched)
+	}
+	got := rows(t, m)
+	if len(got) != 1 {
+		t.Fatalf("got %d rows, want 1", len(got))
+	}
+	if got[0].BodyState == "mirrored" {
+		t.Error("an oversize body was marked mirrored")
+	}
+	if got[0].TextPlain != "" {
+		t.Errorf("oversize text was mirrored anyway: %q", got[0].TextPlain)
+	}
+}
+
 // An expunge and an arrival in the same cycle leave the count unchanged; the
 // expunge is still found.
 func TestAnExpungeHiddenByAnArrivalIsFound(t *testing.T) {
