@@ -295,8 +295,9 @@ func printThread(stdout, stderr io.Writer, resp daemon.Response) {
 	behindNotice(stderr, resp)
 }
 
-// runSearch reads a query and its filters. Words before the flags are the
-// query, so `mailbox search rechnung mai --in feed` reads the way it is written.
+// runSearch reads a query and its filters. The words are the query wherever
+// they sit, so `mailbox search rechnung mai --in feed` reads the way it is
+// written.
 func runSearch(in *input, stdout, stderr io.Writer) int {
 	return request(daemon.Request{
 		Cmd: []string{"search"},
@@ -534,7 +535,7 @@ func printMessage(stdout, stderr io.Writer, resp daemon.Response) {
 	case body != "":
 		fmt.Fprintln(stdout, body)
 	case str(m["body_state"]) != "mirrored":
-		fmt.Fprintln(stderr, "notice: the mirror has this message's headers but not its text yet")
+		fmt.Fprintln(stderr, "notice: the mirror has this message's headers but not its text, or the text is too large to mirror")
 	default:
 		fmt.Fprintln(stderr, "notice: this message has no text parts")
 	}

@@ -366,6 +366,43 @@ func TestDraftAccountReachesTheDaemon(t *testing.T) {
 	}
 }
 
+// A bare `--` is the escape hatch for a word that begins with a dash, and a
+// word typed after a flag is a word, not nothing. Both used to be dropped by
+// the parser: the first as a usage error, the second silently.
+func TestTheEscapeHatchAndTrailingWordsReachTheDaemon(t *testing.T) {
+	serveSeeded(t)
+	// The query arrives at the daemon as one word behind a `--`.
+	got := serveCapture(t)
+	if _, errs, code := run(t, "search", "--", "rechnung"); code != ExitOK {
+		t.Fatalf("search -- rechnung: exit %d: %s", code, errs)
+	}
+	if got.Args["positional"] != "rechnung" {
+		t.Errorf("positional = %v, want the query behind the --", got.Args["positional"])
+	}
+
+	// The same query after a flag, where it used to vanish without a word.
+	got = serveCapture(t)
+	if _, errs, code := run(t, "search", "--in", "Screener", "Newsletter"); code != ExitOK {
+		t.Fatalf("search --in Screener Newsletter: exit %d: %s", code, errs)
+	}
+	if got.Args["positional"] != "Newsletter" {
+		t.Errorf("positional = %v, want the trailing word", got.Args["positional"])
+	}
+	if got.Args["in"] != "Screener" {
+		t.Errorf("in = %v, want Screener", got.Args["in"])
+	}
+
+	// And the dash itself survives the trip: the daemon gets it as text, not
+	// as a usage error.
+	got = serveCapture(t)
+	if _, errs, code := run(t, "search", "--", "-dash"); code != ExitOK {
+		t.Fatalf("search -- -dash: exit %d: %s", code, errs)
+	}
+	if got.Args["positional"] != "-dash" {
+		t.Errorf("positional = %v, want -dash", got.Args["positional"])
+	}
+}
+
 // --dry-run must stop at the preview: who would get the reply, printed as
 // plain lines, never the "sent to" wording of a real send.
 func TestReplyDryRunPrintsRecipientsWithoutSending(t *testing.T) {

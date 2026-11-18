@@ -259,7 +259,7 @@ func tree(l Locals) []*Command {
 			Name: "search", Section: SectionMail, Short: "Search every box", Needs: true,
 			Usage: []string{"mailbox search QUERY [--in BOX] [--from ADDR] [--limit N]"},
 			Long: "Ranked full-text over senders, recipients, subjects and text. " +
-				"Words before the flags are the query.",
+				"The words are the query, wherever they sit; a QUERY that begins with a dash goes after a bare `--`.",
 			Notes: []string{
 				"Search reads the mirror only: no query reaches the server, and Trash is never mirrored, so nothing found means nothing mirrored.",
 			},
@@ -1476,6 +1476,11 @@ func execute(c *Command, path, args []string, opts options, stdout, stderr io.Wr
 		fmt.Fprint(stderr, page(c, path))
 		return ExitUsage
 	}
+	// A bare `--` ends the flags, and whatever follows them, the terminator
+	// included, lands in fs.Args(): those are more words, so a query or a
+	// title that begins with a dash is expressible, and a word typed after a
+	// flag stops being silently dropped.
+	in.Words = append(in.Words, fs.Args()...)
 	if c.Needs && len(in.Words) == 0 {
 		fmt.Fprint(stderr, page(c, path))
 		return ExitUsage
