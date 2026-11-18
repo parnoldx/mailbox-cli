@@ -228,8 +228,15 @@ func Occurrences(raw string, from, to time.Time, loc *time.Location) ([]Occurren
 		}
 	} else {
 		// An instance that began before the window may still be running in it,
-		// so the expansion starts one duration early.
-		for _, at := range set.Between(from.Add(-duration-time.Second), to, true) {
+		// so every occurrence from the start is walked and the overlap check
+		// decides. The walk is capped: a hostile COUNT cannot park the sync
+		// daemon, and a rule past the cap is reported like a broken one,
+		// skipped here but still in the raw, which is the record.
+		times, ok := walk(set, to)
+		if !ok {
+			return nil, fmt.Errorf("recurrence: more than %d occurrences before %s", expandSteps, to)
+		}
+		for _, at := range times {
 			o := base
 			o.Recurring = true
 			o.Start, o.End = at, at.Add(duration)
@@ -339,7 +346,9 @@ func recurrenceSet(comp *ical.Component, loc *time.Location) (*rrule.Set, error)
 
 // lastStart is the last instant an occurrence can begin, or zero when the rule
 // never ends. A COUNT is expanded because it is finite; a rule with neither
-// UNTIL nor COUNT is the "zero means forever" case.
+// UNTIL nor COUNT is the "zero means forever" case. A COUNT that needs more
+// than expandSteps occurrences is read as forever too: the cost of being
+// wrong is one extra row in the recurring arm of a query, not minutes of CPU.
 func lastStart(comp *ical.Component, loc *time.Location) time.Time {
 	opt, err := comp.Props.RecurrenceRule()
 	if err != nil || opt == nil {
@@ -355,11 +364,43 @@ func lastStart(comp *ical.Component, loc *time.Location) time.Time {
 	if err != nil || set == nil {
 		return time.Time{}
 	}
-	all := set.All()
-	if len(all) == 0 {
-		return time.Time{}
+	next := set.Iterator()
+	var last time.Time
+	for i := 0; i < expandSteps; i++ {
+		at, more := next()
+		if !more {
+			return last
+		}
+		last = at
 	}
-	return all[len(all)-1]
+	return time.Time{}
+}
+
+// expandSteps is the hard ceiling on rule expansion: an object that needs
+// more occurrences than this to answer is treated as broken rather than
+// expanded. A rule can produce one occurrence per second, so a ceiling of
+// 100000 costs roughly 20 ms on the worst object, which is the budget a
+// sync cycle can afford. The honest rules land far under it.
+const expandSteps = 100000
+
+// walk returns every occurrence of a rule set at or before to, or ok=false
+// when the rule needs more than expandSteps steps to get there. The set's
+// own Between has no cap: it walks from DTSTART to the window, so a rule
+// from years back with a one-second interval would iterate its every tick.
+func walk(set *rrule.Set, to time.Time) ([]time.Time, bool) {
+	next := set.Iterator()
+	var out []time.Time
+	for i := 0; i < expandSteps; i++ {
+		at, more := next()
+		if !more {
+			return out, true
+		}
+		if at.After(to) {
+			return out, true
+		}
+		out = append(out, at)
+	}
+	return out, false
 }
 
 // priorityOf reads PRIORITY. A value the format does not define is read as

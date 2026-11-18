@@ -113,9 +113,10 @@ func Reply(in Invite, attendee, partstat string) (string, error) {
 	return encode(cal)
 }
 
-// ForCalendar is the VEVENT to store on a calendar after accepting or
-// tentatively accepting. METHOD is stripped, a calendar object is not an
-// iMIP message, and the attendee carries the PARTSTAT.
+// ForCalendar is the VEVENT to store on a calendar after an RSVP, declined
+// included: the copy has to say the answer, or a later re-read of the invite
+// reports one that was replaced. METHOD is stripped, a calendar object is
+// not an iMIP message, and the attendee carries the PARTSTAT.
 func ForCalendar(in Invite, attendee, partstat string) (string, error) {
 	ics, err := Reply(in, attendee, partstat)
 	if err != nil {

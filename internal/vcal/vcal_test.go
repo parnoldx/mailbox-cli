@@ -271,6 +271,61 @@ END:VEVENT
 	}
 }
 
+func TestAnInstanceThatBeganBeforeTheWindowIsStillListed(t *testing.T) {
+	// A week-long weekly event: the window sits in the middle of the first
+	// instance, so it is listed even though it began days earlier.
+	raw := wrap(`BEGIN:VEVENT
+UID:week@example.org
+DTSTART;TZID=Europe/Berlin:20260302T093000
+DTEND;TZID=Europe/Berlin:20260309T093000
+RRULE:FREQ=WEEKLY
+SUMMARY:Wochenlang
+END:VEVENT
+`)
+	from := time.Date(2026, 3, 4, 0, 0, 0, 0, berlin)
+	got, err := Occurrences(raw, from, from.AddDate(0, 0, 1), berlin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("%d occurrences in the window, want 1: %+v", len(got), got)
+	}
+	if got[0].Start.Format("2006-01-02") != "2026-03-02" {
+		t.Fatalf("the running instance is listed from its start, got %s", got[0].Start)
+	}
+}
+
+func TestAHostileCountIsNotExpanded(t *testing.T) {
+	// One second of expansion budget per step: a calendar object that names
+	// a COUNT in the hundreds of millions cannot park the sync daemon in
+	// minutes of CPU and gigabytes of occurrences. The cap reads it as never
+	// ending, and the agenda skips it like a broken rule.
+	hostile := wrap(`BEGIN:VEVENT
+UID:spam@example.org
+DTSTART;TZID=Europe/Berlin:20200101T000000
+DTEND;TZID=Europe/Berlin:20200101T000001
+RRULE:FREQ=SECONDLY;COUNT=1000000000
+SUMMARY:Raus
+END:VEVENT
+`)
+	start := time.Now()
+	p, err := Parse(hostile, berlin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.RepeatsUntil.IsZero() {
+		t.Fatalf("a rule past the cap is read as never, got %s", p.RepeatsUntil)
+	}
+	if _, err := Occurrences(hostile,
+		time.Date(2026, 11, 1, 0, 0, 0, 0, berlin),
+		time.Date(2026, 11, 8, 0, 0, 0, 0, berlin), berlin); err == nil {
+		t.Fatal("a rule past the cap is an error, so the agenda skips the object")
+	}
+	if took := time.Since(start); took > 5*time.Second {
+		t.Fatalf("the hostile rule took %s, the cap did not bite", took)
+	}
+}
+
 func TestAnUnknownTimezoneIsReadRatherThanDropped(t *testing.T) {
 	// Outlook writes TZIDs that are not IANA names. Losing the entry is worse
 	// than reading it in the calendar's own timezone.
