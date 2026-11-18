@@ -29,6 +29,10 @@ type Config struct {
 // it, unlike the IMAP ones, which exist to be idle (ADR-0016).
 type Driver struct{ cfg Config }
 
+// commandTimeout bounds one whole conversation, dial to close. A var rather
+// than a constant only so a test can shorten it.
+var commandTimeout = 60 * time.Second
+
 func New(cfg Config) *Driver {
 	if cfg.Port == 0 {
 		cfg.Port = 4190
@@ -50,6 +54,15 @@ func (d *Driver) dial() (*managesieve.Client, error) {
 	conn, err := net.DialTimeout("tcp", d.addr(), 10*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("connect to %s: %w", d.addr(), err)
+	}
+	// One deadline for the whole conversation: greeting, STARTTLS,
+	// authentication and the commands are all quick, and a server that accepts
+	// the connection and then stalls must not park the caller forever. The
+	// library sets no deadlines itself, and a deadline on the raw connection
+	// still applies after the TLS upgrade, which forwards it.
+	if err := conn.SetDeadline(time.Now().Add(commandTimeout)); err != nil {
+		conn.Close()
+		return nil, err
 	}
 	host, _, err := net.SplitHostPort(d.addr())
 	if err != nil {
