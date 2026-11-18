@@ -51,6 +51,10 @@ type Body struct {
 	Plain string
 	HTML  string
 	Parts []PartInfo
+	// Oversize says the text parts were too large to mirror and were left
+	// on the server: the parts are recorded, the text is not, and the reader
+	// reports that rather than showing an empty body as if it were mirrored.
+	Oversize bool
 }
 
 // PartInfo is one part that is not mirrored text: what it is, what it is

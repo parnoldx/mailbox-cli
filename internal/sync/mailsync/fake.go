@@ -74,6 +74,7 @@ type FakeMsg struct {
 	Plain      string
 	HTML       string
 	Parts      []FakePart
+	Oversize   bool
 	ModSeq     uint64
 
 	ListUnsubscribe     string
@@ -331,7 +332,7 @@ func (f *Fake) FetchBodies(ctx context.Context, folder string, uids []uint32) ([
 	var out []Body
 	for _, m := range f.folders[folder].Msgs {
 		if want[m.UID] {
-			b := Body{UID: m.UID, Plain: m.Plain, HTML: m.HTML}
+			b := Body{UID: m.UID, Plain: m.Plain, HTML: m.HTML, Oversize: m.Oversize}
 			for _, p := range m.Parts {
 				b.Parts = append(b.Parts, p.PartInfo)
 			}

@@ -572,11 +572,19 @@ func (d *Driver) FetchBodies(ctx context.Context, folder string, uids []uint32) 
 		byShape := map[string][]uint32{}
 		partsOf := map[string][]part{}
 		byUID := map[uint32]map[string]part{}
+		oversize := map[uint32]bool{}
 		for _, m := range structs {
 			if m.BodyStructure == nil {
 				continue
 			}
-			ps := textParts(m.BodyStructure)
+			ps, big := textParts(m.BodyStructure)
+			if big && len(ps) == 0 {
+				// Nothing of this message is worth the memory it would take:
+				// its parts are still recorded below, its text stays on the
+				// server, and the Mirror says so instead of showing an empty
+				// body as if it were mirrored.
+				oversize[uint32(m.UID)] = true
+			}
 			if len(ps) == 0 {
 				continue
 			}
@@ -639,6 +647,12 @@ func (d *Driver) FetchBodies(ctx context.Context, folder string, uids []uint32) 
 				bodies[uid] = &mailsync.Body{UID: uid}
 			}
 			bodies[uid].Parts = parts
+		}
+		for uid := range oversize {
+			if bodies[uid] == nil {
+				bodies[uid] = &mailsync.Body{UID: uid}
+			}
+			bodies[uid].Oversize = true
 		}
 		for _, b := range bodies {
 			out = append(out, *b)
@@ -826,7 +840,15 @@ type part struct {
 	kind     string
 	encoding string
 	charset  string
+	size     int64 // the encoded size the BODYSTRUCTURE reported
 }
+
+// maxBodyBytes caps one text part's fetch. A part past it is almost always an
+// image or a log somebody pasted into a text/* part, and mirroring everything
+// a sender chooses to call text would hand him a lever on the daemon's memory:
+// the html tree, the tracker scan and the markdown render are all proportional
+// to what arrives. Five mebibytes is twenty times a real newsletter.
+const maxBodyBytes = 5 << 20
 
 // decode turns a raw body section into text. A text part arrives in its
 // transfer encoding and its own charset, so storing the bytes as they came off
@@ -901,10 +923,12 @@ func pathKey(path []int) string {
 	return b.String()
 }
 
-// textParts returns the paths of every text/plain and text/html part, skipping
-// anything marked as an attachment.
-func textParts(bs imap.BodyStructure) []part {
-	var out []part
+// textParts returns the paths of every text/plain and text/html part worth
+// mirroring, skipping anything marked as an attachment or too large for
+// maxBodyBytes. oversized says a text part was left out for size alone, so a
+// message with nothing left to mirror is reported as too big rather than
+// shown as an empty body that reads as mirrored.
+func textParts(bs imap.BodyStructure) (out []part, oversized bool) {
 	bs.Walk(func(path []int, p imap.BodyStructure) bool {
 		sp, ok := p.(*imap.BodyStructureSinglePart)
 		if !ok {
@@ -920,15 +944,20 @@ func textParts(bs imap.BodyStructure) []part {
 		if kind != "plain" && kind != "html" {
 			return true
 		}
+		if int64(sp.Size) > maxBodyBytes {
+			oversized = true
+			return true
+		}
 		out = append(out, part{
 			path:     append([]int(nil), path...),
 			kind:     kind,
 			encoding: sp.Encoding,
 			charset:  sp.Params["charset"],
+			size:     int64(sp.Size),
 		})
 		return true
 	})
-	return out
+	return out, oversized
 }
 
 // AllUIDs implements mailsync.Driver. ESEARCH returns compressed ranges, so
