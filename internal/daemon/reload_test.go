@@ -2,13 +2,47 @@ package daemon
 
 import (
 	"context"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"mailbox/internal/config"
 )
+
+// A config change that cannot be made in place exits 0: under socket
+// activation the next connection starts a new daemon on the new config, and
+// an error here would read as a crash, which with Restart=on-failure gets
+// respawned as one.
+func TestAConfigRestartExitsCleanly(t *testing.T) {
+	d := seed(t)
+	path := filepath.Join(t.TempDir(), "config.toml")
+	writeConfig(t, path, "")
+	d.WatchConfig(path, func(cfg *config.Config) (Applied, error) {
+		return Applied{Restart: true, Reason: "the primary moved"}, nil
+	})
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errc := make(chan error, 1)
+	go func() { errc <- d.Serve(ctx, ln) }()
+	// Let the accept loop reach Accept before the restart closes the listener.
+	time.Sleep(50 * time.Millisecond)
+	d.reloadConfig("test")
+	select {
+	case err := <-errc:
+		if err != nil {
+			t.Fatalf("a config restart must exit nil, got %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a config restart did not end Serve")
+	}
+}
 
 // A config on disk, minimal but loadable.
 func writeConfig(t *testing.T, path, extra string) {

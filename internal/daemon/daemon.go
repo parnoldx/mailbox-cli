@@ -235,8 +235,17 @@ func (d *Daemon) Serve(ctx context.Context, ln net.Listener) error {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
+			// A config change that needs a restart closes the listener from
+			// under the loop (stop, above), and ctx is still live on that path,
+			// so the quit channel is what separates an ordinary exit from a
+			// real accept failure.
 			if ctx.Err() != nil {
 				return nil
+			}
+			select {
+			case <-d.quitting():
+				return nil
+			default:
 			}
 			return err
 		}
