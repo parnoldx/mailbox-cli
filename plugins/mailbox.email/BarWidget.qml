@@ -25,11 +25,19 @@ BarWidget {
 
   readonly property var sharedService: bar && bar.shell && typeof bar.shell.serviceFor === "function"
     ? bar.shell.serviceFor("mailbox.email") : null
-  readonly property var service: sharedService || localService
+  // The shared service is the one the shell hosts; a local instance is only
+  // created when there is no host, so the bar never runs two sockets, two
+  // refresh loops and two new-mail sounds for the same mailbox.
+  readonly property var service: sharedService || localServiceLoader.item
 
-  MailboxService {
-    id: localService
-    settings: root.settings
+  Component {
+    id: localServiceComponent
+    MailboxService { settings: root.settings }
+  }
+  Loader {
+    id: localServiceLoader
+    active: !sharedService
+    sourceComponent: localServiceComponent
   }
 
   readonly property int unseenCount: service ? service.unreadCount : 0

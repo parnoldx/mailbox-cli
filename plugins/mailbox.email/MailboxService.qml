@@ -162,7 +162,7 @@ Item {
               subject: m.subject || "(No Subject)",
               seen: m.seen === true,
               body: m.body_state || "",
-              account: "primary",
+              account: String(m.account || ""),
               initials: Model.extractInitials(m.from),
               colorIndex: Model.avatarColorIndex(m.from, 8)
             }

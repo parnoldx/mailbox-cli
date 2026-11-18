@@ -117,6 +117,47 @@ test("Held pickups are listed and copyable in Panel.qml", () => {
   )
 })
 
+// The panel and the widget each used to instantiate their own MailboxService
+// unconditionally, so a panel opened from the bar held a second daemon socket
+// that refreshed on every push and fired its own sound and toast beside the
+// widget's. A local service may only exist behind a Loader that switches off
+// the moment a service is injected.
+test("A local service is created only when no external one is injected", () => {
+  assert.ok(
+    /active:\s*!externalService/.test(panelSrc),
+    "Panel.qml must gate its local service on !externalService"
+  )
+  assert.ok(
+    /active:\s*!sharedService/.test(barSrc),
+    "BarWidget.qml must gate its local service on !sharedService"
+  )
+  for (const [name, src] of [["Panel.qml", panelSrc], ["BarWidget.qml", barSrc]]) {
+    assert.equal(
+      /\bid: localService\b/.test(src), false,
+      name + " still names an unconditional local MailboxService"
+    )
+    assert.equal(
+      src.split("MailboxService {").length - 1, 1,
+      name + " instantiates MailboxService outside the one Component"
+    )
+  }
+})
+
+// A row's account is whatever the daemon said it was. It used to be hardcoded
+// "primary", so the per-account filter compared real account names against
+// rows that all claimed the primary: every account but "All" listed an empty
+// feed, and every per-account badge read 0.
+test("Message rows carry the account the daemon reported", () => {
+  assert.equal(
+    serviceSrc.indexOf('account: "primary"'), -1,
+    "MailboxService.qml still hardcodes the primary account on every row"
+  )
+  assert.ok(
+    serviceSrc.indexOf("account: String(m.account") !== -1,
+    "the row's account must come from the reply"
+  )
+})
+
 test("MailboxService.qml speaks daemon socket protocol", () => {
   for (const needle of [
     "mailbox.sock",

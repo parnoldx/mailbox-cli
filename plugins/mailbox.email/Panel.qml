@@ -27,11 +27,20 @@ Panel {
   readonly property var barIdentity: hostWidget || root
 
   property var externalService: null
-  readonly property var service: externalService || localService
+  // A local service exists only when no external one is injected. The bar
+  // hands its own service in when the panel opens from it, and a second
+  // instance here would hold a second daemon socket, refresh on every push
+  // and fire its own sound and toast beside the widget's.
+  readonly property var service: externalService || localServiceLoader.item
 
-  MailboxService {
-    id: localService
-    settings: root.settings
+  Component {
+    id: localServiceComponent
+    MailboxService { settings: root.settings }
+  }
+  Loader {
+    id: localServiceLoader
+    active: !externalService
+    sourceComponent: localServiceComponent
   }
 
   property int selectedIndex: 0
