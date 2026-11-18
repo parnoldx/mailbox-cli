@@ -1964,11 +1964,12 @@ Panel {
     // diarization). Shift-click skips it; also skipped silently if voxtype
     // is already busy.
     if (record !== false)
-      Quickshell.execDetached(["sh", "-c",
-        "voxtype meeting start --title \"" + String(event.title || "Meeting").replace(/"/g, "") + "\" 2>&1 || true"])
+      Quickshell.execDetached(["voxtype", "meeting", "start", "--title",
+        String(event.title || "Meeting")])
     // argv list, never a shell: the URL comes from whoever sent the
-    // invitation, so a `sh -c` would be command injection. Model.safeUrl
-    // also refuses anything that is not https.
+    // invitation, and the title does too, so a `sh -c` would be command
+    // injection; $(...) and backticks survive any quoting inside a shell
+    // string. Model.safeUrl also refuses anything that is not https.
     root.openExternally(url)
   }
 

@@ -163,6 +163,18 @@ test("the meet button shift-click invites a colleague", () => {
   assert.ok(src.includes("data.url"), "the join link is not opened")
 })
 
+// The meeting title comes from whoever sent the invitation, so it is argv
+// or it is command injection: $() and backticks execute inside double quotes,
+// and stripping the double quotes is what the old sh -c line did.
+test("voxtype is launched with an argv list, never a shell string", () => {
+  const hit = src.match(/execDetached\(\["voxtype", "meeting", "start", "--title"/)
+  assert.ok(hit, "the recording start must be one argv array")
+  assert.equal(
+    src.indexOf('execDetached(["sh", "-c"'), -1,
+    "a shell string with an invitation's title in it is command injection"
+  )
+})
+
 if (require.main === module || process.argv[1] && process.argv[1].endsWith("panel-static.test.js")) {
   // node --test prints its own summary; this token is for the gate.
 }
