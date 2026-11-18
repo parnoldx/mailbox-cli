@@ -21,9 +21,12 @@ type Client struct {
 	n    int
 }
 
-// maxLine is the longest line accepted. A reply carrying a mail body or an
-// attachment's base64 outruns bufio's 64K default.
-const maxLine = 1 << 20
+// maxLine is the longest line accepted. It has to fit one whole
+// `attachment bytes` reply: the base64 of maxInlineBytes, plus the JSON
+// around it, rounded up to a whole mebibyte. The two constants used to
+// disagree, and the reply the daemon accepted was the line the client
+// refused to read.
+const maxLine = 16 << 20
 
 // Dial connects to the socket. wait, when positive, keeps trying until it
 // passes rather than failing on the first refusal: a caller that has just

@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net"
 	"path/filepath"
@@ -54,6 +55,30 @@ func TestDoSkipsThePushesOnItsWayToTheReply(t *testing.T) {
 	}
 	if resp.Data != "the answer" {
 		t.Fatalf("Data = %v", resp.Data)
+	}
+}
+
+// `attachment bytes` answers with the base64 of up to maxInlineBytes, and the
+// whole reply is one line, so the client's line cap has to fit it. The two
+// used to disagree: the daemon accepted the request and the client refused
+// the answer as a too-long token.
+func TestTheClientAcceptsTheBiggestInlineAttachment(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mailbox.sock")
+	body := make([]byte, maxInlineBytes)
+	for i := range body {
+		body[i] = 'A'
+	}
+	reply := Response{ID: "1", OK: true,
+		Data: inlineBytes{Filename: "big.png", MIMEType: "image/png", Base64: base64.StdEncoding.EncodeToString(body)}}
+	canned(t, path, reply)
+	c, err := Dial(path, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	if _, err := c.Do([]string{"attachment", "bytes"}, nil); err != nil {
+		t.Fatalf("the biggest inline attachment must survive the wire: %v", err)
 	}
 }
 
