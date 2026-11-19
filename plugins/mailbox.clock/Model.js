@@ -747,6 +747,20 @@ function isMeetingUrl(url) {
   return MAILBOX_MEETING_HOST.test(host)
 }
 
+// Teams invite links name the legacy host, and a browser that opens one lands
+// in the join launcher, which serves the anonymous light meeting: type your
+// name, wait in the lobby, no account. The signed-in app lives on
+// teams.cloud.microsoft, and the same join route there opens inside the app
+// with whoever is signed in, so the waiting room is the one you can skip.
+var TEAMS_LEGACY_PREFIX = "https://teams.microsoft.com/"
+var TEAMS_APP_PREFIX = "https://teams.cloud.microsoft/"
+
+function appJoinUrl(url) {
+  var text = safeUrl(url)
+  if (!text || text.indexOf(TEAMS_LEGACY_PREFIX) !== 0) return text
+  return TEAMS_APP_PREFIX + text.substring(TEAMS_LEGACY_PREFIX.length)
+}
+
 // ---- Natural-language quick-add -------------------------------------------
 //
 // One line of typing becomes a draft. The reading is a scanner over a folded
@@ -2920,6 +2934,7 @@ if (typeof module !== "undefined") {
     isCalendarFileUrl: isCalendarFileUrl,
     meetingUrlFor: meetingUrlFor,
     isMeetingUrl: isMeetingUrl,
+    appJoinUrl: appJoinUrl,
     parseEventPhrase: parseEventPhrase,
     fallbackDraft: fallbackDraft,
     draftFromAgendaEvent: draftFromAgendaEvent,

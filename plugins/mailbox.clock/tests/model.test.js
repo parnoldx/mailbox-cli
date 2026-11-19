@@ -163,6 +163,26 @@ test("safeUrl launches plain http(s) meeting links and nothing else", () => {
   }), "https://us02web.zoom.us/j/88971526434")
 })
 
+// Real mail sighting (2026-11-18): a Teams invite opened in the browser went
+// to the join launcher, which serves the anonymous light meeting, so the
+// click joined as a guest typing a name and waiting in the lobby. The signed
+// in app answers on its own host, so the link is moved there before it is
+// opened, and every other link is left exactly as the invitation wrote it.
+test("appJoinUrl moves a Teams join link to the signed-in app host", () => {
+  var legacy = "https://teams.microsoft.com/l/meetup-join/19%3ameeting_example%40thread.v2/0?context=%7b%22Tid%22%3a%22t%22%7d"
+  assert.equal(Model.appJoinUrl(legacy),
+    "https://teams.cloud.microsoft/l/meetup-join/19%3ameeting_example%40thread.v2/0?context=%7b%22Tid%22%3a%22t%22%7d")
+  // Everything that is not that host keeps its own path and query.
+  assert.equal(Model.appJoinUrl("https://us02web.zoom.us/j/88971526434"),
+    "https://us02web.zoom.us/j/88971526434")
+  assert.equal(Model.appJoinUrl("https://teams.cloud.microsoft/l/meetup-join/x"),
+    "https://teams.cloud.microsoft/l/meetup-join/x")
+  assert.equal(Model.appJoinUrl("https://teams.microsoft.com.evil.example/l/meetup-join/x"),
+    "https://teams.microsoft.com.evil.example/l/meetup-join/x")
+  assert.equal(Model.appJoinUrl("javascript:alert(1)"), "")
+  assert.equal(Model.appJoinUrl(""), "")
+})
+
 test("safeColor takes hex calendar colours and nothing else", () => {
   assert.equal(Model.safeColor("#6600cc"), "#6600cc")
   assert.equal(Model.safeColor("  #CEE7FF "), "#CEE7FF")

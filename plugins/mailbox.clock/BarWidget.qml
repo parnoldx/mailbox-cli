@@ -92,8 +92,9 @@ BarWidget {
 
   // The URL never goes through a shell, Panel.openMeeting execDetaches the
   // team browser (brave-origin) with the URL as a single argument, after
-  // Model.safeUrl has refused anything that is not plain https. Joining also
-  // puts the reminder away.
+  // Model.safeUrl has refused anything that is not plain https and
+  // Model.appJoinUrl has moved a Teams join link to the host whose app is
+  // signed in. Joining also puts the reminder away.
   function joinUpcoming() {
     if (!root.joinable) return
     if (panelLoader.item && panelLoader.item.openMeeting)

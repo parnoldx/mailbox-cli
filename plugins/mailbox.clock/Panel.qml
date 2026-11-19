@@ -1953,8 +1953,12 @@ Panel {
 
   function openExternally(url) {
     if (!url) return
-    if (root.teamBrowserFound) Quickshell.execDetached(["brave-origin", url])
-    else Qt.openUrlExternally(url)
+    // The join route only opens in the signed-in app on its own host; the
+    // legacy host would hand the click to the anonymous join launcher.
+    var target = Model.appJoinUrl(url)
+    if (!target) return
+    if (root.teamBrowserFound) Quickshell.execDetached(["brave-origin", target])
+    else Qt.openUrlExternally(target)
     root.close()
   }
 
